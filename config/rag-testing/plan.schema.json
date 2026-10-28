@@ -1,0 +1,81 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "suite_hash": {
+      "title": "Suite Hash",
+      "type": "string"
+    },
+    "mode": {
+      "default": "replay",
+      "enum": [
+        "replay",
+        "live"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "required_stages": {
+      "default": [
+        "retrieval",
+        "rerank",
+        "assembly"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Required Stages",
+      "type": "array"
+    },
+    "minimum_pass_rate": {
+      "default": 1,
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Minimum Pass Rate",
+      "type": "number"
+    },
+    "minimum_slice_cases": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Minimum Slice Cases",
+      "type": "integer"
+    },
+    "slice_floors": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Slice Floors",
+      "type": "object"
+    },
+    "top_k": {
+      "default": 5,
+      "exclusiveMinimum": 0,
+      "title": "Top K",
+      "type": "integer"
+    },
+    "require_answer_behavior": {
+      "default": false,
+      "title": "Require Answer Behavior",
+      "type": "boolean"
+    },
+    "objective": {
+      "default": "full",
+      "enum": [
+        "full",
+        "evidence"
+      ],
+      "title": "Objective",
+      "type": "string"
+    }
+  },
+  "required": [
+    "suite_hash"
+  ],
+  "title": "Plan",
+  "type": "object"
+}

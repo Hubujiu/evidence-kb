@@ -1,0 +1,273 @@
+{
+  "$defs": {
+    "Fragment": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_sha256": {
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        },
+        "kb": {
+          "title": "Kb",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "exclusiveMinimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "kind": {
+          "default": "extract",
+          "enum": [
+            "extract",
+            "paraphrase"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_sha256",
+        "version",
+        "kb",
+        "start",
+        "end",
+        "text"
+      ],
+      "title": "Fragment",
+      "type": "object"
+    },
+    "RequestEvidenceBinding": {
+      "additionalProperties": false,
+      "description": "Exact JSON leaf in a captured message containing one original fragment.",
+      "properties": {
+        "message_index": {
+          "minimum": 0,
+          "title": "Message Index",
+          "type": "integer"
+        },
+        "json_path": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "title": "Json Path",
+          "type": "array"
+        },
+        "fragment_index": {
+          "minimum": 0,
+          "title": "Fragment Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "message_index",
+        "json_path",
+        "fragment_index"
+      ],
+      "title": "RequestEvidenceBinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {
+      "title": "Case Id",
+      "type": "string"
+    },
+    "corpus_hash": {
+      "title": "Corpus Hash",
+      "type": "string"
+    },
+    "implementation": {
+      "minLength": 1,
+      "title": "Implementation",
+      "type": "string"
+    },
+    "principal": {
+      "title": "Principal",
+      "type": "string"
+    },
+    "acl_revision": {
+      "title": "Acl Revision",
+      "type": "string"
+    },
+    "status": {
+      "default": "OK",
+      "enum": [
+        "OK",
+        "ERROR",
+        "TIMEOUT",
+        "NOT_RUN"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "stages": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/Fragment"
+        },
+        "type": "array"
+      },
+      "title": "Stages",
+      "type": "object"
+    },
+    "final": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Fragment"
+      },
+      "title": "Final",
+      "type": "array"
+    },
+    "final_context": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Final Context"
+    },
+    "request_messages": {
+      "default": [],
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Request Messages",
+      "type": "array"
+    },
+    "request_evidence_bindings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RequestEvidenceBinding"
+      },
+      "title": "Request Evidence Bindings",
+      "type": "array"
+    },
+    "capture": {
+      "default": "unobserved",
+      "enum": [
+        "pre_send",
+        "replay",
+        "unobserved"
+      ],
+      "title": "Capture",
+      "type": "string"
+    },
+    "behavior": {
+      "anyOf": [
+        {
+          "enum": [
+            "answer",
+            "abstain",
+            "deny",
+            "clarify"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Behavior"
+    },
+    "elapsed_ms": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Elapsed Ms"
+    },
+    "model_calls": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Model Calls",
+      "type": "integer"
+    },
+    "input_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Input Tokens"
+    },
+    "output_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Tokens"
+    }
+  },
+  "required": [
+    "case_id",
+    "corpus_hash",
+    "implementation",
+    "principal",
+    "acl_revision"
+  ],
+  "title": "Trace",
+  "type": "object"
+}

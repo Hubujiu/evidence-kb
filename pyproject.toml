@@ -1,0 +1,37 @@
+[project]
+name = "evidence-kb"
+version = "0.2.0"
+description = "Single-profile document evidence retrieval with unified RAG acceptance"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "python-multipart>=0.0.20,<1",
+  "psycopg[binary]>=3.2,<4",
+  "httpx>=0.28,<1",
+  "pydantic>=2.10,<3",
+  "pdfplumber>=0.11,<1",
+  "python-docx>=1.1,<2",
+  "python-pptx>=1.0,<2",
+  "openpyxl>=3.1,<4",
+  "Pillow>=11,<13",
+  "beautifulsoup4>=4.13,<5",
+  "google-auth>=2.40,<3",
+  "requests>=2.32,<3",
+]
+
+[project.optional-dependencies]
+acceptance = [
+    "reportlab>=4.3,<5",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.11,<1"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = [".agents", ".local", ".venv*", "output", "outputs", "reports"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

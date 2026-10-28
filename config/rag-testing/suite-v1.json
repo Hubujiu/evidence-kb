@@ -1,0 +1,1133 @@
+{
+  "schema_version": "1",
+  "id": "synthetic-scorer-controls-v1",
+  "label_provenance": "synthetic_engineering",
+  "sources": [
+    {
+      "id": "exact-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\nE401 表示令牌失效，必须重新登录。\n附件结束。",
+      "sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f"
+    },
+    {
+      "id": "paraphrase_query-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n普通员工在上海住宿，每晚上限为600元。\n附件结束。",
+      "sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138"
+    },
+    {
+      "id": "cross_section-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n登记完成后应按附录乙执行。\n附件结束。",
+      "sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a"
+    },
+    {
+      "id": "cross_section-1",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n附录乙要求先断电，再进行密封检查。\n附件结束。",
+      "sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898"
+    },
+    {
+      "id": "multihop-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n甲项目适用乙规范。\n附件结束。",
+      "sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1"
+    },
+    {
+      "id": "multihop-1",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n乙规范要求使用丙材料。\n附件结束。",
+      "sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015"
+    },
+    {
+      "id": "table-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n城市|职级|住宿上限（元/晚）\n上海|普通员工|600\n附件结束。",
+      "sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4"
+    },
+    {
+      "id": "negation-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n设备运行时不允许开盖；必须断电后操作。\n附件结束。",
+      "sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a"
+    },
+    {
+      "id": "entity-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n产品A2的额定电压为24伏；产品A1为12伏。\n附件结束。",
+      "sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c"
+    },
+    {
+      "id": "version-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n2026年有效标准：每人每天80元，替代2025年的60元。\n附件结束。",
+      "sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3"
+    },
+    {
+      "id": "acl-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n公开手册：维修窗口为每周六09:00至11:00。\n附件结束。",
+      "sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425"
+    },
+    {
+      "id": "history-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "背景说明。\n产品B3保修期为24个月。\n附件结束。",
+      "sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49"
+    },
+    {
+      "id": "long-0",
+      "kb": "kb",
+      "version": "2026-01",
+      "text": "日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n日常巡检记录不规定报送期限。\n本章要求所有正式报表在次月5日前报送。\n附件结束。",
+      "sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "e-exact-0",
+      "source_id": "exact-0",
+      "start": 6,
+      "end": 25,
+      "quote": "E401 表示令牌失效，必须重新登录。",
+      "fact": "E401 表示令牌失效，必须重新登录。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-paraphrase_query-0",
+      "source_id": "paraphrase_query-0",
+      "start": 6,
+      "end": 26,
+      "quote": "普通员工在上海住宿，每晚上限为600元。",
+      "fact": "普通员工在上海住宿，每晚上限为600元。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-cross_section-0",
+      "source_id": "cross_section-0",
+      "start": 6,
+      "end": 19,
+      "quote": "登记完成后应按附录乙执行。",
+      "fact": "登记完成后应按附录乙执行。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-cross_section-1",
+      "source_id": "cross_section-1",
+      "start": 6,
+      "end": 23,
+      "quote": "附录乙要求先断电，再进行密封检查。",
+      "fact": "附录乙要求先断电，再进行密封检查。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-multihop-0",
+      "source_id": "multihop-0",
+      "start": 6,
+      "end": 15,
+      "quote": "甲项目适用乙规范。",
+      "fact": "甲项目适用乙规范。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-multihop-1",
+      "source_id": "multihop-1",
+      "start": 6,
+      "end": 17,
+      "quote": "乙规范要求使用丙材料。",
+      "fact": "乙规范要求使用丙材料。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-table-0",
+      "source_id": "table-0",
+      "start": 6,
+      "end": 33,
+      "quote": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+      "fact": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+      "qualifiers": []
+    },
+    {
+      "id": "e-negation-0",
+      "source_id": "negation-0",
+      "start": 6,
+      "end": 25,
+      "quote": "设备运行时不允许开盖；必须断电后操作。",
+      "fact": "设备运行时不允许开盖；必须断电后操作。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-entity-0",
+      "source_id": "entity-0",
+      "start": 6,
+      "end": 29,
+      "quote": "产品A2的额定电压为24伏；产品A1为12伏。",
+      "fact": "产品A2的额定电压为24伏；产品A1为12伏。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-version-0",
+      "source_id": "version-0",
+      "start": 6,
+      "end": 36,
+      "quote": "2026年有效标准：每人每天80元，替代2025年的60元。",
+      "fact": "2026年有效标准：每人每天80元，替代2025年的60元。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-acl-0",
+      "source_id": "acl-0",
+      "start": 6,
+      "end": 31,
+      "quote": "公开手册：维修窗口为每周六09:00至11:00。",
+      "fact": "公开手册：维修窗口为每周六09:00至11:00。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-history-0",
+      "source_id": "history-0",
+      "start": 6,
+      "end": 19,
+      "quote": "产品B3保修期为24个月。",
+      "fact": "产品B3保修期为24个月。",
+      "qualifiers": []
+    },
+    {
+      "id": "e-long-0",
+      "source_id": "long-0",
+      "start": 2250,
+      "end": 2269,
+      "quote": "本章要求所有正式报表在次月5日前报送。",
+      "fact": "本章要求所有正式报表在次月5日前报送。",
+      "qualifiers": []
+    }
+  ],
+  "cases": [
+    {
+      "input": {
+        "case_id": "exact-0",
+        "question": "E401 错误如何处理？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "exact",
+      "split": "regression",
+      "slices": [
+        "exact"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-exact-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "exact-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "exact-1",
+        "question": "E401 错误如何处理？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "exact",
+      "split": "regression",
+      "slices": [
+        "exact"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-exact-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "exact-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "paraphrase_query-0",
+        "question": "员工在沪住店能报多少？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "paraphrase_query",
+      "split": "regression",
+      "slices": [
+        "paraphrase_query"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-paraphrase_query-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "paraphrase_query-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "paraphrase_query-1",
+        "question": "员工在沪住店能报多少？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "paraphrase_query",
+      "split": "regression",
+      "slices": [
+        "paraphrase_query"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-paraphrase_query-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "paraphrase_query-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "cross_section-0",
+        "question": "登记完成以后做什么？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "cross_section",
+      "split": "regression",
+      "slices": [
+        "cross_section"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-cross_section-0",
+          "e-cross_section-1"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "cross_section-0": 1,
+        "cross_section-1": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "cross_section-1",
+        "question": "登记完成以后做什么？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "cross_section",
+      "split": "regression",
+      "slices": [
+        "cross_section"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-cross_section-0",
+          "e-cross_section-1"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "cross_section-0": 1,
+        "cross_section-1": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "multihop-0",
+        "question": "甲项目能用哪种材料？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "multihop",
+      "split": "regression",
+      "slices": [
+        "multihop"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-multihop-0",
+          "e-multihop-1"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "multihop-0": 1,
+        "multihop-1": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "multihop-1",
+        "question": "甲项目能用哪种材料？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "multihop",
+      "split": "regression",
+      "slices": [
+        "multihop"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-multihop-0",
+          "e-multihop-1"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "multihop-0": 1,
+        "multihop-1": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "table-0",
+        "question": "上海普通员工住宿标准？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "table",
+      "split": "regression",
+      "slices": [
+        "table"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-table-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "table-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "table-1",
+        "question": "上海普通员工住宿标准？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "table",
+      "split": "regression",
+      "slices": [
+        "table"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-table-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "table-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "negation-0",
+        "question": "设备运行时能否开盖？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "negation",
+      "split": "regression",
+      "slices": [
+        "negation"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-negation-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "negation-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "negation-1",
+        "question": "设备运行时能否开盖？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "negation",
+      "split": "regression",
+      "slices": [
+        "negation"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-negation-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "negation-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "entity-0",
+        "question": "A2 的额定电压？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "entity",
+      "split": "regression",
+      "slices": [
+        "entity"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-entity-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "entity-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "entity-1",
+        "question": "A2 的额定电压？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "entity",
+      "split": "regression",
+      "slices": [
+        "entity"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-entity-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "entity-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "version-0",
+        "question": "2026年补贴多少？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0",
+          "version-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "version",
+      "split": "regression",
+      "slices": [
+        "version"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-version-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "version-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "version-1",
+        "question": "2026年补贴多少？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0",
+          "version-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "version",
+      "split": "regression",
+      "slices": [
+        "version"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-version-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "version-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "acl-0",
+        "question": "公开手册的维修窗口？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0",
+          "version-0",
+          "acl-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "acl",
+      "split": "regression",
+      "slices": [
+        "acl"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-acl-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "acl-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "acl-1",
+        "question": "公开手册的维修窗口？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0",
+          "version-0",
+          "acl-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "acl",
+      "split": "regression",
+      "slices": [
+        "acl"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-acl-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "acl-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "history-0",
+        "question": "它的保修期多久？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0",
+          "version-0",
+          "acl-0",
+          "history-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [
+          {
+            "role": "user",
+            "content": "我正在咨询产品B3。"
+          }
+        ],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "history",
+      "split": "regression",
+      "slices": [
+        "history"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-history-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "history-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "history-1",
+        "question": "它的保修期多久？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0",
+          "version-0",
+          "acl-0",
+          "history-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [
+          {
+            "role": "user",
+            "content": "我正在咨询产品B3。"
+          }
+        ],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "history",
+      "split": "regression",
+      "slices": [
+        "history"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-history-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "history-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "long-0",
+        "question": "中段规定的报送期限？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0",
+          "version-0",
+          "acl-0",
+          "history-0",
+          "long-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "long",
+      "split": "regression",
+      "slices": [
+        "long"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-long-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "long-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "long-1",
+        "question": "中段规定的报送期限？请核对适用条件。",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [
+          "exact-0",
+          "paraphrase_query-0",
+          "cross_section-0",
+          "cross_section-1",
+          "multihop-0",
+          "multihop-1",
+          "table-0",
+          "negation-0",
+          "entity-0",
+          "version-0",
+          "acl-0",
+          "history-0",
+          "long-0"
+        ],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "long",
+      "split": "regression",
+      "slices": [
+        "long"
+      ],
+      "expected_behavior": "answer",
+      "any_of": [
+        [
+          "e-long-0"
+        ]
+      ],
+      "critical": true,
+      "qrels": {
+        "long-0": 1
+      },
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "abstain",
+        "question": "没有授权资料的问题？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "abstain",
+      "split": "regression",
+      "slices": [
+        "abstain"
+      ],
+      "expected_behavior": "abstain",
+      "any_of": [],
+      "critical": true,
+      "qrels": {},
+      "forbidden_text": []
+    },
+    {
+      "input": {
+        "case_id": "deny",
+        "question": "没有授权资料的问题？",
+        "kb": "kb",
+        "principal": "employee",
+        "acl_revision": "acl-1",
+        "allowed_sources": [],
+        "as_of": "2026-10-24",
+        "history": [],
+        "context_budget": 4096,
+        "budget_unit": "unicode_codepoints"
+      },
+      "family": "deny",
+      "split": "regression",
+      "slices": [
+        "deny"
+      ],
+      "expected_behavior": "deny",
+      "any_of": [],
+      "critical": true,
+      "qrels": {},
+      "forbidden_text": []
+    }
+  ]
+}

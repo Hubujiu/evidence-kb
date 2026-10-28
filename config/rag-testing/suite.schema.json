@@ -1,0 +1,292 @@
+{
+  "$defs": {
+    "AdapterInput": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "kb": {
+          "title": "Kb",
+          "type": "string"
+        },
+        "principal": {
+          "title": "Principal",
+          "type": "string"
+        },
+        "acl_revision": {
+          "title": "Acl Revision",
+          "type": "string"
+        },
+        "allowed_sources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Sources",
+          "type": "array"
+        },
+        "as_of": {
+          "title": "As Of",
+          "type": "string"
+        },
+        "history": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "History",
+          "type": "array"
+        },
+        "context_budget": {
+          "exclusiveMinimum": 0,
+          "title": "Context Budget",
+          "type": "integer"
+        },
+        "budget_unit": {
+          "const": "unicode_codepoints",
+          "default": "unicode_codepoints",
+          "title": "Budget Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "question",
+        "kb",
+        "principal",
+        "acl_revision",
+        "allowed_sources",
+        "as_of",
+        "context_budget"
+      ],
+      "title": "AdapterInput",
+      "type": "object"
+    },
+    "Case": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/AdapterInput"
+        },
+        "family": {
+          "title": "Family",
+          "type": "string"
+        },
+        "split": {
+          "default": "regression",
+          "enum": [
+            "dev",
+            "holdout",
+            "regression"
+          ],
+          "title": "Split",
+          "type": "string"
+        },
+        "slices": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Slices",
+          "type": "array"
+        },
+        "expected_behavior": {
+          "default": "answer",
+          "enum": [
+            "answer",
+            "abstain",
+            "deny",
+            "clarify"
+          ],
+          "title": "Expected Behavior",
+          "type": "string"
+        },
+        "any_of": {
+          "default": [],
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Any Of",
+          "type": "array"
+        },
+        "critical": {
+          "default": true,
+          "title": "Critical",
+          "type": "boolean"
+        },
+        "qrels": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Qrels",
+          "type": "object"
+        },
+        "forbidden_text": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Text",
+          "type": "array"
+        }
+      },
+      "required": [
+        "input",
+        "family"
+      ],
+      "title": "Case",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "exclusiveMinimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "fact": {
+          "minLength": 1,
+          "title": "Fact",
+          "type": "string"
+        },
+        "qualifiers": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Qualifiers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "start",
+        "end",
+        "quote",
+        "fact"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kb": {
+          "minLength": 1,
+          "title": "Kb",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kb",
+        "version",
+        "text",
+        "sha256"
+      ],
+      "title": "Source",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "label_provenance": {
+      "enum": [
+        "synthetic_engineering",
+        "human_reviewed",
+        "public_annotation"
+      ],
+      "title": "Label Provenance",
+      "type": "string"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/Case"
+      },
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "label_provenance",
+    "sources",
+    "evidence",
+    "cases"
+  ],
+  "title": "Suite",
+  "type": "object"
+}

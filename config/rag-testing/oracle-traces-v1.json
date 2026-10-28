@@ -1,0 +1,1802 @@
+[
+  {
+    "case_id": "exact-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "exact-0",
+          "source_sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "E401 表示令牌失效，必须重新登录。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "exact-0",
+          "source_sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "E401 表示令牌失效，必须重新登录。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "exact-0",
+          "source_sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "E401 表示令牌失效，必须重新登录。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "exact-0",
+        "source_sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 25,
+        "text": "E401 表示令牌失效，必须重新登录。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "E401 表示令牌失效，必须重新登录。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "E401 表示令牌失效，必须重新登录。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "exact-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "exact-0",
+          "source_sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "E401 表示令牌失效，必须重新登录。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "exact-0",
+          "source_sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "E401 表示令牌失效，必须重新登录。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "exact-0",
+          "source_sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "E401 表示令牌失效，必须重新登录。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "exact-0",
+        "source_sha256": "81b40031b6e0a388cf29849a03aa0ef8c158db5864037b08fd730c583a02726f",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 25,
+        "text": "E401 表示令牌失效，必须重新登录。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "E401 表示令牌失效，必须重新登录。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "E401 表示令牌失效，必须重新登录。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "paraphrase_query-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "paraphrase_query-0",
+          "source_sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 26,
+          "text": "普通员工在上海住宿，每晚上限为600元。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "paraphrase_query-0",
+          "source_sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 26,
+          "text": "普通员工在上海住宿，每晚上限为600元。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "paraphrase_query-0",
+          "source_sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 26,
+          "text": "普通员工在上海住宿，每晚上限为600元。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "paraphrase_query-0",
+        "source_sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 26,
+        "text": "普通员工在上海住宿，每晚上限为600元。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "普通员工在上海住宿，每晚上限为600元。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "普通员工在上海住宿，每晚上限为600元。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "paraphrase_query-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "paraphrase_query-0",
+          "source_sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 26,
+          "text": "普通员工在上海住宿，每晚上限为600元。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "paraphrase_query-0",
+          "source_sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 26,
+          "text": "普通员工在上海住宿，每晚上限为600元。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "paraphrase_query-0",
+          "source_sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 26,
+          "text": "普通员工在上海住宿，每晚上限为600元。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "paraphrase_query-0",
+        "source_sha256": "5ec5f70a232b9774f33458ee0d9c4c70d7fd7c9a269799b3c409d60fd6d3d138",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 26,
+        "text": "普通员工在上海住宿，每晚上限为600元。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "普通员工在上海住宿，每晚上限为600元。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "普通员工在上海住宿，每晚上限为600元。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "cross_section-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "cross_section-0",
+          "source_sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "登记完成后应按附录乙执行。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "cross_section-1",
+          "source_sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 23,
+          "text": "附录乙要求先断电，再进行密封检查。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "cross_section-0",
+          "source_sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "登记完成后应按附录乙执行。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "cross_section-1",
+          "source_sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 23,
+          "text": "附录乙要求先断电，再进行密封检查。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "cross_section-0",
+          "source_sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "登记完成后应按附录乙执行。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "cross_section-1",
+          "source_sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 23,
+          "text": "附录乙要求先断电，再进行密封检查。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "cross_section-0",
+        "source_sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 19,
+        "text": "登记完成后应按附录乙执行。",
+        "kind": "extract"
+      },
+      {
+        "source_id": "cross_section-1",
+        "source_sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 23,
+        "text": "附录乙要求先断电，再进行密封检查。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "登记完成后应按附录乙执行。\n\n附录乙要求先断电，再进行密封检查。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "登记完成后应按附录乙执行。\n\n附录乙要求先断电，再进行密封检查。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "cross_section-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "cross_section-0",
+          "source_sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "登记完成后应按附录乙执行。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "cross_section-1",
+          "source_sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 23,
+          "text": "附录乙要求先断电，再进行密封检查。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "cross_section-0",
+          "source_sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "登记完成后应按附录乙执行。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "cross_section-1",
+          "source_sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 23,
+          "text": "附录乙要求先断电，再进行密封检查。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "cross_section-0",
+          "source_sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "登记完成后应按附录乙执行。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "cross_section-1",
+          "source_sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 23,
+          "text": "附录乙要求先断电，再进行密封检查。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "cross_section-0",
+        "source_sha256": "da6896c659f87d99301c32ae7686aec63061fa7ddb412405d7e9645cc3a35c6a",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 19,
+        "text": "登记完成后应按附录乙执行。",
+        "kind": "extract"
+      },
+      {
+        "source_id": "cross_section-1",
+        "source_sha256": "f7bb27422bfc3254bedbd38d61330029f2ae49e134088303baaef98f21106898",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 23,
+        "text": "附录乙要求先断电，再进行密封检查。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "登记完成后应按附录乙执行。\n\n附录乙要求先断电，再进行密封检查。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "登记完成后应按附录乙执行。\n\n附录乙要求先断电，再进行密封检查。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "multihop-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "multihop-0",
+          "source_sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 15,
+          "text": "甲项目适用乙规范。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "multihop-1",
+          "source_sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 17,
+          "text": "乙规范要求使用丙材料。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "multihop-0",
+          "source_sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 15,
+          "text": "甲项目适用乙规范。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "multihop-1",
+          "source_sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 17,
+          "text": "乙规范要求使用丙材料。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "multihop-0",
+          "source_sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 15,
+          "text": "甲项目适用乙规范。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "multihop-1",
+          "source_sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 17,
+          "text": "乙规范要求使用丙材料。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "multihop-0",
+        "source_sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 15,
+        "text": "甲项目适用乙规范。",
+        "kind": "extract"
+      },
+      {
+        "source_id": "multihop-1",
+        "source_sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 17,
+        "text": "乙规范要求使用丙材料。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "甲项目适用乙规范。\n\n乙规范要求使用丙材料。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "甲项目适用乙规范。\n\n乙规范要求使用丙材料。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "multihop-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "multihop-0",
+          "source_sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 15,
+          "text": "甲项目适用乙规范。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "multihop-1",
+          "source_sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 17,
+          "text": "乙规范要求使用丙材料。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "multihop-0",
+          "source_sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 15,
+          "text": "甲项目适用乙规范。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "multihop-1",
+          "source_sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 17,
+          "text": "乙规范要求使用丙材料。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "multihop-0",
+          "source_sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 15,
+          "text": "甲项目适用乙规范。",
+          "kind": "extract"
+        },
+        {
+          "source_id": "multihop-1",
+          "source_sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 17,
+          "text": "乙规范要求使用丙材料。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "multihop-0",
+        "source_sha256": "4cf36abb142fff2d924e4d9931c100242fa69399e48df0e92ab0044f65144ba1",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 15,
+        "text": "甲项目适用乙规范。",
+        "kind": "extract"
+      },
+      {
+        "source_id": "multihop-1",
+        "source_sha256": "a976eff35461ee1e1f4ff39d1bb0cc89cbe3410f065a73db44afdbe30d5db015",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 17,
+        "text": "乙规范要求使用丙材料。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "甲项目适用乙规范。\n\n乙规范要求使用丙材料。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "甲项目适用乙规范。\n\n乙规范要求使用丙材料。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "table-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "table-0",
+          "source_sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 33,
+          "text": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "table-0",
+          "source_sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 33,
+          "text": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "table-0",
+          "source_sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 33,
+          "text": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "table-0",
+        "source_sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 33,
+        "text": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "table-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "table-0",
+          "source_sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 33,
+          "text": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "table-0",
+          "source_sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 33,
+          "text": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "table-0",
+          "source_sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 33,
+          "text": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "table-0",
+        "source_sha256": "302d73e4cb226f1fed171d9de5775e14ac776357184def5291810498b2acb4a4",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 33,
+        "text": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "城市|职级|住宿上限（元/晚）\n上海|普通员工|600"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "negation-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "negation-0",
+          "source_sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "设备运行时不允许开盖；必须断电后操作。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "negation-0",
+          "source_sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "设备运行时不允许开盖；必须断电后操作。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "negation-0",
+          "source_sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "设备运行时不允许开盖；必须断电后操作。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "negation-0",
+        "source_sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 25,
+        "text": "设备运行时不允许开盖；必须断电后操作。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "设备运行时不允许开盖；必须断电后操作。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "设备运行时不允许开盖；必须断电后操作。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "negation-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "negation-0",
+          "source_sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "设备运行时不允许开盖；必须断电后操作。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "negation-0",
+          "source_sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "设备运行时不允许开盖；必须断电后操作。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "negation-0",
+          "source_sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 25,
+          "text": "设备运行时不允许开盖；必须断电后操作。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "negation-0",
+        "source_sha256": "7a5eea83e653e62710144dd58a3fe6254bc973c9f5d09c14d38e94d841b4e60a",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 25,
+        "text": "设备运行时不允许开盖；必须断电后操作。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "设备运行时不允许开盖；必须断电后操作。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "设备运行时不允许开盖；必须断电后操作。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "entity-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "entity-0",
+          "source_sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 29,
+          "text": "产品A2的额定电压为24伏；产品A1为12伏。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "entity-0",
+          "source_sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 29,
+          "text": "产品A2的额定电压为24伏；产品A1为12伏。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "entity-0",
+          "source_sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 29,
+          "text": "产品A2的额定电压为24伏；产品A1为12伏。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "entity-0",
+        "source_sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 29,
+        "text": "产品A2的额定电压为24伏；产品A1为12伏。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "产品A2的额定电压为24伏；产品A1为12伏。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "产品A2的额定电压为24伏；产品A1为12伏。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "entity-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "entity-0",
+          "source_sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 29,
+          "text": "产品A2的额定电压为24伏；产品A1为12伏。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "entity-0",
+          "source_sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 29,
+          "text": "产品A2的额定电压为24伏；产品A1为12伏。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "entity-0",
+          "source_sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 29,
+          "text": "产品A2的额定电压为24伏；产品A1为12伏。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "entity-0",
+        "source_sha256": "382cfb95e794255724ba006248bf3651518ea75868d747df5ae07f016373369c",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 29,
+        "text": "产品A2的额定电压为24伏；产品A1为12伏。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "产品A2的额定电压为24伏；产品A1为12伏。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "产品A2的额定电压为24伏；产品A1为12伏。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "version-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "version-0",
+          "source_sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 36,
+          "text": "2026年有效标准：每人每天80元，替代2025年的60元。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "version-0",
+          "source_sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 36,
+          "text": "2026年有效标准：每人每天80元，替代2025年的60元。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "version-0",
+          "source_sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 36,
+          "text": "2026年有效标准：每人每天80元，替代2025年的60元。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "version-0",
+        "source_sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 36,
+        "text": "2026年有效标准：每人每天80元，替代2025年的60元。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "2026年有效标准：每人每天80元，替代2025年的60元。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "2026年有效标准：每人每天80元，替代2025年的60元。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "version-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "version-0",
+          "source_sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 36,
+          "text": "2026年有效标准：每人每天80元，替代2025年的60元。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "version-0",
+          "source_sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 36,
+          "text": "2026年有效标准：每人每天80元，替代2025年的60元。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "version-0",
+          "source_sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 36,
+          "text": "2026年有效标准：每人每天80元，替代2025年的60元。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "version-0",
+        "source_sha256": "edfa8a5b997e3c3aa3033010ce0063d8ea92f05c30de2ec03977c2d4acc117e3",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 36,
+        "text": "2026年有效标准：每人每天80元，替代2025年的60元。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "2026年有效标准：每人每天80元，替代2025年的60元。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "2026年有效标准：每人每天80元，替代2025年的60元。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "acl-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "acl-0",
+          "source_sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 31,
+          "text": "公开手册：维修窗口为每周六09:00至11:00。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "acl-0",
+          "source_sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 31,
+          "text": "公开手册：维修窗口为每周六09:00至11:00。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "acl-0",
+          "source_sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 31,
+          "text": "公开手册：维修窗口为每周六09:00至11:00。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "acl-0",
+        "source_sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 31,
+        "text": "公开手册：维修窗口为每周六09:00至11:00。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "公开手册：维修窗口为每周六09:00至11:00。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "公开手册：维修窗口为每周六09:00至11:00。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "acl-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "acl-0",
+          "source_sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 31,
+          "text": "公开手册：维修窗口为每周六09:00至11:00。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "acl-0",
+          "source_sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 31,
+          "text": "公开手册：维修窗口为每周六09:00至11:00。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "acl-0",
+          "source_sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 31,
+          "text": "公开手册：维修窗口为每周六09:00至11:00。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "acl-0",
+        "source_sha256": "f129c574a40534abf81a98922c57b0697eb90a3f3c71b63ea91583046ff3a425",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 31,
+        "text": "公开手册：维修窗口为每周六09:00至11:00。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "公开手册：维修窗口为每周六09:00至11:00。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "公开手册：维修窗口为每周六09:00至11:00。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "history-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "history-0",
+          "source_sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "产品B3保修期为24个月。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "history-0",
+          "source_sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "产品B3保修期为24个月。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "history-0",
+          "source_sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "产品B3保修期为24个月。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "history-0",
+        "source_sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 19,
+        "text": "产品B3保修期为24个月。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "产品B3保修期为24个月。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "产品B3保修期为24个月。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "history-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "history-0",
+          "source_sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "产品B3保修期为24个月。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "history-0",
+          "source_sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "产品B3保修期为24个月。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "history-0",
+          "source_sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 6,
+          "end": 19,
+          "text": "产品B3保修期为24个月。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "history-0",
+        "source_sha256": "007fcab0ce3ece2368257cb4b48e0360de733b15908dbd75e885866923ae4e49",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 6,
+        "end": 19,
+        "text": "产品B3保修期为24个月。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "产品B3保修期为24个月。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "产品B3保修期为24个月。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "long-0",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "long-0",
+          "source_sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 2250,
+          "end": 2269,
+          "text": "本章要求所有正式报表在次月5日前报送。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "long-0",
+          "source_sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 2250,
+          "end": 2269,
+          "text": "本章要求所有正式报表在次月5日前报送。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "long-0",
+          "source_sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 2250,
+          "end": 2269,
+          "text": "本章要求所有正式报表在次月5日前报送。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "long-0",
+        "source_sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 2250,
+        "end": 2269,
+        "text": "本章要求所有正式报表在次月5日前报送。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "本章要求所有正式报表在次月5日前报送。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "本章要求所有正式报表在次月5日前报送。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "long-1",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [
+        {
+          "source_id": "long-0",
+          "source_sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 2250,
+          "end": 2269,
+          "text": "本章要求所有正式报表在次月5日前报送。",
+          "kind": "extract"
+        }
+      ],
+      "rerank": [
+        {
+          "source_id": "long-0",
+          "source_sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 2250,
+          "end": 2269,
+          "text": "本章要求所有正式报表在次月5日前报送。",
+          "kind": "extract"
+        }
+      ],
+      "assembly": [
+        {
+          "source_id": "long-0",
+          "source_sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf",
+          "version": "2026-01",
+          "kb": "kb",
+          "start": 2250,
+          "end": 2269,
+          "text": "本章要求所有正式报表在次月5日前报送。",
+          "kind": "extract"
+        }
+      ]
+    },
+    "final": [
+      {
+        "source_id": "long-0",
+        "source_sha256": "cdd4234aca24a8c1e215612a6e3d836d0631745149480a2d7dda5a2e429e16cf",
+        "version": "2026-01",
+        "kb": "kb",
+        "start": 2250,
+        "end": 2269,
+        "text": "本章要求所有正式报表在次月5日前报送。",
+        "kind": "extract"
+      }
+    ],
+    "final_context": "本章要求所有正式报表在次月5日前报送。",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": "本章要求所有正式报表在次月5日前报送。"
+      }
+    ],
+    "capture": "replay",
+    "behavior": "answer",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "abstain",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [],
+      "rerank": [],
+      "assembly": []
+    },
+    "final": [],
+    "final_context": "",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": ""
+      }
+    ],
+    "capture": "replay",
+    "behavior": "abstain",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  {
+    "case_id": "deny",
+    "corpus_hash": "f93104d566d69a05a41bc3b229feb73bfb30dbd845bf46e5083506f89d999af5",
+    "implementation": "synthetic-oracle-control/1",
+    "principal": "employee",
+    "acl_revision": "acl-1",
+    "status": "OK",
+    "error": null,
+    "stages": {
+      "retrieval": [],
+      "rerank": [],
+      "assembly": []
+    },
+    "final": [],
+    "final_context": "",
+    "request_messages": [
+      {
+        "role": "user",
+        "content": ""
+      }
+    ],
+    "capture": "replay",
+    "behavior": "deny",
+    "elapsed_ms": null,
+    "model_calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+]

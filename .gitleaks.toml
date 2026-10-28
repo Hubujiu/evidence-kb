@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public token-counting algorithm identifier, not an API credential"
+condition = "AND"
+paths = ['''(^|/)kb_platform/agent_service\.py$''']
+regexTarget = "secret"
+regexes = ['''^conservative_utf8_estimate$''']

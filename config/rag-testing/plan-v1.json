@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "suite_hash": "7e807091c2915ea9f3fbc7f3488de3fccf71b75da7b164b22d16659895af1816",
+  "mode": "replay",
+  "required_stages": [
+    "retrieval",
+    "rerank",
+    "assembly"
+  ],
+  "minimum_pass_rate": 1.0,
+  "minimum_slice_cases": 1,
+  "slice_floors": {},
+  "top_k": 5
+}

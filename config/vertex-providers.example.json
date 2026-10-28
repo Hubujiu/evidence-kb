@@ -1,0 +1,17 @@
+{
+  "luna": {
+    "base_url": "http://127.0.0.1:3425/v1",
+    "model": "codex/gpt-6-luna",
+    "api_key": "REPLACE_LOCALLY"
+  },
+  "google": {
+    "platform": "vertex_ai",
+    "service_account_file": ".local/service-account.json",
+    "project_id": "YOUR_PROJECT_ID",
+    "location": "us",
+    "model": "gemini-embedding-2",
+    "dimension": 768
+  },
+  "cache_dir": ".local/remote-cache",
+  "log_path": ".local/provider-calls.jsonl"
+}

@@ -1,0 +1,15 @@
+{
+  "luna": {
+    "base_url": "http://127.0.0.1:3425/v1",
+    "model": "codex/gpt-6-luna",
+    "api_key": "REPLACE_LOCALLY"
+  },
+  "google": {
+    "base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "model": "gemini-embedding-2",
+    "dimension": 768,
+    "api_key": "REPLACE_LOCALLY"
+  },
+  "cache_dir": ".local/remote-cache",
+  "log_path": ".local/provider-calls.jsonl"
+}
