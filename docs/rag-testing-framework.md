@@ -65,8 +65,12 @@ Markdown/TXT 解析器 `native-text/0.3.0-markdown-it` 使用 markdown-it-py 识
 
 `python -m kb_platform.rag_testing.local_rerank --history <统一框架历史目录> --output <新目录> --models qwen3-06b --device cuda`
 校验历史 manifest、原文、身份和冻结 ACL 后，真实执行本地重排，复用统一 runner、scorer、StageCache 和 BudgetLedger。
-可选模型还有 `bge-base`；权重 revision 固定，依赖为 PyTorch、Transformers 4.51–4.x 与 sentencepiece。
+可选模型还有 `bge-base`；权重 revision 固定。使用 `uv sync --locked --group dev --extra reranker` 安装可选的本地推理依赖（Sentence Transformers、PyTorch、Transformers 4.x 与 sentencepiece），默认服务和统一离线检查不加载这些模型。依赖锁中的 PyTorch 版本固定在本轮验证过的 2.9.1；GPU 构建需匹配本机环境并在运行 manifest 中记录。
+BGE 使用 Sentence Transformers 5.7 的 `CrossEncoder.predict`，删除原来的 `AutoModelForSequenceClassification` 手写推理路径。Qwen 保留其生成式 yes/no 协议，不套用序列分类分数。模型加载只读取本地固定 revision，BGE 禁用远程自定义代码和隐式凭据。
 输入超长明确报错，不静默截断。没有候选的历史错误保留为 NOT_RUN，不编造候选或重试旧请求。
+长度预检包含 query、document 和特殊 token，超长在任何批次准入前拒绝；库推理也显式关闭截断和附加 prompt。每次最多 4 对候选、一次库批次，由原有账本先预留再执行。失败保留预留，取消留下未决身份；COMPLETE、ERROR 和未决批次均不得自动重发。排序使用输入位置绑定分数并稳定处理同分，原始片段及其版本、哈希、权限绑定不变。
+
+本轮 [CrossEncoder 迁移记录](crossencoder-migration.md) 保存配对结论。专用模型分数没有替代 `validate_coverage` 的引用和充分性合同，也没有启用产品默认 reranker。
 
 该入口不调用答案生成或语义裁判，不采集最终模型请求，所以完整验收仍不能 PASS。
 `summary.json` 单独报告原文证据在候选池、前 5/10 个片段中的覆盖，以及前 5 个去重来源的 IR 指标；两种 k 的单位不同。

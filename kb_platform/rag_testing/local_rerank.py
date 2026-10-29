@@ -59,7 +59,7 @@ class LocalRanker:
     def __init__(self, name, ledger, output, device='cpu'):
         import torch
         import transformers
-        from transformers import AutoModelForSequenceClassification, AutoModelForCausalLM, AutoTokenizer
+        from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.torch, self.name, self.ledger, self.output = torch, name, ledger, output
         self.device = device
@@ -70,11 +70,25 @@ class LocalRanker:
                              dtype='float32' if device == 'cpu' else 'float16', device=device,
                              threads=8, truncation='reject', under_test=True,
                              torch_version=torch.__version__, transformers_version=transformers.__version__)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision, local_files_only=True,
-                                                       padding_side='left' if name.startswith('qwen') else 'right')
-        factory = AutoModelForCausalLM if name.startswith('qwen') else AutoModelForSequenceClassification
-        self.model = factory.from_pretrained(model_id, revision=revision, local_files_only=True,
-                                            torch_dtype=torch.float32 if device == 'cpu' else torch.float16).to(device).eval()
+        dtype = torch.float32 if device == 'cpu' else torch.float16
+        if name == 'bge-base':
+            import sentence_transformers
+            from sentence_transformers import CrossEncoder
+
+            self.encoder = CrossEncoder(
+                model_id, revision=revision, local_files_only=True, trust_remote_code=False,
+                token=False, device=device, max_length=self.manifest['max_length'],
+                model_kwargs={'torch_dtype': dtype}, processor_kwargs={'padding_side': 'right'},
+                activation_fn=lambda logits: logits.float().sigmoid())
+            self.tokenizer = self.encoder.tokenizer
+            self.manifest.update(engine='sentence-transformers.CrossEncoder.predict',
+                                 sentence_transformers_version=sentence_transformers.__version__,
+                                 activation='sigmoid-float32', prompt='', batch_size=4)
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision, local_files_only=True,
+                                                           padding_side='left')
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_id, revision=revision, local_files_only=True, torch_dtype=dtype).to(device).eval()
         self.prefix = ('<|im_start|>system\nJudge whether the Document meets the requirements based on the Query '
                        'and the Instruct provided. Note that the answer can only be "yes" or "no".'
                        '<|im_end|>\n<|im_start|>user\n')
@@ -87,29 +101,35 @@ class LocalRanker:
                      f'the query\n<Query>: {request.question}\n<Document>: {f.text}' + self.suffix for f in candidates]
             encoded = tok(texts, padding=False, truncation=False, add_special_tokens=False)
         else:
-            encoded = tok([(request.question, f.text) for f in candidates], padding=False, truncation=False)
+            pairs = [(request.question, f.text) for f in candidates]
+            encoded = tok(pairs, padding=False, truncation=False)
         lengths = [len(x) for x in encoded['input_ids']]
         if max(lengths, default=0) > self.manifest['max_length']:
             raise ValueError(f'Input exceeds frozen model limit: {max(lengths)}; no silent truncation')
         scores, batch_records = [], []
         started = time.perf_counter()
         for offset in range(0, len(candidates), 4):
-            batch = tok.pad({k: v[offset:offset + 4] for k, v in encoded.items()},
-                            padding=True, return_tensors='pt').to(self.device)
             physical_id = digest([str(self.output.parent.resolve()), self.name, request.case_id, offset, request.model_dump(),
                                   [f.model_dump() for f in candidates], self.manifest])
-            resources = {'local_batches': 1, 'pairs': len(batch['input_ids']), 'remote_calls': 0}
+            resources = {'local_batches': 1, 'pairs': len(candidates[offset:offset + 4]), 'remote_calls': 0}
             self.ledger.reserve(physical_id, resources, category='local_rerank', require_settled=True)
             try:
                 with torch.inference_mode():
                     if self.name.startswith('qwen'):
+                        batch = tok.pad({k: v[offset:offset + 4] for k, v in encoded.items()},
+                                        padding=True, return_tensors='pt').to(self.device)
                         logits = self.model(**batch, logits_to_keep=1).logits[:, -1, :].float()
                         values = torch.softmax(logits[:, [tok.convert_tokens_to_ids('no'),
-                                                         tok.convert_tokens_to_ids('yes')]], dim=1)[:, 1]
+                                                         tok.convert_tokens_to_ids('yes')]], dim=1)[:, 1].cpu().tolist()
                     else:
-                        values = self.model(**batch).logits.view(-1).float().sigmoid()
-                    values = values.cpu().tolist()
-                if len(values) != resources['pairs'] or not all(math.isfinite(v) for v in values):
+                        # One library batch per reservation; no model download,
+                        # hidden truncation, prompt injection, or automatic retries.
+                        values = self.encoder.predict(
+                            pairs[offset:offset + 4], batch_size=4, show_progress_bar=False,
+                            prompt='', convert_to_numpy=True,
+                            processing_kwargs={'text': {'truncation': False}}).tolist()
+                if (len(values) != resources['pairs'] or
+                        any(type(v) not in (int, float) or not math.isfinite(v) or not 0 <= v <= 1 for v in values)):
                     raise ValueError('Invalid model scores')
                 record = dict(physical_id=physical_id, offset=offset, scores=values,
                               input_tokens=sum(lengths[offset:offset + 4]))
@@ -129,7 +149,7 @@ class HistoricalCandidateAdapter:
     def __init__(self, candidates, ranker, output):
         self.candidates, self.ranker, self.output = candidates, ranker, output
         self.cache = StageCache(output / 'stage-cache')
-        self.implementation = 'historical-candidate-order/1' if ranker is None else 'local-rerank/1:' + ranker.name
+        self.implementation = 'historical-candidate-order/1' if ranker is None else 'local-rerank/2:' + ranker.name
 
     def run(self, request, sources, corpus):
         candidates = self.candidates[request.case_id]
