@@ -1,7 +1,8 @@
 name: evidence-kb-v01
 services:
   postgres:
-    image: postgres:18.6
+    image: evidence-kb-postgres:18.6-textsearch1.5.1-vector0.8.6
+    build: ./docker/postgres
     environment:
       POSTGRES_USER: kb_admin
       POSTGRES_PASSWORD: kb_local_admin
@@ -9,7 +10,7 @@ services:
     ports:
       - "127.0.0.1:55432:5432"
     volumes:
-      - metadata:/var/lib/postgresql
+      - metadata_postgres:/var/lib/postgresql
       - ./sql:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kb_admin -d evidence_kb"]
@@ -18,6 +19,7 @@ services:
       retries: 30
     mem_limit: 768m
   search:
+    profiles: [legacy-search]
     image: opensearchproject/opensearch:2.19.1
     environment:
       discovery.type: single-node
@@ -44,4 +46,5 @@ services:
     mem_limit: 3g
 volumes:
   metadata:
+  metadata_postgres:
   search:

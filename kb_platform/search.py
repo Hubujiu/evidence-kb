@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from functools import lru_cache
 
 import httpx
 
@@ -16,7 +17,11 @@ PAGE_QUERY_PROTOCOL = 'bm25-isolated-page-fields-query-blocks/1'
 
 
 def binding_key(item: dict) -> str:
-    values = [item[field] for field in BINDING_FIELDS]
+    return _binding_digest(tuple(item[field] for field in BINDING_FIELDS))
+
+
+@lru_cache(maxsize=8192)
+def _binding_digest(values: tuple) -> str:
     return hashlib.sha256(json.dumps(values, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
 
 
@@ -26,6 +31,21 @@ def content_order(hit: dict) -> tuple:
 
 def score_order() -> list[dict]:
     return [{'_score': 'desc'}, *({field: 'asc'} for field in TIE_BREAK_FIELDS)]
+
+
+def backend_dependencies(backend):
+    from pathlib import Path
+    import importlib.metadata
+    files = [Path(__file__)]
+    packages = []
+    if type(backend).__name__ == 'EmbeddedSearch':
+        files += [Path(__file__).with_name(name) for name in ('embedded_search.py', 'search_tokens.py')]
+        packages = ['tantivy', 'numpy', 'regex']
+    if type(backend).__name__ == 'PostgresSearch':
+        files += [Path(__file__).with_name(name) for name in ('postgres_search.py', 'search_tokens.py')]
+        packages = ['psycopg', 'regex']
+    return {'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
+            'packages': {name: importlib.metadata.version(name) for name in packages}}
 
 
 class SearchUnavailable(RuntimeError):
@@ -59,6 +79,46 @@ class OpenSearch:
     def __init__(self, url: str):
         self.url = url.rstrip('/')
         self._binding_key_indices = {}
+
+    def read_units(self, index, ids):
+        response = self._request('POST', f'/{self._index(index)}/_mget', json={'ids': ids})
+        units = [r['_source'] for r in response['docs'] if r.get('found')]
+        for unit in units:
+            if unit.get('kind') == 'Page':
+                unit['text'] = unit.pop('original_page_text')
+                unit.pop('page_text', None)
+                unit['heading_text'] = unit.pop('page_heading', '')
+        return units
+
+    def seal(self, index, checksum):
+        self._request('PUT', f'/{self._index(index)}/_mapping', json={'_meta': {'semantic_manifest_sha256': checksum}})
+        self._request('PUT', f'/{index}/_settings', json={'index.blocks.write': True})
+
+    def is_sealed(self, index, checksum):
+        mapping = self._request('GET', f'/{self._index(index)}/_mapping')
+        settings = self._request('GET', f'/{index}/_settings')
+        return (mapping.get(index, {}).get('mappings', {}).get('_meta', {}).get('semantic_manifest_sha256') == checksum and
+                str(settings.get(index, {}).get('settings', {}).get('index', {}).get('blocks', {}).get('write')).lower() == 'true')
+
+    def dense_pages(self, index, tenant_id, kb_id, build_id, allowed, vector, top_k, excluded):
+        if not allowed:
+            return []
+        filters = self._filters(tenant_id, kb_id, allowed, compact=True)
+        filters += [{'term': {'kind': 'Page'}}, {'term': {'build_id': build_id}}]
+        restriction = {'filter': filters}
+        if excluded:
+            restriction['must_not'] = [{'terms': {'citation_id': list(excluded)}}]
+        body = {'size': top_k, '_source': {'excludes': ['vector']}, 'sort': score_order(),
+            'query': {'knn': {'vector': {'vector': vector, 'k': top_k, 'filter': {'bool': restriction}}}}}
+        response = self._request('POST', f'/{self._index(index)}/_search', json=body)
+        result = []
+        for hit in response['hits']['hits']:
+            row = {**hit['_source'], 'score': hit['_score']}
+            row['text'] = row.pop('original_page_text')
+            row.pop('page_text', None)
+            row['heading_text'] = row.pop('page_heading', '')
+            result.append(row)
+        return result
 
     @staticmethod
     def index_name(tenant_id: str, kb_id: str, build_id: str) -> str:
@@ -153,18 +213,7 @@ class OpenSearch:
                 hit['text'] = hit.pop('original_page_text')
                 hit.pop('page_text', None)
                 hit['heading_text'] = hit.pop('page_heading', '')
-        if all(isinstance(hit.get('text'), str) and isinstance(hit.get('evidence_ids'), list) for hit in hits):
-            from .evidence_packing import rank_texts
-
-            ordered = [hits[i] for i in rank_texts([hit['text'] for hit in hits], query)]
-            # Preserve canonical parent context instead of spending the same
-            # budget again on its typed-table child. The table-only channel
-            # still returns all independently queryable typed table citations.
-            groups = [hit for hit in ordered if hit.get('kind') != 'Table']
-            hits = [hit for hit in ordered if hit.get('kind') != 'Table' or not any(
-                all(hit.get(key) == parent.get(key) for key in BINDING_FIELDS) and
-                set(hit['evidence_ids']) <= set(parent['evidence_ids']) for parent in groups)]
-        return hits[:top_k]
+        return lexical_results(hits, query, top_k)
 
     @staticmethod
     def _filters(tenant_id: str, kb_id: str, allowed: list[dict], *, compact=True) -> list[dict]:
@@ -204,3 +253,18 @@ class OpenSearch:
             'query': {'bool': {'filter': filters}}, 'sort': [{'ordinal': 'asc'}],
         })
         return [{**item['_source'], 'score': hit['score']} for item in result['hits']['hits']]
+
+
+def lexical_results(hits, query, top_k):
+    if all(isinstance(hit.get('text'), str) and isinstance(hit.get('evidence_ids'), list) for hit in hits):
+        from .evidence_packing import rank_texts
+
+        ordered = [hits[i] for i in rank_texts([hit['text'] for hit in hits], query)]
+        # Preserve canonical parent context instead of spending the same
+        # budget again on its typed-table child. The table-only channel
+        # still returns all independently queryable typed table citations.
+        groups = [hit for hit in ordered if hit.get('kind') != 'Table']
+        hits = [hit for hit in ordered if hit.get('kind') != 'Table' or not any(
+            all(hit.get(key) == parent.get(key) for key in BINDING_FIELDS) and
+            set(hit['evidence_ids']) <= set(parent['evidence_ids']) for parent in groups)]
+    return hits[:top_k]

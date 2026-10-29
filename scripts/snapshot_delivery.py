@@ -59,13 +59,13 @@ def docker(args):
 
 
 def metadata_fingerprints(conn):
-    tables = conn.execute("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename").fetchall()
+    tables = conn.execute("SELECT schemaname,tablename FROM pg_tables WHERE schemaname IN ('public','kb_search') ORDER BY schemaname,tablename").fetchall()
     result = {}
-    for (name,) in tables:
+    for schema, name in tables:
         query = sql.SQL("SELECT count(*),md5(coalesce(string_agg(row_hash,'' ORDER BY row_hash),'')) "
-                        "FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM public.{} t) q").format(sql.Identifier(name))
+                        "FROM (SELECT md5(to_jsonb(t)::text) AS row_hash FROM {} t) q").format(sql.Identifier(schema, name))
         count, fingerprint = conn.execute(query).fetchone()
-        result[name] = {'rows': count, 'content_md5': fingerprint}
+        result[name if schema == 'public' else schema + '.' + name] = {'rows': count, 'content_md5': fingerprint}
     return result
 
 
@@ -193,7 +193,7 @@ def snapshot_application(run_root, output, include_roots=()):
     return files, sqlite, {prefix.as_posix(): str(path) for prefix, path in roots}
 
 
-def create(run_root, output, admin_dsn, search_url, prepared, include_roots=()):
+def create(run_root, output, admin_dsn, search_url, prepared, include_roots=(), *, search_backend='postgres'):
     run_root, output = private_path(run_root), private_path(output)
     if output == run_root or output.is_relative_to(run_root) or run_root.is_relative_to(output):
         raise ValueError('RECOVERY_OUTPUT_MUST_NOT_OVERLAP_SOURCE')
@@ -226,7 +226,22 @@ def create(run_root, output, admin_dsn, search_url, prepared, include_roots=()):
         for index in indexes:
             if not re.fullmatch(r'kb-[0-9a-f]{24}-[0-9a-f]{32}', index):
                 raise ValueError('UNEXPECTED_RECOVERY_INDEX_NAME')
-            data = read_index(client, index)
+            if search_backend == 'postgres':
+                from kb_platform.postgres_search import PostgresSearch
+                backend = PostgresSearch(admin_dsn)
+                index_manifest = backend.verify(index)
+                documents = [dict(id=u['unit_id'], source=u) for u in backend.read_units(index)]
+                data = dict(index=index, backend='postgres', dimension=index_manifest['dimension'],
+                            documents=documents, document_sha256=digest(documents))
+            elif search_backend == 'embedded':
+                from kb_platform.embedded_search import EmbeddedSearch
+                backend = EmbeddedSearch(run_root / 'originals' / '.search-indexes')
+                index_manifest = backend.verify(index)
+                documents = [dict(id=u['unit_id'], source=u) for u in backend.read_units(index)]
+                data = dict(index=index, backend='embedded', dimension=index_manifest['dimension'],
+                            documents=documents, document_sha256=digest(documents))
+            else:
+                data = read_index(client, index)
             path = output / (index + '.json')
             write_json(path, data)
             search[index] = {'file': path.name, 'sha256': checksum(path),
@@ -290,6 +305,27 @@ def verify(backup, output, admin_dsn, search_url):
             if not path.resolve().is_relative_to(backup) or checksum(path) != info['sha256']:
                 raise ValueError('RECOVERY_SEARCH_CHECKSUM_MISMATCH')
             data = json.loads(path.read_text('utf-8'))
+            if data.get('backend') == 'postgres':
+                from kb_platform.postgres_search import PostgresSearch
+                backend = PostgresSearch(psycopg.conninfo.make_conninfo(admin_dsn, dbname=database))
+                backend.verify(original)
+                observed = [dict(id=u['unit_id'], source=u) for u in backend.read_units(original)]
+                if digest(observed) != info['document_sha256']:
+                    raise ValueError('RESTORED_SEARCH_CONTENT_MISMATCH')
+                restored_indexes.append(dict(original=original, restored=original, documents=len(observed),
+                    content_sha256=digest(observed), state_after_verification='POSTGRES_RESTORED'))
+                continue
+            if data.get('backend') == 'embedded':
+                from kb_platform.embedded_search import EmbeddedSearch
+                backend = EmbeddedSearch(output / 'verified-search-indexes')
+                backend.stage(original, [r['source'] for r in data['documents']], data['dimension'])
+                backend.verify(original)
+                observed = [dict(id=u['unit_id'], source=u) for u in backend.read_units(original)]
+                if digest(observed) != info['document_sha256']:
+                    raise ValueError('RESTORED_SEARCH_CONTENT_MISMATCH')
+                restored_indexes.append(dict(original=original, restored=original, documents=len(observed),
+                    content_sha256=digest(observed), state_after_verification='IMMUTABLE_LOCAL'))
+                continue
             index = 'kb-' + uuid4().hex[:24] + '-' + uuid4().hex
             settings = {key: value for key, value in data['settings'].items()
                         if key not in {'uuid', 'provided_name', 'creation_date', 'version', 'history_uuid', 'blocks'}}
@@ -333,13 +369,15 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--admin-dsn-env', default='KB_RECOVERY_ADMIN_DSN')
     parser.add_argument('--search-url', default='http://127.0.0.1:59200')
+    parser.add_argument('--search-backend', choices=('postgres', 'embedded', 'opensearch'), default='postgres')
     args = parser.parse_args()
     import os
 
     admin = os.environ.get(args.admin_dsn_env)
     if not admin:
         parser.error('Set the explicit local recovery admin DSN environment; never pass credentials as arguments')
-    result = create(args.run_root, args.output, admin, args.search_url, args.prepared, args.include_root) if args.command == 'create' else verify(
+    result = create(args.run_root, args.output, admin, args.search_url, args.prepared, args.include_root,
+                    search_backend=args.search_backend) if args.command == 'create' else verify(
         args.backup, args.output, admin, args.search_url)
     print(json.dumps(result, ensure_ascii=False))
 

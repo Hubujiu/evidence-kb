@@ -189,10 +189,10 @@ def verify_operations(*, config, runtime_manifest, identities, session_state, ou
             validate('authenticated_identity', lambda: identity.json() == actor)
             readiness = request(client, 'dependency_readiness', '/agent/readiness')
             validate('dependency_readiness', lambda: readiness.json()['ready'] is True and
-                readiness.json()['model_calls'] == 0 and all(readiness.json()['dependencies'][name]['ready'] is True
-                                                           for name in ('postgres', 'opensearch')))
+                readiness.json()['model_calls'] == 0 and readiness.json()['dependencies']['postgres']['ready'] is True and
+                any(readiness.json()['dependencies'].get(name, {}).get('ready') is True for name in ('search', 'opensearch')))
             if checks['dependency_readiness']['status'] == 'PASS':
-                observations['dependency_readiness'] = {'postgres_ready': True, 'opensearch_ready': True,
+                observations['dependency_readiness'] = {'postgres_ready': True, 'search_ready': True,
                     'quality_scope': 'Connectivity only; not answer quality or per-scope published channels'}
             status = request(client, 'runtime_status', '/agent/runtime-status')
             if checks['runtime_status']['status'] == 'PASS':

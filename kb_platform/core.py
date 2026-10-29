@@ -90,9 +90,21 @@ def _parse(data: bytes, filename: str, policy: dict) -> dict:
 
 
 class Platform:
-    def __init__(self, dsn: str, search_url: str, storage_root, embedding_provider=None, ocr_client=None):
+    def __init__(self, dsn: str, search_url: str, storage_root, embedding_provider=None, ocr_client=None,
+                 *, search_backend=None):
         self.dsn = dsn
-        self.backend = OpenSearch(search_url)
+        import os
+        choice = search_backend or os.getenv('KB_SEARCH_BACKEND', 'postgres')
+        if choice not in ('embedded', 'opensearch', 'postgres'):
+            raise ValueError('Unknown search backend')
+        if choice == 'postgres':
+            from .postgres_search import PostgresSearch
+            self.backend = PostgresSearch(dsn)
+        elif choice == 'embedded':
+            from .embedded_search import EmbeddedSearch
+            self.backend = EmbeddedSearch(Path(storage_root) / '.search-indexes')
+        else:
+            self.backend = OpenSearch(search_url)
         self.store = OriginalStore(storage_root)
         self.embedding_provider = embedding_provider
         self.ocr_client = ocr_client
@@ -355,6 +367,8 @@ class Platform:
                       'retrieval_chunking_implementation_sha256': sha256(Path(retrieval_expansion.__file__).read_bytes()).hexdigest(),
                       'lexical_query_protocol': search.QUERY_PROTOCOL,
                       'lexical_query_implementation_sha256': sha256(Path(search.__file__).read_bytes()).hexdigest(),
+                      'search_backend': type(self.backend).__name__,
+                      'search_dependencies': search.backend_dependencies(self.backend),
                       'query_blocks_implementation_sha256': sha256(Path(evidence_packing.__file__).read_bytes()).hexdigest(),
                       'tie_break': list(TIE_BREAK_FIELDS),
                       'embedding': self.embedding_provider.manifest if model_enabled else None,
@@ -367,6 +381,8 @@ class Platform:
                           kb['revision'], index, Jsonb(config), len(units)))
             for citation in citations:
                 conn.execute('INSERT INTO citations VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)', citation)
+        if type(self.backend).__name__ == 'PostgresSearch':
+            return self.resume_build(actor, kb_id, build_id)
         try:
             if model_enabled:
                 with self._tx(actor, kb_id) as conn:
@@ -401,6 +417,111 @@ class Platform:
                 'lexical_query_protocol': config['lexical_query_protocol'],
                 'lexical_query_implementation_sha256': config['lexical_query_implementation_sha256'],
                 'excluded_vector_source_count': len(config['excluded_vector_source_ids'])}
+
+    def build_status(self, actor, kb_id, build_id):
+        from .embedding_jobs import EmbeddingJobs
+        with self._tx(actor, kb_id) as conn:
+            self._auth(conn, actor, kb_id, 'kb.manage')
+            row = conn.execute('SELECT build_id,status,unit_count FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+                               (actor.tenant_id, kb_id, build_id)).fetchone()
+            if row is None:
+                _deny()
+        return {**row, 'embedding_batches': EmbeddingJobs(self.dsn).status(actor.tenant_id, kb_id, build_id)}
+
+    def resume_build(self, actor, kb_id, build_id):
+        from hashlib import sha256
+        from .embedding_jobs import EmbeddingJobs, EmbeddingJobError
+        from .search import backend_dependencies
+        from .search_compat import resumable_search_dependencies
+        from . import delivery_units, retrieval_expansion
+
+        with self._tx(actor, kb_id) as conn:
+            revision = self._lock_authority(conn, actor)
+            kb = self._auth(conn, actor, kb_id, 'kb.manage')
+            self._auth(conn, actor, kb_id, 'kb.read')
+            build = conn.execute('SELECT * FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+                                 (actor.tenant_id, kb_id, build_id)).fetchone()
+            if build is None:
+                _deny()
+            if build['status'] in ('VALIDATED', 'PUBLISHED'):
+                return {'build_id': build_id, 'kb_id': kb_id, 'status': build['status'], 'unit_count': build['unit_count']}
+            config = build['inputs']
+            if (build['status'] != 'STAGING' or build['authority_revision'] != revision or
+                    build['kb_revision'] != kb['revision'] or build['expected_manifest_id'] != kb['manifest_id']):
+                raise PlatformError('STALE_BUILD', 'Build inputs or authority changed', 409)
+            if not resumable_search_dependencies(config['search_dependencies'], backend_dependencies(self.backend)):
+                raise PlatformError('STALE_BUILD', 'Search implementation changed', 409)
+            if (config['retrieval_unit_protocol'] != delivery_units.PROTOCOL or
+                    config['retrieval_unit_implementation_sha256'] != sha256(Path(delivery_units.__file__).read_bytes()).hexdigest() or
+                    config['retrieval_chunking_implementation_sha256'] != sha256(Path(retrieval_expansion.__file__).read_bytes()).hexdigest()):
+                raise PlatformError('STALE_BUILD', 'Frozen chunking implementation changed', 409)
+            rows = self._bindings(conn, actor, kb_id)
+            if len(self._allowed(rows, actor, 'human_search')) != len(rows):
+                _deny()
+            inputs = [{key: row[key] for key in ('binding_id', 'source_id', 'source_version_id',
+                       'parse_snapshot_id', 'revision', 'source_revision')} for row in rows]
+            if inputs != config['sources']:
+                raise PlatformError('STALE_BUILD', 'Frozen source dependencies changed', 409)
+            units, generated = self._units(actor, kb_id, build_id, rows)
+            fields = ('tenant_id', 'kb_id', 'citation_id', 'build_id', 'binding_id', 'source_id',
+                      'source_version_id', 'parse_snapshot_id', 'element_id', 'text', 'evidence_ids', 'anchors', 'table_data')
+            expected = {r[2]: dict(zip(fields, [v.obj if isinstance(v, Jsonb) else v for v in r], strict=True)) for r in generated}
+            stored = conn.execute('SELECT * FROM citations WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+                                  (actor.tenant_id, kb_id, build_id)).fetchall()
+            if len(units) != build['unit_count'] or expected != {r['citation_id']: r for r in stored}:
+                raise PlatformError('STALE_BUILD', 'Regenerated units differ from committed evidence', 409)
+
+        def authorize():
+            with self._tx(actor, kb_id) as conn:
+                if self._lock_authority(conn, actor) != revision:
+                    raise PlatformError('STALE_BUILD', 'Authority changed during build', 409)
+                current = self._auth(conn, actor, kb_id, 'kb.manage')
+                if current['revision'] != build['kb_revision'] or current['manifest_id'] != build['expected_manifest_id']:
+                    raise PlatformError('STALE_BUILD', 'Knowledge base changed during build', 409)
+            return True
+
+        if config['embedding']:
+            if self.embedding_provider is None or self.embedding_provider.manifest != config['embedding']:
+                raise PlatformError('STALE_BUILD', 'Embedding provider differs from frozen build', 409)
+            eligible = [u for u in units if u['source_id'] in config['vector_source_ids'] and u['kind'] != 'Page']
+            context = dict(tenant_id=actor.tenant_id, kb_id=kb_id, build_id=build_id, principal=actor.principal_id,
+                acl_revision=str(revision), sources=[dict(source_id=r['source_id'], source_version_id=r['source_version_id'],
+                parse_snapshot_id=r['parse_snapshot_id'], source_text_sha256=sha256(
+                    '\n'.join(e['raw_text'] for e in r['document']['elements']).encode()).hexdigest()) for r in rows])
+            jobs = EmbeddingJobs(self.dsn)
+            jobs.reconcile(actor.tenant_id, kb_id, build_id, self.embedding_provider, authorize)
+            try:
+                encoded = jobs.run(actor.tenant_id, kb_id, build_id, self.embedding_provider, eligible, authorize, context)
+            except EmbeddingJobError as exc:
+                message = f'Build {build_id}: {exc.code}'
+                if exc.retry_at:
+                    message += f'; retry_at={exc.retry_at.isoformat()}'
+                raise PlatformError(exc.code, message, 503) from exc
+            vectors = {u['unit_id']: u['vector'] for u in encoded}
+            units = [{**u, **({'vector': vectors[u['unit_id']]} if u['unit_id'] in vectors else {})} for u in units]
+
+        authorize()
+        try:
+            existing = self.backend.read_units(build['index_name'])
+        except SearchUnavailable as exc:
+            # Only confirmed absence permits a new generation; outages remain errors.
+            if str(exc) != 'Search generation not found':
+                raise
+            self.backend.stage(build['index_name'], units,
+                               vector_dimension=self.embedding_provider.dimension if config['embedding'] else None)
+        else:
+            if existing != sorted(units, key=content_order):
+                raise PlatformError('BUILD_CONTENT_MISMATCH', 'Stored generation differs from frozen inputs', 409)
+        with self._tx(actor, kb_id) as conn:
+            if self._lock_authority(conn, actor) != revision:
+                raise PlatformError('STALE_BUILD', 'Authority changed before validation', 409)
+            current = self._auth(conn, actor, kb_id, 'kb.manage')
+            if current['revision'] != build['kb_revision'] or current['manifest_id'] != build['expected_manifest_id']:
+                raise PlatformError('STALE_BUILD', 'Knowledge base changed before validation', 409)
+            conn.execute("UPDATE builds SET status='VALIDATED' WHERE tenant_id=%s AND kb_id=%s AND build_id=%s AND status='STAGING'",
+                         (actor.tenant_id, kb_id, build_id))
+        return {'build_id': build_id, 'kb_id': kb_id, 'status': 'VALIDATED', 'unit_count': len(units),
+                'channels': config['channels'], 'expected_manifest_id': build['expected_manifest_id']}
 
     def _embedding_allowed(self, row):
         return (self.embedding_provider is not None and row['policy'].get('embedding', False) and
@@ -601,10 +722,11 @@ class Platform:
                                (actor.tenant_id, kb_id, citation_id)).fetchone()
             if not row or not self._allowed([row], actor, purpose):
                 _deny()
-            try:
-                self.store.checked_path(row['original_path'], actor.tenant_id, row['original_sha256'])
-            except (OSError, ValueError) as exc:
-                raise PlatformError('SOURCE_INTEGRITY', 'Original integrity check failed', 503) from exc
+            if purpose == 'download':
+                try:
+                    self.store.checked_path(row['original_path'], actor.tenant_id, row['original_sha256'])
+                except (OSError, ValueError) as exc:
+                    raise PlatformError('SOURCE_INTEGRITY', 'Original backup unavailable or corrupt', 503) from exc
             return {key: row[key] for key in ('citation_id', 'kb_id', 'source_id', 'source_version_id', 'filename',
                     'original_path', 'original_sha256', 'text', 'anchors', 'media_type', 'policy', 'table_data',
                     'build_id', 'parse_snapshot_id', 'evidence_ids')}

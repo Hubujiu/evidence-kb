@@ -238,7 +238,7 @@ def validate_semantic_runtime(config_path, *, provider_factory=None):
 
 
 def _dependency_probe(settings):
-    """Bounded SQL/OpenSearch liveness only; no embedding, generation, or data mutation."""
+    """Bounded storage liveness only; no embedding or generation."""
     import httpx
     import psycopg
 
@@ -249,6 +249,28 @@ def _dependency_probe(settings):
         result['postgres'] = {'ready': True}
     except Exception as exc:
         result['postgres'] = {'ready': False, 'error': type(exc).__name__}
+    if settings.search_backend == 'postgres':
+        try:
+            with psycopg.connect(settings.dsn, connect_timeout=2, options='-c statement_timeout=2000') as connection:
+                versions = dict(connection.execute("SELECT extname,extversion FROM pg_extension WHERE extname IN ('vector','pg_textsearch')"))
+                connection.execute('SELECT index_name FROM search_generations LIMIT 0')
+            result['search'] = {'ready': versions == {'vector': '0.8.6', 'pg_textsearch': '1.5.1'},
+                                'backend': 'postgres-bm25-exact-vector', 'extensions': versions}
+        except Exception as exc:
+            result['search'] = {'ready': False, 'error': type(exc).__name__}
+        return result
+    if settings.search_backend == 'embedded':
+        try:
+            from .embedded_search import EmbeddedSearch
+            backend = EmbeddedSearch(settings.storage_root / '.search-indexes')
+            indexes = list(backend.root.glob('kb-*'))
+            for index in indexes:
+                backend.verify(index.name)
+            result['search'] = {'ready': backend.root.parent.is_dir(), 'backend': 'tantivy-exact-vector',
+                                'verified_indexes': len(indexes)}
+        except Exception as exc:
+            result['search'] = {'ready': False, 'error': type(exc).__name__}
+        return result
     try:
         with httpx.Client(timeout=2, trust_env=False) as client:
             response = client.get(settings.search_url.rstrip('/') + '/_cluster/health')
