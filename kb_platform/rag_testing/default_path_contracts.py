@@ -42,7 +42,15 @@ class DefaultPathContracts(unittest.TestCase):
         from unittest.mock import patch
         docs = [('入口.md', '§委托：查《目标》§报价内的编码。'),
                 ('目标.md', '§报价：单位CNY。\n| 编码 | 单价 |\n| A | 13 |')]
-        with patch('kb_platform.documents._text_blocks', side_effect=lambda text: enumerate(text.splitlines(keepends=True), 1)):
+        from kb_platform.markdown_source import SourceBlock
+
+        def historical_lines(text, **kwargs):
+            offset = 0
+            for number, line in enumerate(text.splitlines(keepends=True), 1):
+                yield SourceBlock(offset, offset + len(line.rstrip("\r\n")), number, number)
+                offset += len(line)
+
+        with patch('kb_platform.documents.source_blocks', side_effect=historical_lines):
             a, g = self.make(docs)
         a.backend.search = lambda *args, **kwargs: [{**a.units[0], 'score': 1.0}]
         result = g.search_pipeline(a.actor, a.scope, '委托编码', {})

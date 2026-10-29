@@ -25,6 +25,7 @@ dependencies = [
   "openai>=2,<3",
   "langgraph>=1,<2",
   "langsmith>=0.14,<1",
+  "markdown-it-py>=4,<5",
 ]
 
 [project.optional-dependencies]

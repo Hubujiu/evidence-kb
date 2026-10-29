@@ -14,6 +14,8 @@ from importlib.metadata import version
 from pathlib import PurePath
 from typing import Any
 
+from .markdown_source import PARSER_VERSION as TEXT_PARSER_VERSION, source_blocks
+
 
 PARSER_VERSION = "native-evidence/0.2.1"
 MAX_BYTES = 20 * 1024 * 1024
@@ -31,6 +33,7 @@ MEDIA_TYPES = {
     ".tiff": "image/tiff",
 }
 DEPENDENCIES = {
+    ".md": ("markdown-it-py",), ".txt": ("markdown-it-py",),
     ".pdf": ("pdfplumber", "pdfminer.six", "pypdfium2"),
     ".docx": ("python-docx",), ".pptx": ("python-pptx",), ".xlsx": ("openpyxl",),
     ".html": ("beautifulsoup4",), ".htm": ("beautifulsoup4",),
@@ -100,11 +103,12 @@ class _Bundle:
         config = {key: policy.get(key, default) for key, default in {
             "native_parse": True, "ocr": False, "include_hidden": False, "include_notes": False,
         }.items()}
-        self.snapshot = _hash([self.source, PARSER_VERSION, packages, config, self.ext])
+        parser_version = TEXT_PARSER_VERSION if self.ext in (".md", ".txt") else PARSER_VERSION
+        self.snapshot = _hash([self.source, parser_version, packages, config, self.ext])
         self.result = {
             "source_version_id": self.source, "original_sha256": self.source,
             "filename": PurePath(filename).name, "media_type": MEDIA_TYPES.get(self.ext, "application/octet-stream"),
-            "parse_snapshot_id": self.snapshot, "parser_version": PARSER_VERSION, "status": "READY",
+            "parse_snapshot_id": self.snapshot, "parser_version": parser_version, "status": "READY",
             "elements": [], "evidence_spans": [], "anchors": [],
             "quality_report": {
                 "warnings": [], "missing_capabilities": [], "excluded": [], "ocr_decisions": [],
@@ -224,78 +228,26 @@ def _decode(data: bytes) -> str:
     return text
 
 
-def _text_blocks(text):
-    """Keep pipe tables with their immediate prose caption as original blocks.
-
-    Fenced code is excluded. Existing snapshots remain immutable; the parser
-    version binds this boundary change to newly parsed documents.
-    """
-    lines = text.splitlines(keepends=True)
-    code, protected = False, set()
-    for i, line in enumerate(lines):
-        if re.match(r'^\s*(```|~~~)', line):
-            code = not code
-            protected.add(i)
-        if code:
-            protected.add(i)
-    groups = {}
-    i = 0
-    while i < len(lines):
-        if i in protected or not lines[i].strip().startswith('|'):
-            i += 1
-            continue
-        end = i + 1
-        while end < len(lines) and end not in protected and lines[end].strip().startswith('|'):
-            end += 1
-        if end - i >= 2:
-            start = i
-            if (i and i - 1 not in protected and lines[i - 1].strip()
-                    and not re.match(r'^\s*#', lines[i - 1])):
-                start -= 1
-            groups[start] = end
-        i = end
-    i = 0
-    while i < len(lines):
-        end = groups.get(i, i + 1)
-        yield i + 1, ''.join(lines[i:end])
-        i = end
-
-
 def _parse_text(bundle: _Bundle, data: bytes):
     text = _decode(data)
-    offset = 0
-    code_lines, code_start = [], None
-    for line_no, line in _text_blocks(text):
-        content = line.rstrip("\r\n")
-        location = {"selector_type": "text_position", "object_path": f"line/{line_no}",
-                    "text_start": offset, "text_end": offset + len(content), "granularity": "line"}
-        if '\n' in content:
-            location.update(object_path=f"line/{line_no}-{line_no + content.count(chr(10))}", granularity="block")
-        if bundle.ext == ".md" and re.match(r"^\s*(```|~~~)", content):
-            if code_start is None:
-                code_start = (offset, line_no)
-                code_lines = [line]
-            else:
-                code_lines.append(line)
-                block = "".join(code_lines).rstrip("\r\n")
-                bundle.element(block, {**location, "object_path": f"line/{code_start[1]}-{line_no}",
-                                       "text_start": code_start[0], "text_end": code_start[0] + len(block),
-                                       "granularity": "block"}, "Code")
-                code_start = None
-        elif code_start is not None:
-            code_lines.append(line)
-        elif content.strip():
-            heading = re.match(r"^(#{1,6})\s+(.+)$", content) if bundle.ext == ".md" else None
-            if heading:
-                bundle.heading(content, len(heading[1]), location)
-            else:
-                bundle.element(content, location)
-        offset += len(line)
-    if code_start is not None:
-        block = "".join(code_lines)
-        bundle.element(block, {"selector_type": "text_position", "object_path": f"line/{code_start[1]}-end",
-                               "text_start": code_start[0], "text_end": len(text), "granularity": "block"}, "Code")
-        bundle.warning("unclosed_code_fence")
+    for block in source_blocks(text, markdown=bundle.ext == ".md"):
+        content = text[block.start:block.end]
+        path = f"line/{block.first_line}"
+        if block.unclosed and block.end == len(text):
+            path += "-end"
+        elif block.last_line != block.first_line or block.kind == "Code":
+            path += f"-{block.last_line}"
+        location = {
+            "selector_type": "text_position", "object_path": path,
+            "text_start": block.start, "text_end": block.end,
+            "granularity": "block" if "-" in path else "line",
+        }
+        if block.heading_level:
+            bundle.heading(content, block.heading_level, location)
+        else:
+            bundle.element(content, location, block.kind)
+        if block.unclosed:
+            bundle.warning("unclosed_code_fence")
 
 
 def _parse_csv(bundle: _Bundle, data: bytes):

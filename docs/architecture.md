@@ -69,6 +69,16 @@ SDK 设置 `max_retries=0`，使用调用者客户端的禁止自动重定向配
 
 提供者 manifest 和模型响应缓存键包含 SDK 版本及 transport 协议，升级后相关响应缓存失效，旧文件保持只读；这不会清零或迁移现有物理请求账本。`luna_sdk_contracts.py` 使用真实 SDK 加合成 HTTP transport 验证边界，没有调用真实提供者。该检查证明离线协议与计量行为，不代表线上模型兼容性或 RAG 质量验收。
 
+## Markdown 原文解析边界
+
+`markdown_source.py` 使用 markdown-it-py 的 CommonMark 块解析并启用 table 规则，关闭不需要的 inline 解析。标题（含 Setext）、匹配长度和标记的围栏、缩进代码及容器中的块均由库识别。库只提供结构与行范围；证据、quote、偏移始终从 UTF-8-SIG 解码后的原文切片生成，不使用渲染结果或 token.content 重建原文。原件 SHA-256 仍覆盖包含 BOM 的完整字节；偏移仍是解码文本的 Unicode codepoint。CRLF/CR 的规范化映射保持原有合同，U+2028 等字符不冒充 Markdown 换行。
+
+业务层保留普通正文逐行证据、管道表格与紧邻说明整体交付，以及无分隔行的历史管道表格约定。标准 Markdown 表格也保留完整原文，不凭 token 创建虚假的单元格坐标。代码和 HTML 内的文本不参与表格说明合并；未闭合围栏仍报告 `unclosed_code_fence`。TXT 共用这层原文分组，库识别的代码/标题只用于保护分组边界，不将 TXT 元素转换成 Markdown 标题或代码类型。
+
+Markdown/TXT 的新快照使用 `native-text/0.3.0-markdown-it`，快照哈希纳入 markdown-it-py 版本；其他格式继续原有解析版本与依赖。改变库版本或解析策略会生成新的证据和锚点身份，不覆盖已有快照、不自动重建索引。旧的逐行表格导航合同继续保留，只将夹具改为提供历史行边界；生产路径已删除旧的手写标题识别和围栏状态机。
+
+`markdown_contracts.py` 使用真实解析库和合成原文验证这些边界；现有权限、导航、上下文与评分合同仍由统一检查运行。参考 [markdown-it-py token 与规则 API](https://markdown-it-py.readthedocs.io/en/latest/using.html)。
+
 ## 产品与评测共享什么
 
 `rag_testing` 中有五个模块提供产品所需的稳定能力。
