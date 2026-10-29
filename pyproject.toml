@@ -23,6 +23,8 @@ dependencies = [
   "regex>=2024.11.6",
   "jsonschema>=4.23,<5",
   "openai>=2,<3",
+  "langgraph>=1,<2",
+  "langsmith>=0.14,<1",
 ]
 
 [project.optional-dependencies]

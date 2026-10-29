@@ -13,6 +13,7 @@ flowchart TD
     Delivery --> API[api.create_app]
     API --> Routes[agent_api]
     Routes --> Agent[agent_service]
+    Agent --> Graph[agent_graph / LangGraph]
     Agent --> Gateway[agent_tools]
     Gateway --> Pipeline[retrieval_pipeline]
     Pipeline --> Evidence[原文读取与权限复核]
@@ -26,6 +27,29 @@ flowchart TD
 `scripts/` 负责命令行参数、进程启动和输出。产品模块不导入脚本，也不修改 Python 搜索路径。`delivery.py` 拥有配置校验、身份初始化、预算检查和应用工厂。`--check` 仅验证已有配置，实际应用创建仍是显式操作。
 
 `retrieval_pipeline.PipelineConfig` 表达检索策略。检索管线在授权范围内召回原文子单元、融合候选、重排并装配原文。`agent_context.ContextManager` 管理实际发送前的上下文。此次重构没有改写检索或装配算法。
+
+## Agent 图编排与恢复
+
+`agent_graph.py` 使用 LangGraph `StateGraph` 调度六个节点。`agent_service.py` 提供节点的业务操作，原有 `for step` 循环与内嵌验证修复调度已删除，生产只保留图路径。
+
+```mermaid
+flowchart LR
+    Plan[plan / 规划] -->|需要工具| Tool[tool / 执行工具]
+    Tool -->|继续且未达步数上限| Plan
+    Plan -->|回答或澄清| Compose[compose / 生成回答]
+    Tool -->|停止或达到上限| Compose
+    Compose -->|需要核验| Verify[verify / 核验]
+    Compose -->|直接结果| Deliver[deliver / 交付]
+    Verify -->|不支持且尚未修复| Repair[repair / 一次修复]
+    Repair --> Verify
+    Verify -->|通过或修复结束| Deliver
+```
+
+图状态包含当前步数、决策、候选答案、核验结果和是否已经修复。来源授权、原文证据、可见历史、上下文裁剪与预算仍由原有组件管理。每轮创建独立图，节点串行运行；递归上限为规划步数与固定收尾节点预留空间，不代替业务步数或物理请求预算。每个节点开始前检查授权和整轮时限，并通过 `AgentStore.append` 校验写租约、保存不含原文的 `graph_node_started` 事件。调用模型前与交付前仍执行原有证据复核。
+
+所有节点显式设置 `RetryPolicy(max_attempts=1)`。图不启用 checkpoint、节点缓存或自动恢复；提供者层继续负责已准入的有界重试。`AgentStore` 是会话归属、请求指纹、revision、单写者租约和完成结果的唯一权威。重复已完成请求经当前授权复核后返回旧结果；中断请求仍报告 `TURN_IN_PROGRESS` / `TURN_INTERRUPTED`，物理 UNKNOWN 继续阻断发送。节点事件用于审计，不构成可重放 checkpoint。本轮没有新增“从中断节点自动续跑”的产品能力。
+
+`langsmith.tracing_context(enabled=False)` 和空 callbacks 明确禁用环境触发的远端 tracing；该直接依赖仅用于控制库的 tracing 边界，不导出证据。新增 `agent_graph_contracts.py` 接入统一离线合同，使用真实图、服务、会话存储和证据网关以及合成模型/HTTP transport；包括真实 SDK 产生 UNKNOWN 后重启仍阻断的合同。它不代表线上 RAG 答案质量，未删除既有测试。
 
 ## Agent 输出 Schema 边界
 
