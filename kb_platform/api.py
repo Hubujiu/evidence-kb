@@ -75,7 +75,7 @@ class TableRequest(RequestModel):
 
 
 
-def create_app(settings: Settings | None = None, platform: Platform | None = None):
+def create_app(settings: Settings | None = None, platform: Platform | None = None, *, agent_factory=None):
     settings = settings or Settings.from_environment()
     identities = settings.identities()
     provider, luna, research = None, None, None
@@ -290,7 +290,7 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
 
     from .agent_api import install_agent_routes
 
-    install_agent_routes(app, service, research, identity)
+    install_agent_routes(app, service, research, identity, service_factory=agent_factory)
     return app
 
 

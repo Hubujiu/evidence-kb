@@ -4,6 +4,6 @@ useDefault = true
 [[allowlists]]
 description = "Public token-counting algorithm identifier, not an API credential"
 condition = "AND"
-paths = ['''(^|/)kb_platform/agent_service\.py$''']
+paths = ['''(^|/)kb_platform/agent_service\.py$''', '''(^|/)kb_platform/knowledge_service\.py$''', '''(^|/)docs/functional-architecture\.html$''']
 regexTarget = "secret"
 regexes = ['''^conservative_utf8_estimate$''']

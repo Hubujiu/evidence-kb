@@ -5,9 +5,10 @@ import unittest
 from unittest.mock import Mock
 
 from kb_platform.agent_context import canonical, digest
+from kb_platform.agent_luna import LunaModelProvider
 from kb_platform.agent_model import AgentModel, schema_instruction
 from kb_platform.agent_schema import compile_schema, validate_output
-from kb_platform.agent_service import ANSWER_SCHEMA, DECISION_SCHEMA, VERDICT_SCHEMA
+from kb_platform.agent_protocol import ANSWER_SCHEMA, DECISION_SCHEMA, VERDICT_SCHEMA
 from kb_platform.remote import RemoteModelError
 
 
@@ -135,7 +136,7 @@ class AgentSchemaBoundaryContracts(unittest.TestCase):
         provider = SimpleNamespace(model='synthetic', base_url='https://example.invalid', retries=0,
             _headers={}, _cache_get=Mock(return_value=cached), _cache_put=Mock(), _record=Mock(),
             _save_failed_response=Mock(return_value={}), _post=Mock(side_effect=post))
-        return AgentModel(provider), provider
+        return AgentModel(LunaModelProvider(provider)), provider
 
     def complete(self, model, **kwargs):
         schema = kwargs.pop('schema', {'type': 'object', 'required': ['count'], 'additionalProperties': False,

@@ -1,0 +1,266 @@
+{
+  "kb_platform/agent_work_state.py:begin_work_state": {
+    "purpose": "创建新一轮规划工作状态，按来源代际决定是否延续已有目标与证据。",
+    "inputs": "上一状态、用户消息、约束、来源 epoch。",
+    "objects": "不修改上一状态；复制约束并保留最多 8 个已有证据 ID。",
+    "output": "返回新工作状态字典，状态为 planning。"
+  },
+  "kb_platform/agent_work_state.py:record_decision": {
+    "purpose": "将规划决策写入工作状态。",
+    "inputs": "工作状态、决策字典。",
+    "objects": "原地更新解析后的查询、有效子问题、缺失信息、充分性和状态。",
+    "output": "无返回值；回答或澄清为 planning，其他动作为 executing。"
+  },
+  "kb_platform/agent_work_state.py:record_receipt": {
+    "purpose": "记录工具执行结果，让后续规划使用真实回执。",
+    "inputs": "工作状态、工具输出。",
+    "objects": "成功时追加工具名称、参数副本和证据 ID，最多保留 4 条；失败时设置 tool_failed。",
+    "output": "无返回值，原地修改工作状态。"
+  },
+  "kb_platform/agent_work_state.py:finish_work_state": {
+    "purpose": "完成工作状态并更新已确认的证据。",
+    "inputs": "工作状态、最终状态、回答声明。",
+    "objects": "从声明的 evidence_ids 去重，保留最后 8 个并更新状态。",
+    "output": "无返回值，原地修改工作状态。"
+  },
+  "kb_platform/agent_store.py:canonical": {
+    "purpose": "为哈希和持久化生成稳定 JSON 表示。",
+    "inputs": "可 JSON 序列化的值。",
+    "objects": "按键排序、保留 Unicode、去除分隔符空格。",
+    "output": "返回 JSON 字符串；不支持的值会触发序列化异常。"
+  },
+  "kb_platform/agent_store.py:digest": {
+    "purpose": "生成会话制品内容的稳定标识。",
+    "inputs": "可 JSON 序列化的值。",
+    "objects": "先调用 canonical，再对 UTF-8 字节计算 SHA-256。",
+    "output": "返回十六进制摘要字符串。"
+  },
+  "kb_platform/agent_store.py:now": {
+    "purpose": "提供事件和会话记录的 UTC 时间。",
+    "inputs": "无显式输入。",
+    "objects": "读取当前 UTC 时间。",
+    "output": "返回 ISO 8601 格式字符串。"
+  },
+  "kb_platform/agent_store.py:AgentStore.__init__": {
+    "purpose": "初始化持久会话数据库及不可变事件约束。",
+    "inputs": "数据库根目录，默认为 .local/agentic-v5。",
+    "objects": "创建目录和 SQLite 会话、事件、请求、制品表及触发器。",
+    "output": "无返回值；初始化实例路径并产生数据库文件。"
+  },
+  "kb_platform/agent_store.py:AgentStore._db": {
+    "purpose": "为一次数据库操作提供事务上下文。",
+    "inputs": "实例中的数据库路径。",
+    "objects": "打开连接、启用 WAL 并开始 IMMEDIATE 事务；成功提交，异常回滚，最后关闭连接。",
+    "output": "yield SQLite 连接；异常向调用方传播。"
+  },
+  "kb_platform/agent_store.py:AgentStore._owner": {
+    "purpose": "验证会话归属。",
+    "inputs": "数据库连接、身份主体、会话 ID。",
+    "objects": "用 session、tenant 和 principal 查询 sessions。",
+    "output": "返回数据库行；不存在或不属于主体时抛出 SESSION_NOT_FOUND。"
+  },
+  "kb_platform/agent_store.py:AgentStore._decode": {
+    "purpose": "把数据库会话行转为服务层使用的字典。",
+    "inputs": "SQLite 会话行。",
+    "objects": "读取 ID、范围、revision 和时间，解析 JSON 状态。",
+    "output": "返回会话字典；状态解析失败时抛出异常。"
+  },
+  "kb_platform/agent_store.py:AgentStore.create": {
+    "purpose": "创建归属于当前用户的新会话。",
+    "inputs": "身份主体、范围 ID、来源策略、配置名。",
+    "objects": "初始化会话状态、生成 ID 并写入 sessions。",
+    "output": "返回经 load 读取的会话字典。"
+  },
+  "kb_platform/agent_store.py:AgentStore.load": {
+    "purpose": "读取指定用户自己的会话。",
+    "inputs": "身份主体、会话 ID。",
+    "objects": "验证归属并解码数据库状态。",
+    "output": "返回会话字典；无权访问或不存在时抛错。"
+  },
+  "kb_platform/agent_store.py:AgentStore.list_sessions": {
+    "purpose": "分页列出当前用户会话元数据。",
+    "inputs": "身份主体、limit 和 offset。",
+    "objects": "验证分页范围，按更新时间及 ID 降序查询当前租户和用户。",
+    "output": "返回会话元数据列表，不含模型状态与原文。"
+  },
+  "kb_platform/agent_store.py:AgentStore.events": {
+    "purpose": "读取会话事件历史。",
+    "inputs": "身份主体、会话 ID。",
+    "objects": "验证归属，按序号读取 events 并解析 JSON payload。",
+    "output": "返回事件列表。"
+  },
+  "kb_platform/agent_store.py:AgentStore._event": {
+    "purpose": "在现有事务内追加事件。",
+    "inputs": "数据库连接、会话 ID、类型、内容、组 ID、执行者。",
+    "objects": "按该会话最大序号加一写入不可变 events。",
+    "output": "返回新事件序号。"
+  },
+  "kb_platform/agent_store.py:AgentStore.begin": {
+    "purpose": "申请单轮对话写入租约并执行幂等检查。",
+    "inputs": "身份主体、会话 ID、请求 ID、预期 revision、请求指纹、租约时长。",
+    "objects": "检查归属、同 ID 的指纹和状态、revision 与其他活跃租约；登记新请求。",
+    "output": "已完成请求返回 cached；新请求返回 token 和 session；冲突或中断抛错。"
+  },
+  "kb_platform/agent_store.py:AgentStore._lease": {
+    "purpose": "核验单轮请求写租约是否有效。",
+    "inputs": "数据库连接、会话 ID、租约 token。",
+    "objects": "查询 running 请求并检查过期时间。",
+    "output": "返回请求行；无效或过期时抛出 TURN_LEASE_EXPIRED。"
+  },
+  "kb_platform/agent_store.py:AgentStore.append": {
+    "purpose": "在有效租约下追加一条会话事件。",
+    "inputs": "身份主体、会话 ID、token、事件类型、payload、组 ID、执行者。",
+    "objects": "检查归属和租约，在事务中插入事件。",
+    "output": "返回事件序号。"
+  },
+  "kb_platform/agent_store.py:AgentStore.artifact": {
+    "purpose": "按内容摘要保存会话制品。",
+    "inputs": "身份主体、会话 ID、token、可 JSON 序列化的制品内容。",
+    "objects": "验证归属和租约，按摘要去重插入 artifacts。",
+    "output": "返回 artifact_id、sha256 和规范化 JSON 字节数。"
+  },
+  "kb_platform/agent_store.py:AgentStore.read_artifact": {
+    "purpose": "读取并验证会话制品。",
+    "inputs": "身份主体、会话 ID、制品 ID。",
+    "objects": "检查归属，读取 JSON 并重新计算摘要。",
+    "output": "返回制品内容；缺失或完整性错误时抛错。"
+  },
+  "kb_platform/agent_store.py:AgentStore.finish": {
+    "purpose": "原子提交一轮的最终状态和响应。",
+    "inputs": "身份主体、会话 ID、token、会话状态、响应字典。",
+    "objects": "检查租约，追加完成事件，递增 revision，更新会话并标记请求完成。",
+    "output": "返回附加 session_id 和新 revision 的响应。"
+  },
+  "kb_platform/rag_testing/budget.py:BudgetLedger.__init__": {
+    "purpose": "创建或打开冻结上限的物理调用账本。",
+    "inputs": "SQLite 文件路径和非负整数资源上限。",
+    "objects": "创建目录及 config、calls 表；已有账本的上限必须一致。",
+    "output": "无返回值；设置 path 和 caps，不匹配时抛错。"
+  },
+  "kb_platform/rag_testing/budget.py:BudgetLedger._valid": {
+    "purpose": "校验预算资源维度与数值。",
+    "inputs": "资源字典、是否要求所有预算维度 complete。",
+    "objects": "检查键属于 caps，完整模式要求键集合相同，值必须是非负整数。",
+    "output": "无返回值；不符合条件时抛出 ValueError。"
+  },
+  "kb_platform/rag_testing/budget.py:BudgetLedger._totals": {
+    "purpose": "计算实际使用量或仍保留的预留量。",
+    "inputs": "数据库连接和预算上限字典。",
+    "objects": "遍历所有 calls，每个维度优先使用实际 usage，缺失则使用 reserved。",
+    "output": "返回按预算维度汇总的字典。"
+  },
+  "kb_platform/rag_testing/budget.py:BudgetLedger.reserve": {
+    "purpose": "发送前原子预留预算并登记物理请求。",
+    "inputs": "请求 ID、完整资源预留、类别、是否要求无未结算请求。",
+    "objects": "在写事务中检查重复 ID、未决请求和预算上限，插入 STARTED 记录。",
+    "output": "返回请求 ID；拒绝时抛出异常。"
+  },
+  "kb_platform/rag_testing/budget.py:BudgetLedger.finish": {
+    "purpose": "登记物理请求的终态与使用量。",
+    "inputs": "请求 ID、COMPLETE/ERROR/UNKNOWN 状态、可选 usage 和诊断。",
+    "objects": "验证资源并仅更新 STARTED 请求。",
+    "output": "无返回值；不存在、已终态或状态非法时抛错。"
+  },
+  "kb_platform/rag_testing/budget.py:BudgetLedger.summary": {
+    "purpose": "汇总账本的调用和预算状态。",
+    "inputs": "实例的账本路径及上限。",
+    "objects": "读取调用，按实际使用或预留计算总量及未知、未决数量。",
+    "output": "返回请求数量、预算使用、未知使用量、未决和超预算信息。"
+  },
+  "kb_platform/rag_testing/cache.py:StageCache.__init__": {
+    "purpose": "初始化精确阶段缓存。",
+    "inputs": "缓存根目录。",
+    "objects": "创建 objects 目录和 cache.sqlite3 的 entries 索引表。",
+    "output": "无返回值；保存根目录及数据库路径。"
+  },
+  "kb_platform/rag_testing/cache.py:StageCache.put": {
+    "purpose": "将阶段产物按精确依赖键写入不可变缓存。",
+    "inputs": "StageKey 和可 JSON 序列化的 payload。",
+    "objects": "计算内容哈希并写 JSON 对象；核对已有对象及键映射，不允许同一键对应不同内容。",
+    "output": "无返回值；冲突或完整性失败时抛错。"
+  },
+  "kb_platform/rag_testing/cache.py:StageCache.get": {
+    "purpose": "在当前授权及运行模式下安全复用阶段产物。",
+    "inputs": "阶段键、授权回调、模式 replay/live/cold、under_test 标记。",
+    "objects": "先检查授权；cold 和被测 live 阶段绕过；命中时读取对象并校验哈希。",
+    "output": "返回内容或 None；未授权或数据损坏时抛错。"
+  },
+  "kb_platform/agent_history.py:restore_events": {
+    "purpose": "按检索词恢复当前可用的历史片段。",
+    "inputs": "已授权事件、查询及可选序号和偏移、当前状态、当前事件序号、功能配置。",
+    "objects": "过滤来源 epoch、事件类型及回答证据，按查询匹配与时间排序，截取最多三条。",
+    "output": "返回带序号、类型、文字、偏移、截断状态及原文哈希的列表。"
+  },
+  "kb_platform/agent_tool_registry.py:advanced_tools": {
+    "purpose": "确定当前配置与网关实际支持哪些高级工具。",
+    "inputs": "配置字典、工具网关。",
+    "objects": "读取 TOOLS 中 advanced_tools 能力标识，并检查网关是否存在同名方法。",
+    "output": "返回可用工具名称集合。"
+  },
+  "kb_platform/agent_tool_registry.py:decision_schema": {
+    "purpose": "构建本轮规划决策允许的动作及字段。",
+    "inputs": "配置、可用高级工具集合、语义页功能是否启用。",
+    "objects": "深复制基础 JSON Schema，按配置扩充 action、intent 和高级字段。",
+    "output": "返回新 Schema 字典，不修改全局基础模板。"
+  },
+  "kb_platform/agent_tool_registry.py:tool_arguments": {
+    "purpose": "把规划决策投影为选定工具的调用参数。",
+    "inputs": "工具动作、决策字典、用户原问题、配置。",
+    "objects": "根据注册表参数类型处理查询、表达式、引用、表格或连接字段；可启用查询改写。",
+    "output": "返回工具参数字典；未知动作或缺失必须字段时可能抛错。"
+  },
+  "kb_platform/agent_schema.py:_const": {
+    "purpose": "以严格 Python 类型规则检查 JSON Schema const。",
+    "inputs": "校验器、期望常量、待校验值和 schema。",
+    "objects": "比较类型与值，不把布尔值等同整数。",
+    "output": "生成零个或一个 ValidationError。"
+  },
+  "kb_platform/agent_schema.py:_enum": {
+    "purpose": "以严格 Python 类型规则检查 JSON Schema enum。",
+    "inputs": "校验器、允许值列表、待校验值和 schema。",
+    "objects": "逐项比较类型与值。",
+    "output": "无匹配时生成 ValidationError，否则不生成错误。"
+  },
+  "kb_platform/agent_schema.py:_check_subset": {
+    "purpose": "检查 Schema 仅使用允许的关键词并固定子 Schema 方言。",
+    "inputs": "Schema 字典。",
+    "objects": "递归检查 properties、items、additionalProperties 和组合项，排除 $schema；验证若干上限类型。",
+    "output": "返回处理后的 Schema 副本；不支持或非法时抛 ValueError。"
+  },
+  "kb_platform/agent_schema.py:check_schema": {
+    "purpose": "在编译前验证模型输出 Schema。",
+    "inputs": "原始 Schema。",
+    "objects": "运行 Draft 2020-12 meta-schema 校验、拒绝非有限数，再检查支持的关键词子集。",
+    "output": "返回经方言处理的 Schema；非法时抛出约定的 ValueError。"
+  },
+  "kb_platform/agent_schema.py:validate_output": {
+    "purpose": "验证模型输出是否符合当前 Schema 和 JSON 数值规则。",
+    "inputs": "输出值、已编译校验器。",
+    "objects": "尝试以禁用 NaN 的 JSON 序列化并运行 validator.validate。",
+    "output": "通过时无返回值；失败映射为 AGENT_SCHEMA_MISMATCH。"
+  },
+  "kb_platform/agent_schema.py:compile_schema": {
+    "purpose": "创建严格类型的输出校验器。",
+    "inputs": "原始 Schema 字典。",
+    "objects": "先执行 check_schema，再创建扩展的 Draft 2020-12 校验器。",
+    "output": "返回可用于 validate_output 的校验器。"
+  },
+  "kb_platform/agent_engine.py:Runtime.run": {
+    "purpose": "执行通用程序的操作，并由 Rust 生命周期内核核验准入与结果关联。",
+    "inputs": "Program、执行前回调、操作上限、截止时间与取消信号。",
+    "objects": "逐项调用 next、execute、accept；操作执行前后检查取消与期限，并向原生内核提交 dispatch、settle 与终态。",
+    "output": "返回 Complete.value；执行失败传播原异常，不自动重试效果。"
+  },
+  "kb_platform/harness_loop.py:NativeLoop.invoke": {
+    "purpose": "通过 single-tool 原生 loop 执行可信调用者绑定的工具。",
+    "inputs": "工具、ToolContext、参数、操作上限、截止时间、取消信号与执行前回调。",
+    "objects": "通过注入工具服务绑定本轮工具，取得宿主租约并驱动会话和工具效果；不调用外层模型。",
+    "output": "返回原生 loop 完成结果；异常传播，运行结束关闭原生 loop。"
+  },
+  "kb_platform/plugin_host.py:PluginHost.close": {
+    "purpose": "停止新调用并释放当前宿主及子作用域的插件资源。",
+    "inputs": "当前 PluginHost 实例。",
+    "objects": "进入 draining，检查租约，关闭子宿主后反向执行资源清理；清理成功才移除原生句柄。",
+    "output": "成功返回 None；在途调用或清理失败抛出异常并保留可再次关闭的状态。"
+  }
+}

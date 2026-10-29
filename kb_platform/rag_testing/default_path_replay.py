@@ -4,6 +4,7 @@ Only search/storage transport is an in-memory lexical fixture. Gold is passed
 exclusively to the unified runner. No model or embedding calls are made.
 """
 import argparse
+from dataclasses import asdict
 import hashlib
 import json
 import tempfile
@@ -15,6 +16,30 @@ from .evidence_experiment import PacketEvidenceAdapter, read
 from .product_fixture import Authority, Gateway
 from .runner import run, write_json
 from .scoring import corpus_hash
+
+
+def replay_application(authority, model, gateway, root, context_policy):
+    """Keep production composition; replace only the frozen fixture dependencies."""
+    from kb_platform.knowledge_profile import create_knowledge_application, load_knowledge_profile
+    from kb_platform.plugin_host import PluginSpec
+
+    profile = load_knowledge_profile(environment={})
+    profile['plugins'] = [row for row in profile['plugins'] if row['id'] not in {'provider', 'budget'}]
+    by_id = {row['id']: row for row in profile['plugins']}
+    by_id['model'].update(use='replay.model', config={})
+    by_id['gateway'].update(use='replay.gateway', config={})
+    by_id['store']['config']['root'] = str(root)
+    by_id['knowledge']['config']['retrieval_config'] = {'channels': ['bm25'], 'rerank': False}
+    if context_policy is not None:
+        by_id['policy']['config'] = asdict(context_policy)
+    fixtures = (
+        PluginSpec('replay.model', ('knowledge.model',), (),
+                   lambda ctx, config: ctx.provide('knowledge.model', model)),
+        PluginSpec('replay.gateway', ('knowledge.gateway',), (),
+                   lambda ctx, config: ctx.provide('knowledge.gateway', gateway)),
+    )
+    return create_knowledge_application(authority, None, profile=profile,
+                                        extra_plugins=fixtures, environment={})
 
 
 def original_start(source, item):
@@ -35,9 +60,14 @@ class ProductAdapter(PacketEvidenceAdapter):
         self.backend, self.inventory = backend, inventory
         self.indexes = {}
         self.context_policy = context_policy
-        files = ['retrieval_pipeline.py', 'agent_tools.py', 'documents.py', 'delivery_units.py', 'agent_service.py']
+        product_root = Path(__file__).parents[1]
+        repository = product_root.parent
+        files = sorted(product_root.glob('*.py')) + sorted((repository / 'rust').rglob('*.rs'))
+        files += sorted((repository / 'rust').rglob('Cargo.toml'))
+        files += sorted((repository / 'config/agent-profiles').glob('*.json'))
+        files += [repository / name for name in ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'uv.lock')]
         self.implementation = digest(dict(base=self.implementation, enabled=enabled, service=service,
-            files={name: hashlib.sha256((Path(__file__).parents[1] / name).read_bytes()).hexdigest() for name in files},
+            files={path.relative_to(repository).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in files},
             adapter=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             fixture=hashlib.sha256(Path(__file__).with_name('product_fixture.py').read_bytes()).hexdigest()))
         self.products = {}
@@ -88,29 +118,26 @@ class ProductAdapter(PacketEvidenceAdapter):
         trace = self.assemble(request, sources, corpus, packet, result['trace'], spans)
         if not self.service:
             return trace
-        from kb_platform.agent_service import AgentService
-        from kb_platform.agent_api import install_agent_routes
+        from kb_platform.agent_api import SessionCreate, TurnRequest, install_agent_routes
         from fastapi import FastAPI
-        from fastapi.testclient import TestClient
         from .default_path_contracts import ScriptedModel
         gateway.authorize = lambda actor, scope: dict(scope_id=scope, manifest_id='build', authority_revision=authority.revision)
         gateway.sources = lambda actor, scope: [dict(source_id=r['source_id'], doc_id=r['source_id'],
             source_version_id=r['source_version_id'], title=r['filename']) for r in authority.rows]
         model = ScriptedModel(query=request.question)
         with tempfile.TemporaryDirectory() as folder:
-            service = AgentService(None, model, root=Path(folder), gateway=gateway,
-                retrieval_config={'channels': ['bm25'], 'rerank': False}, context_policy=self.context_policy)
+            application, host = replay_application(authority, model, gateway, folder, self.context_policy)
             app = FastAPI()
             install_agent_routes(app, authority, None, lambda: authority.actor)
-            app.state.agent = service
-            with TestClient(app) as client:
-                created = client.post(f'/scopes/{authority.scope}/sessions', json={})
-                created.raise_for_status()
-                session = created.json()
-                response = client.post(f"/agent/sessions/{session['session_id']}/turns", json={
-                    'message': request.question, 'request_id': 'evidence-probe', 'expected_revision': 0})
-                response.raise_for_status()
-                outcome = response.json()
+            app.state.agent, app.state.agent_plugins = application, host
+            routes = {route.path: route.endpoint for route in app.routes}
+            with host:
+                session = routes['/scopes/{scope_id}/sessions'](
+                    scope_id=authority.scope, body=SessionCreate.model_validate({}), actor=authority.actor)
+                outcome = routes['/agent/sessions/{session_id}/turns'](
+                    session_id=session['session_id'], actor=authority.actor,
+                    body=TurnRequest.model_validate({'message': request.question,
+                        'request_id': 'evidence-probe', 'expected_revision': 0}))
         self.products[request.case_id]['service'] = outcome['trace']
         answer_calls = [c for c in model.calls if c['role'] == 'answer']
         if not answer_calls:
@@ -162,7 +189,10 @@ def main():
         summary[directory.name] = {key: report[key] for key in ('total', 'counts', 'final_complete_rate')}
         print(directory.name, summary[directory.name], flush=True)
     write_json(args.output / 'summary.json', dict(results=summary, new_remote_calls=0,
-        scope='current gateway/pipeline/context; in-memory storage and lexical backend, not live HTTP or provider'))
+        scope=('configured plugin host/native loop and registered route/request models with scripted model; '
+               'current gateway/pipeline/context with in-memory storage and lexical backend; '
+               'not live HTTP or provider' if args.service else
+               'current gateway/pipeline/context; in-memory storage and lexical backend, not live HTTP or provider')))
 
 
 if __name__ == '__main__':

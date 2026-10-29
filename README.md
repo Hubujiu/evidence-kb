@@ -14,14 +14,19 @@
 
 ## 环境
 
-离线验证需要 Python 3.12 或 3.13 和 [uv](https://docs.astral.sh/uv/)。运行文档工作台还需要 Docker Compose。远程模型、Embedding、Docling 和 OCR 不属于离线检查的前置条件。
+离线验证需要 Python 3.12 或 3.13、[uv](https://docs.astral.sh/uv/) 和 [Rustup](https://rustup.rs/) 管理的 Rust 工具链。Windows 还需要 MSVC C++ 构建工具，Linux 需要 C 链接器。运行文档工作台还需要 Docker Compose。远程模型、Embedding、Docling 和 OCR 不属于离线检查的前置条件。
 
 ```powershell
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt
+cargo fetch --locked
+cargo build --workspace --locked --offline
 uv sync --locked --group dev
 uv run --no-sync python scripts/check_project.py
 ```
 
-输出默认保存在新的 `.local/checks/` 子目录。该命令检查架构边界、Ruff、组件合同和 24 条合成评分器控制，期间阻断 Python 网络发送和子进程启动。它不访问真实模型或生产数据。
+输出默认保存在新的 `.local/checks/` 子目录。该命令检查架构边界、Ruff、Rust 格式与测试、Python 组件合同和 24 条合成评分器控制；合同工作进程阻断 Python 网络发送和子进程启动。它不访问真实模型或生产数据。
+
+默认服务需要当前源码构建的原生库，运行前先完成上述构建。更新 Rust 源码后重新执行 `cargo build --workspace --locked --offline`。默认加载 `target/debug` 的平台动态库；部署其他构建产物时用绝对路径 `KB_AGENT_KERNEL_LIBRARY` 指定，详见 [Rust 运行时](docs/rust-agent-runtime.md)。
 
 ## 启动本地文档工作台
 
@@ -61,6 +66,7 @@ GitHub Actions 在 PR、main/master 推送、合并队列及手动触发时运�
 
 - [开发与合并检查](docs/development.md) 说明命令、测试取舍及分支保护。
 - [模块架构](docs/architecture.md) 说明交付、产品和评测模块边界。
+- [插件宿主](docs/plugin-harness.md) 说明 Rust loop、服务注入、profile 和插件生命周期。
 - [统一 RAG 评测](docs/rag-testing-framework.md) 说明证据、缓存、费用和观测要求。
 - [协作约定](AGENTS.md) 适用于源码修改与评测。
 

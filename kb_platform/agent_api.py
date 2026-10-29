@@ -1,5 +1,4 @@
 """Versioned conversation endpoints; actor identity is supplied by the host API."""
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
@@ -25,32 +24,17 @@ class TurnRequest(BaseModel):
     workflow_state: dict | None = None
 
 
-def install_agent_routes(app, platform, research, identity):
-    from .agent_model import AgentModel, BudgetLedger
-    from .agent_context import ContextPolicy
-    from .agent_service import AgentService
+def install_agent_routes(app, platform, research, identity, *, service_factory=None):
+    from .knowledge_profile import create_knowledge_application
     from .core import Actor
 
     service = None
+    host = None
     if research is not None:
-        # Reader/planner selection must not silently replace the research compiler,
-        # OCR or reranking provider with a model validated only for conversation.
-        agent_provider = os.getenv('KB_AGENT_PROVIDERS_CONFIG')
-        reader = research.luna
-        if agent_provider:
-            from .remote import LunaClient
-
-            reader = LunaClient(agent_provider)
-        policy = ContextPolicy(input_budget=int(os.getenv('KB_AGENT_INPUT_BUDGET', '24000')),
-                               output_reserve=int(os.getenv('KB_AGENT_OUTPUT_RESERVE', '1500')),
-                               model_window=int(os.getenv('KB_AGENT_MODEL_WINDOW', '32768')),
-                               safety_reserve=int(os.getenv('KB_AGENT_SAFETY_RESERVE', '1024')),
-                               evidence_strategy='query_blocks')
-        service = AgentService(platform, AgentModel(reader, policy=policy, ledger=BudgetLedger(
-            max_calls=int(os.getenv('KB_AGENT_MAX_CALLS', '10000')),
-            max_tokens=int(os.getenv('KB_AGENT_MAX_TOKENS', '100000000')))), research=research,
-            root=os.getenv('KB_AGENT_ROOT', '.local/agentic-v5'), context_policy=policy)
+        service, host = create_knowledge_application(platform, research, service_factory=service_factory)
+        app.router.add_event_handler('shutdown', host.close)
     app.state.agent = service
+    app.state.agent_plugins = host
     principal = Annotated[Actor, Depends(identity)]
 
     def require():
@@ -82,19 +66,7 @@ def install_agent_routes(app, platform, research, identity):
 
     @app.get('/agent/sessions')
     def sessions(actor: principal, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
-        current = require()
-        visible = []
-        from .core import PlatformError
-
-        for row in current.store.list_sessions(actor, limit=limit, offset=offset):
-            try:
-                current.gateway.authorize(actor, row['scope_id'])
-                visible.append(row)
-            except PlatformError as exc:
-                if exc.status_code not in (403, 404):
-                    raise
-        return {'sessions': visible, 'limit': limit, 'offset': offset,
-                'next_offset': offset + limit, 'source_text_included': False}
+        return require().list_sessions(actor, limit=limit, offset=offset)
 
     @app.get('/agent/sessions/{session_id}/export')
     def export_session(session_id: str, actor: principal):
@@ -121,11 +93,11 @@ def install_agent_routes(app, platform, research, identity):
 
     @app.get('/scopes/{scope_id}/agent-sources')
     def sources(scope_id: str, actor: principal):
-        return require().gateway.sources(actor, scope_id)
+        return require().sources(actor, scope_id)
 
     @app.get('/scopes/{scope_id}/agent-authority')
     def authority(scope_id: str, actor: principal):
-        return require().gateway.authorize(actor, scope_id)
+        return require().authority(actor, scope_id)
 
     @app.post('/scopes/{scope_id}/sessions', status_code=201)
     def create(scope_id: str, body: SessionCreate, actor: principal):

@@ -1,5 +1,7 @@
 # 产品模块与评测边界
 
+通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/agent-profiles/knowledge.json`，取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由 allowlist catalog 提供。Rust 拥有依赖解析、作用域、生命周期和通用 loop 决策，Python 执行服务效果。通用宿主、loop 与工具目录不导入知识库业务。
+
 默认检索由 `postgres_search.py` 提供，使用 pg_textsearch BM25 和 pgvector 精确检索。检索代际、语义页活动清单和 Embedding 恢复任务均在 PostgreSQL 中持久化。`search.py` 保留共有排序/绑定合同；`embedded_search.py` 与 OpenSearch 仅用于历史迁移和明确配置的对照。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件文件只供备份下载，证据以数据库不可变解析快照为准。持久化与切换说明见 [检索存储](search-storage.md)。
 
 产品保留一个回答方案。此次调整把交付应用的组装归入 `kb_platform/delivery.py`，不重排检索、存储或解析模块。原有 `DeliveryProfile` 仍保存配置路径、提供者路径、运行目录与冻结配置。预算 CLI 和服务启动器都调用这一实现。
@@ -12,8 +14,12 @@ flowchart TD
     CLI[scripts/delivery_server_app.py] --> Delivery
     Delivery --> API[api.create_app]
     API --> Routes[agent_api]
-    Routes --> Agent[agent_service]
-    Agent --> Graph[agent_graph / LangGraph]
+    Routes --> Profile[knowledge_profile / PluginHost]
+    Profile --> Application[knowledge_application]
+    Application --> Loop[Rust single-tool loop / Python effects]
+    Loop --> Query[kb_query 绑定可信请求控制]
+    Query --> Agent[knowledge_service / knowledge_turn]
+    Agent --> Graph[knowledge_workflow / Rust lifecycle]
     Agent --> Gateway[agent_tools]
     Gateway --> Pipeline[retrieval_pipeline]
     Pipeline --> Evidence[原文读取与权限复核]
@@ -28,28 +34,21 @@ flowchart TD
 
 `retrieval_pipeline.PipelineConfig` 表达检索策略。检索管线在授权范围内召回原文子单元、融合候选、重排并装配原文。`agent_context.ContextManager` 管理实际发送前的上下文。此次重构没有改写检索或装配算法。
 
-## Agent 图编排与恢复
+## Rust Agent 运行时与知识库业务
 
-`agent_graph.py` 使用 LangGraph `StateGraph` 调度六个节点。`agent_service.py` 提供节点的业务操作，原有 `for step` 循环与内嵌验证修复调度已删除，生产只保留图路径。
+`rust/agent-kernel` 保留操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-harness` 实现插件依赖排序、服务归属、父子作用域、运行租约和通用 loop。loop 发出会话、提示词、模型和工具效果，由 Python 适配器执行；没有在 Rust 核心写入知识库分支。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。LangGraph/LangSmith 调度实现和依赖已移除。
 
-```mermaid
-flowchart LR
-    Plan[plan / 规划] -->|需要工具| Tool[tool / 执行工具]
-    Tool -->|继续且未达步数上限| Plan
-    Plan -->|回答或澄清| Compose[compose / 生成回答]
-    Tool -->|停止或达到上限| Compose
-    Compose -->|需要核验| Verify[verify / 核验]
-    Compose -->|直接结果| Deliver[deliver / 交付]
-    Verify -->|不支持且尚未修复| Repair[repair / 一次修复]
-    Repair --> Verify
-    Verify -->|通过或修复结束| Deliver
-```
+默认 HTTP 路径调用插件提供的 `application` 服务，再由 `single-tool` loop 调用绑定的 `kb_query`。绑定保留原始身份、session、request ID、expected revision、来源策略和用户约束；模型参数仅包含问题。它不增加外层模型规划调用，返回已验证的原响应及 trace。通用 `model-tools` loop 是另一种可选策略；loop 自身可以替换。
 
-图状态包含当前步数、决策、候选答案、核验结果和是否已经修复。来源授权、原文证据、可见历史、上下文裁剪与预算仍由原有组件管理。每轮创建独立图，节点串行运行；递归上限为规划步数与固定收尾节点预留空间，不代替业务步数或物理请求预算。每个节点开始前检查授权和整轮时限，并通过 `AgentStore.append` 校验写租约、保存不含原文的 `graph_node_started` 事件。调用模型前与交付前仍执行原有证据复核。
+`knowledge_service.KnowledgeService` 提供独立知识库会话 API；`knowledge_turn` 持有单轮业务状态，`knowledge_model`、`knowledge_planning`、`knowledge_answer` 分别拥有模型调用、规划与答案合同。业务调用者仍可直接使用领域服务，不必额外建立 Agent。`knowledge_tool.query_tool` 保留通用工具接入方式，使用宿主绑定身份和会话，直接交付经过核验的结果。
 
-所有节点显式设置 `RetryPolicy(max_attempts=1)`。图不启用 checkpoint、节点缓存或自动恢复；提供者层继续负责已准入的有界重试。`AgentStore` 是会话归属、请求指纹、revision、单写者租约和完成结果的唯一权威。重复已完成请求经当前授权复核后返回旧结果；中断请求仍报告 `TURN_IN_PROGRESS` / `TURN_INTERRUPTED`，物理 UNKNOWN 继续阻断发送。节点事件用于审计，不构成可重放 checkpoint。本轮没有新增“从中断节点自动续跑”的产品能力。
+`AgentStore` 仍独占会话归属、请求指纹、revision、单写者租约和完成结果；提供者账本仍独占实际请求身份、预留与 UNKNOWN。原生完成后再次检查授权、证据和取消，再在同一事务保存 assistant 事件、状态与响应。重复完成请求仍经过当前授权复核；中断请求不会自动续跑。
 
-`langsmith.tracing_context(enabled=False)` 和空 callbacks 明确禁用环境触发的远端 tracing；该直接依赖仅用于控制库的 tracing 边界，不导出证据。新增 `agent_graph_contracts.py` 接入统一离线合同，使用真实图、服务、会话存储和证据网关以及合成模型/HTTP transport；包括真实 SDK 产生 UNKNOWN 后重启仍阻断的合同。它不代表线上 RAG 答案质量，未删除既有测试。
+默认 `harness.sessions.memory` 只保存单次 loop 的临时消息，并在该次运行结束时释放；它不恢复知识库历史，也不成为第二套幂等或持久化账本。插件注册按作用域隔离；child 可显式覆盖父服务，关闭 child 只清理其拥有的子树。关闭流程先停止接收新调用，再检查活动租约与子作用域，最后按相反顺序释放注册效果和资源；忙碌时返回错误，不强制撤销已发送请求。
+
+运行快照不是可重放 checkpoint，内核不自动重试模型或工具。子运行继承父截止时间及取消信号；同步 Python 效果不提供硬中断。原有 `graph_node_started` 和 `trace.graph` 保留为审计格式，协议为 `rust-agent-kernel/1`。
+
+详见 [插件配置与扩展](plugin-harness.md) 和 [基础生命周期](rust-agent-runtime.md)。所有原有行为合同继续运行，并覆盖真实 Rust 协议、非知识库工具、跨层取消、profile 替换和默认路由组合。`default_path_replay --service` 使用同一 profile/loop、已注册路由函数和请求模型，只替换模型及存储/检索夹具，继续交给统一 runner/scorer。它不启动 HTTP 服务、不验证身份认证中间件，也不调用真实提供者，不能代表线上 RAG 质量或性能验收。
 
 ## Agent 输出 Schema 边界
 
@@ -70,6 +69,8 @@ SDK 设置 `max_retries=0`，使用调用者客户端的禁止自动重定向配
 提供者 manifest 和模型响应缓存键包含 SDK 版本及 transport 协议，升级后相关响应缓存失效，旧文件保持只读；这不会清零或迁移现有物理请求账本。`luna_sdk_contracts.py` 使用真实 SDK 加合成 HTTP transport 验证边界，没有调用真实提供者。该检查证明离线协议与计量行为，不代表线上模型兼容性或 RAG 质量验收。
 
 ## Markdown 原文解析边界
+
+本系列改造的逐项状态、工具类型注册、重试所有权与未完成的 token 计量依赖见 [框架替换计划](framework-migration-plan.md)。
 
 `markdown_source.py` 使用 markdown-it-py 的 CommonMark 块解析并启用 table 规则，关闭不需要的 inline 解析。标题（含 Setext）、匹配长度和标记的围栏、缩进代码及容器中的块均由库识别。库只提供结构与行范围；证据、quote、偏移始终从 UTF-8-SIG 解码后的原文切片生成，不使用渲染结果或 token.content 重建原文。原件 SHA-256 仍覆盖包含 BOM 的完整字节；偏移仍是解码文本的 Unicode codepoint。CRLF/CR 的规范化映射保持原有合同，U+2028 等字符不冒充 Markdown 换行。
 
@@ -103,4 +104,4 @@ Markdown/TXT 的新快照使用 `native-text/0.3.0-markdown-it`，快照哈希�
 
 `scripts/check_project.py` 用 AST 检查活动产品源码的依赖方向、已知动态导入和搜索路径修改。它检查架构约定，不是执行任意恶意 Python 的安全沙箱。离线工作进程另行阻断 Python socket 网络发送和子进程启动。
 
-全量拆分为 domain、application、infrastructure 会移动大量现有代码，却不能直接补上持续验证缺口。当前选择一个所有权修正、一个可重复的质量入口，以及围绕真实风险的合同检查。规则和验证命令见 [开发与合并检查](development.md)。
+插件化按服务和资源所有权建立边界，知识库内部算法仍保留在现有领域模块中。当前实现不是完整 DSH 移植，没有原生动态插件沙箱、进程隔离或自带模型适配器的交互式 Agent CLI。原生协议驱动程序与完整应用交互界面分开。规则和验证命令见 [开发与合并检查](development.md)。

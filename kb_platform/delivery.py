@@ -288,9 +288,10 @@ def _serialize_client_sends(provider, lock):
     # queues callers before the ledger's unresolved-request admission check.
     send = provider.client.send
 
+    from .agent_runtime import serialized_send as admitted_send
+
     def serialized_send(*args, **kwargs):
-        with lock:
-            return send(*args, **kwargs)
+        return admitted_send(send, lock, *args, **kwargs)
     provider.client.send = serialized_send
 
 
@@ -317,10 +318,13 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
     if (policy.model_window, policy.input_budget, policy.output_reserve, policy.safety_reserve) != (
             WINDOW['total'], WINDOW['input'], WINDOW['output'], WINDOW['safety']):
         raise DeliveryConfigurationError('DELIVERY_AGENT_WINDOW_MISMATCH')
-    prior_clients = {id(value): value for value in (research.luna, agent.model.luna, platform.ocr_client)
+    prior_clients = {id(value): value for value in (research.luna, agent.model.provider.client, platform.ocr_client)
                      if value is not None}
     captured = CapturedLuna(profile.provider_path)
-    research.luna = agent.model.luna = platform.ocr_client = captured
+    from .agent_luna import LunaModelProvider
+
+    research.luna = platform.ocr_client = captured
+    agent.model.provider = LunaModelProvider(captured)
     for old in prior_clients.values():
         old.close()
     agent.tool_context = request_context
