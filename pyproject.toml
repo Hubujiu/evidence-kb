@@ -32,6 +32,11 @@ dependencies = [
 acceptance = [
     "reportlab>=4.3,<5",
 ]
+reranker = [
+    "sentence-transformers>=5.7,<6",
+    "sentencepiece>=0.2,<1",
+    "transformers>=4.51,<5",
+]
 
 [dependency-groups]
 dev = ["ruff>=0.11,<1"]
