@@ -51,7 +51,7 @@ Plan 可设置 `objective="evidence"`，以授权原文、证据完整性、最�
 
 Agent 服务及 HTTP API 的默认输入额度统一为 24000（保守 UTF-8 估算），输出预留 1500、安全预留 1024，仍受模型窗口约束；显式环境配置和 ContextPolicy 保持优先。原先 12000 额度可能被 Schema 与引用元数据占满，不能据此归因为模型窗口硬性不足。
 
-文本解析器 `native-evidence/0.2.1` 将管道表格及紧邻说明保留为原文块，版本变化只影响新解析。旧快照保持不变，导航同时支持旧的逐行表格单元，不要求静默重建旧索引。
+Markdown/TXT 解析器 `native-text/0.3.0-markdown-it` 使用 markdown-it-py 识别结构，继续将管道表格及紧邻说明保留为原文块。原文偏移和哈希不从渲染文本推算，解析快照纳入库版本。版本变化只影响新解析；旧快照保持不变，导航同时支持旧的逐行表格单元，不要求静默重建旧索引。其他格式的原生解析版本仍为 `native-evidence/0.2.1`。
 
 边界回归：`python -m kb_platform.rag_testing.repair_contracts` 和 `python -m kb_platform.rag_testing.default_path_contracts`。`python -m kb_platform.rag_testing.default_path_replay --suite <suite.json> --catalog <sources.json> --output <新目录> --service` 通过真实 HTTP 路由、服务、网关及 ContextManager 检查模型入参，采用内存存储/搜索夹具和受控模型替身，统一 runner/scorer 评分。它不等于真实数据库/搜索服务或远程供应商验收。该模式按完整序列化消息 24000 codepoint 上限评分，不能直接与仅证据投影预算比较。
 
