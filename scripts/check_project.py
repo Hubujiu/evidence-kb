@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -262,12 +263,13 @@ def run_worker(kind: str, output: Path) -> int:
     return 0 if report["decision"] == "PASS" else 1
 
 
-def run_check(name: str, command: list[str], output: Path, env: dict[str, str]) -> CheckResult:
+def run_check(name: str, command: list[str], output: Path, env: dict[str, str], *,
+              timeout: int = 180) -> CheckResult:
     log = output / f"{name}.log"
     try:
         with log.open("w", encoding="utf-8") as stream:
             completed = subprocess.run(command, cwd=ROOT, env=env, stdout=stream,
-                                       stderr=subprocess.STDOUT, timeout=180, check=False)
+                                       stderr=subprocess.STDOUT, timeout=timeout, check=False)
         code = completed.returncode
     except (OSError, subprocess.TimeoutExpired) as exc:
         with log.open("a", encoding="utf-8") as stream:
@@ -280,7 +282,30 @@ def run_check(name: str, command: list[str], output: Path, env: dict[str, str]) 
 def kernel_library_path(target: Path) -> Path:
     name = {"win32": "agent_kernel.dll", "darwin": "libagent_kernel.dylib"}.get(
         sys.platform, "libagent_kernel.so")
-    return target / "debug" / name
+    return target / "release" / name
+
+
+def snapshot_native_library(build: CheckResult, target: Path, output: Path) -> Path | None:
+    """Only a successful current build can publish the per-run test library."""
+    if build.exit_code:
+        return None
+    source = kernel_library_path(target)
+    destination = output / "native" / source.name
+    destination.parent.mkdir()
+    shutil.copy2(source, destination)
+    return destination
+
+
+def blocked_contracts(output: Path, reason: str) -> CheckResult:
+    log = output / "contracts.log"
+    log.write_text(f"BLOCKED: {reason}\n", encoding="utf-8")
+    write_json(output / "contracts.json", {
+        "decision": "BLOCKED", "reason": reason, "modules": {}, "total": 0,
+        "failures": 0, "errors": 1, "skipped": 0, "expected_failures": 0,
+        "scope": "component contracts not executed; native build prerequisite failed",
+    })
+    print(f"contracts: BLOCKED ({log})")
+    return CheckResult("contracts", 2, log.name)
 
 
 def main() -> int:
@@ -314,22 +339,38 @@ def main() -> int:
                     "KB_STORAGE_ROOT": scratch, "KB_AGENT_ROOT": scratch, "KB_RESEARCH_ROOT": scratch,
                     "KB_IDENTITIES_FILE": str(Path(scratch) / "missing-identities.json")})
         env.pop("PYTHONPATH", None)
+        # Isolate concurrent builds before copying the library: a shared Cargo
+        # directory could change between successful build exit and snapshot.
         target = ROOT / "target/checks" / uuid4().hex
         cargo = ["cargo", "--color", "never"]
         results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))
         native_args = ["--workspace", "--locked", "--offline", "--target-dir", str(target)]
-        results.append(run_check("rust-build", cargo + ["build", *native_args], output, env))
-        results.append(run_check("rust-tests", cargo + ["test", *native_args], output, env))
-        env["KB_AGENT_KERNEL_LIBRARY"] = str(kernel_library_path(target))
+        results.append(run_check("rust-clippy", cargo + ["clippy", *native_args, "--all-targets",
+                                                        "--", "-D", "warnings"], output, env, timeout=600))
+        build = run_check("rust-build", cargo + ["build", "--release", *native_args],
+                          output, env, timeout=600)
+        results.append(build)
+        native_library = None
+        block_reason = "the current Rust release build failed"
+        try:
+            native_library = snapshot_native_library(build, target, output)
+        except OSError as exc:
+            block_reason = f"the current Rust release library could not be copied: {exc}"
+        results.append(run_check("rust-tests", cargo + ["test", *native_args], output, env, timeout=600))
+        if native_library is not None:
+            env["KB_AGENT_KERNEL_LIBRARY"] = str(native_library)
         results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts"], output, env))
         for kind in ("contracts", "scorer"):
+            if kind == "contracts" and native_library is None:
+                results.append(blocked_contracts(output, block_reason))
+                continue
             results.append(run_check(kind, [sys.executable, "-B", str(Path(__file__).resolve()),
                                            "--worker", kind, "--output", str(output)], output, env))
     passed = all(result.exit_code == 0 for result in results)
     write_json(output / "summary.json", {"decision": "PASS" if passed else "FAIL",
         "checks": [asdict(result) for result in results], "new_model_calls": 0,
         "new_embedding_calls": 0, "new_judge_calls": 0,
-        "native_library": str(kernel_library_path(target)),
+        "native_library": str(native_library) if native_library is not None else None,
         "scope": "offline gates; component checks and scorer controls reported separately"})
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1

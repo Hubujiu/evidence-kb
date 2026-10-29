@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
-from threading import RLock
+from threading import RLock, current_thread
 from types import MappingProxyType
 import warnings
 
@@ -18,6 +18,7 @@ _leases = ContextVar('plugin_scope_leases', default=())
 @dataclass
 class _Lease:
     identity: int
+    thread: object
     users: int = 1
 
 
@@ -72,34 +73,43 @@ class PluginContext:
         return self.host.service(service)
 
     def provide(self, name, implementation):
-        self._registration()
-        if name not in self.spec.provides or name in self._services:
-            raise PluginError('INVALID_SERVICE_REGISTRATION', name)
-        self._services[name] = implementation
+        with self.host._lock:
+            self._registration()
+            if name not in self.spec.provides or name in self._services:
+                raise PluginError('INVALID_SERVICE_REGISTRATION', name)
+            self._services[name] = implementation
 
     def defer(self, dispose):
-        self._registration()
-        if not callable(dispose):
-            raise PluginError('INVALID_PLUGIN_DISPOSER')
-        self._cleanup.append(dispose)
+        with self.host._lock:
+            self._registration()
+            if not callable(dispose):
+                raise PluginError('INVALID_PLUGIN_DISPOSER')
+            self._cleanup.append(dispose)
 
     def on(self, event: EventName, listener):
-        self._registration()
-        event = EventName(event)
-        if not callable(listener):
-            raise PluginError('INVALID_PLUGIN_LISTENER')
-        self._listeners.append((event, listener))
+        with self.host._lock:
+            self._registration()
+            event = EventName(event)
+            if not callable(listener):
+                raise PluginError('INVALID_PLUGIN_LISTENER')
+            self._listeners.append((event, listener))
 
     def _dispose(self):
-        self._sealed = True
-        while self._cleanup:
+        with self.host._lock:
+            self._sealed = True
+        while True:
+            with self.host._lock:
+                if not self._cleanup:
+                    self._listeners.clear()
+                    self._services.clear()
+                    return
+                dispose = self._cleanup[-1]
             try:
-                self._cleanup[-1]()
+                dispose()
             except BaseException as exc:
                 raise BaseExceptionGroup('Plugin resource cleanup failed', [exc]) from exc
-            self._cleanup.pop()
-        self._listeners.clear()
-        self._services.clear()
+            with self.host._lock:
+                self._cleanup.pop()
 
 
 class PluginHost:
@@ -150,12 +160,14 @@ class PluginHost:
             for plugin_id in self.order:
                 spec, config = self._entries[plugin_id]
                 context = PluginContext(self, plugin_id, spec)
-                self._contexts[plugin_id] = context
+                with self._lock:
+                    self._contexts[plugin_id] = context
                 spec.mount(context, deepcopy(config))
-                if set(context._services) != set(spec.provides):
-                    raise PluginError('PLUGIN_SERVICES_INCOMPLETE', plugin_id)
-                context._sealed = True
-                native_call('activate', host=self.id, plugin=plugin_id)
+                with self._lock:
+                    if set(context._services) != set(spec.provides):
+                        raise PluginError('PLUGIN_SERVICES_INCOMPLETE', plugin_id)
+                    context._sealed = True
+                    native_call('activate', host=self.id, plugin=plugin_id)
             with self._lock:
                 native_call('ready', host=self.id)
                 self._phase = 'ready'
@@ -174,6 +186,11 @@ class PluginHost:
             raise
 
     def service(self, name):
+        """Resolve an implementation; use ``call`` or a lease while invoking it.
+
+        Raw resolution also serves mount/disposal dependency lookup. It does not
+        admit new work or extend the lifetime of a retained Python object.
+        """
         with self._lock:
             owner = native_call('resolve', host=self.id, service=name)
             scope = self
@@ -181,16 +198,21 @@ class PluginHost:
                 scope = scope.parent
             if scope is None:
                 raise PluginError('INVALID_SERVICE_SCOPE')
-            return scope._contexts[owner['plugin']]._services[name]
+            context = scope._contexts.get(owner['plugin'])
+            if context is None or name not in context._services:
+                raise PluginError('PLUGIN_SERVICE_DISPOSED', name)
+            return context._services[name]
 
     @contextmanager
     def lease(self):
         with self._lock:
             authority = next((lease for host, lease in _leases.get() if host == self.id), None)
-            if authority is not None and authority.users:
+            # A copied ContextVar is not admission for a new worker thread.
+            # Same-thread nested work retains its admitted lease after drain.
+            if authority is not None and authority.users and authority.thread is current_thread():
                 authority.users += 1
             else:
-                authority = _Lease(native_call('acquire', host=self.id)['lease'])
+                authority = _Lease(native_call('acquire', host=self.id)['lease'], current_thread())
             token = _leases.set(tuple(item for item in _leases.get() if item[0] != self.id)
                                 + ((self.id, authority),))
         try:
@@ -208,29 +230,32 @@ class PluginHost:
 
     def emit(self, event: EventName, payload):
         event = EventName(event)
-        frozen = _freeze(deepcopy(payload))
-        with self._lock:
-            chain, scope, listeners = [], self, []
-            while scope is not None:
-                chain.append(scope)
-                scope = scope.parent
-            for scope in reversed(chain):
-                for plugin_id in scope.order:
-                    context = scope._contexts.get(plugin_id)
-                    if context is not None:
-                        listeners.extend(listener for name, listener in context._listeners if name == event)
-        failures = []
-        for listener in listeners:
-            try:
-                listener(frozen)
-            except Exception as exc:
-                failures.append(exc)
+        # Snapshotting listeners is insufficient: their resources must stay alive
+        # through every callback, including inherited listeners from parent scopes.
+        with self.lease():
+            frozen = _freeze(deepcopy(payload))
+            with self._lock:
+                chain, scope, listeners = [], self, []
+                while scope is not None:
+                    chain.append(scope)
+                    scope = scope.parent
+                for scope in reversed(chain):
+                    for plugin_id in scope.order:
+                        context = scope._contexts.get(plugin_id)
+                        if context is not None:
+                            listeners.extend(listener for name, listener in context._listeners if name == event)
+            failures = []
+            for listener in listeners:
                 try:
-                    warnings.warn(f'Plugin observer failed for {event}: {type(exc).__name__}', RuntimeWarning,
-                                  stacklevel=2)
-                except Exception:
-                    pass
-        return tuple(failures)
+                    listener(frozen)
+                except Exception as exc:
+                    failures.append(exc)
+                    try:
+                        warnings.warn(f'Plugin observer failed for {event}: {type(exc).__name__}', RuntimeWarning,
+                                      stacklevel=2)
+                    except Exception:
+                        pass
+            return tuple(failures)
 
     def scope(self, profile, catalog=None):
         return PluginHost(profile, self.catalog.values() if catalog is None else catalog, parent=self)
@@ -275,7 +300,9 @@ class PluginHost:
             pending.extend(scope._children.values())
 
     def _cleanup(self):
-        for plugin_id, context in reversed(tuple(self._contexts.items())):
+        with self._lock:
+            contexts = tuple(self._contexts.items())
+        for plugin_id, context in reversed(contexts):
             try:
                 context._dispose()
             except BaseException as exc:

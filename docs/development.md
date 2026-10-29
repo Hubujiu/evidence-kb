@@ -5,14 +5,14 @@
 在项目根目录执行以下命令。
 
 ```powershell
-rustup toolchain install 1.99.0 --profile minimal --component rustfmt
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 cargo fetch --locked
 cargo build --locked --offline
 uv sync --locked --group dev
 uv run --no-sync python scripts/check_project.py
 ```
 
-Rust 工具链由 `rust-toolchain.toml` 固定，依赖由 `Cargo.lock` 锁定；新环境先下载固定依赖，随后检查使用离线构建。workspace 包含通用生命周期 `agent-kernel` 和插件/loop 实现 `agent-harness`。统一入口执行原生格式、离线构建和测试，并把本轮独立构建的动态库传给合同进程；缺少工具链或编译失败都会使门禁失败。部署构建见 [Rust 运行时](rust-agent-runtime.md)，profile 与扩展接口见 [插件宿主](plugin-harness.md)。
+Rust 工具链由 `rust-toolchain.toml` 固定，依赖由 `Cargo.lock` 锁定；新环境先下载固定依赖，随后检查使用离线构建。workspace 包含通用生命周期 `agent-kernel` 和插件/loop 实现 `agent-harness`。统一入口执行原生格式、Clippy（警告视为错误）、离线 release 构建和测试。每轮在独立 target 目录构建，成功后把动态库复制到本轮输出的 `native/`，合同进程只加载这个副本。构建失败或制品缺失时，合同报告 `BLOCKED`、整体 `FAIL`，不会加载环境指向的旧库；其他门禁继续收集结果。部署构建见 [Rust 运行时](rust-agent-runtime.md)，profile 与扩展接口见 [插件宿主](plugin-harness.md)。
 
 默认结果写入 `.local/checks/<唯一编号>/`。指定目录时必须使用尚不存在的路径。
 

@@ -1,8 +1,11 @@
 """Offline architecture and I/O policy contracts for the project check command."""
+import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
+from scripts import check_project
 from scripts.check_project import architecture_violations, deny_external_io
 
 
@@ -208,3 +211,90 @@ class OfflinePolicyContracts(unittest.TestCase):
 
     def test_local_file_events_are_allowed(self):
         self.assertIsNone(deny_external_io("open", ("fixture.json", "r", 0)))
+
+
+class NativeBuildGateContracts(unittest.TestCase):
+    """Synthetic build outcomes verify gate admission, never native correctness."""
+
+    def run_gate(self, root, output, *, build_code=0, publish=True):
+        calls = []
+        source = None
+
+        def controlled_check(name, command, output, env, **kwargs):
+            nonlocal source
+            calls.append((name, command, dict(env)))
+            if name == 'rust-build':
+                target = Path(command[command.index('--target-dir') + 1])
+                source = check_project.kernel_library_path(target)
+                if build_code == 0 and publish:
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    source.write_bytes(b'current release library')
+                return check_project.CheckResult(name, build_code, name + '.log')
+            if name == 'rust-tests' and source is not None and source.exists():
+                # A later Cargo invocation must not change this run's ABI input.
+                source.write_bytes(b'later build artifact')
+            return check_project.CheckResult(name, 0, name + '.log')
+
+        with patch.object(check_project, 'ROOT', root), \
+                patch.object(check_project, 'architecture_violations', return_value=[]), \
+                patch.object(check_project, 'run_check', side_effect=controlled_check), \
+                patch.object(check_project.sys, 'argv', ['check_project.py', '--output', str(output)]), \
+                patch('builtins.print'):
+            code = check_project.main()
+        summary = json.loads((output / 'summary.json').read_text('utf-8'))
+        return code, summary, calls
+
+    def test_failed_rebuild_cannot_run_contracts_with_a_previous_library(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prior_code, prior_summary, _ = self.run_gate(root, root / 'previous')
+            self.assertEqual(0, prior_code)
+            self.assertTrue(Path(prior_summary['native_library']).is_file())
+            output = root / 'failed'
+            with patch.dict(check_project.os.environ,
+                            {'KB_AGENT_KERNEL_LIBRARY': prior_summary['native_library']}):
+                code, summary, calls = self.run_gate(root, output, build_code=1)
+            self.assertEqual(1, code)
+            self.assertEqual('FAIL', summary['decision'])
+            self.assertIsNone(summary['native_library'])
+            self.assertNotIn('contracts', [name for name, _, _ in calls])
+            self.assertIn('scorer', [name for name, _, _ in calls])
+            contracts = json.loads((output / 'contracts.json').read_text('utf-8'))
+            self.assertEqual('BLOCKED', contracts['decision'])
+            self.assertEqual(0, contracts['total'])
+            self.assertTrue(any(item['name'] == 'contracts' and item['exit_code'] != 0
+                                for item in summary['checks']))
+
+    def test_missing_release_artifact_is_a_failed_prerequisite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            code, summary, calls = self.run_gate(root, root / 'missing', publish=False)
+            self.assertEqual(1, code)
+            self.assertIsNone(summary['native_library'])
+            self.assertNotIn('contracts', [name for name, _, _ in calls])
+
+    def test_independent_builds_preserve_each_runs_release_library(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            targets = []
+            libraries = []
+            for label in ('first', 'second'):
+                output = root / label
+                code, summary, calls = self.run_gate(root, output)
+                self.assertEqual(0, code)
+                library = Path(summary['native_library'])
+                libraries.append(library)
+                self.assertEqual(b'current release library', library.read_bytes())
+                self.assertTrue(library.is_relative_to(output))
+                for name, command, env in calls:
+                    if name == 'rust-build':
+                        self.assertIn('--release', command)
+                        self.assertIn('--locked', command)
+                        self.assertIn('--offline', command)
+                        targets.append(command[command.index('--target-dir') + 1])
+                    if name == 'contracts':
+                        self.assertEqual(str(library), env['KB_AGENT_KERNEL_LIBRARY'])
+                self.assertIn('rust-clippy', [name for name, _, _ in calls])
+            self.assertNotEqual(targets[0], targets[1])
+            self.assertNotEqual(libraries[0], libraries[1])
+            self.assertEqual(b'current release library', libraries[0].read_bytes())

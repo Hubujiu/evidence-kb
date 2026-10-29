@@ -30,7 +30,7 @@ jobs:
   quality:
     name: quality (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -54,7 +54,7 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --locked --group dev
       - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt
+        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
       - name: Fetch locked Rust dependencies
         run: cargo fetch --locked
       - name: Run offline quality gates
