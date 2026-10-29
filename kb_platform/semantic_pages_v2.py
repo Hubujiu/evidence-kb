@@ -18,7 +18,7 @@ from .agent_tools import EvidenceGateway, _policy, evidence_record
 from .core import PlatformError
 from .delivery_units import PAGE_PROTOCOL, indexed_elements
 from .rag_testing.contracts import digest
-from .search import BINDING_FIELDS, OpenSearch, SearchUnavailable, score_order
+from .search import BINDING_FIELDS, SearchUnavailable
 
 PROTOCOL = 'authorized-canonical-semantic-pages/2'
 QUERY_PROTOCOL = 'filtered-native-cosine-page-knn/1'
@@ -105,10 +105,6 @@ class SemanticPageAuthority:
                 (actor.tenant_id, row['source_id'], row['source_version_id'])).fetchone()
             if not original:
                 raise PlatformError('SOURCE_INTEGRITY', 'Original source version is unavailable', 503)
-            try:
-                platform.store.checked_path(original['original_path'], actor.tenant_id, original['original_sha256'])
-            except (ValueError, OSError) as exc:
-                raise PlatformError('SOURCE_INTEGRITY', 'Original source integrity failed', 503) from exc
             elements = {e['element_id']: e for e in indexed_elements(doc, include_pages=True) if e['kind'] == 'Page'}
             pages = []
             for unit in by_id.values():
@@ -135,25 +131,7 @@ class SemanticPageAuthority:
 
 
 def dense_page_query(backend, index, actor, kb_id, build_id, allowed, vector, top_k, excluded):
-    """All restrictions are in the KNN filter before approximate TopK."""
-    if not allowed:
-        return []
-    filters = backend._filters(actor.tenant_id, kb_id, allowed, compact=True)
-    filters += [{'term': {'kind': 'Page'}}, {'term': {'build_id': build_id}}]
-    restriction = {'filter': filters}
-    if excluded:
-        restriction['must_not'] = [{'terms': {'citation_id': list(excluded)}}]
-    body = {'size': top_k, '_source': {'excludes': ['vector']}, 'sort': score_order(),
-        'query': {'knn': {'vector': {'vector': vector, 'k': top_k, 'filter': {'bool': restriction}}}}}
-    response = backend._request('POST', f'/{OpenSearch._index(index)}/_search', json=body)
-    result = []
-    for hit in response['hits']['hits']:
-        row = {**hit['_source'], 'score': hit['_score']}
-        row['text'] = row.pop('original_page_text')
-        row.pop('page_text', None)
-        row['heading_text'] = row.pop('page_heading', '')
-        result.append(row)
-    return result
+    return backend.dense_pages(index, actor.tenant_id, kb_id, build_id, allowed, vector, top_k, excluded)
 
 
 class SemanticPageService:
@@ -179,19 +157,27 @@ class SemanticPageService:
 
     def _dependencies(self):
         from . import delivery_units, search
-        return {str(Path(p).name): _sha(p) for p in (__file__, delivery_units.__file__, search.__file__)}
+        return {**{str(Path(p).name): _sha(p) for p in (__file__, delivery_units.__file__, search.__file__)},
+                'backend': search.backend_dependencies(self.platform.backend)}
 
     def current_manifest(self, actor, kb_id):
         state = self.gateway.authorize(actor, kb_id)
         try:
-            directory = self._directory(actor, kb_id)
-            pointer = json.loads((directory/'active.json').read_text('utf-8'))
-            if Path(pointer['manifest']).name != pointer['manifest']:
-                raise ValueError('manifest path')
-            path = directory/pointer['manifest']
-            if _sha(path) != pointer['sha256']:
-                raise ValueError('manifest checksum')
-            manifest = json.loads(path.read_text('utf-8'))
+            if type(self.platform.backend).__name__ == 'PostgresSearch':
+                manifest, checksum = self.platform.backend.current_manifest(actor.tenant_id, kb_id)
+                if hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True,
+                        separators=(',', ':'), allow_nan=False).encode()).hexdigest() != checksum:
+                    raise ValueError('manifest checksum')
+                pointer = {'sha256': checksum}
+            else:
+                directory = self._directory(actor, kb_id)
+                pointer = json.loads((directory/'active.json').read_text('utf-8'))
+                if Path(pointer['manifest']).name != pointer['manifest']:
+                    raise ValueError('manifest path')
+                path = directory/pointer['manifest']
+                if _sha(path) != pointer['sha256']:
+                    raise ValueError('manifest checksum')
+                manifest = json.loads(path.read_text('utf-8'))
             if manifest['tenant_id'] != actor.tenant_id or manifest['kb_id'] != kb_id or manifest['protocol'] != PROTOCOL:
                 raise ValueError('manifest identity')
             if (manifest['embedding'] != self.provider.manifest or manifest['dependencies'] != self._dependencies()
@@ -207,11 +193,7 @@ class SemanticPageService:
             raise PlatformError('SEMANTIC_PAGE_INDEX_UNAVAILABLE', 'Build a verified semantic Page index explicitly', 409) from exc
 
     def _index_bound(self, manifest, checksum):
-        index = OpenSearch._index(manifest['index_name'])
-        mapping = self.platform.backend._request('GET', f'/{index}/_mapping')
-        settings = self.platform.backend._request('GET', f'/{index}/_settings')
-        if (mapping.get(index, {}).get('mappings', {}).get('_meta', {}).get('semantic_manifest_sha256') != checksum or
-                str(settings.get(index, {}).get('settings', {}).get('index', {}).get('blocks', {}).get('write')).lower() != 'true'):
+        if not self.platform.backend.is_sealed(manifest['index_name'], checksum):
             raise PlatformError('SEMANTIC_PAGE_INDEX_INVALID', 'Semantic index is unsealed or has a different manifest', 503)
 
     def build(self, actor, kb_id, capsules, *, expected_state=None):
@@ -257,13 +239,12 @@ class SemanticPageService:
                 'capsule_imports':receipts,'dependencies':self._dependencies(),'new_document_embedding_calls':0,
                 'canonical_page_protocol':PAGE_PROTOCOL,'index_mutability':'write blocked after exact readback'}
             self.platform.backend.stage(index, units, vector_dimension=self.provider.dimension)
-            response = self.platform.backend._request('POST', f'/{index}/_mget', json={'ids':manifest['ordered_page_ids']})
-            stored = {r['_id']:r for r in response['docs'] if r.get('found')}
+            stored = {u['unit_id']: u for u in self.platform.backend.read_units(index, manifest['ordered_page_ids'])}
             if set(stored) != set(manifest['ordered_page_ids']):
                 raise PlatformError('SEMANTIC_PAGE_INDEX_INVALID', 'Vector index readback is incomplete', 503)
             for unit in units:
-                data = stored[unit['citation_id']]['_source']
-                if (data.get('original_page_text') != unit['text'] or data.get('vector') != unit['vector'] or
+                data = stored[unit['citation_id']]
+                if (data.get('text') != unit['text'] or data.get('vector') != unit['vector'] or
                         any(data.get(k) != unit[k] for k in (*BINDING_FIELDS,'build_id','kind','citation_id','anchors','evidence_ids'))):
                     raise PlatformError('SEMANTIC_PAGE_INDEX_INVALID', 'Vector index differs from the imported original Page', 503)
             if not snapshot['authorize']():
@@ -273,11 +254,13 @@ class SemanticPageService:
             path = directory/(identity+'.json')
             _json(path, manifest)
             checksum = _sha(path)
-            self.platform.backend._request('PUT', f'/{index}/_mapping', json={'_meta':{'semantic_manifest_sha256':checksum}})
-            self.platform.backend._request('PUT', f'/{index}/_settings', json={'index.blocks.write':True})
+            self.platform.backend.seal(index, checksum)
             self._index_bound(manifest,checksum)
             if not snapshot['authorize']():
                 raise PlatformError('SCOPE_CHANGED', 'Authorization changed before semantic publication', 409)
+            if type(self.platform.backend).__name__ == 'PostgresSearch':
+                self.platform.backend.publish_manifest(manifest, checksum)
+                return {'manifest_path': str(path), 'manifest_sha256': checksum, **manifest}
             temporary=directory/('active-'+uuid4().hex+'.tmp')
             _json(temporary,{'manifest':path.name,'sha256':checksum})
             os.replace(temporary,directory/'active.json')

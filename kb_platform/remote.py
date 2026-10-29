@@ -91,8 +91,9 @@ class _FifoSlots:
 
 
 class RemoteModelError(RuntimeError):
-    def __init__(self, code: str, status: int | None = None):
+    def __init__(self, code: str, status: int | None = None, *, retry_after_seconds=None):
         self.code, self.status = code, status
+        self.retry_after_seconds = retry_after_seconds
         super().__init__(code + (f" (HTTP {status})" if status else ""))
 
 
@@ -101,6 +102,7 @@ def _embedding_error(error):
     # a sanitized message alone must not collapse UNKNOWN into an empty result.
     converted = EmbeddingError(str(error))
     converted.code, converted.status = error.code, error.status
+    converted.retry_after_seconds = error.retry_after_seconds
     return converted
 
 
@@ -462,7 +464,8 @@ class _Transport:
                     time.sleep(delay)
                     waited += delay
                     continue
-                raise RemoteModelError("PROVIDER_HTTP_ERROR", response.status_code)
+                raise RemoteModelError("PROVIDER_HTTP_ERROR", response.status_code,
+                                       retry_after_seconds=metadata.get('retry_after_seconds'))
             try:
                 result = response.json()
             except ValueError:
@@ -766,7 +769,8 @@ class GoogleEmbeddingProvider(_Transport):
                     state.retry_of, state.retry_reason = metadata['physical_request_id'], metadata['http_error_type']
                     continue
                 state.retry_of, state.retry_reason = metadata['physical_request_id'], metadata['http_error_type']
-                raise RemoteModelError("PROVIDER_HTTP_ERROR", response.status_code)
+                raise RemoteModelError("PROVIDER_HTTP_ERROR", response.status_code,
+                                       retry_after_seconds=metadata.get('retry_after_seconds'))
             try:
                 result = response.json()
             except ValueError:

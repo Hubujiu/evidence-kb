@@ -10,6 +10,7 @@ class Settings:
     search_url: str
     storage_root: Path
     identities_file: Path
+    search_backend: str = 'postgres'
 
     @classmethod
     def from_environment(cls):
@@ -18,6 +19,7 @@ class Settings:
             os.getenv("KB_SEARCH_URL", "http://127.0.0.1:59200"),
             Path(os.getenv("KB_STORAGE_ROOT", ".local/store")).resolve(),
             Path(os.getenv("KB_IDENTITIES_FILE", ".local/identities.json")).resolve(),
+            os.getenv('KB_SEARCH_BACKEND', 'postgres'),
         )
 
     def identities(self):

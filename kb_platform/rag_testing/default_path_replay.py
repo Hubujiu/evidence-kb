@@ -17,11 +17,24 @@ from .runner import run, write_json
 from .scoring import corpus_hash
 
 
+def original_start(source, item):
+    start = item.get('parse_text_start', 0) + item.get('text_start', 0)
+    if source.text[start:start + len(item['text'])] == item['text']:
+        return start
+    start = source.text.find(item['text'])
+    if start < 0 or source.text.find(item['text'], start + 1) >= 0:
+        raise ValueError('CANONICAL_UNIT_NOT_UNIQUELY_BOUND_TO_FROZEN_ORIGINAL')
+    return start
+
+
 class ProductAdapter(PacketEvidenceAdapter):
-    def __init__(self, catalog, enabled, service=False):
+    def __init__(self, catalog, enabled, service=False, *, backend=None, inventory=(), context_policy=None):
         super().__init__(12000, catalog=catalog)
         self.enabled = enabled
         self.service = service
+        self.backend, self.inventory = backend, inventory
+        self.indexes = {}
+        self.context_policy = context_policy
         files = ['retrieval_pipeline.py', 'agent_tools.py', 'documents.py', 'delivery_units.py', 'agent_service.py']
         self.implementation = digest(dict(base=self.implementation, enabled=enabled, service=service,
             files={name: hashlib.sha256((Path(__file__).parents[1] / name).read_bytes()).hexdigest() for name in files},
@@ -34,9 +47,10 @@ class ProductAdapter(PacketEvidenceAdapter):
         for source in sources:
             if catalog[source.id]['text'] != source.text:
                 raise ValueError('CATALOG_ORIGINAL_MISMATCH')
-        authority = Authority([(catalog[s.id]['title'] + '.md', s.text) for s in sources])
+        indexed = tuple(s for s in self.inventory if s.kb == request.kb) if self.backend else sources
+        authority = Authority([(catalog[s.id]['title'] + '.md', s.text) for s in indexed])
         gateway = Gateway(authority)
-        original = {f's{i}': source for i, source in enumerate(sources)}
+        original = {f's{i}': source for i, source in enumerate(indexed)}
 
         def search(index, tenant, scope, allowed, query, limit, **kwargs):
             permitted = {row['source_id'] for row in allowed}
@@ -47,15 +61,27 @@ class ProductAdapter(PacketEvidenceAdapter):
             return [{**units[i], 'score': 1.0 / (rank + 1)} for rank, i in enumerate(order)
                     if terms(query) & terms(units[i]['text'])][:limit]
 
-        authority.backend.search = search
+        if self.backend:
+            from uuid import uuid4
+            authority.backend = self.backend
+            key = digest(authority.units)
+            name = self.indexes.get(key)
+            if name is None:
+                name = self.backend.index_name(authority.actor.tenant_id, authority.scope, uuid4().hex)
+                self.backend.stage(name, authority.units)
+                self.indexes[key] = name
+            authority.build['index_name'] = name
+            for row in authority.rows:
+                if original[row['source_id']].id not in request.allowed_sources:
+                    row['owner_id'] = 'denied'
+        else:
+            authority.backend.search = search
         result = gateway.search_pipeline(authority.actor, authority.scope, request.question, {},
             {'title_navigation': self.enabled, 'max_expanded_units': 16})
         packet, spans = [], []
         for hit in result['hits']:
             source = original[hit['source_id']]
-            start = source.text.find(hit['text'])
-            if start < 0 or source.text.find(hit['text'], start + 1) >= 0:
-                raise ValueError('CANONICAL_UNIT_NOT_UNIQUELY_BOUND_TO_FROZEN_ORIGINAL')
+            start = original_start(source, hit)
             packet.append(dict(source_id=source.id, text=hit['text']))
             spans.append(dict(start=start, end=start + len(hit['text'])))
         self.products[request.case_id] = result['trace']
@@ -73,7 +99,7 @@ class ProductAdapter(PacketEvidenceAdapter):
         model = ScriptedModel(query=request.question)
         with tempfile.TemporaryDirectory() as folder:
             service = AgentService(None, model, root=Path(folder), gateway=gateway,
-                retrieval_config={'channels': ['bm25'], 'rerank': False})
+                retrieval_config={'channels': ['bm25'], 'rerank': False}, context_policy=self.context_policy)
             app = FastAPI()
             install_agent_routes(app, authority, None, lambda: authority.actor)
             app.state.agent = service
@@ -97,15 +123,14 @@ class ProductAdapter(PacketEvidenceAdapter):
             if not item.get('text'):
                 continue
             source = original[item['source_id']]
-            start = source.text.find(item['text'])
-            if start < 0 or source.text.find(item['text'], start + 1) >= 0:
-                raise ValueError('MODEL_INPUT_NOT_UNIQUELY_BOUND_TO_ORIGINAL')
+            start = original_start(source, item)
             final.append(Fragment(source_id=source.id, source_sha256=source.sha256, version=source.version,
                 kb=source.kb, start=start, end=start+len(item['text']), text=item['text']))
             bindings.append(RequestEvidenceBinding(message_index=len(messages)-1,
                 json_path=('evidence', index, 'text'), fragment_index=len(final)-1))
         self.observations[request.case_id]['service_messages'] = messages
         return trace.model_copy(update={'final': tuple(final), 'stages': {**trace.stages, 'assembly': tuple(final)},
+            'capture': 'pre_send',
             'final_context': json.dumps([dict(source_id=f.source_id, text=f.text) for f in final], ensure_ascii=False),
             'request_evidence_bindings': tuple(bindings), 'request_messages': tuple(messages)})
 

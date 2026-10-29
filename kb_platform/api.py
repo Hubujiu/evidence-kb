@@ -84,7 +84,8 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
 
         config_path = os.getenv('KB_PROVIDERS_CONFIG', '.local/providers.json')
         provider, luna = GoogleEmbeddingProvider(config_path), LunaClient(config_path)
-    service = platform or Platform(settings.dsn, settings.search_url, settings.storage_root, provider, luna)
+    service = platform or Platform(settings.dsn, settings.search_url, settings.storage_root, provider, luna,
+                                   search_backend=settings.search_backend)
     if luna is not None:
         from .research import ResearchService
 
@@ -238,6 +239,14 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     @app.post("/knowledge-bases/{kb_id}/builds/{build_id}/publish")
     def publish(kb_id: str, build_id: str, actor: principal):
         return service.publish(actor, kb_id, build_id)
+
+    @app.get("/knowledge-bases/{kb_id}/builds/{build_id}")
+    def build_status(kb_id: str, build_id: str, actor: principal):
+        return service.build_status(actor, kb_id, build_id)
+
+    @app.post("/knowledge-bases/{kb_id}/builds/{build_id}/resume")
+    def resume_build(kb_id: str, build_id: str, actor: principal):
+        return service.resume_build(actor, kb_id, build_id)
 
     @app.post("/knowledge-bases/{kb_id}/search")
     def search(kb_id: str, body: SearchRequest, actor: principal):

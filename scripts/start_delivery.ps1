@@ -2,7 +2,7 @@ param(
     [string]$Config = 'config/delivery-local-v1.json',
     [string]$Providers = '.local/delivery-20261026-01/providers.json',
     [string]$RunRoot = '.local/delivery-20261026-01',
-    [string]$SemanticRuntime = '.local/delivery-20261026-01/google-page-smoke-04/runtime-service.json',
+    [string]$SemanticRuntime = '.local/delivery-20261026-01/postgres-semantic-runtime.json',
     [string]$BudgetBatch = '',
     [switch]$CheckOnly,
     [switch]$StartDependencies
@@ -41,9 +41,7 @@ finally { $deliveryListener.Stop() }
 $deliveryRun = Join-Path $deliveryRoot ('server-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $deliveryRun | Out-Null
 if ($StartDependencies) {
-    $deliveryOverride = Join-Path $deliveryRoot 'infrastructure/heap.override.yaml'
-    if (-not (Test-Path -LiteralPath $deliveryOverride -PathType Leaf)) { throw 'Missing retained-volume heap override.' }
-    $deliveryDocker = Start-Process -FilePath 'docker.exe' -ArgumentList @('compose', '-f', 'compose.yaml', '-f', $deliveryOverride, 'up', '-d', '--wait') `
+    $deliveryDocker = Start-Process -FilePath 'docker.exe' -ArgumentList @('compose', 'up', '-d', '--wait', 'postgres') `
         -WorkingDirectory $deliveryWorkspace -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $deliveryRun 'dependencies.stdout.log') `
         -RedirectStandardError (Join-Path $deliveryRun 'dependencies.stderr.log')
