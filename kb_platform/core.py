@@ -432,6 +432,7 @@ class Platform:
         from hashlib import sha256
         from .embedding_jobs import EmbeddingJobs, EmbeddingJobError
         from .search import backend_dependencies
+        from .search_compat import resumable_search_dependencies
         from . import delivery_units, retrieval_expansion
 
         with self._tx(actor, kb_id) as conn:
@@ -448,7 +449,7 @@ class Platform:
             if (build['status'] != 'STAGING' or build['authority_revision'] != revision or
                     build['kb_revision'] != kb['revision'] or build['expected_manifest_id'] != kb['manifest_id']):
                 raise PlatformError('STALE_BUILD', 'Build inputs or authority changed', 409)
-            if config['search_dependencies'] != backend_dependencies(self.backend):
+            if not resumable_search_dependencies(config['search_dependencies'], backend_dependencies(self.backend)):
                 raise PlatformError('STALE_BUILD', 'Search implementation changed', 409)
             if (config['retrieval_unit_protocol'] != delivery_units.PROTOCOL or
                     config['retrieval_unit_implementation_sha256'] != sha256(Path(delivery_units.__file__).read_bytes()).hexdigest() or

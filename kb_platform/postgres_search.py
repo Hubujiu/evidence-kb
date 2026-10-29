@@ -138,14 +138,17 @@ class PostgresSearch:
                 any(not isinstance(v, str) or not v or len(v) > 512 for v in exclude_citation_ids) or
                 len(set(exclude_citation_ids)) != len(exclude_citation_ids)):
             raise ValueError('INVALID_EXCLUDED_CITATIONS')
-        if not allowed or not tokens(query):
+        if not allowed:
             return []
         table = self._table(index, kind == 'Page')
         expressions, params = [], []
         size = max(30, top_k)
         for field, weight in [('body', 1), ('exact', 2), ('heading', 1.5)]:
+            field_query = lexical_text(query, field == 'exact')
+            if not field_query:
+                continue
             predicate = sql.SQL('binding_key=ANY(%s) AND NOT(citation_id=ANY(%s))')
-            params += [weight, lexical_text(query, field == 'exact'), 'kb_search.' + table + '_' + field,
+            params += [weight, field_query, 'kb_search.' + table + '_' + field,
                        sorted({binding_key(a) for a in allowed}), list(exclude_citation_ids)]
             if kind:
                 predicate += sql.SQL(' AND kind=%s')
@@ -155,6 +158,8 @@ class PostgresSearch:
                 '(SELECT rowid,{} <@> to_bm25query(%s,%s) AS distance FROM {} WHERE {} '
                 'ORDER BY distance,rowid LIMIT %s) field_hits)').format(
                     sql.Identifier(field), sql.Identifier('kb_search', table), predicate))
+        if not expressions:
+            return []
         # Dismax with tie_breaker=0: union of each field's top N contains the exact top N.
         statement = sql.SQL('WITH ranked AS (SELECT rowid,max(score) AS score FROM ({}) fields '
             'WHERE score>0 GROUP BY rowid ORDER BY score DESC,rowid LIMIT %s) '

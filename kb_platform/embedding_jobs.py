@@ -37,6 +37,18 @@ class EmbeddingPreflightError(EmbeddingJobError):
     """A known Google admission refusal with no registered physical request."""
 
 
+RECOVERABLE_PREFLIGHT = frozenset({'EMBEDDING_BUDGET_INSUFFICIENT', 'EMBEDDING_LEDGER_BLOCKED'})
+
+
+def batch_size(provider):
+    from .remote import GoogleEmbeddingProvider
+
+    if isinstance(provider, GoogleEmbeddingProvider):
+        # Gemini API uses batchEmbedContents; Vertex sends one embedContent per item.
+        return 16 if provider.platform == 'gemini_api' else 1
+    return getattr(provider, 'max_batch_size', 1)
+
+
 def classify_provider_failure(row, provider, error):
     from .google_semantic_provider import GoogleSemanticProvider
 
@@ -101,17 +113,17 @@ class EmbeddingJobs:
             raise EmbeddingJobError('EMBEDDING_AUTHORIZATION_FAILED')
 
     def _prepare(self, tenant_id, kb_id, build_id, provider, units, audit_context):
-        size = getattr(provider, 'max_batch_size', 1)
-        if type(size) is not int or size < 1:
-            raise EmbeddingJobError('EMBEDDING_INVALID_BATCH_SIZE')
         manifest = deepcopy(provider.manifest)
-        payload = {'units': deepcopy(units), 'manifest': manifest,
-                   'audit_context': deepcopy(audit_context), 'batch_size': size}
-        dependency, provider_hash = digest(payload), digest(manifest)
         scope = (tenant_id, kb_id, build_id)
         with self._tx(tenant_id, kb_id) as conn:
-            existing = conn.execute('SELECT dependency_hash FROM embedding_jobs WHERE '
+            existing = conn.execute('SELECT dependency_hash,payload FROM embedding_jobs WHERE '
                                     'tenant_id=%s AND kb_id=%s AND build_id=%s', scope).fetchall()
+            size = existing[0]['payload']['batch_size'] if existing else batch_size(provider)
+            if type(size) is not int or size < 1:
+                raise EmbeddingJobError('EMBEDDING_INVALID_BATCH_SIZE')
+            payload = {'units': deepcopy(units), 'manifest': manifest,
+                       'audit_context': deepcopy(audit_context), 'batch_size': size}
+            dependency, provider_hash = digest(payload), digest(manifest)
             if any(row['dependency_hash'] != dependency for row in existing):
                 raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
             for number, start in enumerate(range(0, len(units), size)):
@@ -145,7 +157,9 @@ class EmbeddingJobs:
                              'WHERE tenant_id=%s AND kb_id=%s AND request_id=%s',
                              (tenant_id, kb_id, row['request_id']))
                 failure = EmbeddingJobError('EMBEDDING_UNKNOWN')
-            elif row['status'] in ('RUNNING', 'UNKNOWN', 'ERROR'):
+            elif row['status'] in ('RUNNING', 'UNKNOWN', 'ERROR') and not (
+                row['status'] == 'ERROR' and row['error'] in RECOVERABLE_PREFLIGHT
+            ):
                 code = row['error'] if row['status'] == 'ERROR' and row['error'] in {
                     'EMBEDDING_INPUT_TOO_LARGE', 'EMBEDDING_BUDGET_INSUFFICIENT', 'EMBEDDING_LEDGER_BLOCKED'
                 } else 'EMBEDDING_' + row['status']
@@ -160,10 +174,12 @@ class EmbeddingJobs:
                     failure = EmbeddingJobError('EMBEDDING_CIRCUIT_OPEN', circuit['open_until'])
                 else:
                     request_id = 'emb_' + uuid4().hex
-                    row = conn.execute("UPDATE embedding_jobs SET status='RUNNING',attempt=attempt+1,"
+                    old_preflight = row['status'] == 'ERROR' and row['error'] in RECOVERABLE_PREFLIGHT
+                    row = conn.execute("UPDATE embedding_jobs SET status='RUNNING',attempt=attempt+1-"
+                        "CASE WHEN %s AND attempt>0 THEN 1 ELSE 0 END,"
                         "request_id=%s,lease_until=clock_timestamp()+%s * interval '1 second',retry_at=NULL "
                         'WHERE tenant_id=%s AND kb_id=%s AND build_id=%s AND batch_no=%s RETURNING *',
-                        (request_id, self.lease_seconds, *scope)).fetchone()
+                        (old_preflight, request_id, self.lease_seconds, *scope)).fetchone()
                     conn.execute('INSERT INTO embedding_attempts '
                         "(tenant_id,kb_id,build_id,batch_no,request_id,status) VALUES (%s,%s,%s,%s,%s,'RUNNING')",
                         (*scope, request_id))
@@ -178,15 +194,19 @@ class EmbeddingJobs:
         diagnostic = error.code if isinstance(error, EmbeddingPreflightError) else type(error).__name__ if error else None
         if error:
             status = 'ERROR' if isinstance(error, EmbeddingPreflightError) or getattr(error, 'status', None) is not None else 'UNKNOWN'
+            if isinstance(error, EmbeddingPreflightError) and error.code in RECOVERABLE_PREFLIGHT:
+                status = 'RETRY'
             if delay is not None and row['attempt'] < self.max_attempts:
                 status = 'RETRY'
         with self._tx(*scope[:2]) as conn:
             updated = conn.execute('UPDATE embedding_jobs SET status=%s,vectors=%s,vectors_hash=%s,error=%s,'
+                'attempt=attempt-CASE WHEN %s THEN 1 ELSE 0 END,'
                 "retry_at=CASE WHEN %s::double precision IS NULL THEN NULL ELSE clock_timestamp()+%s * interval '1 second' END "
                 'WHERE tenant_id=%s AND kb_id=%s AND build_id=%s AND batch_no=%s '
                 "AND request_id=%s AND status=ANY(%s) AND (%s OR lease_until>=clock_timestamp()) RETURNING retry_at",
                 (status, Jsonb(vectors) if vectors is not None else None,
                  digest(vectors) if vectors is not None else None, diagnostic,
+                 isinstance(error, EmbeddingPreflightError) and error.code in RECOVERABLE_PREFLIGHT,
                  delay, delay, *scope, row['request_id'], ['UNKNOWN'] if recovered else ['RUNNING'], recovered)).fetchone()
             if not updated:
                 raise EmbeddingJobError('EMBEDDING_LEASE_LOST')
@@ -210,8 +230,8 @@ class EmbeddingJobs:
         self._auth(authorize)
         manifest, dependency = self._prepare(tenant_id, kb_id, build_id, provider, units, audit_context)
         result = []
-        size = getattr(provider, 'max_batch_size', 1)
-        for number in range((len(units) + size - 1) // size):
+        batches = self.status(tenant_id, kb_id, build_id)
+        for number in range(len(batches)):
             self._auth(authorize)
             row = self._claim(tenant_id, kb_id, build_id, number, dependency)
             batch = row['payload']['units']

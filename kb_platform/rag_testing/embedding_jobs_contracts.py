@@ -6,6 +6,7 @@ import sqlite3
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from kb_platform.embedding_jobs import (EmbeddingJobError, EmbeddingJobs, digest,
                                         recovered_vectors, retry_delay, validate_vectors,
@@ -190,6 +191,66 @@ def live_contract_suite(dsn):
                                  ('ERROR', 1, 'EMBEDDING_INPUT_TOO_LARGE'))
                 self.assertEqual(provider.remote.calls, 0)
                 self.assertEqual(provider.ledger.summary()['physical_requests'], 0)
+
+        def test_google_batching_uses_one_request_per_sixteen_and_preserves_old_batches(self):
+            from kb_platform.remote import GoogleEmbeddingProvider
+
+            provider = object.__new__(GoogleEmbeddingProvider)
+            provider.platform = 'gemini_api'
+            provider.model = 'gemini-embedding-2'
+            provider.dimension = 2
+            provider.manifest = {'model': provider.model, 'dimension': 2, 'max_input_characters': 12000}
+            provider._headers = {}
+            provider.document_count = 0
+            requests = []
+            provider._cache_get = lambda key: None
+            provider._cache_put = lambda key, value: None
+
+            def send(path, payload, headers, purpose, key, units):
+                requests.append(len(payload['requests']))
+                return {'embeddings': [{'values': [1., 0.]} for _ in payload['requests']]}
+
+            provider._post = send
+            units = [{'text': f'text {i}'} for i in range(33)]
+            result = self.jobs.run(*self.scope, provider, units, lambda: True, self.audit)
+            self.assertEqual(len(result), 33)
+            self.assertEqual(requests, [16, 16, 1])
+            self.assertEqual([r['status'] for r in self.jobs.status(*self.scope)], ['COMPLETE'] * 3)
+            self.jobs.run(*self.scope, provider, units, lambda: True, self.audit)
+            self.assertEqual(requests, [16, 16, 1])
+
+            old_scope = (*self.scope[:2], 'old-build')
+            provider.platform = 'vertex_ai'
+            self.jobs._prepare(*old_scope, provider, units[:2], self.audit)
+            provider.platform = 'gemini_api'
+            requests.clear()
+            self.jobs.run(*old_scope, provider, units[:2], lambda: True, self.audit)
+            self.assertEqual(requests, [1, 1])
+
+        def test_recoverable_google_admission_resumes_without_spending_attempt_budget(self):
+            from kb_platform.embeddings import EmbeddingError
+
+            for number, (message, code) in enumerate([
+                ('BUDGET_INSUFFICIENT', 'EMBEDDING_BUDGET_INSUFFICIENT'),
+                ('Unresolved physical outcome requires inspection before another embedding request', 'EMBEDDING_LEDGER_BLOCKED'),
+            ]):
+                scope = (*self.scope[:2], f'blocked-{number}')
+                with google_preflight_fixture() as provider:
+                    with patch.object(provider, 'documents', side_effect=EmbeddingError(message)):
+                        for _ in range(4):
+                            with self.assertRaisesRegex(EmbeddingJobError, code):
+                                self.jobs.run(*scope, provider, self.units[:1], lambda: True, google_audit())
+                    row = self.jobs.status(*scope)[0]
+                    self.assertEqual((row['status'], row['error'], row['attempt']), ('RETRY', code, 0))
+                    # Jobs created by older versions may already contain permanent ERROR.
+                    with self.jobs._tx(*scope[:2]) as conn:
+                        conn.execute("UPDATE embedding_jobs SET status='ERROR' WHERE build_id=%s", (scope[2],))
+                    with patch.object(provider, 'documents', return_value=[[1., 0.]]) as documents:
+                        self.assertEqual(len(self.jobs.run(*scope, provider, self.units[:1], lambda: True, google_audit())), 1)
+                        documents.assert_called_once()
+                    self.assertEqual(self.jobs.status(*scope)[0]['status'], 'COMPLETE')
+                    self.assertEqual(provider.remote.calls, 0)
+                    self.assertEqual(provider.ledger.summary()['physical_requests'], 0)
 
         def test_expired_owner_is_fenced_and_unknown_never_resent(self):
             _, dependency = self.jobs._prepare(*self.scope, self.provider, self.units, self.audit)

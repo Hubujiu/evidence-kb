@@ -51,6 +51,9 @@ def build_suite(dsn, output):
             self.assertEqual('STAGING', build['status'])
             with self.platform._tx(self.actor, self.kb) as conn:
                 conn.execute("UPDATE embedding_jobs SET retry_at=clock_timestamp() WHERE status='RETRY'")
+                conn.execute("UPDATE builds SET inputs=jsonb_set(inputs, '{search_dependencies,files,postgres_search.py}', "
+                             "to_jsonb(%s::text)) WHERE build_id=%s",
+                             ('ce616199541d736792c7cf8e1d8b73b439eca5eaeeb868c00e495b5c5a745ae8', build['build_id']))
             self.provider.fail = False
             self.platform.resume_build(self.actor, self.kb, build['build_id'])
             self.assertEqual(1, self.calls.count(self.calls[0]))
@@ -73,6 +76,16 @@ def build_suite(dsn, output):
                 result = self.platform.resume_build(self.actor, self.kb, build['build_id'])
             self.assertEqual('VALIDATED', result['status'])
             self.assertEqual([], self.calls)
+
+        def test_stopword_only_queries_use_exact_field(self):
+            self.platform.ingest(self.actor, self.kb, 'terms.md', b'IN OR NOT')
+            build = self.platform.stage(self.actor, self.kb, ['bm25'])
+            self.platform.publish(self.actor, self.kb, build['build_id'])
+            for query in ('IN', 'OR', 'NOT'):
+                with self.subTest(query=query):
+                    self.assertTrue(any('IN OR NOT' in h['text'] for h in
+                                        self.platform.search(self.actor, self.kb, query)['hits']))
+            self.assertEqual([], self.platform.search(self.actor, self.kb, '!!!')['hits'])
 
         def test_remote_work_does_not_hold_authority_lock_and_revocation_blocks_publish(self):
             def revoke(texts):
