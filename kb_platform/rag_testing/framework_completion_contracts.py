@@ -212,4 +212,3 @@ class TokenCapabilityContracts(unittest.TestCase):
             model.complete([], role='answer', schema={}, call_context={})
         ledger.reserve.assert_not_called()
         luna._post.assert_not_called()
-

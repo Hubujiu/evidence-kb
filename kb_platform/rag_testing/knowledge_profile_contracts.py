@@ -95,7 +95,8 @@ class KnowledgeProfileContracts(unittest.TestCase):
         from kb_platform.agent_api import TurnRequest, install_agent_routes
 
         with TemporaryDirectory() as directory:
-            environment = {key: value for key, value in os.environ.items() if not key.startswith('KB_AGENT_')}
+            environment = {key: value for key, value in os.environ.items()
+                           if not key.startswith('KB_AGENT_') or key == 'KB_AGENT_KERNEL_LIBRARY'}
             environment['KB_AGENT_ROOT'] = str(Path(directory) / 'sessions')
             with patch.dict(os.environ, environment, clear=True):
                 app = FastAPI()
