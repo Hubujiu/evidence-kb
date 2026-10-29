@@ -68,8 +68,10 @@ impl Phase {
 struct Host {
     parent: Option<u64>,
     plugins: Vec<Manifest>,
+    providers: BTreeMap<String, usize>,
     order: Vec<String>,
     activated: Vec<String>,
+    active_plugins: BTreeSet<String>,
     phase: Phase,
     leases: BTreeSet<u64>,
     children: BTreeSet<u64>,
@@ -120,7 +122,7 @@ impl HostRegistry {
         let mut services = BTreeSet::new();
         while let Some(id) = parent {
             let host = self.host(id)?;
-            services.extend(host.plugins.iter().flat_map(|p| p.provides.iter().cloned()));
+            services.extend(host.providers.keys().cloned());
             parent = host.parent;
         }
         Ok(services)
@@ -132,14 +134,29 @@ impl HostRegistry {
         }
         self.ancestors_ready(parent)?;
         let order = manifest::order(&plugins, &self.inherited(parent)?)?;
+        // The validated manifests are immutable for a scope's lifetime. Index
+        // service ownership once, without changing activation or inspect order.
+        let providers = plugins
+            .iter()
+            .enumerate()
+            .flat_map(|(index, plugin)| {
+                plugin
+                    .provides
+                    .iter()
+                    .cloned()
+                    .map(move |name| (name, index))
+            })
+            .collect();
         let id = self.allocate()?;
         self.hosts.insert(
             id,
             Host {
                 parent,
                 plugins,
+                providers,
                 order: order.clone(),
                 activated: Vec::new(),
+                active_plugins: BTreeSet::new(),
                 phase: Phase::Starting,
                 leases: BTreeSet::new(),
                 children: BTreeSet::new(),
@@ -157,12 +174,11 @@ impl HostRegistry {
         }
         loop {
             let host = self.host(id)?;
-            if let Some(plugin) = host
-                .plugins
-                .iter()
-                .find(|p| p.provides.iter().any(|v| v == service))
-            {
-                if !host.activated.contains(&plugin.id) {
+            // Raw lookup also serves dependency cleanup during disposal. New
+            // work is admitted separately by Acquire, which requires Ready.
+            if let Some(index) = host.providers.get(service) {
+                let plugin = &host.plugins[*index];
+                if !host.active_plugins.contains(&plugin.id) {
                     return Err(Error::new(
                         "service_inactive",
                         "service provider has not activated",
@@ -223,6 +239,7 @@ impl HostRegistry {
                     ));
                 }
                 host.activated.push(plugin.clone());
+                host.active_plugins.insert(plugin.clone());
                 Ok(json!({"plugin": plugin}))
             }
             Command::Ready { host: id } => {

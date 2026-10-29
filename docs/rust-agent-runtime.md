@@ -162,7 +162,17 @@ uv run --no-sync python scripts/check_project.py
 
 Python 宿主读取 `target/debug` 的平台动态库，也可用绝对路径 `KB_AGENT_KERNEL_LIBRARY` 指定构建产物。库缺失或协议不兼容直接报错，不自动编译、不回退旧 Python loop。修改 Rust 后需要重新构建部署产物。
 
-统一入口执行 Rust 格式、整个 workspace 构建和测试，再把本轮准确库路径传给 Python 离线合同。原有禁止 socket 和子进程的 Python 审计钩子未放宽。CLI 帧边界和状态协议由 Rust 内存流测试验证，不从 Python 合同偷偷启动程序。
+性能部署显式构建 release 库，并在启动服务的同一环境中选择它。例如 Linux：
+
+```bash
+cargo build --workspace --release --locked --offline
+export KB_AGENT_KERNEL_LIBRARY="$(pwd)/target/release/libagent_kernel.so"
+uv run --no-sync uvicorn kb_platform.api:app --host 127.0.0.1 --port 58080
+```
+
+PowerShell 使用 `$env:KB_AGENT_KERNEL_LIBRARY = (Resolve-Path target/release/agent_kernel.dll).Path`；macOS 使用 `target/release/libagent_kernel.dylib` 的绝对路径。未设置该变量时仍按上文加载 debug 库，不会静默选择其他产物。
+
+统一入口执行 Rust 格式、Clippy、整个 workspace 的独立 release 构建和测试，再把本轮库副本的准确路径传给 Python 离线合同。构建失败时阻断合同，不能用旧库得到通过结果。原有禁止 socket 和子进程的 Python 审计钩子未放宽。CLI 帧边界和状态协议由 Rust 内存流测试验证，不从 Python 合同偷偷启动程序。
 
 架构门禁限制通用 Python 模块只能依赖声明的通用接口，同时限制两个 Rust crate 的依赖和源码包含路径。知识库、远端适配和评分执行器不能反向进入内核。组件合同覆盖依赖、作用域、卸载、替代 loop、历史所有权、直接交付、迟到结果、取消和既有 RAG 保护；这些离线合成检查不代表生产 RAG 质量或性能提升。
 

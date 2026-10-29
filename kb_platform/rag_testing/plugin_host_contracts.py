@@ -347,3 +347,178 @@ class PluginHostContracts(unittest.TestCase):
         with PluginHost(profile(entry('value')), [PluginSpec('value', ('value',), (), mount)]):
             pass
         self.assertEqual(observed, [8])
+
+    def test_observer_lease_keeps_parent_resources_alive_until_child_emit_finishes(self):
+        entered, release = Event(), Event()
+        disposed, results, failures = [], [], []
+
+        def mount(context, config):
+            context.defer(lambda: disposed.append('parent'))
+
+            def listener(payload):
+                entered.set()
+                if not release.wait(5):
+                    raise RuntimeError('test synchronization failed')
+                results.append(tuple(disposed))
+
+            context.on(EventName.RUN_STARTED, listener)
+
+        root = PluginHost(profile(entry('observer')), [PluginSpec('observer', (), (), mount)])
+        child = root.scope(profile())
+
+        def emit():
+            try:
+                failures.extend(child.emit(EventName.RUN_STARTED, {}))
+            except BaseException as exc:
+                failures.append(exc)
+
+        worker = Thread(target=emit)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(5))
+            with self.assertRaises(PluginError) as failure:
+                root.close()
+            self.assertEqual(failure.exception.code, 'scope_busy')
+            self.assertEqual(disposed, [])
+            with self.assertRaises(PluginError) as failure:
+                child.emit(EventName.RUN_STARTED, {})
+            self.assertEqual(failure.exception.code, 'scope_unavailable')
+        finally:
+            release.set()
+            worker.join(5)
+            self.assertFalse(worker.is_alive())
+            root.close()
+        self.assertEqual(failures, [])
+        self.assertEqual(results, [()])
+        self.assertEqual(disposed, ['parent'])
+
+    def test_observer_can_request_drain_and_finish_nested_admitted_work(self):
+        disposed, observed = [], []
+
+        class Action:
+            def invoke(self):
+                return 'finished'
+
+        def mount(context, config):
+            context.provide('action', Action())
+            context.defer(lambda: disposed.append(True))
+
+            def listener(payload):
+                try:
+                    context.host.close()
+                except PluginError as exc:
+                    observed.append(exc.code)
+                observed.append(context.host.call('action', 'invoke'))
+
+            context.on(EventName.TOOL_AFTER, listener)
+
+        host = PluginHost(profile(entry('action')), [PluginSpec('action', ('action',), (), mount)])
+        try:
+            self.assertEqual(host.emit(EventName.TOOL_AFTER, {}), ())
+            self.assertEqual(observed, ['scope_busy', 'finished'])
+            self.assertEqual(disposed, [])
+        finally:
+            host.close()
+        self.assertEqual(disposed, [True])
+
+    def test_copied_context_cannot_admit_a_new_thread_after_drain(self):
+        failures, completed = [], []
+        host = PluginHost(profile(), [])
+
+        def request():
+            try:
+                completed.append(lease_once(host))
+            except PluginError as exc:
+                failures.append(exc.code)
+
+        try:
+            with host.lease():
+                inherited = copy_context()
+                host.drain()
+                worker = Thread(target=lambda: inherited.run(request))
+                worker.start()
+                worker.join(5)
+                self.assertFalse(worker.is_alive())
+                self.assertEqual(failures, ['scope_unavailable'])
+                self.assertEqual(completed, [])
+                self.assertEqual(native_call('inspect', host=host.id)['leases'], 1)
+        finally:
+            host.close()
+
+    def test_copied_context_worker_admitted_before_drain_owns_independent_lease(self):
+        entered, release = Event(), Event()
+        failures = []
+        host = PluginHost(profile(), [])
+
+        def request():
+            try:
+                with host.lease():
+                    entered.set()
+                    if not release.wait(5):
+                        raise RuntimeError('test synchronization failed')
+            except BaseException as exc:
+                failures.append(exc)
+
+        worker = None
+        try:
+            with host.lease():
+                inherited = copy_context()
+                worker = Thread(target=lambda: inherited.run(request))
+                worker.start()
+                self.assertTrue(entered.wait(5))
+                self.assertEqual(native_call('inspect', host=host.id)['leases'], 2)
+                host.drain()
+            self.assertEqual(native_call('inspect', host=host.id)['leases'], 1)
+            with self.assertRaises(PluginError) as failure:
+                host.close()
+            self.assertEqual(failure.exception.code, 'scope_busy')
+        finally:
+            release.set()
+            if worker is not None:
+                worker.join(5)
+                self.assertFalse(worker.is_alive())
+            host.close()
+        self.assertEqual(failures, [])
+
+    def test_listener_base_exception_releases_admission_before_close(self):
+        disposed = []
+
+        def mount(context, config):
+            context.defer(lambda: disposed.append(True))
+
+            def listener(payload):
+                raise KeyboardInterrupt('synthetic observer interruption')
+
+            context.on(EventName.RUN_STARTED, listener)
+
+        host = PluginHost(profile(entry('observer')), [PluginSpec('observer', (), (), mount)])
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                host.emit(EventName.RUN_STARTED, {})
+            self.assertEqual(native_call('inspect', host=host.id)['leases'], 0)
+        finally:
+            host.close()
+        self.assertEqual(disposed, [True])
+
+    def test_listener_registered_during_mount_is_not_callable_before_ready(self):
+        observed, failures = [], []
+
+        def mount(context, config):
+            context.on(EventName.RUN_STARTED, lambda payload: observed.append('called'))
+
+            def request():
+                try:
+                    context.host.emit(EventName.RUN_STARTED, {})
+                except PluginError as exc:
+                    failures.append(exc.code)
+
+            worker = Thread(target=request)
+            worker.start()
+            worker.join(5)
+            self.assertFalse(worker.is_alive())
+
+        with PluginHost(profile(entry('observer')), [PluginSpec('observer', (), (), mount)]) as host:
+            self.assertEqual(observed, [])
+            self.assertEqual(failures, ['scope_unavailable'])
+            self.assertEqual(host.emit(EventName.RUN_STARTED, {}), ())
+            self.assertEqual(observed, ['called'])

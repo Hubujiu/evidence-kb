@@ -17,7 +17,7 @@
 离线验证需要 Python 3.12 或 3.13、[uv](https://docs.astral.sh/uv/) 和 [Rustup](https://rustup.rs/) 管理的 Rust 工具链。Windows 还需要 MSVC C++ 构建工具，Linux 需要 C 链接器。运行文档工作台还需要 Docker Compose。远程模型、Embedding、Docling 和 OCR 不属于离线检查的前置条件。
 
 ```powershell
-rustup toolchain install 1.99.0 --profile minimal --component rustfmt
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 cargo fetch --locked
 cargo build --workspace --locked --offline
 uv sync --locked --group dev
