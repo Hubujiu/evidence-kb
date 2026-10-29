@@ -8,7 +8,8 @@
 | --- | --- | --- |
 | 手写 Schema 引擎 | PR #5 采用 jsonschema；本轮补齐 Pydantic 类型生成 Decision/Answer/Verdict 和工具扩展字段 | 严格类型、重复键、非有限数值、关键字白名单及业务校验 |
 | 单提供者 SDK | PR #6 采用 OpenAI SDK 的 Luna 适配 | SDK 隐式重试关闭；物理发送、预算、错误分类和 UNKNOWN 仍由项目管理 |
-| Agent 编排 | PR #7 采用 LangGraph | 权限、证据、步数/时间/费用门禁、单写者及恢复权威保留 |
+| Agent 编排 | PR #7 曾采用 LangGraph；当前迁移为 Rust 生命周期内核与插件化 loop，移除 LangGraph/LangSmith 依赖 | 权限、证据、步数/时间/费用门禁、单写者及恢复权威保留 |
+| 服务插件化 | Rust 宿主管理依赖、作用域和租约；profile 选择模型、上下文、会话、工具和 loop，RAG 作为 kb_query 接入 | 知识库 AgentStore 与物理请求账本保留唯一权威；通用临时会话不承担业务恢复 |
 | 类型化工具集中注册 | 本轮完成工具能力开关、参数提取、规划动作与重试资格注册 | 原文授权、引用存在性、表格操作、流程用户事实等业务处理仍在原节点 |
 | Markdown 解析 | PR #8 采用 markdown-it-py | 原文切片、坐标、哈希、证据锚点和历史表格导航 |
 | 专用 reranker 配对试验 | PR #9 采用 CrossEncoder，完成固定候选对照；生产切换未获准入证据 | 证据覆盖判断独立于排序分数；不切换生产默认 |
@@ -23,7 +24,9 @@
 
 `agent_tool_registry.py` 统一工具参数投影和重试资格，删除原节点中的重复参数分支、动作集合及扩展 Schema 拼接。生成式工具协议仍为 JSON 决策对象；不启用未经验证的原生 tool_calls，也不叠加 Pydantic AI 编排。
 
-生成 Schema 中新增的标题注释会改变规划请求文本；现有缓存键包含 Schema 和请求载荷，因此不会复用不同请求的回答。Agent 版本更新为 `agentic-rag/5.16.0-typed-tools`。上下文计量仍在最终 Schema 指令插入后校验输入限额；不宣称线上回答分数不变。
+生成 Schema 中新增的标题注释会改变规划请求文本；现有缓存键包含 Schema 和请求载荷，因此不会复用不同请求的回答。类型化工具阶段版本为 `agentic-rag/5.16.0-typed-tools`，后续原生运行时改造以当前 `knowledge_service.py` 的版本标识为准。上下文计量仍在最终 Schema 指令插入后校验输入限额；不宣称线上回答分数不变。
+
+原 `agent_service.py` 已按会话服务、单轮状态、规划、模型与答案核验职责拆分。默认入口由 `knowledge_profile.py` 装配，原生内核不导入业务实现。实际接口、默认插件和构建方式见 [插件宿主](plugin-harness.md) 与 [Rust 运行时](rust-agent-runtime.md)。
 
 `ToolExecutor` 的重试循环改用 Tenacity `Retrying`、`retry_if_exception`、`wait_exponential` 和 `stop_after_attempt`。项目只保留允许重试的分类及停止政策。Retry-After 不为凑预算而截短；空结果是成功，截止后返回的结果不得交付，取消和睡眠中断保留 UNKNOWN 回执。工具结果的复用仍需调用方重新授权。
 
@@ -31,7 +34,7 @@
 
 | 层 | 所有权 |
 | --- | --- |
-| LangGraph | 每节点一次尝试，不自动重放节点 |
+| Rust loop / 生命周期内核 | 每个效果显式关联结果，不自动重放模型、工具或业务节点 |
 | OpenAI SDK | max_retries=0，不进行隐藏发送 |
 | `_Transport` | 唯一物理请求重试；每次新物理身份关联上次请求，先准入再发送 |
 | Agent 格式修复 | 有界的新逻辑尝试，沿用物理账本和总预算 |

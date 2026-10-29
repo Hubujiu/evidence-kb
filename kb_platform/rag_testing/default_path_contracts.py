@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kb_platform.agent_service import AgentService
+from kb_platform.knowledge_service import KnowledgeService as AgentService
 from kb_platform.agent_context import ContextManager, ContextPolicy
 from kb_platform.retrieval_pipeline import PipelineConfig
 from .product_fixture import Authority, Gateway

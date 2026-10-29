@@ -7,6 +7,87 @@ from scripts.check_project import architecture_violations, deny_external_io
 
 
 class ArchitectureContracts(unittest.TestCase):
+    def test_agent_ports_reject_implementation_and_reverse_dependencies(self):
+        for path, source in (
+            ('agent_provider', 'from .remote import LunaClient'),
+            ('agent_model', 'from .agent_luna import LunaModelProvider'),
+            ('agent_model', 'import openai'),
+            ('agent_plugins', 'from .knowledge_service import KnowledgeService'),
+            ('agent_engine', 'from .knowledge_service import KnowledgeService'),
+            ('agent_decisions', 'from .agent_model import AgentModel'),
+            ('agent_tool_loop', 'from .knowledge_service import KnowledgeService'),
+            ('plugin_native', 'from .core import Platform'),
+            ('plugin_host', 'from .knowledge_service import KnowledgeService'),
+            ('harness_loop', 'from .agent_workflow import KnowledgeWorkflow'),
+            ('harness_services', 'from .agent_luna import LunaModelProvider'),
+            ('harness_sessions', 'from .agent_store import AgentStore'),
+            ('harness_loop', 'import openai'),
+            ('plugin_host', 'import httpx'),
+            ('harness_sessions', 'import psycopg'),
+            ('agent_builtin_tools', 'from .agent_api import install_agent_routes'),
+        ):
+            with self.subTest(path=path, source=source):
+                self.assertTrue(self.check_source(source, f'kb_platform/{path}.py'))
+        self.assertEqual([], self.check_source('from .agent_provider import ModelProvider',
+                                              'kb_platform/agent_model.py'))
+
+    def test_harness_accepts_its_declared_generic_ports(self):
+        for module, source in (
+            ('plugin_native', 'from .agent_native import library_path'),
+            ('plugin_host', 'from .plugin_native import native_call'),
+            ('harness_loop', 'from .agent_engine import Runtime'),
+            ('harness_loop', 'from .plugin_host import EventName'),
+            ('harness_services', 'from .harness_sessions import MemorySession'),
+            ('agent_tool_loop', 'from .harness_services import build_catalog'),
+        ):
+            with self.subTest(module=module):
+                self.assertEqual([], self.check_source(source, f'kb_platform/{module}.py'))
+
+    def check_native(self, manifest, *, crate='agent-harness', source='pub fn run() {}'):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'kb_platform').mkdir()
+            (root / 'kb_platform/service.py').write_text('value = 1', encoding='utf-8')
+            native = root / 'rust' / crate
+            (native / 'src').mkdir(parents=True)
+            (native / 'Cargo.toml').write_text(manifest, encoding='utf-8')
+            (native / 'src/lib.rs').write_text(source, encoding='utf-8')
+            return architecture_violations(root)
+
+    def test_native_crates_reject_business_dependencies_and_package_substitution(self):
+        for manifest in (
+            '[dependencies]\nknowledge-service = "1"',
+            '[target.\'cfg(windows)\'.dependencies]\nknowledge-service = "1"',
+            '[dependencies]\nserde = { package = "knowledge-service", version = "1" }',
+            '[dependencies]\nserde = { path = "../../business" }',
+            '[dependencies]\nserde = { workspace = true }',
+            '[build-dependencies]\nknowledge-service = "1"',
+            '[package]\nbuild = "generate.rs"',
+            '[lib]\npath = "../../business.rs"',
+            '[[bin]]\nname = "business"\npath = "../../business.rs"',
+        ):
+            with self.subTest(manifest=manifest):
+                self.assertTrue(self.check_native(manifest))
+        self.assertTrue(self.check_native(
+            '[dependencies]\nagent-harness = { path = "../other-harness" }', crate='agent-kernel'))
+
+    def test_native_crates_accept_reviewed_foundations_and_internal_sources(self):
+        self.assertEqual([], self.check_native(
+            '[dependencies]\nserde = { version = "1", features = ["derive"] }\nserde_json = "1"',
+            source='#[path = "tests.rs"] mod tests;'))
+        self.assertEqual([], self.check_native(
+            '[dependencies]\nagent-harness = { path = "../agent-harness" }', crate='agent-kernel'))
+
+    def test_native_sources_cannot_include_business_files_outside_the_crate(self):
+        for source in (
+            'include!("../../../business.rs");',
+            'const CONFIG: &str = include_str!("../../../config/knowledge.json");',
+            '#[path = "../../../business.rs"] mod business;',
+            'include!(concat!(env!("OUT_DIR"), "/generated.rs"));',
+        ):
+            with self.subTest(source=source):
+                self.assertTrue(self.check_native('[dependencies]\nserde = "1"', source=source))
+
     def check_source(self, source: str, path: str = "kb_platform/service.py") -> list[str]:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

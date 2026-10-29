@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "plugins": [
+    {"id": "resources", "use": "knowledge.resources"},
+    {"id": "provider", "use": "knowledge.provider.luna"},
+    {"id": "policy", "use": "knowledge.context.policy", "config": {
+      "input_budget": 24000, "output_reserve": 1500, "model_window": 32768,
+      "safety_reserve": 1024, "evidence_strategy": "query_blocks"
+    }},
+    {"id": "context", "use": "knowledge.context"},
+    {"id": "budget", "use": "knowledge.budget", "config": {
+      "max_calls": 10000, "max_tokens": 100000000
+    }},
+    {"id": "model", "use": "knowledge.model"},
+    {"id": "store", "use": "knowledge.store", "config": {"root": ".local/agentic-v5"}},
+    {"id": "gateway", "use": "knowledge.gateway"},
+    {"id": "executor", "use": "knowledge.executor", "config": {"max_attempts": 2}},
+    {"id": "semantic", "use": "knowledge.semantic"},
+    {"id": "runtime", "use": "harness.runtime"},
+    {"id": "sessions", "use": "harness.sessions.memory"},
+    {"id": "tools", "use": "harness.tools"},
+    {"id": "loop", "use": "harness.loop", "config": {"mode": "single-tool"}},
+    {"id": "knowledge", "use": "knowledge.service"},
+    {"id": "knowledge-tools", "use": "knowledge.tools"},
+    {"id": "application", "use": "knowledge.application"}
+  ]
+}

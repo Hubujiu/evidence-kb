@@ -38,7 +38,7 @@ def classify_failure(error=None, *, status=None):
     """Only connection admission failures establish that no request was sent."""
     if getattr(error, 'code', '') in {'PROVIDER_RATE_LIMIT_WAIT_EXCEEDED', 'PROVIDER_RETRY_WAIT_EXCEEDED',
             'PROVIDER_REQUEST_UNRESOLVED', 'PROVIDER_REQUEST_ALREADY_SETTLED', 'PROVIDER_CIRCUIT_OPEN',
-            'PROVIDER_DEADLINE_EXCEEDED', 'PROVIDER_REQUEST_LIMIT'}:
+            'PROVIDER_DEADLINE_EXCEEDED', 'PROVIDER_REQUEST_LIMIT', 'PROVIDER_CANCELLED'}:
         return Failure('admission', False, 'ERROR')
     if getattr(error, 'code', '') == 'RAG_PHYSICAL_REQUEST_ADMISSION_FAILED':
         return Failure('admission', False, 'ERROR')

@@ -53,6 +53,10 @@ jobs:
           enable-cache: true
       - name: Install locked dependencies
         run: uv sync --locked --group dev
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
       - name: Run offline quality gates
         run: uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}
       - name: Upload gate evidence

@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event
 import time
 from types import SimpleNamespace
 import unittest
@@ -10,8 +11,12 @@ from uuid import uuid4
 
 import httpx
 
+from kb_platform.agent_engine import execution_scope
+from kb_platform.agent_luna import LunaModelProvider
 from kb_platform.agent_model import AgentModel
 from kb_platform.provider_admission import CaptureAdmissionError
+from kb_platform.provider_runtime import RuntimePolicyError
+from kb_platform.delivery import _serialize_client_sends
 from kb_platform.remote import RemoteModelError
 from .budget import BudgetLedger
 from .contracts import digest
@@ -24,6 +29,141 @@ def completion(text='{"count":1}'):
 
 
 class LunaSDKContracts(unittest.TestCase):
+    def test_cancellation_before_transport_is_zero_send_without_unknown_receipt(self):
+        for cancel_while_queued in (False, True):
+            with self.subTest(cancel_while_queued=cancel_while_queued):
+                state = self.setup_provider([completion()])
+                cancellation = Event()
+                released = []
+
+                class Queue:
+                    def acquire(self, timeout=None):
+                        cancellation.set()
+                        return True
+
+                    def release(self):
+                        released.append(True)
+
+                _serialize_client_sends(state.provider, Queue())
+                with execution_scope(deadline_seconds=30, cancellation=cancellation):
+                    response = state.provider._request_response
+
+                    def cancel_after_receipt(*args):
+                        if not cancel_while_queued:
+                            cancellation.set()
+                        return response(*args)
+
+                    with patch.object(state.provider, '_request_response', side_effect=cancel_after_receipt):
+                        with self.assertRaises(RuntimePolicyError) as caught:
+                            self.call(state)
+                self.assertEqual(caught.exception.code, 'PROVIDER_CANCELLED')
+                self.assertEqual(state.requests, [])
+                self.assertEqual(self.records(state), [])
+                self.assertEqual(state.ledger.summary()['physical_requests'], 0)
+                self.assertEqual(state.ledger.summary()['pending_or_unknown'], 0)
+                receipt, = self.receipts(state)
+                self.assertEqual(receipt['status'], 'ERROR')
+                self.assertEqual(list(state.provider._receipts.directory.glob('*.pending')), [])
+                self.assertEqual(released, [True] if cancel_while_queued else [])
+                self.call(state)
+                self.assertEqual(len(state.requests), 1)
+                self.assertEqual(state.ledger.summary()['pending_or_unknown'], 0)
+
+    def test_direct_provider_cancellation_before_receipt_keeps_zero_attempts(self):
+        state = self.setup_provider([completion()])
+        cancellation = Event()
+        trace = {'request_id': 'direct-cancelled', 'attempt': 0}
+        with execution_scope(deadline_seconds=30, cancellation=cancellation):
+            cancellation.set()
+            with self.assertRaises(RemoteModelError) as caught:
+                self.call(state, trace=trace)
+        self.assertEqual(caught.exception.code, 'PROVIDER_CANCELLED')
+        self.assertEqual(state.requests, [])
+        self.assertEqual(self.records(state), [])
+        self.assertEqual(self.receipts(state), [])
+        self.assertEqual(trace['attempt'], 0)
+        self.assertEqual(state.provider._issued_requests, 0)
+        self.assertEqual(state.ledger.summary()['physical_requests'], 0)
+        self.assertEqual(state.ledger.summary()['pending_or_unknown'], 0)
+        self.call(state)
+        self.assertEqual(len(state.requests), 1)
+
+    def test_direct_provider_retry_obeys_parent_cancellation(self):
+        cancellation = Event()
+
+        def cancel_with_received_response(request):
+            cancellation.set()
+            return httpx.Response(503, json={})
+
+        state = self.setup_provider([cancel_with_received_response])
+        trace = {'request_id': 'cancelled-retry', 'attempt': 0}
+        with execution_scope(deadline_seconds=30, cancellation=cancellation):
+            with self.assertRaises(RemoteModelError) as caught:
+                self.call(state, trace=trace)
+        self.assertEqual(caught.exception.code, 'PROVIDER_CANCELLED')
+        self.assertEqual(len(state.requests), 1)
+        self.assertEqual(trace['attempt'], 1)
+        self.assertEqual(state.provider._issued_requests, 1)
+        receipt, = self.receipts(state)
+        self.assertEqual(receipt['status'], 'ERROR')
+        self.assertEqual(state.ledger.summary()['physical_requests'], 1)
+        self.assertEqual(state.ledger.summary()['pending_or_unknown'], 0)
+        self.assertEqual(state.ledger.summary()['unknown_usage_requests'], 1)
+        self.assertEqual(state.ledger.summary()['effective_usage_or_reserved']['output_tokens'], 30)
+
+    def test_direct_provider_timeout_cannot_exceed_parent_deadline(self):
+        for explicit_deadline in (False, True):
+            with self.subTest(explicit_deadline=explicit_deadline):
+                state = self.setup_provider([completion()], timeout_seconds=180)
+                trace = {'request_id': uuid4().hex, 'attempt': 0}
+                if explicit_deadline:
+                    trace['deadline_monotonic'] = time.monotonic() + 60
+                with execution_scope(deadline_seconds=10):
+                    self.call(state, trace=trace)
+                for timeout in state.requests[0].extensions['timeout'].values():
+                    self.assertGreater(timeout, 0)
+                    self.assertLessEqual(timeout, 10)
+
+    def test_direct_provider_expired_parent_deadline_is_zero_send(self):
+        state = self.setup_provider([])
+        trace = {'request_id': 'expired-parent', 'attempt': 0}
+        clock = [100.0]
+        with patch('kb_platform.remote.time.monotonic', side_effect=lambda: clock[0]):
+            with execution_scope(deadline_seconds=10):
+                clock[0] = 111.0
+                with self.assertRaises(RemoteModelError) as caught:
+                    self.call(state, trace=trace)
+        self.assertEqual(caught.exception.code, 'PROVIDER_DEADLINE_EXCEEDED')
+        self.assertEqual(state.requests, [])
+        self.assertEqual(self.receipts(state), [])
+        self.assertEqual(trace['attempt'], 0)
+        self.assertEqual(state.provider._issued_requests, 0)
+        self.assertEqual(state.ledger.summary()['physical_requests'], 0)
+        self.assertEqual(state.ledger.summary()['pending_or_unknown'], 0)
+
+    def test_delivery_queue_deadline_reaches_sdk_and_physical_meter(self):
+        state = self.setup_provider([completion()])
+        clock = [100.0]
+
+        class Queue:
+            def acquire(self, timeout):
+                clock[0] = 120.0
+                return True
+
+            def release(self):
+                pass
+
+        _serialize_client_sends(state.provider, Queue())
+        with patch('kb_platform.agent_runtime.time.monotonic', side_effect=lambda: clock[0]):
+            with self.assertRaises(RuntimePolicyError) as caught:
+                self.call(state, trace={'request_id': 'queued', 'attempt': 0, 'deadline_monotonic': 110.0})
+        self.assertEqual(caught.exception.code, 'PROVIDER_DEADLINE_EXCEEDED')
+        self.assertEqual(state.requests, [])
+        self.assertEqual(state.ledger.summary()['physical_requests'], 0)
+        self.assertEqual(state.ledger.summary()['pending_or_unknown'], 0)
+        receipt, = self.receipts(state)
+        self.assertEqual(receipt['status'], 'ERROR')
+
     def setup_provider(self, outcomes, *, caps=None, **options):
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -43,6 +183,8 @@ class LunaSDKContracts(unittest.TestCase):
         def handle(request):
             requests.append(request)
             outcome = next(outcomes)
+            if callable(outcome):
+                outcome = outcome(request)
             if isinstance(outcome, BaseException):
                 raise outcome
             return outcome
@@ -263,7 +405,7 @@ class LunaSDKContracts(unittest.TestCase):
 
     def test_agent_schema_business_validation_cache_and_both_ledgers(self):
         state = self.setup_provider([completion()], cache_mode='read_write')
-        model = AgentModel(state.provider)
+        model = AgentModel(LunaModelProvider(state.provider))
         kwargs = dict(role='answer', schema={'type': 'object', 'properties': {'count': {'type': 'integer'}},
                       'required': ['count'], 'additionalProperties': False}, call_context={})
         messages = [{'role': 'user', 'content': 'synthetic control'}]
@@ -296,7 +438,7 @@ class LunaSDKContracts(unittest.TestCase):
         for agent in (True, False):
             with self.subTest(agent=agent):
                 state = self.setup_provider([completion(), completion()], cache_mode='read_write')
-                model = AgentModel(state.provider)
+                model = AgentModel(LunaModelProvider(state.provider))
                 def invoke():
                     if agent:
                         return model.complete([{'role': 'user', 'content': 'control'}], role='answer',

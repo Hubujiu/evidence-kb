@@ -11,7 +11,8 @@ import time
 from uuid import uuid4
 
 from .agent_context import ContextPolicy, canonical, digest, estimate_messages
-from .remote import RemoteModelError
+from .model_errors import RemoteModelError
+from .agent_provider import ModelProvider
 from .agent_schema import check_schema, compile_schema, validate_output
 
 
@@ -122,8 +123,8 @@ def _unique_object(pairs):
 class AgentModel:
     protocol = "agent-model/1"
 
-    def __init__(self, luna, policy=None, ledger=None):
-        self.luna = luna
+    def __init__(self, provider: ModelProvider, policy=None, ledger=None):
+        self.provider = provider
         self.policy = policy or ContextPolicy()
         self.ledger = ledger or BudgetLedger()
         self.capabilities = {"output_parameter": "max_tokens", "output_limit_verified": False,
@@ -161,14 +162,12 @@ class AgentModel:
         limit = min(self.policy.input_budget, self.policy.model_window - output_limit - self.policy.safety_reserve)
         if estimate["tokens"] > limit:
             raise RemoteModelError("AGENT_CONTEXT_OVERFLOW")
-        payload = {"model": self.luna.model, "messages": prepared, "max_tokens": output_limit}
-        key = digest({"protocol": self.protocol, "endpoint": self.luna.base_url,
-                      "payload": payload, "role": role, "schema": schema,
-                      "transport": getattr(self.luna, 'manifest', {}).get('transport')})
+        identity = self.provider.identity(prepared, output_limit)
+        key = digest({"protocol": self.protocol, **identity, "role": role, "schema": schema})
         # A caller-supplied logical call identity also guards interrupted
         # requests across retry/restart; a new physical retry gets its own ID.
         request_id = call_context.get('call_id') or uuid4().hex
-        trace = {"request_id": request_id, "attempt": 0, "format_attempt": 1, "payload_hash": digest(payload),
+        trace = {"request_id": request_id, "attempt": 0, "format_attempt": 1, "payload_hash": digest(identity.get("payload", identity)),
                  "agent_protocol": self.protocol, "agent_role": role, "input_estimate": estimate["tokens"],
                  "token_estimate_kind": estimate["kind"], "output_limit": output_limit,
                  "output_limit_verified": False}
@@ -196,14 +195,14 @@ class AgentModel:
         def reject_output(result, problem, code="INVALID_AGENT_OUTPUT"):
             reason = problem if re.fullmatch(r"[A-Z][A-Z0-9_]{0,79}", problem) else "AGENT_CONTRACT_VALIDATION_FAILED"
             metadata = {**trace, "event": "agent_model_output", "parse_error": {"reason": reason}}
-            diagnostic = self.luna._save_failed_response(result, {"request_hash": key, "purpose": purpose, **metadata})
-            self.luna._record(purpose, key, error=code, units=0,
+            diagnostic = self.provider.save_failed_response(result, {"request_hash": key, "purpose": purpose, **metadata})
+            self.provider.record(purpose, key, error=code, units=0,
                               metadata={**metadata, **diagnostic})
             error = RemoteModelError(code)
             error.output_diagnostics = {"validator_reason": reason, **diagnostic}
             return error
 
-        saved = self.luna._cache_get(key)
+        saved = self.provider.cache_get(key)
         if saved is not None:
             try:
                 if not isinstance(saved, dict) or saved.get("finish_reason") != "stop":
@@ -211,7 +210,7 @@ class AgentModel:
                 validate(saved.get("value"))
             except ValueError:
                 raise RemoteModelError("AGENT_CACHE_CONTRACT_INVALID") from None
-            self.luna._record(purpose, key, cached=True, metadata=trace)
+            self.provider.record(purpose, key, cached=True, metadata=trace)
             usage = {"available": True, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
                      "provider_cached_tokens": None, "reasoning_tokens": None, "source": "application_cache",
                      "actual_input_within_estimate": None, "actual_input_within_budget": None,
@@ -232,9 +231,9 @@ class AgentModel:
                     self._turn_budgets[(session_id, turn_id)] = turn_ledger
                 elif turn_ledger.max_calls != physical_limit:
                     raise RemoteModelError('AGENT_TURN_BUDGET_CHANGED')
-            turn_reservation = turn_ledger.reserve(self.luna.retries + 1, estimate['tokens'] + output_limit)
+            turn_reservation = turn_ledger.reserve(self.provider.max_attempts, estimate['tokens'] + output_limit)
         try:
-            reservation = self.ledger.reserve(self.luna.retries + 1, estimate["tokens"] + output_limit)
+            reservation = self.ledger.reserve(self.provider.max_attempts, estimate["tokens"] + output_limit)
         except BaseException:
             if turn_reservation is not None:
                 turn_ledger.settle(turn_reservation, 0)
@@ -242,8 +241,8 @@ class AgentModel:
         usage = None
         finish = None
         try:
-            result = self.luna._post("/chat/completions", payload, self.luna._headers, purpose, key, trace=trace)
-            usage = _usage(result.get("usage"))
+            result = self.provider.complete(prepared, output_limit, purpose=purpose, key=key, trace=trace)
+            usage = _usage(result.usage)
             actual_input = usage["prompt_tokens"]
             actual_output = usage["completion_tokens"]
             usage.update(estimated_input_tokens=estimate["tokens"], estimate_kind=estimate["kind"],
@@ -259,11 +258,10 @@ class AgentModel:
             if usage["actual_output_within_budget"] is False:
                 raise reject_output(result, "ACTUAL_OUTPUT_EXCEEDS_BUDGET", "AGENT_ACTUAL_OUTPUT_BUDGET_EXCEEDED")
             try:
-                choice = result["choices"][0]
-                finish = choice.get("finish_reason")
+                finish = result.finish_reason
                 if finish != "stop":
                     raise ValueError("AGENT_INCOMPLETE_OUTPUT")
-                content = choice["message"]["content"]
+                content = result.content
                 if not isinstance(content, str):
                     raise ValueError("AGENT_NON_TEXT_OUTPUT")
                 value = json.loads(content, object_pairs_hook=_unique_object)
@@ -275,7 +273,7 @@ class AgentModel:
                 validate(value)
             except ValueError as exc:
                 raise reject_output(result, str(exc)) from None
-            self.luna._cache_put(key, {"value": value, "usage": usage, "finish_reason": finish})
+            self.provider.cache_put(key, {"value": value, "usage": usage, "finish_reason": finish})
             return CompletionEnvelope(value, request_id, usage, trace["attempt"], finish, "none", key)
         except Exception as exc:
             # Failed calls remain measurable at the orchestration boundary. No

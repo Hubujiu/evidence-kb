@@ -1,0 +1,12 @@
+[package]
+name = "agent-kernel"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "agent_kernel"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+agent-harness = { path = "../agent-harness" }

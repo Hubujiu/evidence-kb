@@ -5,9 +5,14 @@
 在项目根目录执行以下命令。
 
 ```powershell
+rustup toolchain install 1.99.0 --profile minimal --component rustfmt
+cargo fetch --locked
+cargo build --locked --offline
 uv sync --locked --group dev
 uv run --no-sync python scripts/check_project.py
 ```
+
+Rust 工具链由 `rust-toolchain.toml` 固定，依赖由 `Cargo.lock` 锁定；新环境先下载固定依赖，随后检查使用离线构建。workspace 包含通用生命周期 `agent-kernel` 和插件/loop 实现 `agent-harness`。统一入口执行原生格式、离线构建和测试，并把本轮独立构建的动态库传给合同进程；缺少工具链或编译失败都会使门禁失败。部署构建见 [Rust 运行时](rust-agent-runtime.md)，profile 与扩展接口见 [插件宿主](plugin-harness.md)。
 
 默认结果写入 `.local/checks/<唯一编号>/`。指定目录时必须使用尚不存在的路径。
 
@@ -20,6 +25,16 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 `summary.json` 记录各检查退出码和日志路径。`contracts.json` 单独报告组件合同。`scorer-controls/report.json`、`junit.xml` 和 `report.html` 由统一 RAG runner 生成。评分器控制复用冻结 trace，不代表产品召回、答案质量或远程请求验证。
 
 检查过程将运行目录指向临时目录，禁用默认 API 初始化、远程模型和 Embedding。合同和控制回放在独立 Python 工作进程中执行，导入前安装审计钩子，阻断 socket 连接、DNS 查询、UDP 发送和子进程启动。依赖安装需要联网，但检查不调用提供者。这个约束防止误执行，不是恶意代码沙箱。
+
+## 修改或新增插件
+
+先声明 `PluginSpec` 的 `provides`、`requires` 和版本，再把实现加入可信 catalog。profile 的 `use` 只能引用已登记的键，不能写 Python 导入路径或任意代码。默认知识库 profile 在 `config/agent-profiles/knowledge.json`；`KB_AGENT_PROFILE` 允许启动时选择另一个配置。
+
+业务请求通过 `host.call(service, method, ...)` 取得运行租约。`host.service()` 用于装配，不应保存原始服务并绕过生命周期直接处理请求。插件创建的资源用 `ctx.defer()` 注册释放；借用父作用域或外部调用者的资源不能重复取得关闭所有权。child 覆盖父服务时必须在该条配置的 `overrides` 中声明服务名。
+
+关闭先进入 draining；已有请求可以收尾，新请求被拒绝。仍有活动请求时关闭返回忙碌错误，等待请求结束后再关闭，不能靠重试业务调用完成卸载。清理失败保持失败状态和尚未释放的资源，不能报告插件已卸载。现阶段采用新 profile 启动新实例，再排空旧实例，不提供运行中透明热替换。
+
+相关合同至少覆盖服务替换、依赖缺失/循环、启动失败清理、作用域隔离或运行中关闭中的实际变更风险。默认 `harness.sessions.memory` 是单次运行的临时会话插件；需要持久会话时必须提供明确的持久化适配器，不能把它当作知识库 `AgentStore` 或物理请求账本。
 
 ## 新增或删除测试
 

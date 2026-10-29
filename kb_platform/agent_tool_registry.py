@@ -10,22 +10,25 @@ from .agent_protocol import ADVANCED_PROPERTIES, DECISION_SCHEMA
 class ToolSpec:
     arguments: Literal['query', 'read', 'references', 'table', 'join', 'expression']
     feature: str | None = None
-    read_only: bool = True
+    retry_safe: bool = True
+    handler: str = "advanced"
+    mutates_data: bool = False
+    incurs_cost: bool = False
 
 
 TOOLS = {
-    'search': ToolSpec('query'),
-    'read': ToolSpec('read'),
-    'read_history': ToolSpec('query'),
-    'calculator': ToolSpec('expression'),
-    'search_pipeline': ToolSpec('query', 'advanced_tools', False),
+    'search': ToolSpec('query', handler='search'),
+    'read': ToolSpec('read', handler='read'),
+    'read_history': ToolSpec('query', handler='history'),
+    'calculator': ToolSpec('expression', handler='calculate'),
+    'search_pipeline': ToolSpec('query', 'advanced_tools', False, incurs_cost=True),
     'search_tables': ToolSpec('query', 'advanced_tools'),
     'table': ToolSpec('table', 'advanced_tools'),
     'table_join': ToolSpec('join', 'advanced_tools'),
     'navigate_references': ToolSpec('references', 'advanced_tools'),
     'workflow_next': ToolSpec('references', 'advanced_tools'),
-    'search_pages': ToolSpec('query', 'page_navigation'),
-    'search_semantic_pages': ToolSpec('query', 'semantic_pages', False),
+    'search_pages': ToolSpec('query', 'page_navigation', handler='search'),
+    'search_semantic_pages': ToolSpec('query', 'semantic_pages', False, handler='search', incurs_cost=True),
 }
 
 

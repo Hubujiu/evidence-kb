@@ -8,9 +8,11 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from uuid import uuid4
 
@@ -18,6 +20,28 @@ ROOT = Path(__file__).resolve().parents[1]
 SHARED = frozenset({"contracts", "cache", "budget", "budget_batches", "provider_capture"})
 FOUNDATIONS = frozenset({"contracts", "cache", "budget", "budget_batches"})
 EXCLUDED_IMPORTS = frozenset({"output", "outputs", "reports"})
+AGENT_DEPENDENCIES = {
+    'agent_provider': frozenset(),
+    'model_errors': frozenset(),
+    'agent_model': frozenset({'agent_provider', 'agent_context', 'agent_schema', 'model_errors'}),
+    'agent_engine': frozenset({'agent_native'}),
+    'agent_native': frozenset(),
+    'agent_decisions': frozenset(),
+    'agent_tool_loop': frozenset({'agent_decisions', 'agent_plugins', 'harness_services', 'plugin_host'}),
+    'agent_plugins': frozenset({'agent_schema'}),
+    'plugin_native': frozenset({'agent_native'}),
+    'plugin_host': frozenset({'plugin_native'}),
+    'harness_sessions': frozenset(),
+    'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host'}),
+    'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
+                                  'harness_loop', 'plugin_host'}),
+    'agent_tool_registry': frozenset({'agent_protocol'}),
+    'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),
+}
+HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 'agent_tool_loop',
+                           'agent_plugins', 'plugin_native', 'plugin_host', 'harness_sessions',
+                           'harness_loop', 'harness_services'})
+NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'}, 'agent-harness': {'serde', 'serde_json'}}
 
 
 @dataclass(frozen=True)
@@ -82,6 +106,61 @@ def path_mutations(tree: ast.AST):
                 yield node.lineno
 
 
+def native_architecture_violations(root: Path) -> list[str]:
+    errors = []
+    workspace = root / 'Cargo.toml'
+    if workspace.exists():
+        config = tomllib.loads(workspace.read_text('utf-8'))
+        if config.get('patch') or config.get('replace'):
+            errors.append('Cargo.toml: native dependency substitutions need explicit architecture review')
+
+    def dependencies(table):
+        for name, value in table.items():
+            if name in {'dependencies', 'dev-dependencies', 'build-dependencies'}:
+                yield from value.items()
+            elif isinstance(value, dict):
+                yield from dependencies(value)
+
+    for crate, allowed in NATIVE_DEPENDENCIES.items():
+        directory = root / 'rust' / crate
+        manifest = directory / 'Cargo.toml'
+        if not manifest.exists():
+            continue
+        relative = manifest.relative_to(root).as_posix()
+        document = tomllib.loads(manifest.read_text('utf-8'))
+        if document.get('package', {}).get('build') or (directory / 'build.rs').exists():
+            errors.append(f'{relative}: generic native crates cannot run source-generating build scripts')
+        for kind in ('lib', 'bin', 'example', 'test', 'bench'):
+            targets = document.get(kind, [])
+            targets = [targets] if isinstance(targets, dict) else targets
+            for target in targets:
+                if 'path' in target and not (directory / target['path']).resolve().is_relative_to(directory.resolve()):
+                    errors.append(f'{relative}: native build targets must remain inside their crate')
+        for name, spec in dependencies(document):
+            spec = spec if isinstance(spec, dict) else {'version': spec}
+            if name not in allowed or spec.get('package', name) != name:
+                errors.append(f'{relative}: {name}: native harness cannot depend on business implementations')
+            elif name == 'agent-harness':
+                expected = (root / 'rust/agent-harness').resolve()
+                if not spec.get('path') or (directory / spec['path']).resolve() != expected:
+                    errors.append(f'{relative}: agent-harness must resolve to the reviewed workspace crate')
+            elif any(key in spec for key in ('path', 'git', 'workspace')):
+                errors.append(f'{relative}: {name}: native foundations must use their declared registry package')
+        for source in sorted(directory.rglob('*.rs')):
+            text = source.read_text('utf-8')
+            patterns = (r'\binclude(?:_str|_bytes)?!\s*\(([^)]*)\)', r'#\s*\[\s*path\s*=\s*([^\]]+)\]')
+            for pattern in patterns:
+                for match in re.finditer(pattern, text):
+                    value = match.group(1).strip()
+                    literal = re.fullmatch(r'"([^"\\]+)"\s*,?', value)
+                    target = (source.parent / literal.group(1)).resolve() if literal else None
+                    if target is None or not target.is_relative_to(directory.resolve()):
+                        line = text.count('\n', 0, match.start()) + 1
+                        errors.append(f'{source.relative_to(root).as_posix()}:{line}: native source '
+                                      'inclusions must remain literal paths inside their crate')
+    return errors
+
+
 def architecture_violations(root: Path) -> list[str]:
     errors = []
     sources = sorted((root / "kb_platform").rglob("*.py"))
@@ -101,6 +180,12 @@ def architecture_violations(root: Path) -> list[str]:
         for line, target in imports(tree, module):
             top = target.split(".")[0]
             reason = None
+            layer = AGENT_DEPENDENCIES.get(path.stem) if not evaluation else None
+            if layer is not None and target.startswith('kb_platform.') and target.split('.')[1] not in layer:
+                reason = 'agent boundary cannot depend on this implementation; inject its port at composition'
+            if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider'}
+                    and top in {'openai', 'httpx', 'fastapi', 'requests', 'psycopg'}):
+                reason = 'agent contracts and model policy cannot depend on transport or API frameworks'
             if top in EXCLUDED_IMPORTS:
                 reason = "generated artifacts cannot be runtime dependencies"
             elif (not evaluation or shared) and top == "scripts":
@@ -123,6 +208,7 @@ def architecture_violations(root: Path) -> list[str]:
                 errors.append(f"{relative.as_posix()}:{line}: product code cannot mutate sys.path")
     if (root / "tests").exists():
         errors.append("Keep contract checks in kb_platform/rag_testing; do not restore a parallel tests directory")
+    errors.extend(native_architecture_violations(root))
     return sorted(set(errors))
 
 
@@ -191,6 +277,12 @@ def run_check(name: str, command: list[str], output: Path, env: dict[str, str]) 
     return CheckResult(name, code, log.name)
 
 
+def kernel_library_path(target: Path) -> Path:
+    name = {"win32": "agent_kernel.dll", "darwin": "libagent_kernel.dylib"}.get(
+        sys.platform, "libagent_kernel.so")
+    return target / "debug" / name
+
+
 def main() -> int:
     if callable(getattr(sys.stdout, "reconfigure", None)):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -218,9 +310,17 @@ def main() -> int:
                if not key.startswith(("KB_", "EVIDENCE_KB_", "GOOGLE_", "OPENAI_", "ANTHROPIC_", "AZURE_"))}
         env.update({"KB_DEFER_DEFAULT_APP": "1", "KB_REMOTE_MODELS": "0", "KB_ENABLE_EMBEDDINGS": "0",
                     "PYTHONUTF8": "1", "PYTHONDONTWRITEBYTECODE": "1", "PYTHONOPTIMIZE": "0",
+                    "CARGO_NET_OFFLINE": "true", "RUSTUP_AUTO_INSTALL": "0",
                     "KB_STORAGE_ROOT": scratch, "KB_AGENT_ROOT": scratch, "KB_RESEARCH_ROOT": scratch,
                     "KB_IDENTITIES_FILE": str(Path(scratch) / "missing-identities.json")})
         env.pop("PYTHONPATH", None)
+        target = ROOT / "target/checks" / uuid4().hex
+        cargo = ["cargo", "--color", "never"]
+        results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))
+        native_args = ["--workspace", "--locked", "--offline", "--target-dir", str(target)]
+        results.append(run_check("rust-build", cargo + ["build", *native_args], output, env))
+        results.append(run_check("rust-tests", cargo + ["test", *native_args], output, env))
+        env["KB_AGENT_KERNEL_LIBRARY"] = str(kernel_library_path(target))
         results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts"], output, env))
         for kind in ("contracts", "scorer"):
             results.append(run_check(kind, [sys.executable, "-B", str(Path(__file__).resolve()),
@@ -229,6 +329,7 @@ def main() -> int:
     write_json(output / "summary.json", {"decision": "PASS" if passed else "FAIL",
         "checks": [asdict(result) for result in results], "new_model_calls": 0,
         "new_embedding_calls": 0, "new_judge_calls": 0,
+        "native_library": str(kernel_library_path(target)),
         "scope": "offline gates; component checks and scorer controls reported separately"})
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1

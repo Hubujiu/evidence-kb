@@ -1,0 +1,27 @@
+"""Provider port: normalized text completions, exact cache identity and attempt accounting.
+
+Implementations own transport, credentials, retries and durable physical receipts.
+They must update trace['attempt'] for each admitted attempt, including failures.
+"""
+from dataclasses import dataclass
+from typing import Protocol
+
+
+@dataclass(frozen=True)
+class ProviderCompletion:
+    content: str | None
+    finish_reason: str | None
+    usage: dict | None
+    diagnostic: object = None
+
+
+class ModelProvider(Protocol):
+    @property
+    def max_attempts(self) -> int: ...
+    def identity(self, messages: list[dict], output_limit: int) -> dict: ...
+    def complete(self, messages: list[dict], output_limit: int, *, purpose: str,
+                 key: str, trace: dict) -> ProviderCompletion: ...
+    def cache_get(self, key: str) -> dict | None: ...
+    def cache_put(self, key: str, value: dict) -> None: ...
+    def record(self, purpose: str, key: str, **metadata) -> None: ...
+    def save_failed_response(self, result: ProviderCompletion, metadata: dict) -> dict: ...

@@ -190,10 +190,29 @@ class AgentStore:
                 raise PlatformError('ARTIFACT_INTEGRITY', 'Artifact integrity check failed', 503)
             return body
 
-    def finish(self, actor, session_id, token, state, response):
+    def finish(self, actor, session_id, token, state, response, *, assistant_event=None):
+        return self._finish(actor, session_id, token, state, response, assistant_event=assistant_event)
+
+    def fail(self, actor, session_id, token, state, response):
+        """An expired writer may close its failure only until another writer takes over."""
+        if response.get('status') != 'error' or response.get('answer') or response.get('evidence') or response.get('claims'):
+            raise ValueError('INVALID_FAILURE_RESPONSE')
+        return self._finish(actor, session_id, token, state, response, failure=True)
+
+    def _finish(self, actor, session_id, token, state, response, *, failure=False, assistant_event=None):
         with self._db() as db:
             session = self._owner(db, actor, session_id)
-            request = self._lease(db, session_id, token)
+            if failure:
+                request = db.execute("SELECT * FROM requests WHERE session=? AND token=? AND status='running'",
+                                     (session_id, token)).fetchone()
+                if request is None:
+                    raise PlatformError('TURN_LEASE_EXPIRED', 'Conversation writer was superseded', 409)
+                self._event(db, session_id, 'turn_failed', {'code': response['stop_reason']},
+                            request['request_id'], 'orchestrator')
+            else:
+                request = self._lease(db, session_id, token)
+                if assistant_event is not None:
+                    self._event(db, session_id, 'assistant', assistant_event, request['request_id'], 'orchestrator')
             response = {**response, 'session_id': session_id, 'revision': session['revision'] + 1}
             self._event(db, session_id, 'turn_completed', response, request['request_id'], 'orchestrator')
             db.execute('UPDATE sessions SET revision=?,state=?,updated=? WHERE id=?',

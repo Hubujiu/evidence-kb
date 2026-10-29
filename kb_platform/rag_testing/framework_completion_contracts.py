@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import httpx
 
 from kb_platform.agent_context import ContextManager, ContextPolicy, estimate_messages
+from kb_platform.agent_luna import LunaModelProvider
 from kb_platform.agent_model import AgentModel
 from kb_platform.agent_protocol import ANSWER_SCHEMA, DECISION_SCHEMA, VERDICT_SCHEMA
 from kb_platform.agent_schema import compile_schema, validate_output
@@ -101,9 +102,11 @@ class TypedProtocolContracts(unittest.TestCase):
             tool_arguments('unknown', {}, '', config)
 
     def test_provider_backed_tools_have_no_outer_retry(self):
-        self.assertFalse(TOOLS['search_pipeline'].read_only)
-        self.assertFalse(TOOLS['search_semantic_pages'].read_only)
-        self.assertTrue(TOOLS['read'].read_only)
+        self.assertFalse(TOOLS['search_pipeline'].retry_safe)
+        self.assertFalse(TOOLS['search_semantic_pages'].retry_safe)
+        self.assertTrue(TOOLS['read'].retry_safe)
+        self.assertTrue(TOOLS['search_pipeline'].incurs_cost)
+        self.assertFalse(TOOLS['search_pipeline'].mutates_data)
 
 
 class ToolRetryContracts(unittest.TestCase):
@@ -204,7 +207,7 @@ class TokenCapabilityContracts(unittest.TestCase):
 
     def test_strict_model_rejects_before_reservation_and_transport(self):
         luna, ledger = Mock(), Mock()
-        model = AgentModel(luna, ContextPolicy(strict_tokens=True), ledger)
+        model = AgentModel(LunaModelProvider(luna), ContextPolicy(strict_tokens=True), ledger)
         with self.assertRaisesRegex(Exception, 'TOKEN_CAPABILITY_UNVERIFIED'):
             model.complete([], role='answer', schema={}, call_context={})
         ledger.reserve.assert_not_called()

@@ -11,9 +11,11 @@ from unittest.mock import patch
 
 import httpx
 
+from kb_platform.agent_luna import LunaModelProvider
 from kb_platform.agent_model import AgentModel
 from kb_platform.agent_schema import compile_schema, validate_output
-from kb_platform.agent_service import AgentService, CONFIGS, RECOMMENDED
+from kb_platform.knowledge_service import KnowledgeService as AgentService
+from kb_platform.knowledge_policy import CONFIGS, RECOMMENDED
 from kb_platform.core import Actor, PlatformError
 from .budget import BudgetLedger
 from .product_fixture import Authority, Gateway
@@ -270,20 +272,20 @@ class AgentGraphContracts(unittest.TestCase):
             self.turn(case)
         self.assertEqual(len(case.model.calls), 4)
 
-    def test_model_call_budget_blocks_generation_and_preserves_failed_request(self):
+    def test_insufficient_final_budget_blocks_exploration_and_preserves_failed_request(self):
         case = self.setup_service(normal_script(), config={'max_model_calls': 2})
         result = self.turn(case)
         self.assertEqual(result['status'], 'error', result)
         self.assertEqual(result['stop_reason'], 'AGENT_BUDGET_EXHAUSTED')
-        self.assertEqual(len(case.model.calls), 2)
+        self.assertEqual(len(case.model.calls), 0)
         self.assertEqual(self.turn(case), result)
-        self.assertEqual(len(case.model.calls), 2)
+        self.assertEqual(len(case.model.calls), 0)
 
     def test_elapsed_budget_stops_before_tool_node(self):
         case = self.setup_service([('decision', decision())])
         clock = [0.0]
         case.model.after = lambda role, value: clock.__setitem__(0, 1000.0)
-        with patch('kb_platform.agent_service.time.perf_counter', side_effect=lambda: clock[0]):
+        with patch('kb_platform.knowledge_turn.time.perf_counter', side_effect=lambda: clock[0]):
             result = self.turn(case)
         self.assertEqual(result['stop_reason'], 'AGENT_BUDGET_EXHAUSTED')
         self.assertEqual(case.authority.calls, [])
@@ -357,14 +359,11 @@ class AgentGraphContracts(unittest.TestCase):
         case = self.setup_service(normal_script())
         with patch.dict('os.environ', {'LANGSMITH_TRACING': 'true', 'LANGCHAIN_TRACING_V2': 'true',
                                       'LANGSMITH_API_KEY': 'synthetic'}), \
-                patch('langsmith.client.Client.create_run') as create, \
-                patch('langsmith.client.Client.update_run') as update, \
-                patch('langsmith.client.Client.batch_ingest_runs') as batch:
+                patch.dict('sys.modules', {'langgraph': None, 'langsmith': None}), \
+                patch('httpx.Client.send', side_effect=AssertionError('Unexpected remote tracing')) as send:
             result = self.turn(case)
         self.assertEqual(result['status'], 'answered', result)
-        create.assert_not_called()
-        update.assert_not_called()
-        batch.assert_not_called()
+        send.assert_not_called()
 
     def test_real_sdk_unknown_receipt_still_blocks_new_graph_after_restart(self):
         case = self.setup_service()
@@ -383,7 +382,7 @@ class AgentGraphContracts(unittest.TestCase):
             self.addCleanup(provider.close)
             observe_client(provider, ledger, case.root / 'capture', category='graph-contract',
                            inner=httpx.MockTransport(interrupted))
-            case.service = AgentService(None, AgentModel(provider), root=case.root, gateway=case.gateway,
+            case.service = AgentService(None, AgentModel(LunaModelProvider(provider)), root=case.root, gateway=case.gateway,
                                         retrieval_config={'channels': ['bm25'], 'rerank': False})
         attach()
         result = self.turn(case)

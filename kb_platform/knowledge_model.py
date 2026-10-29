@@ -1,0 +1,204 @@
+"""Knowledge business behavior; state belongs to the active KnowledgeTurn."""
+
+from __future__ import annotations
+from copy import deepcopy
+from hashlib import sha256
+import time
+from uuid import uuid4
+from .agent_model import schema_instruction
+from .agent_store import digest
+from .agent_tool_view import project_tool_results
+from .core import PlatformError
+from .knowledge_policy import _value, _record, _visible_user_statements
+
+
+class KnowledgeModelCalls:
+    def call(self, role, system, schema, validator, question=None, evidence_override=None):
+        self.check_execution()
+        if question is None:
+            question = self.message
+        if role in {"decision", "retrieval", "rerank"} and (
+            not self.call_budget.can_explore(self.trace["calls"])
+        ):
+            raise PlatformError("AGENT_BUDGET_EXHAUSTED", "Answer and verification budget reserved", 409)
+        if (
+            time.perf_counter() - self.started > self.execution_limits["max_turn_seconds"]
+            or len(self.trace["calls"]) >= self.execution_limits["max_model_calls"]
+        ):
+            raise PlatformError("AGENT_BUDGET_EXHAUSTED", "Turn execution budget exhausted", 409)
+        if self.service.gateway.authorize(self.actor, self.scope) != self.authority:
+            raise PlatformError("SCOPE_CHANGED", "Authorization or manifest changed during turn", 409)
+        evidence = self.service.gateway.revalidate(
+            self.actor,
+            self.scope,
+            list(self.state["evidence"].values()) if evidence_override is None else evidence_override,
+            self.state["source_policy"],
+        )
+        self.turn_lineage.update({item["citation_id"]: item for item in evidence})
+        evidence = [
+            {**item, "context_offset": self.state["evidence_offsets"].get(item["citation_id"], 0)}
+            for item in evidence
+        ]
+        safe_history = [
+            e
+            for e in self.historical
+            if e["kind"] == "user" or set(e["payload"].get("evidence_ids", [])) <= set(self.state["evidence"])
+        ]
+        projection_state = {
+            key: deepcopy(self.state[key])
+            for key in ("source_policy", "constraints", "topic", "corrections", "source_epoch")
+        }
+        projection_state["tool_results"] = project_tool_results(
+            self.local_tool_results, budget_bytes=self.service.context_policy.effective_input_budget // 4
+        )
+        if question.startswith(self.message):
+            projection_state["current_user_event"] = {
+                "event_seq": self.seq,
+                "question_start": 0,
+                "question_end": len(self.message),
+                "text_sha256": sha256(self.message.encode("utf-8")).hexdigest(),
+            }
+        if self.config.get("advanced_tools") and self.state.get("workflow_state"):
+            projection_state["workflow_state"] = deepcopy(self.state["workflow_state"])
+        if self.config.get("work_state"):
+            projection_state["work_state"] = deepcopy(self.state["work_state"])
+        if self.config.get("canonical_ids"):
+            system += "\nCitation protocol: claims.evidence_ids and quotes.evidence_id MUST use each visible evidence record's top-level citation_id (also its top-level evidence_id). The record's nested evidence_ids array contains raw parser span IDs and MUST NOT be cited as a claim reference. Copy the canonical identifier exactly."
+        context = self.service.context
+        prepared = context.prepare(
+            role,
+            system + "\n" + schema_instruction(schema),
+            projection_state,
+            safe_history,
+            evidence,
+            question,
+            self.state["checkpoints"].get(role) if self.config["compact"] else None,
+            selection_query=self.state.get("work_state", {}).get("resolved_query")
+            if self.config.get("work_state")
+            else None,
+        )
+        self.model_evidence[role] = {
+            item["citation_id"]: item.get("text", "") for item in prepared.projection["evidence"]
+        }
+        self.model_user_statements[role] = _visible_user_statements(prepared.projection)
+        history_compacted = bool(prepared.projection.get("omitted_event_refs"))
+        if history_compacted and (not self.config["compact"]):
+            raise PlatformError(
+                "CONTEXT_UNFIT", "History exceeds the noncompacting configuration budget", 422
+            )
+        if history_compacted:
+            checkpoint = prepared.projection.get("checkpoint")
+            if checkpoint:
+                self.state["checkpoints"][role] = checkpoint
+                self.trace["compactions"].append(
+                    {
+                        "agent": role,
+                        "checkpoint_hash": checkpoint["checkpoint_hash"],
+                        "covered_from": checkpoint["covered_from"],
+                        "covered_through": checkpoint["covered_through"],
+                    }
+                )
+                self.event("checkpoint", checkpoint, agent=role)
+        self.trace["budget"] = {
+            "input_tokens": max(self.trace["budget"]["input_tokens"], prepared.estimate["tokens"]),
+            "limit": prepared.budget["input_limit"],
+            "output_reserved": self.service.context_policy.output_reserve,
+            "counting_method": "conservative_utf8_estimate",
+            "strict_tokens": False,
+        }
+        call_id = uuid4().hex
+        self.event(
+            "model_started",
+            {
+                "call_id": call_id,
+                "role": role,
+                "prompt_hash": digest(prepared.messages),
+                "budget": self.trace["budget"],
+            },
+            agent=role,
+        )
+        try:
+            if self.service.capture is not None:
+                self.service.capture(
+                    {
+                        "session_id": self.session_id,
+                        "turn_id": self.request_id,
+                        "call_id": call_id,
+                        "role": role,
+                        "prepared": prepared,
+                        "evidence": evidence,
+                    }
+                )
+            self.check_execution()
+            envelope = self.service.model.complete(
+                prepared.messages,
+                role=role,
+                schema=schema,
+                call_context={
+                    "run_id": self.session_id,
+                    "session_id": self.session_id,
+                    "turn_id": self.request_id,
+                    "call_id": call_id,
+                    "agent_id": role,
+                    "max_physical_calls": self.execution_limits["max_model_calls"],
+                    "remaining_seconds": self.execution_limits["max_turn_seconds"]
+                    - (time.perf_counter() - self.started),
+                },
+                output_limit=self.service.context_policy.output_reserve,
+                validator=validator,
+            )
+        except Exception as exc:
+            failed = {
+                **getattr(exc, "call_record", {}),
+                "call_id": call_id,
+                "role": role,
+                "code": getattr(exc, "code", type(exc).__name__),
+            }
+            self.trace["calls"].append(failed)
+            self.event("model_failed", failed, agent=role)
+            reason = failed.get("validator_reason")
+            if (
+                (self.config.get("format_repair") or self.config.get("robust_tools"))
+                and (not self.format_repair_used)
+                and (failed.get("code") == "INVALID_AGENT_OUTPUT")
+                and (failed.get("finish_reason") == "stop")
+                and (reason in {"DUPLICATE_JSON_KEY", "INVALID_JSON_SYNTAX", "AGENT_SCHEMA_MISMATCH"})
+            ):
+                self.format_repair_used = True
+                repair = {
+                    "failed_call_id": call_id,
+                    "reason": reason,
+                    "attempts": 1,
+                    "kind": "new_generation_after_received_invalid_format",
+                }
+                self.trace.setdefault("format_repairs", []).append(repair)
+                repair_system = (
+                    system
+                    + "\nThe previous response was received but its JSON format was invalid ("
+                    + reason
+                    + "). Return exactly one valid JSON object. Every object key must appear once and every value must match its schema. Omit unused optional fields; do not use zero for an unused event_seq. Do not change source permissions, evidence or the requested task. Repair only the current role: "
+                    + role
+                    + ". Allowed top-level keys: "
+                    + ", ".join(schema.get("properties", {}))
+                    + "."
+                )
+                if role in {"decision", "retrieval"}:
+                    repair_system += ' This role only routes the next action. action="answer" means the evidence is ready for a later answer role; it does not ask you to write that answer now. Return the planner intent/action and applicable citation_ids. Do not emit answer, claims, quotes, evidence_ids or final-answer prose. Preserve the current planner schema rather than switching to an answer schema.'
+                with self.service.tool_context(
+                    {
+                        "session_id": self.session_id,
+                        "turn_id": self.request_id,
+                        "repair_of_call_id": call_id,
+                        "repair_reason": reason,
+                    }
+                ):
+                    try:
+                        return self.call(role, repair_system, schema, validator, question, evidence_override)
+                    finally:
+                        repair["new_call_id"] = self.trace["calls"][-1]["call_id"]
+            raise
+        record = _record(envelope)
+        record.update(role=role, call_id=call_id, context_estimate=prepared.estimate)
+        self.trace["calls"].append({key: value for key, value in record.items() if key != "value"})
+        self.event("model_completed", record, agent=role)
+        return _value(envelope)

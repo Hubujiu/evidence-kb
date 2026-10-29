@@ -20,7 +20,9 @@ from uuid import uuid4
 
 import httpx
 
+from .agent_engine import current_execution
 from .embeddings import EmbeddingError
+from .model_errors import RemoteModelError
 from .luna_sdk import TRANSPORT_MANIFEST, chat_response
 from .provider_runtime import (ProviderCircuit, RequestReceipts, RuntimePolicyError,
                                classify_failure, retry_after_seconds)
@@ -91,11 +93,6 @@ class _FifoSlots:
             self._cond.notify_all()
 
 
-class RemoteModelError(RuntimeError):
-    def __init__(self, code: str, status: int | None = None, *, retry_after_seconds=None):
-        self.code, self.status = code, status
-        self.retry_after_seconds = retry_after_seconds
-        super().__init__(code + (f" (HTTP {status})" if status else ""))
 
 
 def _embedding_error(error):
@@ -375,6 +372,12 @@ class _Transport:
         """Issue one physical request with a durable pre-send receipt."""
         logical_id = metadata['request_id']
         deadline = metadata.get('deadline_monotonic')
+        execution = current_execution()
+        if execution is not None:
+            if execution.cancellation.is_set():
+                raise RemoteModelError('PROVIDER_CANCELLED')
+            deadline = min(deadline, execution.deadline) if deadline is not None else execution.deadline
+            metadata['deadline_monotonic'] = deadline
         remaining = deadline - time.monotonic() if deadline is not None else None
         if remaining is not None and remaining <= 0:
             raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
@@ -390,7 +393,10 @@ class _Transport:
         started = time.perf_counter()
         try:
             timeout = min(self.timeout, remaining) if remaining is not None else self.timeout
-            response = self._request_response(path, payload, headers, timeout)
+            from .agent_runtime import send_deadline
+
+            with send_deadline(deadline):
+                response = self._request_response(path, payload, headers, timeout)
         except BaseException as exc:
             failure = classify_failure(exc)
             state = failure.outcome if isinstance(exc, httpx.HTTPError) or failure.category == 'admission' else 'UNKNOWN'

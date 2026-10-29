@@ -1,0 +1,3 @@
+[workspace]
+members = ["rust/agent-kernel", "rust/agent-harness"]
+resolver = "3"
