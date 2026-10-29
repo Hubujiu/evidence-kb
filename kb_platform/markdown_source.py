@@ -1,4 +1,3 @@
-"""Markdown structure mapped back to immutable source-codepoint slices."""
 from dataclasses import dataclass
 import re
 
@@ -20,8 +19,8 @@ class SourceBlock:
 
 
 def source_blocks(text: str, *, markdown: bool = True):
-    # Only CR/LF delimit Markdown lines; str.splitlines also splits source characters
-    # such as U+2028, which would make token maps point at the wrong evidence.
+
+
     starts = [0, *(m.end() for m in re.finditer(r"\r\n|\r|\n", text))]
     if starts[-1] != len(text):
         starts.append(len(text))
@@ -37,8 +36,8 @@ def source_blocks(text: str, *, markdown: bool = True):
         if token.type in ("fence", "code_block", "heading_open", "html_block"):
             protected.update(range(first, end))
             if markdown and token.type != "html_block":
-                # Fence content excludes its opening/closing lines. Counting only
-                # LF also works for nested containers and an unterminated last line.
+
+
                 content_lines = token.content.count("\n") + bool(token.content and not token.content.endswith("\n"))
                 unclosed = token.type == "fence" and end - first == content_lines + 1
                 level = int(token.tag[1:]) if token.type == "heading_open" else 0
@@ -46,8 +45,7 @@ def source_blocks(text: str, *, markdown: bool = True):
         elif markdown and token.type == "table_open":
             tables[first] = end
 
-    # Evidence policy, not Markdown syntax: also retain separatorless legacy pipe
-    # tables and their immediately preceding prose caption as one original unit.
+
     first = 0
     while first < len(lines):
         if first in protected or not lines[first].lstrip().startswith("|"):

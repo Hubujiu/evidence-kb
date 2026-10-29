@@ -1,4 +1,3 @@
-"""Turn-local exploration policy over the existing call records, not a second ledger."""
 from dataclasses import dataclass
 
 

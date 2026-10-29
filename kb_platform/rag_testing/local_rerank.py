@@ -1,8 +1,3 @@
-"""Local reranker component probe over integrity-checked historical candidates.
-
-Uses the shared runner/scorer/ledger. No gold reaches inference, no generated
-answer or final request is invented. Consequently full acceptance remains FAIL.
-"""
 from __future__ import annotations
 
 import argparse
@@ -122,8 +117,8 @@ class LocalRanker:
                         values = torch.softmax(logits[:, [tok.convert_tokens_to_ids('no'),
                                                          tok.convert_tokens_to_ids('yes')]], dim=1)[:, 1].cpu().tolist()
                     else:
-                        # One library batch per reservation; no model download,
-                        # hidden truncation, prompt injection, or automatic retries.
+
+
                         values = self.encoder.predict(
                             pairs[offset:offset + 4], batch_size=4, show_progress_bar=False,
                             prompt='', convert_to_numpy=True,
@@ -177,8 +172,8 @@ class HistoricalCandidateAdapter:
                    dict(case_id=request.case_id, request_hash=digest(request),
                         candidates_hash=digest([f.model_dump() for f in candidates]), order=order, **detail))
         print(self.implementation, request.case_id, 'OK', flush=True)
-        # retrieval holds full ranked output for the shared source-level IR metric.
-        # top-k stages are fragment counts, explicitly distinct from source-level k.
+
+
         return Trace(case_id=request.case_id, corpus_hash=corpus, implementation=self.implementation,
                      principal=request.principal, acl_revision=request.acl_revision,
                      stages={'candidate_pool': candidates, 'retrieval': ranked,
@@ -208,7 +203,7 @@ def summarize(suite, report):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Local reranker component probe over integrity-checked historical candidates.\n\nUses the shared runner/scorer/ledger. No gold reaches inference, no generated\nanswer or final request is invented. Consequently full acceptance remains FAIL.\n')
     parser.add_argument('--history', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--models', nargs='*', choices=MODELS, default=list(MODELS))

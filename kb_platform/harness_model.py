@@ -1,4 +1,3 @@
-"""Generic model adapters; auxiliary plugins reuse the same completion service."""
 from copy import deepcopy
 from uuid import uuid4
 
@@ -9,7 +8,7 @@ from .context_budget import canonical, estimate_messages
 
 
 class CallableModel:
-    """Explicit caller-owned adapter; it does not create a network client or budget."""
+
 
     def __init__(self, decide):
         if not callable(decide):
@@ -31,13 +30,7 @@ class CallableModel:
 
 
 class StructuredDecisionModel:
-    """Adapt the metered structured-completion port to the native decision protocol.
 
-    Auxiliary plugins may call complete() directly. They share this exact model,
-    provider and ledger with the decision loop; no second accounting path is added.
-    Tool transcripts are encoded as untrusted JSON data because the existing
-    provider port deliberately does not claim native tool protocol support.
-    """
 
     def __init__(self, model, *, output_limit=None):
         self.model = model
@@ -79,7 +72,7 @@ class StructuredDecisionModel:
         return estimate_messages(prepared)
 
     def complete(self, messages, **options):
-        """Common metered entry for decisions and independent plugin completions."""
+
         options = deepcopy(options)
         execution = current_execution()
         if execution is not None:

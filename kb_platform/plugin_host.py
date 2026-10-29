@@ -1,4 +1,3 @@
-"""Scoped plugin effects; Rust owns dependency resolution, activation and drain admission."""
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -113,7 +112,7 @@ class PluginContext:
 
 
 class PluginHost:
-    """Profile entries select registered implementations; no import strings or eval."""
+
 
     def __init__(self, profile: dict, catalog: Iterable[PluginSpec], *, parent=None):
         if (not isinstance(profile, dict) or set(profile) - {'version', 'plugins'}
@@ -186,11 +185,7 @@ class PluginHost:
             raise
 
     def service(self, name):
-        """Resolve an implementation; use ``call`` or a lease while invoking it.
 
-        Raw resolution also serves mount/disposal dependency lookup. It does not
-        admit new work or extend the lifetime of a retained Python object.
-        """
         with self._lock:
             owner = native_call('resolve', host=self.id, service=name)
             scope = self
@@ -207,8 +202,8 @@ class PluginHost:
     def lease(self):
         with self._lock:
             authority = next((lease for host, lease in _leases.get() if host == self.id), None)
-            # A copied ContextVar is not admission for a new worker thread.
-            # Same-thread nested work retains its admitted lease after drain.
+
+
             if authority is not None and authority.users and authority.thread is current_thread():
                 authority.users += 1
             else:
@@ -230,8 +225,8 @@ class PluginHost:
 
     def emit(self, event: EventName, payload):
         event = EventName(event)
-        # Snapshotting listeners is insufficient: their resources must stay alive
-        # through every callback, including inherited listeners from parent scopes.
+
+
         with self.lease():
             frozen = _freeze(deepcopy(payload))
             with self._lock:

@@ -1,4 +1,3 @@
-"""Canonical paragraph chunking with exact original-text offsets."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,11 +20,7 @@ def original_blocks(source_id, text):
 
 
 def retrieval_chunks(source_id, text, chunk_characters=650):
-    """Paragraph chunks with line-safe cuts for PDF text lacking blank lines.
 
-    Markdown tables remain indivisible. A single overlong line is retained
-    whole. No question or annotation controls the boundaries.
-    """
     result = []
     for paragraph in original_blocks(source_id, text):
         if len(paragraph.text) <= chunk_characters or '|' in paragraph.text:

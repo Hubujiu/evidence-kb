@@ -1,9 +1,3 @@
-"""Bounded PageIndex Markdown-tree + existing title-packet component experiment.
-
-Official pure indexing functions are pinned in vendor/pageindex_md.py. The two
-round navigator is a project adapter, NOT the upstream SDK's agent or PDF indexer.
-No gold enters indexing, navigation, assembly or generation.
-"""
 from __future__ import annotations
 
 import argparse
@@ -31,7 +25,7 @@ NAVIGATE = ('Select document tree nodes needed to answer the question, including
 
 
 def build_index(sources):
-    """Pure upstream tree construction; all served text is sliced from original sources."""
+
     trees, fragments, directory = [], {}, []
     for source in sources:
         headings, lines = extract_nodes_from_markdown(source.text)
@@ -115,7 +109,7 @@ class PageIndexAdapter:
         tree_selected, navigation = (), []
         if self.variant == 'pageindex-added':
             index, fragments = build_index(sources)
-            # Under-test navigation always executes. No response or stage cache is read.
+
             for turn in (1, 2):
                 opened, context, dropped = pack(tree_selected, request.context_budget)
                 value = self.call(request, 'navigate-' + str(turn), NAVIGATE,
@@ -155,7 +149,7 @@ class PageIndexAdapter:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Bounded PageIndex Markdown-tree + existing title-packet component experiment.\n\nOfficial pure indexing functions are pinned in vendor/pageindex_md.py. The two\nround navigator is a project adapter, NOT the upstream SDK's agent or PDF indexer.\nNo gold enters indexing, navigation, assembly or generation.\n")
     for name in ('suite', 'gold', 'providers', 'output'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--predecessor', type=Path, action='append', required=True)

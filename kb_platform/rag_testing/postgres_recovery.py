@@ -1,4 +1,3 @@
-"""Isolated real PostgreSQL fault/recovery checks; no model or embedding calls."""
 from __future__ import annotations
 
 import argparse
@@ -154,7 +153,7 @@ class RecoveryRun:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Isolated real PostgreSQL fault/recovery checks; no model or embedding calls.')
     parser.add_argument("--image", default="evidence-kb-postgres:18.6-textsearch1.5.1-vector0.8.6")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

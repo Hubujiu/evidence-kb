@@ -1,8 +1,3 @@
-"""Deterministic history selection shared by the service and component tests.
-
-Caller must obtain events through the authorized session store. This helper
-retains the service's source-epoch and assistant-evidence eligibility filters.
-"""
 import re
 from hashlib import sha256
 

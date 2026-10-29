@@ -3,6 +3,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .session_identity import Actor
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -28,7 +30,4 @@ class Settings:
         entries = json.loads(self.identities_file.read_text(encoding="utf-8"))
         if not entries or any(len(token) < 32 for token in entries):
             raise RuntimeError("Identity tokens must have at least 32 characters.")
-        for value in entries.values():
-            if not value.get("tenant_id") or not value.get("principal_id"):
-                raise RuntimeError("An identity requires a tenant and principal.")
-        return entries
+        return {token: Actor(**value) for token, value in entries.items()}

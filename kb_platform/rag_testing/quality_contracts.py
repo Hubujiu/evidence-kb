@@ -1,4 +1,3 @@
-"""Offline architecture and I/O policy contracts for the project check command."""
 import json
 from pathlib import Path
 import tempfile
@@ -217,7 +216,7 @@ class OfflinePolicyContracts(unittest.TestCase):
 
 
 class NativeBuildGateContracts(unittest.TestCase):
-    """Synthetic build outcomes verify gate admission, never native correctness."""
+
 
     def run_gate(self, root, output, *, build_code=0, publish=True):
         calls = []
@@ -234,7 +233,7 @@ class NativeBuildGateContracts(unittest.TestCase):
                     source.write_bytes(b'current release library')
                 return check_project.CheckResult(name, build_code, name + '.log')
             if name == 'rust-tests' and source is not None and source.exists():
-                # A later Cargo invocation must not change this run's ABI input.
+
                 source.write_bytes(b'later build artifact')
             return check_project.CheckResult(name, 0, name + '.log')
 
@@ -283,8 +282,8 @@ class NativeBuildGateContracts(unittest.TestCase):
             targets = []
             libraries = []
             for label in ('first', 'second'):
-                # The CLI canonicalizes paths, including Windows 8.3 temp paths.
-                # Exercise an alias on every platform and compare actual locations.
+
+
                 output = root / 'alias' / '..' / label
                 code, summary, calls = self.run_gate(root, output)
                 self.assertEqual(0, code)

@@ -1,5 +1,3 @@
-"""Run unchanged installed official PageIndex SDK PDF indexing with bounded capture."""
-
 import argparse
 import hashlib
 import importlib.metadata
@@ -23,7 +21,7 @@ CAPS = dict(
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Run unchanged installed official PageIndex SDK PDF indexing with bounded capture.')
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--providers", type=Path, default=Path(".local/providers.json"))
     parser.add_argument("--recover", type=Path, action="append")

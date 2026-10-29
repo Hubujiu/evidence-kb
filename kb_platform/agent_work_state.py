@@ -1,4 +1,3 @@
-"""Bounded single-session working state; tool receipts, never invented facts."""
 from copy import deepcopy
 
 
@@ -14,12 +13,11 @@ def begin_work_state(previous, message, constraints, epoch):
 
 def record_decision(work, decision):
     query = decision.get('query')
-    if isinstance(query, str) and query.strip():
+    if query and query.strip():
         work['resolved_query'] = query[:2000]
     for key in ('subquestions', 'missing_information'):
-        value = decision.get(key, work.get(key, []))
-        if isinstance(value, list) and len(value) <= 6 and all(isinstance(x, str) and len(x) <= 500 for x in value):
-            work[key] = value[:]
+        if key in decision:
+            work[key] = decision[key][:]
     work['sufficiency'] = decision.get('sufficiency', 'unknown')
     work['status'] = 'planning' if decision['action'] in {'answer', 'clarify'} else 'executing'
 

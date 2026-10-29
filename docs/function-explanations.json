@@ -23,109 +23,109 @@
     "objects": "从声明的 evidence_ids 去重，保留最后 8 个并更新状态。",
     "output": "无返回值，原地修改工作状态。"
   },
-  "kb_platform/agent_store.py:canonical": {
+  "kb_platform/session_store.py:canonical": {
     "purpose": "为哈希和持久化生成稳定 JSON 表示。",
     "inputs": "可 JSON 序列化的值。",
     "objects": "按键排序、保留 Unicode、去除分隔符空格。",
     "output": "返回 JSON 字符串；不支持的值会触发序列化异常。"
   },
-  "kb_platform/agent_store.py:digest": {
+  "kb_platform/session_store.py:digest": {
     "purpose": "生成会话制品内容的稳定标识。",
     "inputs": "可 JSON 序列化的值。",
     "objects": "先调用 canonical，再对 UTF-8 字节计算 SHA-256。",
     "output": "返回十六进制摘要字符串。"
   },
-  "kb_platform/agent_store.py:now": {
+  "kb_platform/session_store.py:now": {
     "purpose": "提供事件和会话记录的 UTC 时间。",
     "inputs": "无显式输入。",
     "objects": "读取当前 UTC 时间。",
     "output": "返回 ISO 8601 格式字符串。"
   },
-  "kb_platform/agent_store.py:AgentStore.__init__": {
+  "kb_platform/session_store.py:SessionStore.__init__": {
     "purpose": "初始化持久会话数据库及不可变事件约束。",
     "inputs": "数据库根目录，默认为 .local/agentic-v5。",
     "objects": "创建目录和 SQLite 会话、事件、请求、制品表及触发器。",
     "output": "无返回值；初始化实例路径并产生数据库文件。"
   },
-  "kb_platform/agent_store.py:AgentStore._db": {
+  "kb_platform/session_store.py:SessionStore._db": {
     "purpose": "为一次数据库操作提供事务上下文。",
     "inputs": "实例中的数据库路径。",
     "objects": "打开连接、启用 WAL 并开始 IMMEDIATE 事务；成功提交，异常回滚，最后关闭连接。",
     "output": "yield SQLite 连接；异常向调用方传播。"
   },
-  "kb_platform/agent_store.py:AgentStore._owner": {
+  "kb_platform/session_store.py:SessionStore._owner": {
     "purpose": "验证会话归属。",
     "inputs": "数据库连接、身份主体、会话 ID。",
     "objects": "用 session、tenant 和 principal 查询 sessions。",
     "output": "返回数据库行；不存在或不属于主体时抛出 SESSION_NOT_FOUND。"
   },
-  "kb_platform/agent_store.py:AgentStore._decode": {
+  "kb_platform/session_store.py:SessionStore._decode": {
     "purpose": "把数据库会话行转为服务层使用的字典。",
     "inputs": "SQLite 会话行。",
     "objects": "读取 ID、范围、revision 和时间，解析 JSON 状态。",
     "output": "返回会话字典；状态解析失败时抛出异常。"
   },
-  "kb_platform/agent_store.py:AgentStore.create": {
+  "kb_platform/session_store.py:SessionStore.create": {
     "purpose": "创建归属于当前用户的新会话。",
-    "inputs": "身份主体、范围 ID、来源策略、配置名。",
-    "objects": "初始化会话状态、生成 ID 并写入 sessions。",
+    "inputs": "身份主体、范围 ID、初始状态。",
+    "objects": "生成会话 ID，原子写入初始状态和 sessions 记录。",
     "output": "返回经 load 读取的会话字典。"
   },
-  "kb_platform/agent_store.py:AgentStore.load": {
+  "kb_platform/session_store.py:SessionStore.load": {
     "purpose": "读取指定用户自己的会话。",
     "inputs": "身份主体、会话 ID。",
     "objects": "验证归属并解码数据库状态。",
     "output": "返回会话字典；无权访问或不存在时抛错。"
   },
-  "kb_platform/agent_store.py:AgentStore.list_sessions": {
+  "kb_platform/session_store.py:SessionStore.list_sessions": {
     "purpose": "分页列出当前用户会话元数据。",
     "inputs": "身份主体、limit 和 offset。",
     "objects": "验证分页范围，按更新时间及 ID 降序查询当前租户和用户。",
     "output": "返回会话元数据列表，不含模型状态与原文。"
   },
-  "kb_platform/agent_store.py:AgentStore.events": {
+  "kb_platform/session_store.py:SessionStore.events": {
     "purpose": "读取会话事件历史。",
     "inputs": "身份主体、会话 ID。",
     "objects": "验证归属，按序号读取 events 并解析 JSON payload。",
     "output": "返回事件列表。"
   },
-  "kb_platform/agent_store.py:AgentStore._event": {
+  "kb_platform/session_store.py:SessionStore._event": {
     "purpose": "在现有事务内追加事件。",
     "inputs": "数据库连接、会话 ID、类型、内容、组 ID、执行者。",
     "objects": "按该会话最大序号加一写入不可变 events。",
     "output": "返回新事件序号。"
   },
-  "kb_platform/agent_store.py:AgentStore.begin": {
+  "kb_platform/session_store.py:SessionStore.begin": {
     "purpose": "申请单轮对话写入租约并执行幂等检查。",
     "inputs": "身份主体、会话 ID、请求 ID、预期 revision、请求指纹、租约时长。",
     "objects": "检查归属、同 ID 的指纹和状态、revision 与其他活跃租约；登记新请求。",
     "output": "已完成请求返回 cached；新请求返回 token 和 session；冲突或中断抛错。"
   },
-  "kb_platform/agent_store.py:AgentStore._lease": {
+  "kb_platform/session_store.py:SessionStore._lease": {
     "purpose": "核验单轮请求写租约是否有效。",
     "inputs": "数据库连接、会话 ID、租约 token。",
     "objects": "查询 running 请求并检查过期时间。",
     "output": "返回请求行；无效或过期时抛出 TURN_LEASE_EXPIRED。"
   },
-  "kb_platform/agent_store.py:AgentStore.append": {
+  "kb_platform/session_store.py:SessionStore.append": {
     "purpose": "在有效租约下追加一条会话事件。",
     "inputs": "身份主体、会话 ID、token、事件类型、payload、组 ID、执行者。",
     "objects": "检查归属和租约，在事务中插入事件。",
     "output": "返回事件序号。"
   },
-  "kb_platform/agent_store.py:AgentStore.artifact": {
+  "kb_platform/session_store.py:SessionStore.artifact": {
     "purpose": "按内容摘要保存会话制品。",
     "inputs": "身份主体、会话 ID、token、可 JSON 序列化的制品内容。",
     "objects": "验证归属和租约，按摘要去重插入 artifacts。",
     "output": "返回 artifact_id、sha256 和规范化 JSON 字节数。"
   },
-  "kb_platform/agent_store.py:AgentStore.read_artifact": {
+  "kb_platform/session_store.py:SessionStore.read_artifact": {
     "purpose": "读取并验证会话制品。",
     "inputs": "身份主体、会话 ID、制品 ID。",
     "objects": "检查归属，读取 JSON 并重新计算摘要。",
     "output": "返回制品内容；缺失或完整性错误时抛错。"
   },
-  "kb_platform/agent_store.py:AgentStore.finish": {
+  "kb_platform/session_store.py:SessionStore.finish": {
     "purpose": "原子提交一轮的最终状态和响应。",
     "inputs": "身份主体、会话 ID、token、会话状态、响应字典。",
     "objects": "检查租约，追加完成事件，递增 revision，更新会话并标记请求完成。",

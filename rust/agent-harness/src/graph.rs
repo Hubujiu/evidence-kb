@@ -1,5 +1,3 @@
-//! Bounded graph execution. Domain callbacks choose declared routes; Rust owns progression.
-
 use std::collections::BTreeMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -182,13 +180,12 @@ struct AcceptRequest {
     route: String,
 }
 
-pub fn dispatch(command: &str, mut request: Value) -> Result<Value, Error> {
+pub(crate) fn dispatch(
+    command: &str,
+    request: serde_json::Map<String, Value>,
+) -> Result<Value, Error> {
     static GRAPHS: OnceLock<Mutex<GraphRegistry>> = OnceLock::new();
-    let object = request
-        .as_object_mut()
-        .ok_or_else(|| Error::new("INVALID_REQUEST", "request must be an object"))?;
-    object.remove("version");
-    object.remove("command");
+    let request = Value::Object(request);
     let mut registry = GRAPHS
         .get_or_init(|| Mutex::new(GraphRegistry::default()))
         .lock()

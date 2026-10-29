@@ -1,4 +1,3 @@
-"""Provider-neutral context accounting; estimates are not verified token limits."""
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -42,7 +41,7 @@ class ContextBudget:
 
 
 def estimate_messages(messages):
-    """Conservative engineering estimate, not a mathematical provider upper bound."""
+
     content_bytes = len(canonical(messages).encode("utf-8"))
     return {"tokens": content_bytes + 16 * len(messages) + 32,
             "kind": "conservative_utf8_estimate", "exact": False,

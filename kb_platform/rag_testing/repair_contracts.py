@@ -1,4 +1,3 @@
-"""Offline safety checks for the experimental source-title packet component."""
 import unittest
 
 from kb_platform.title_packets import title_packet
@@ -60,13 +59,11 @@ class PacketContracts(unittest.TestCase):
 
 
 class EvidenceObjectiveContracts(unittest.TestCase):
-    def test_old_plan_hash_is_stable(self):
-        import json
-        from pathlib import Path
-        from .contracts import Plan, digest
-        raw = json.loads(Path('config/rag-testing/plan-v1.json').read_text('utf-8'))
-        raw.setdefault('require_answer_behavior', False)  # Already an old Plan default.
-        self.assertEqual(digest(raw), digest(Plan.model_validate(raw)))
+    def test_plan_serializes_its_full_objective(self):
+        from .contracts import Plan
+        plan = Plan(suite_hash='test')
+        self.assertEqual(plan.model_dump(mode='json')['objective'], 'full')
+        self.assertEqual(Plan.model_validate_json(plan.model_dump_json()), plan)
 
     def test_evidence_objective_is_hash_bound(self):
         from .contracts import Plan, digest
@@ -107,9 +104,9 @@ class ProductNavigationContracts(unittest.TestCase):
         units = {d['source_id']: dict(citation_id=d['source_id'], source=d, start=0,
             end=len(d['text']), element=dict(kind='Paragraph', raw_text=d['text'])) for d in documents}
         gateway = SimpleNamespace(embedding_provider=None, pipeline_reranker=None, research=None,
-            platform=SimpleNamespace(_build_config=lambda _: {'channels': ['bm25']}),
+            platform=SimpleNamespace(embedding_provider=None),
             _ids=lambda _: None, _allowed=lambda *args: [],
-            _state=lambda *args, **kwargs: ({'manifest_id': 'build'}, [], {}),
+            _state=lambda *args, **kwargs: ({'manifest_id': 'build'}, [], {'inputs': {'channels': ['bm25']}}),
             _unchanged=lambda *args: None,
             read=lambda actor, scope, ids, policy: [dict(citation_id=k, source_id=k, text=units[k]['element']['raw_text']) for k in ids])
         with patch('kb_platform.retrieval_pipeline._catalog', return_value=(documents, units)):

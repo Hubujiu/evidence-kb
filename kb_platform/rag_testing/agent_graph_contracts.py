@@ -1,4 +1,3 @@
-"""Synthetic graph scenarios over real service, gateway, store and budget boundaries."""
 from copy import deepcopy
 from contextlib import closing
 import json
@@ -12,7 +11,7 @@ from unittest.mock import patch
 import httpx
 
 from kb_platform.agent_luna import LunaModelProvider
-from kb_platform.agent_model import AgentModel
+from kb_platform.agent_model import AgentModel, CompletionEnvelope
 from kb_platform.agent_schema import compile_schema, validate_output
 from kb_platform.knowledge_service import KnowledgeService as AgentService
 from kb_platform.knowledge_policy import CONFIGS, RECOMMENDED
@@ -60,8 +59,9 @@ class ScenarioModel:
         validator(value)
         if self.after:
             self.after(role, value)
-        return {'value': value, 'attempts': 1, 'cache_kind': 'none', 'finish_reason': 'stop',
-                'usage': {'available': True, 'total_tokens': 10, 'prompt_tokens': 7, 'completion_tokens': 3}}
+        return CompletionEnvelope(value, kwargs['call_context']['call_id'],
+            {'available': True, 'total_tokens': 10, 'prompt_tokens': 7, 'completion_tokens': 3},
+            1, 'stop', 'none', 'synthetic-request')
 
 
 class AgentGraphContracts(unittest.TestCase):

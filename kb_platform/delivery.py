@@ -1,8 +1,3 @@
-"""Fixed delivery profile, preflight validation and application composition.
-
-Importing this module sends nothing. Private identities and capture artifacts
-stay under the delivery directory. Preflight does not create an application.
-"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -35,7 +30,7 @@ RUNTIME_CAPS = {'model': 120, 'input_tokens': 1500000, 'output_tokens': 200000,
 
 
 class DeliveryConfigurationError(ValueError):
-    """Safe configuration code; never include credential values in messages."""
+    pass
 
 
 def _path(value):
@@ -102,7 +97,7 @@ def load_profile(config_path=None, providers_path=None, run_root=None):
 
 
 def ensure_private_identity(profile):
-    """Create one new delivery tenant, preserving any existing private identity."""
+
     profile.root.mkdir(parents=True, exist_ok=True)
     path = profile.identities_file
     if not path.exists():
@@ -129,7 +124,7 @@ def ensure_private_identity(profile):
 
 
 def configure_environment(profile, active_caps=None):
-    """Set the explicit profile before importing the API's optional default app."""
+
     caps = active_caps or profile.config['physical_call_caps']
     values = {'KB_REMOTE_MODELS': '1', 'KB_ENABLE_EMBEDDINGS': '0', 'KB_SCOPE_ONLY': '0',
         'KB_DEFER_DEFAULT_APP': '1', 'KB_PROVIDERS_CONFIG': str(profile.provider_path),
@@ -148,7 +143,7 @@ def configure_environment(profile, active_caps=None):
 
 
 def load_budget_batch(profile, path):
-    """Validate an explicit new runtime allowance; never change the original tenant/data paths."""
+
     if path is None:
         return None
     path = _path(path)
@@ -184,12 +179,7 @@ def load_budget_batch(profile, path):
 
 
 def validate_semantic_runtime(config_path, *, provider_factory=None):
-    """Compare the native admitted manifest without opening its ledger for write.
 
-    The ordinary runtime factory also creates ledger/service directories. This
-    preflight uses its existing provider manifest implementation and a read-only
-    facade over the already registered ledger; it cannot reserve or send a query.
-    """
     provider = None
     try:
         path = _path(config_path)
@@ -238,7 +228,7 @@ def validate_semantic_runtime(config_path, *, provider_factory=None):
 
 
 def _dependency_probe(settings):
-    """Bounded storage liveness only; no embedding or generation."""
+
     import httpx
     import psycopg
 
@@ -284,8 +274,8 @@ def _dependency_probe(settings):
 
 
 def _serialize_client_sends(provider, lock):
-    # Keep the actual httpx client and its metered transport. The outer lock
-    # queues callers before the ledger's unresolved-request admission check.
+
+
     send = provider.client.send
 
     from .agent_runtime import serialized_send as admitted_send
@@ -448,9 +438,8 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
     return app
 
 
-
 def check_delivery_configuration(config_path=None, providers_path=None, run_root=None, *, budget_batch=None):
-    """Inspect configuration and existing ledgers without creating runtime state."""
+
     profile = load_profile(config_path, providers_path, run_root)
     batch = load_budget_batch(profile, budget_batch or os.getenv('KB_DELIVERY_BUDGET_BATCH') or None)
     state = profile.public()

@@ -1,4 +1,3 @@
-"""Read-only frozen inputs for real search-engine comparisons; no model execution."""
 from __future__ import annotations
 
 import hashlib
@@ -36,7 +35,7 @@ def source_rows(suite):
 
 
 def prepare_locomo(root, output):
-    """Recover exact input-addressed embeddings with original version/ACL/dependencies."""
+
     import numpy as np
     from tokenizers import Tokenizer
 

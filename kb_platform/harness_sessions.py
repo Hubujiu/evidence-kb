@@ -1,4 +1,3 @@
-"""Per-run journal provider; durable application history belongs to its own plugin."""
 from copy import deepcopy
 from dataclasses import dataclass, field
 
@@ -53,11 +52,7 @@ def _unknown_outcome():
 
 
 class DurableSessions:
-    """Generic conversation policy over a replaceable transactional store.
 
-    Successful tool receipts survive failed turns. A recorded tool call without
-    a receipt blocks new work rather than allowing an ambiguous effect to repeat.
-    """
 
     def __init__(self, store):
         self.store = store
@@ -138,8 +133,8 @@ class DurableSession:
             _check_execution()
             copied = deepcopy(record)
             if copied.get('role') == 'assistant' and 'tool_call' not in copied:
-                # The terminal assistant message is published atomically with
-                # state and the completed response, after native admission.
+
+
                 self._final = copied
             else:
                 _persist(self.store.append, self.context.actor, self.context.session_id, self._token,
@@ -196,7 +191,7 @@ class MemorySession:
 
 
 class MemorySessions:
-    """A fresh journal per invocation, with no shared evidence or replay cache."""
+
 
     def begin(self, context, message):
         return MemorySession(message)

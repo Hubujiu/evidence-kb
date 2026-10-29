@@ -1,5 +1,3 @@
-"""Paired official SDK agent versus BM25-page reader, using the unified runner."""
-
 import argparse
 import hashlib
 import json
@@ -31,13 +29,12 @@ def read(p):
 def tokens(text):
     import jieba
 
-    # English parser inserts spaces into words; use the same original extraction
-    # for both arms, and no gold-aware correction dictionary.
+
     return [v.lower() for v in jieba.lcut(text) if re.search(r"\w", v)]
 
 
 def page_bindings(messages, sources):
-    """Map actual serialized page tool outputs to authorized immutable originals."""
+
     by_page = {int(s.id.rsplit("-p", 1)[1]): s for s in sources}
     fragments = []
     bindings = []
@@ -182,8 +179,8 @@ class PDFAdapter:
             )
         answer = result["choices"][0]["message"]["content"]
         write_json(self.output / (self.variant + "-" + request.case_id + "-sdk-result.json"), dict(result))
-        # The final answer must be the last actual COMPLETE non-tool completion,
-        # never a reconstructed prompt or an earlier retrieved-page inventory.
+
+
         physical = [
             *self.gateway.recovered_records,
             *[read(p) for p in (self.output / "physical-requests").glob("*.json")],
@@ -259,7 +256,7 @@ class PDFAdapter:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Paired official SDK agent versus BM25-page reader, using the unified runner.')
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--index", type=Path, default=Path("reports/pageindex-full-20261028/index-01"))
     parser.add_argument("--recover", type=Path, action="append")

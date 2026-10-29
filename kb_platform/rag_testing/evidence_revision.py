@@ -1,4 +1,3 @@
-"""Explicit human-adjudicated annotation revision; old artifacts remain read-only."""
 import argparse
 import hashlib
 import json
@@ -26,10 +25,10 @@ def revise(suite, gold):
     changes = []
     for case in data['cases']:
         cid = case['input']['case_id']
-        case['split'] = 'dev'  # All twelve questions have been observed.
+        case['split'] = 'dev'
         if cid in (CASES['missing_place'], CASES['wrong_person']):
             case['expected_behavior'], case['any_of'] = 'abstain', []
-            case['qrels'] = {}  # Old relevance labels included a disputed entity.
+            case['qrels'] = {}
             gold['cases'][cid]['answers'] = ['INSUFFICIENT_EVIDENCE']
             gold['cases'][cid]['adjudicated_expected_behavior'] = 'abstain'
             if cid == CASES['wrong_person']:
@@ -59,7 +58,7 @@ def revise(suite, gold):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Explicit human-adjudicated annotation revision; old artifacts remain read-only.')
     parser.add_argument('--suite', type=Path, required=True)
     parser.add_argument('--gold', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)

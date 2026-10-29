@@ -1,4 +1,3 @@
-"""Run local and CI quality gates without provider credentials or live services."""
 from __future__ import annotations
 
 import argparse
@@ -65,7 +64,7 @@ class CheckResult:
 
 
 def imports(tree: ast.AST, module: str):
-    """Resolve relative imports without importing application code."""
+
     package = module.rpartition(".")[0]
     dynamic_names = {"__import__", "import_module"}
     for node in ast.walk(tree):
@@ -298,7 +297,7 @@ def kernel_library_path(target: Path) -> Path:
 
 
 def snapshot_native_library(build: CheckResult, target: Path, output: Path) -> Path | None:
-    """Only a successful current build can publish the per-run test library."""
+
     if build.exit_code:
         return None
     source = kernel_library_path(target)
@@ -323,7 +322,7 @@ def blocked_contracts(output: Path, reason: str) -> CheckResult:
 def main() -> int:
     if callable(getattr(sys.stdout, "reconfigure", None)):
         sys.stdout.reconfigure(encoding="utf-8")
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Run local and CI quality gates without provider credentials or live services.')
     parser.add_argument("--output", type=Path, default=ROOT / ".local/checks" / uuid4().hex)
     parser.add_argument("--worker", choices=("contracts", "scorer"), help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -351,8 +350,8 @@ def main() -> int:
                     "KB_STORAGE_ROOT": scratch, "KB_AGENT_ROOT": scratch, "KB_RESEARCH_ROOT": scratch,
                     "KB_IDENTITIES_FILE": str(Path(scratch) / "missing-identities.json")})
         env.pop("PYTHONPATH", None)
-        # Isolate concurrent builds before copying the library: a shared Cargo
-        # directory could change between successful build exit and snapshot.
+
+
         target = ROOT / "target/checks" / uuid4().hex
         cargo = ["cargo", "--color", "never"]
         results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))

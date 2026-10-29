@@ -1,4 +1,3 @@
-"""Offline core-bundle integration: real native loop and SQLite, synthetic effects."""
 from copy import deepcopy
 from tempfile import TemporaryDirectory
 from threading import Event

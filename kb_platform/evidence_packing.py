@@ -1,8 +1,3 @@
-"""Query related, verbatim paragraph windows; no model or gold annotations.
-
-The caller owns authorization and the *serialized* request budget. Tables and
-short paragraphs are indivisible. This is selection, never semantic validation.
-"""
 from __future__ import annotations
 
 import math
@@ -18,7 +13,7 @@ def terms(text):
 
 
 def blocks(text, offset=0):
-    """Return exact offsets; retain table headers/rows in the same paragraph."""
+
     spans = []
     for match in re.finditer(r"\S[\s\S]*?(?=\n\s*\n|\Z)", text[offset:]):
         start, end = offset + match.start(), offset + match.end()
@@ -36,17 +31,12 @@ def ranked_blocks(text, question, offset=0):
     frequency = Counter(term for bag in tokenized for term in bag)
     scored = [(sum(math.log1p(len(spans) / frequency[t]) for t in query & bag), start, end)
               for (start, end), bag in zip(spans, tokenized)]
-    # With no lexical signal the caller keeps its established prefix behavior.
+
     return sorted((row for row in scored if row[0] > 0), key=lambda row: (-row[0], row[1]))
 
 
 def rank_texts(texts, question):
-    """The query_blocks distinct-term/IDF rule over complete canonical units.
 
-    Repeated generic words do not outweigh a unit with a complete rare query
-    concept. Whole tables remain whole. No answer, reference page or learned
-    semantic score is supplied here. Ties retain the backend's original order.
-    """
     query = terms(question)
     bags = [terms(text) for text in texts]
     frequency = Counter(term for bag in bags for term in bag)
@@ -55,11 +45,7 @@ def rank_texts(texts, question):
 
 
 def select_window(text, question, offset, fits, max_characters=2000):
-    """Choose a complete relevant block and expand to neighboring whole blocks.
 
-    fits(start, end) must count the final JSON, metadata, system/state/history
-    reserves. A block that cannot fit is left externalized for explicit reread.
-    """
     ranked = ranked_blocks(text, question, offset)
     if not ranked:
         return None
@@ -74,7 +60,7 @@ def select_window(text, question, offset, fits, max_characters=2000):
                 choices.append((spans[left - 1][0], end, left - 1, right))
             if right + 1 < len(spans):
                 choices.append((start, spans[right + 1][1], left, right + 1))
-            # Prefer the smaller extension; never cut a condition or table row.
+
             choices.sort(key=lambda row: (row[1] - row[0], row[0]))
             accepted = next((row for row in choices
                              if row[1] - row[0] <= max_characters and fits(row[0], row[1])), None)

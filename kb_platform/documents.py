@@ -1,5 +1,3 @@
-"""Native document parsing with immutable, explicitly graded source anchors."""
-
 from __future__ import annotations
 
 import csv
@@ -47,7 +45,7 @@ class DocumentError(ValueError):
 
 
 def max_upload_bytes() -> int:
-    """One explicit byte limit for HTTP admission and the parser subprocess."""
+
     raw = os.environ.get("KB_MAX_UPLOAD_BYTES", str(MAX_BYTES))
     try:
         limit = int(raw)
@@ -446,11 +444,7 @@ def _parse_docx(bundle: _Bundle, data: bytes):
     nested_cells = 0
 
     def cell_text(cell, object_path: str, depth: int = 0) -> str:
-        """Preserve nested tables in XML order, anchored to their containing cell.
 
-        Nested grids remain text inside the parent table cell; they are not
-        advertised as independent table-query objects or page coordinates.
-        """
         nonlocal nested_cells
         if depth > 32:
             raise DocumentError("nested_table_depth_limit")
@@ -634,7 +628,7 @@ PARSERS = {
 
 
 def parse_native_document(data: bytes, filename: str, policy: dict | None = None) -> dict:
-    """Return a complete bundle or an explicit FAILED/BLOCKED/PARTIAL result."""
+
     if not isinstance(data, bytes) or not isinstance(filename, str):
         raise TypeError("data must be bytes and filename must be a string")
     bundle = _Bundle(data, filename, policy or {})
@@ -667,7 +661,7 @@ def parse_native_document(data: bytes, filename: str, policy: dict | None = None
 
 
 def parse_document(data: bytes, filename: str, policy: dict | None = None) -> dict:
-    """Product entrypoint: native parsing followed by the configured layout route."""
+
     from .parsing_backends import routed_document
 
     native = parse_native_document(data, filename, policy)
@@ -675,7 +669,7 @@ def parse_document(data: bytes, filename: str, policy: dict | None = None) -> di
 
 
 def render_pdf_preview(data: bytes, anchor: dict) -> bytes:
-    """Render the immutable source page with its native-coordinate highlight."""
+
     import pdfplumber
 
     if hashlib.sha256(data).hexdigest() != anchor.get("source_version_id"):

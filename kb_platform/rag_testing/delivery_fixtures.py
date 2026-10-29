@@ -1,10 +1,3 @@
-"""Frozen synthetic original-file fixtures for the unified RAG test framework.
-
-No evaluator, model client, budget ledger or experimental controller lives here.
-``corpus.json`` contains upload metadata only; ``gold.json`` is scorer-only.
-The two splits use separately authored document families and shared distractors
-within each split. These are engineering challenges, not human business gold.
-"""
 from __future__ import annotations
 
 import csv
@@ -105,7 +98,7 @@ def _file_bytes(format_name, *, lines=(), rows=None):
 
 
 def _specifications():
-    """Independent content families; no answer-derived label revisions."""
+
     return {
         'dev': {
             'family': 'chengchuan-warehouse', 'name': '澄川',
@@ -191,7 +184,7 @@ def _specifications():
 
 
 def create_delivery_fixtures(output_dir):
-    """Write fresh original files and preregister all 24 cases before execution."""
+
     root = Path(output_dir).resolve()
     root.mkdir(parents=True, exist_ok=False)
     documents, evidence, cases = [], [], []
@@ -307,14 +300,7 @@ def load_delivery_fixtures(root):
 
 def bind_suite(platform, actor, scope_id, fixtures, ingested, *, split=None, context_budget=16000,
                provider_id='magpie_luna'):
-    """Bind preregistered gold to exact immutable parses after real upload/build.
 
-    ``ingested`` maps fixture document IDs to actual Platform ingest receipts.
-    The returned citation directory contains original text and offsets only,
-    and is safe for an adapter. ``suite`` and ``expectations`` are scorer-only.
-    Missing/ambiguous preregistered quotations are parse failures; labels and
-    the fixed case denominator are never edited to accommodate parser output.
-    """
     from ..agent_tools import EvidenceGateway
     from ..retrieval_pipeline import _allowed_bindings, _catalog
 
@@ -349,8 +335,8 @@ def bind_suite(platform, actor, scope_id, fixtures, ingested, *, split=None, con
             continue
         source = actual[annotation['document_id']]
         quote = annotation['quote']
-        # Annotation binding is scorer-only. Adapter citation offsets below
-        # come from immutable element positions, never substring matching.
+
+
         if source['text'].count(quote) != 1:
             failures.append({'document_id': annotation['document_id'], 'evidence_id': annotation['id'],
                              'reason': 'preregistered_quote_missing_or_ambiguous', 'expected_quote': quote})

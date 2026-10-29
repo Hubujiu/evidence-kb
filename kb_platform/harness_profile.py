@@ -1,4 +1,3 @@
-"""Opt-in generic Agent composition, without importing the knowledge product."""
 import os
 from pathlib import Path
 

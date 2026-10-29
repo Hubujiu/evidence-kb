@@ -1,4 +1,3 @@
-"""Real engine adapters. Input is corpus and requests, never relevance annotations."""
 from __future__ import annotations
 
 import json
@@ -132,7 +131,7 @@ class DenseEngine:
             return
         if self.kind.startswith('usearch'):
             from usearch.index import Index
-            # Exact ACL partitions avoid post-top-k filtering. Dynamic subsets use exact search.
+
             for kb in sorted({r['kb'] for r in self.rows}):
                 ids = np.asarray([r['id'] for r in self.rows if r['kb'] == kb], dtype=np.uint64)
                 index = Index(ndim=self.vectors.shape[1], metric='cos', dtype='f32',
@@ -176,7 +175,7 @@ class DenseEngine:
         if self.kind.startswith('usearch'):
             complete_scope = {r['source_id'] for r in self.rows if r['kb'] == request.kb}
             if allowed != complete_scope:
-                # Quality-preserving fallback, explicitly timed as part of the adapter.
+
                 scores = self.vectors[ids] @ query
                 return ids[np.argsort(-scores, kind='stable')[:k]].tolist()
             return self.indices[request.kb].search(query, k, threads=1).keys.tolist()
@@ -189,7 +188,7 @@ class DenseEngine:
 
 
 class EmbeddedEngine:
-    """Thin adapter to the shipping implementation, preserving frozen input identities."""
+
     def __init__(self, rows, directory, vectors=None, *, backend=None, generation_key=''):
         from kb_platform.embedded_search import EmbeddedSearch
         self.backend = backend or EmbeddedSearch(directory)

@@ -1,10 +1,3 @@
-"""Execute explicit source-table workflow edges without semantic inference.
-
-The accepted source table has exactly these columns: ``from_step``, ``to_step``,
-``condition_key``, ``condition_value``. Blank condition cells mean an explicit
-unconditional edge; ``__END__`` is an explicit terminal target. Narrative source
-mentions and model-extracted edges do not satisfy this contract.
-"""
 from __future__ import annotations
 
 import math

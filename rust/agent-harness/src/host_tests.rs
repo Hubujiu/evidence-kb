@@ -177,6 +177,19 @@ fn draining_closes_admission_and_preserves_existing_lease_until_release() {
     registry
         .request(json!({"command":"dispose","host":host}))
         .unwrap();
+    error(
+        &mut registry,
+        json!({"command":"acquire","host":host}),
+        "scope_unavailable",
+    );
+    error(
+        &mut registry,
+        json!({"command":"create","parent":host,"plugins":[]}),
+        "scope_unavailable",
+    );
+    registry
+        .request(json!({"command":"finish_dispose","host":host}))
+        .unwrap();
 }
 
 #[test]
@@ -337,7 +350,6 @@ fn inactive_override_never_falls_back_to_parent_provider() {
     registry
         .request(json!({"command":"activate","host":child,"plugin":"replacement"}))
         .unwrap();
-    // Dependency assembly may resolve an activated service before Ready.
     assert_eq!(
         registry
             .request(json!({"command":"resolve","host":child,"service":"model"}))
@@ -374,8 +386,6 @@ fn disposal_and_abort_preserve_cleanup_lookup_but_reject_new_leases() {
         registry
             .request(json!({"command":command,"host":host}))
             .unwrap();
-        // Cleanup may require an earlier provider that has not yet been
-        // disposed. Raw resolution does not itself admit a new business call.
         assert_eq!(
             registry
                 .request(json!({"command":"resolve","host":host,"service":"service"}))

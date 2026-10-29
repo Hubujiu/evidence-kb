@@ -1,8 +1,3 @@
-"""Shared configured providers and read access to historical source-title mappings.
-
-The Agent uses canonical child retrieval. The former parallel document-level
-research retrieval, index builders and generated channels have been removed.
-"""
 from hashlib import sha256
 from pathlib import Path
 

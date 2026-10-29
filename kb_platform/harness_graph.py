@@ -1,4 +1,3 @@
-"""Native graph progression with host-owned data and declared domain routing."""
 from copy import deepcopy
 
 from .agent_engine import Complete, Operation
@@ -6,12 +5,7 @@ from .plugin_native import native_call
 
 
 class GraphProgram:
-    """A graph Program for Runtime; callbacks never cross the native JSON boundary.
 
-    Node callbacks return state updates. The route callback selects one declared
-    edge after those updates; Rust validates progression and result correlation.
-    The owner must close the program on every exit (Runtime does so).
-    """
 
     def __init__(self, *, operations, edges, start, route, flow=None, result_key='response', kinds=None):
         if (not isinstance(operations, dict) or not operations or not isinstance(edges, dict)

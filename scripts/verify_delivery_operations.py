@@ -1,9 +1,3 @@
-"""Read-only, zero-model operational acceptance for an explicitly started runtime.
-
-Only GET liveness/identity/readiness/status/list/export/UI requests are sent.
-Private tokens, session IDs, transcripts, provider values and file paths never
-enter the public report. This is not an answer-quality evaluation.
-"""
 from __future__ import annotations
 
 import argparse
@@ -17,11 +11,12 @@ from urllib.parse import urlparse
 
 import httpx
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kb_platform.rag_testing.budget_batches import cumulative_summary  # noqa: E402
-from kb_platform.provider_admission import ProviderAdmission  # noqa: E402
+from kb_platform.rag_testing.budget_batches import cumulative_summary
+from kb_platform.provider_admission import ProviderAdmission
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 CHECKS = ('liveness', 'authenticated_identity', 'dependency_readiness', 'runtime_status',
@@ -39,15 +34,13 @@ def _input_hash(path):
 
 
 def _provider_controls(identities, tenant_id):
-    """Read private runtime wiring/control receipts independently of HTTP status."""
+
     runtime = Path(identities).resolve().parent / 'runtime.json'
-    if not runtime.exists():
-        return None  # Historical deployments had no provider latch observation.
     metadata = _read(runtime)
     if metadata.get('id') != tenant_id:
         raise ValueError('PROVIDER_RUNTIME_IDENTITY_MISMATCH')
     channels, checkpoints = [], {}
-    for reference in metadata.get('provider_admission', []):
+    for reference in metadata['provider_admission']:
         control = ProviderAdmission.from_directory(reference['control_directory'])
         if (control.scope_hash != reference['scope_hash'] or
                 control.identity['provider_id'] != reference['provider_id']):
@@ -183,7 +176,7 @@ def verify_operations(*, config, runtime_manifest, identities, session_state, ou
         health = request(client, 'liveness', '/health', unauthenticated=True)
         validate('liveness', lambda: health.json().get('status') == 'running' and
                  health.headers.get('X-Delivery-Profile') == configuration['id'])
-        # Do not disclose the private bearer to a different process occupying the port.
+
         if checks['liveness']['status'] == 'PASS':
             identity = request(client, 'authenticated_identity', '/identity')
             validate('authenticated_identity', lambda: identity.json() == actor)
@@ -254,23 +247,19 @@ def verify_operations(*, config, runtime_manifest, identities, session_state, ou
                      for key, used in phase['summary']['effective_usage_or_reserved'].items()}
         expected_status = ('BLOCKED' if before['status'] == 'BLOCKED' else 'BUDGET_EXHAUSTED' if
                            any(remaining[key] == 0 for key in ('model', 'input_tokens', 'output_tokens')) else 'AVAILABLE')
-        provider_agreement = True
-        if provider_before is not None and provider_before['channels']:
-            channels = provider_before['channels']
-            provider_blocked = any(value['state'] == 'BLOCKED' for value in channels)
-            provider_agreement = (provider_before == provider_after and
-                status_value.get('provider_blocked') is provider_blocked and
-                status_value.get('budget_status') == expected_status and
-                sorted(status_value.get('provider_channels', []), key=lambda value: json.dumps(value, sort_keys=True)) == channels)
-            observations['provider_admission'] = {'channels': channels,
-                'checkpoint_snapshots_equal': provider_before == provider_after,
-                'checkpoint_sha256': sha256(json.dumps(provider_before['checkpoints'], sort_keys=True).encode()).hexdigest(),
-                'provider_probe_performed': False,
-                'scope': 'Independent local permission receipts; BLOCKED is not authentication recovery or dependency failure'}
-            if provider_blocked:
-                expected_status = 'BLOCKED'
-        elif 'provider_channels' in status_value:
-            provider_agreement = False  # Never trust a new API-only observation.
+        channels = provider_before['channels']
+        provider_blocked = any(value['state'] == 'BLOCKED' for value in channels)
+        provider_agreement = (provider_before == provider_after and
+            status_value.get('provider_blocked') is provider_blocked and
+            status_value.get('budget_status') == expected_status and
+            sorted(status_value.get('provider_channels', []), key=lambda value: json.dumps(value, sort_keys=True)) == channels)
+        observations['provider_admission'] = {'channels': channels,
+            'checkpoint_snapshots_equal': provider_before == provider_after,
+            'checkpoint_sha256': sha256(json.dumps(provider_before['checkpoints'], sort_keys=True).encode()).hexdigest(),
+            'provider_probe_performed': False,
+            'scope': 'Independent local permission receipts; BLOCKED is not authentication recovery or dependency failure'}
+        if provider_blocked:
+            expected_status = 'BLOCKED'
         agreement = (status_value.get('configured') is True and status_value.get('mode') == 'runtime_batch' and
             status_value.get('batch_id') == manifest['id'] and status_value.get('caps') == phase['caps'] and
             status_value.get('effective_usage_or_reserved') == phase['summary']['effective_usage_or_reserved'] and
@@ -302,7 +291,7 @@ def verify_operations(*, config, runtime_manifest, identities, session_state, ou
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Read-only, zero-model operational acceptance for an explicitly started runtime.\n\nOnly GET liveness/identity/readiness/status/list/export/UI requests are sent.\nPrivate tokens, session IDs, transcripts, provider values and file paths never\nenter the public report. This is not an answer-quality evaluation.\n')
     parser.add_argument('--config', type=Path, default=ROOT / 'config/delivery-local-v1.json')
     parser.add_argument('--runtime-manifest', type=Path, required=True)
     parser.add_argument('--identities', type=Path, required=True)

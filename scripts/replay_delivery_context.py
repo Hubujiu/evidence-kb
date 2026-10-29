@@ -1,9 +1,3 @@
-"""Freeze and score current retention/packing over archived original tool batches.
-
-No HTTP, database, model, embedding or judge is used. Historical authority is an
-archived identity, not a newly observed permission grant. All four old questions
-and all returned candidates stay in the fixed denominator.
-"""
 from __future__ import annotations
 
 import argparse
@@ -13,15 +7,16 @@ import json
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kb_platform.delivery_units import indexed_elements  # noqa: E402
-from kb_platform.rag_testing.comparison import compare  # noqa: E402
-from kb_platform.rag_testing.context_decisions import CanonicalRetentionAdapter  # noqa: E402
-from kb_platform.rag_testing.contracts import Fragment, Plan, Suite, Trace, digest  # noqa: E402
-from kb_platform.rag_testing.runner import run, write_json  # noqa: E402
-from kb_platform.rag_testing.scoring import corpus_hash  # noqa: E402
+from kb_platform.delivery_units import indexed_elements
+from kb_platform.rag_testing.comparison import compare
+from kb_platform.rag_testing.context_decisions import CanonicalRetentionAdapter
+from kb_platform.rag_testing.contracts import Fragment, Plan, Suite, Trace, digest
+from kb_platform.rag_testing.runner import run, write_json
+from kb_platform.rag_testing.scoring import corpus_hash
+
+ROOT = Path(__file__).resolve().parents[1]
 
 BASE = ROOT / 'reports/rag-expansion-20261025'
 FILES = ('scripts/replay_delivery_context.py', 'kb_platform/rag_testing/context_decisions.py',
@@ -157,7 +152,7 @@ def execute(frozen, output, expected_sha):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Freeze and score current retention/packing over archived original tool batches.\n\nNo HTTP, database, model, embedding or judge is used. Historical authority is an\narchived identity, not a newly observed permission grant. All four old questions\nand all returned candidates stay in the fixed denominator.\n')
     sub = parser.add_subparsers(dest='command', required=True)
     first = sub.add_parser('freeze')
     first.add_argument('--output', type=Path, required=True)

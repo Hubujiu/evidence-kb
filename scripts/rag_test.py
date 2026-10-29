@@ -1,4 +1,3 @@
-"""Offline CLI: freeze validated suites, or rescore immutable traces."""
 import argparse
 import json
 import sys
@@ -11,7 +10,7 @@ from kb_platform.rag_testing.runner import run
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Offline CLI: freeze validated suites, or rescore immutable traces.')
     sub = parser.add_subparsers(dest="command", required=True)
     freeze = sub.add_parser("freeze")
     freeze.add_argument("--suite", type=Path, required=True)

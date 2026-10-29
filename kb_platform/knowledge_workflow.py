@@ -1,5 +1,3 @@
-"""Knowledge answer policy expressed as an opaque program for the Agent runtime."""
-
 from .agent_engine import Runtime
 from .harness_graph import GraphProgram
 

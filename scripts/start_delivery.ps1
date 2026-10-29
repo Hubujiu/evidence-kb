@@ -21,8 +21,6 @@ $deliverySemanticRuntime = (Resolve-Path -LiteralPath $SemanticRuntime).Path
 $deliveryRoot = if ([IO.Path]::IsPathRooted($RunRoot)) { [IO.Path]::GetFullPath($RunRoot) } else { [IO.Path]::GetFullPath((Join-Path $deliveryWorkspace $RunRoot)) }
 $deliveryPort = 58089
 $env:PYTHONIOENCODING = 'utf-8'
-# Always select this delivery's explicit runtime, including in a fresh shell.
-# The application factory owns provider/manifest validation; never inherit Jina.
 $env:KB_SEMANTIC_PAGE_CONFIG = $deliverySemanticRuntime
 if ($BudgetBatch) {
     if (-not (Test-Path -LiteralPath $BudgetBatch -PathType Leaf)) { throw 'Missing explicit runtime budget batch.' }
@@ -45,7 +43,6 @@ if ($StartDependencies) {
         -WorkingDirectory $deliveryWorkspace -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput (Join-Path $deliveryRun 'dependencies.stdout.log') `
         -RedirectStandardError (Join-Path $deliveryRun 'dependencies.stderr.log')
-    # Retain the process handle before exit so Windows PowerShell can read ExitCode.
     $deliveryDockerHandle = $deliveryDocker.Handle
     if (-not $deliveryDocker.WaitForExit(180000)) { throw "Dependency command still running; owned PID $($deliveryDocker.Id). Inspect its logs before retrying." }
     $deliveryDocker.WaitForExit()

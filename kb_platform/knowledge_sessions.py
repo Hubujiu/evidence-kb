@@ -1,4 +1,3 @@
-"""Knowledge state policy over an injected generic persistence service."""
 from .knowledge_state import initial_state, validate_failure
 
 

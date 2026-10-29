@@ -1,4 +1,3 @@
-"""Deterministic adapter/ledger contracts; synthetic scores are not model quality."""
 from contextlib import closing, nullcontext
 import json
 from pathlib import Path
@@ -37,7 +36,7 @@ class LocalRerankContracts(unittest.TestCase):
         self.ranker.encoder = SimpleNamespace(predict=Mock(side_effect=self.predict))
 
     def predict(self, pairs, **kwargs):
-        # The application must reserve before entering library inference.
+
         with closing(sqlite3.connect(self.ledger.path)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM calls WHERE status='STARTED'").fetchone()[0], 1)
         return SimpleNamespace(tolist=lambda: [0.5] * len(pairs))

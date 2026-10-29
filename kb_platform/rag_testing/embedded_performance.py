@@ -1,4 +1,3 @@
-"""Interleaved shipping-backend measurements with identical full-document responses."""
 import argparse
 import cProfile
 import json
@@ -33,7 +32,7 @@ class PooledOpenSearch(OpenSearch):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Interleaved shipping-backend measurements with identical full-document responses.')
     parser.add_argument('--inputs', type=Path, required=True)
     parser.add_argument('--embedded-indexes', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)

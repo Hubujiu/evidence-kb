@@ -1,4 +1,3 @@
-"""One JSON worker protocol for real, separately installed document parsers."""
 from __future__ import annotations
 
 import base64
@@ -76,7 +75,7 @@ def backend_identity(backend):
                         hasher.update(block)
                 weights[str(path)] = hasher.hexdigest()
     return {"packages": versions, "model_sha256": weights, "worker_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "fixed_model_dependencies": len(weights) >= (2 if backend == "docling" else 1)}
+            "fixed_model_dependencies": len(weights) >= 2}
 
 
 def main():
@@ -105,13 +104,13 @@ def main():
         return
     data = base64.b64decode(payload["data"])
     try:
-        # ASCII temporary input avoids native-library failures on Chinese paths.
+
         with tempfile.TemporaryDirectory(prefix="evidence-parser-") as directory:
             path = Path(directory) / ("source" + Path(payload["filename"]).suffix.lower())
             path.write_bytes(data)
             with redirect_stdout(sys.stderr):
                 output = parse_backend(payload["backend"], path, ocr_allowed=payload.get("ocr_allowed", True))
-        output["original_sha256"] = __import__("hashlib").sha256(data).hexdigest()
+        output["original_sha256"] = hashlib.sha256(data).hexdigest()
     except Exception as exc:
         traceback.print_exc(file=sys.stderr)
         output = {"error": type(exc).__name__ + ": " + str(exc), "backend": payload["backend"]}

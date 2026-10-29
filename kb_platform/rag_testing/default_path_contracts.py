@@ -1,4 +1,3 @@
-"""Current default-path control tests; scripted outputs are not model quality."""
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -7,6 +6,8 @@ import unittest
 
 from kb_platform.knowledge_service import KnowledgeService as AgentService
 from kb_platform.agent_context import ContextManager, ContextPolicy
+from kb_platform.agent_model import CompletionEnvelope
+from kb_platform.agent_schema import compile_schema, validate_output
 from kb_platform.retrieval_pipeline import PipelineConfig
 from .product_fixture import Authority, Gateway
 
@@ -32,9 +33,11 @@ class ScriptedModel:
             value = dict(supported=True, reason="scripted control", task_complete=True, missing_information=[])
         else:
             raise AssertionError(role)
+        validate_output(value, compile_schema(schema))
         validator(value)
-        return dict(value=value, attempts=1, cache_kind="none", finish_reason="stop",
-                    usage=dict(available=True, total_tokens=10, prompt_tokens=7, completion_tokens=3))
+        return CompletionEnvelope(value, kwargs['call_context']['call_id'],
+            dict(available=True, total_tokens=10, prompt_tokens=7, completion_tokens=3),
+            1, 'stop', 'none', 'synthetic-request')
 
 
 class DefaultPathContracts(unittest.TestCase):
@@ -127,8 +130,8 @@ class DefaultPathContracts(unittest.TestCase):
             with self.subTest(action=action), tempfile.TemporaryDirectory() as folder:
                 a, g = self.make([("Harbor Guide.md", "Harbor Guide requires Bridge Guide."),
                                   ("Bridge Guide.md", "Valid only until 2030.")])
-                # Real gateway parsing, canonical read and revalidation. Only the
-                # persistence authority/search transport and model are fixtures.
+
+
                 g.authorize = lambda actor, scope: dict(scope_id=scope, manifest_id="build", authority_revision=a.revision)
                 g.sources = lambda actor, scope: [dict(source_id=r["source_id"], doc_id=r["source_id"],
                     source_version_id=r["source_version_id"], title=r["filename"]) for r in a.rows]

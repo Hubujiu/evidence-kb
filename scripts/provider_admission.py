@@ -1,8 +1,3 @@
-"""Inspect a provider latch or acknowledge an exact checkpoint after external repair.
-
-Never probes a provider, modifies a physical request, or resets a budget. The
-private control directory is recorded in the delivery runtime manifest.
-"""
 from __future__ import annotations
 
 import argparse
@@ -10,15 +5,13 @@ import json
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kb_platform.provider_admission import ProviderAdmission  # noqa: E402
+from kb_platform.provider_admission import ProviderAdmission
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Inspect a provider latch or acknowledge an exact checkpoint after external repair.\n\nNever probes a provider, modifies a physical request, or resets a budget. The\nprivate control directory is recorded in the delivery runtime manifest.\n')
     parser.add_argument('action', choices=('inspect', 'acknowledge'))
     parser.add_argument('--directory', required=True)
     parser.add_argument('--expected-checkpoint')

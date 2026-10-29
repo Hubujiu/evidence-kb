@@ -57,7 +57,7 @@ flowchart LR
 
 默认图驱动不再创建外层 single-tool loop 和临时会话。该路径保留原始 actor、session、request ID、expected revision、来源策略和用户约束；工具参数只有问题。它不增加外层模型规划请求，不改写已经核验的答案，原响应和 trace 原样返回。`harness.loop.model-tools` 则适用于需要模型反复选择工具的普通 Agent，并显式依赖 `model` 和 `prompt` 服务；内置 `harness.model.callable`、`harness.prompt.history` 分别提供其适配器。single-tool 不需要额外 prompt 插件。
 
-`harness.sessions.memory` 仍用于旧的轻量通用入口，每次 loop 结束后释放；它不是默认知识库的会话服务。显式启用的 `core` 组合使用 `harness.sessions.durable`，支持历史恢复与请求幂等。两类应用都复用 `session_store.SessionStore` 的 SQLite 事务，知识库状态规则由 `KnowledgeSessions` 适配，旧 `AgentStore` 接口保留。提供者账本继续唯一负责物理请求、费用预留与 UNKNOWN。
+`harness.sessions.memory` 用于轻量单工具入口，每次 loop 结束后释放；它不是默认知识库的会话服务。显式启用的 `core` 组合使用 `harness.sessions.durable`，支持历史恢复与请求幂等。两类应用都复用 `session_store.SessionStore` 的 SQLite 事务，知识库状态规则由 `KnowledgeSessions` 适配。提供者账本继续唯一负责物理请求、费用预留与 UNKNOWN。
 
 ## 增加一个服务插件
 

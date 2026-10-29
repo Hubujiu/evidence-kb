@@ -1,9 +1,3 @@
-"""Offline synthetic Rust plugin/ABI microbenchmark, not model or RAG latency.
-
-Run this same module in each checkout with separately built release libraries.
-Every repetition starts a fresh process. Outputs preserve failed observations;
-no latency threshold is used as a correctness gate.
-"""
 from __future__ import annotations
 
 import argparse
@@ -26,7 +20,7 @@ SCOPE = ('synthetic local plugin dispatch through the real Python/JSON/Rust ABI;
 
 
 def percentile(values, fraction):
-    """Nearest-rank quantile; preserve each measured invocation as an observation."""
+
     return sorted(values)[max(0, math.ceil(len(values) * fraction) - 1)] if values else None
 
 
@@ -47,7 +41,7 @@ def _measure(operation, validate, *, samples, warmup):
             elapsed = perf_counter_ns() - start
             (warmup_errors if index < warmup else errors)[type(error).__name__] += 1
         if index >= warmup:
-            # Failed observations stay in the denominator and latency sample.
+
             durations.append(elapsed)
     return {'samples': samples, 'warmup': warmup, 'errors': dict(errors),
             'warmup_errors': dict(warmup_errors), 'durations_ns': durations,
@@ -76,8 +70,8 @@ def _check_equal(result, expected):
 
 
 def _worker(args):
-    # Install before importing the harness. This is an accidental-I/O guard,
-    # not a sandbox for malicious Python or native code.
+
+
     sys.addaudithook(_deny_network)
     from kb_platform.agent_plugins import ToolContext, ToolPlugin, ToolResult
     from kb_platform.harness_services import builtin_plugins
@@ -190,7 +184,7 @@ def _aggregate(workers):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Offline synthetic Rust plugin/ABI microbenchmark, not model or RAG latency.\n\nRun this same module in each checkout with separately built release libraries.\nEvery repetition starts a fresh process. Outputs preserve failed observations;\nno latency threshold is used as a correctness gate.\n')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--library', type=Path, required=True)
     parser.add_argument('--build-profile', choices=('release', 'debug'), required=True)

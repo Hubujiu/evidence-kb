@@ -1,4 +1,3 @@
-"""Position-based scores and source-grounded checks at the model boundary."""
 from __future__ import annotations
 
 import json

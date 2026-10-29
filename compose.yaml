@@ -19,7 +19,7 @@ services:
       retries: 30
     mem_limit: 768m
   search:
-    profiles: [legacy-search]
+    profiles: [opensearch]
     image: opensearchproject/opensearch:2.19.1
     environment:
       discovery.type: single-node
@@ -45,6 +45,5 @@ services:
       retries: 40
     mem_limit: 3g
 volumes:
-  metadata:
   metadata_postgres:
   search:

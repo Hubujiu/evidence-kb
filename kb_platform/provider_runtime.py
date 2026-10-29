@@ -1,8 +1,3 @@
-"""Bounded runtime recovery contracts, independent of RAG quality scoring.
-
-An HTTP timeout after a request may have been sent is UNKNOWN. It must be
-reconciled rather than retried merely because the operation is read-only.
-"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -35,7 +30,7 @@ class Failure:
 
 
 def classify_failure(error=None, *, status=None):
-    """Only connection admission failures establish that no request was sent."""
+
     if getattr(error, 'code', '') in {'PROVIDER_RATE_LIMIT_WAIT_EXCEEDED', 'PROVIDER_RETRY_WAIT_EXCEEDED',
             'PROVIDER_REQUEST_UNRESOLVED', 'PROVIDER_REQUEST_ALREADY_SETTLED', 'PROVIDER_CIRCUIT_OPEN',
             'PROVIDER_DEADLINE_EXCEEDED', 'PROVIDER_REQUEST_LIMIT', 'PROVIDER_CANCELLED'}:
@@ -79,7 +74,7 @@ def retry_after_seconds(value, *, wall_clock=time.time):
 
 
 class ProviderCircuit:
-    """Client/provider scoped breaker with exactly one recovery probe."""
+
     def __init__(self, failure_threshold=3, cooldown_seconds=30.0, *, clock=time.monotonic):
         if (isinstance(failure_threshold, bool) or not isinstance(failure_threshold, int)
                 or failure_threshold < 1 or isinstance(cooldown_seconds, bool)
@@ -120,12 +115,7 @@ class ProviderCircuit:
 
 
 class RequestReceipts:
-    """Durable per-attempt receipts; these contain hashes, never request bodies.
 
-    STARTED is written before the send. UNKNOWN retains the logical request
-    guard across restarts. An explicit reconciliation can release that guard;
-    its evidence reference and outcome remain in the receipt.
-    """
     def __init__(self, directory):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -220,12 +210,7 @@ class ToolOutcome:
 
 
 class ToolExecutor:
-    """Process-local idempotent tool receipts; durable turn storage stays owner.
 
-    Only an explicitly read-only tool can retry a confirmed transient failure.
-    Empty results are successful observations, and UNKNOWN is never retried.
-    Reusing an outcome still requires the caller's current authority checks.
-    """
     def __init__(self, *, max_attempts=2, max_wait_seconds=2.0, sleep=time.sleep):
         if (isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or not 1 <= max_attempts <= 3
                 or isinstance(max_wait_seconds, bool) or not isinstance(max_wait_seconds, (int, float))

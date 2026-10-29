@@ -1,4 +1,3 @@
-"""Page-wise PDF routing, exact dependency cache, and original-PDF assembly."""
 from __future__ import annotations
 
 import base64
@@ -59,12 +58,7 @@ def page_routes(data, policy, native):
 
 
 def page_binary(pdf, index, original):
-    """Deterministic real PDF page bytes; only generated metadata is normalized.
 
-    Changing equal-length metadata IDs leaves PDF xref byte offsets unchanged.
-    Original source bytes are never modified. The actual derivative hash is
-    recorded independently and verified by the model worker.
-    """
     import pypdfium2
 
     if len(pdf) == 1:
@@ -83,9 +77,8 @@ def page_binary(pdf, index, original):
 
 def _cache_key(page_sha, backend, policy, identity):
     authorization = policy.get("_parse_authorization", {})
-    # The cached artifact is external parser output. Routing/assembly changes
-    # must not invalidate unchanged model inference; actual derivative bytes,
-    # worker code, packages, weights and processing settings are its dependencies.
+
+
     implementation = digest({"contract": "external-parser-records/1",
                              "worker": identity.get("worker_sha256"), "packages": identity.get("packages")})
     return StageKey(stage="document-page-parsing", implementation=implementation,
@@ -134,11 +127,7 @@ def _bad_text(text):
 
 
 def _supplement_records(parsed, native_elements, native_anchors, height):
-    """Keep exact clean native facts and model content outside native tables.
 
-    Native and OCR coordinates stay separate; native table cells never inherit
-    model-estimated boxes. This is source assembly, not annotation-aware repair.
-    """
     native_text = re.sub(r"\s+", "", "\n".join(e["raw_text"] for e in native_elements))
     table_boxes = [a["bbox"] for a in native_anchors if a.get("granularity") == "table" and a.get("bbox")]
     records = []
@@ -234,10 +223,8 @@ def assemble_pdf_pages(data, filename, policy, native):
             for row in rows:
                 if row["page_index"] not in parsed_pages:
                     row.update(status="FAILED", diagnostic=type(exc).__name__ + ": " + str(exc))
-    # A picture-classified cover can have real line OCR but no exported Docling
-    # text items. Only that explicit empty-output failure authorizes this
-    # separately audited direct OCR branch; successful page dependencies stay
-    # unchanged. Never accept an empty result as a successful blank page.
+
+
     empty_pages = [row for row in external_pages if row["backend"] == "docling_ocr" and
                    row.get("status") == "FAILED" and "external parser returned no observable text" in row.get("diagnostic", "")]
     if empty_pages and policy.get("ocr", False):

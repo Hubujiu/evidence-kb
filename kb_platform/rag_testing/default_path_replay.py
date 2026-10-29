@@ -1,8 +1,3 @@
-"""Current product gateway + pipeline + context over frozen originals.
-
-Only search/storage transport is an in-memory lexical fixture. Gold is passed
-exclusively to the unified runner. No model or embedding calls are made.
-"""
 import argparse
 from dataclasses import asdict
 import hashlib
@@ -19,7 +14,7 @@ from .scoring import corpus_hash
 
 
 def replay_application(authority, model, gateway, root, context_policy):
-    """Keep production composition; replace only the frozen fixture dependencies."""
+
     from kb_platform.knowledge_profile import create_knowledge_application, load_knowledge_profile
     from kb_platform.plugin_host import PluginSpec
 
@@ -163,7 +158,7 @@ class ProductAdapter(PacketEvidenceAdapter):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Current product gateway + pipeline + context over frozen originals.\n\nOnly search/storage transport is an in-memory lexical fixture. Gold is passed\nexclusively to the unified runner. No model or embedding calls are made.\n')
     parser.add_argument('--suite', type=Path, required=True)
     parser.add_argument('--catalog', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
@@ -171,8 +166,8 @@ def main():
     args = parser.parse_args()
     suite = Suite.model_validate(read(args.suite))
     if args.service:
-        # Bound the complete serialized message envelope, not just the evidence
-        # projection used by component comparisons. Annotation paths are intact.
+
+
         suite = suite.model_copy(update={'id': suite.id + '/service-wire-24000', 'cases': tuple(
             c.model_copy(update={'input': c.input.model_copy(update={'context_budget': 24000})}) for c in suite.cases)})
     args.output.mkdir(parents=True, exist_ok=False)

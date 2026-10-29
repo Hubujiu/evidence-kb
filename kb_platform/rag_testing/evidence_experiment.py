@@ -1,4 +1,3 @@
-"""Current evidence components and revised-label replay; never calls a model."""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +17,7 @@ def read(path):
 
 
 def load_traces(directory):
-    # Refuse tampered historical files, even when only rescoring labels.
+
     manifest = read(directory / 'manifest.json')
     for name, expected in manifest.items():
         if hashlib.sha256((directory / name).read_bytes()).hexdigest() != expected:
@@ -85,8 +84,8 @@ class PacketEvidenceAdapter:
                 final.append(Fragment(source_id=source.id, source_sha256=source.sha256, version=source.version,
                     kb=source.kb, start=start, end=start+len(item['text']), text=item['text']))
         context = json.dumps(prepared.projection['evidence'], ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-        # Original ContextManager request is retained. Use its nested evidence
-        # serialization as the mapped final context, not a synthetic extra request.
+
+
         self.observations[request.case_id] = dict(prepared=prepared.to_dict(), edges=edges,
             source_count=len(packet), context_size=len(context), capture='replay', new_remote_calls=0)
         return Trace(case_id=request.case_id, corpus_hash=corpus, implementation=self.implementation,
@@ -108,7 +107,7 @@ def execute(suite, output, budget=16000, recorded_sources=None, catalog=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Current evidence components and revised-label replay; never calls a model.')
     parser.add_argument('--suite', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--history', type=Path, action='append', default=[])
@@ -121,7 +120,7 @@ def main():
         old = Suite.model_validate(read(directory / 'suite.json'))
         if suite.sources != old.sources:
             raise ValueError('CORPUS_CHANGED_NOT_A_LABEL_ONLY_REPLAY')
-        # Preserve each original per-case budget; do not mix experimental windows.
+
         budgets = {c.input.case_id: c.input.context_budget for c in old.cases}
         revised = suite.model_copy(update={'cases': tuple(c.model_copy(update={'input': c.input.model_copy(
             update={'context_budget': budgets.get(c.input.case_id, c.input.context_budget)})}) for c in suite.cases)})

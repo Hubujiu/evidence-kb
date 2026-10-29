@@ -1,4 +1,3 @@
-"""Explicit builtin catalog. Profiles choose services; dependencies govern startup."""
 from copy import deepcopy
 
 from .agent_engine import Runtime

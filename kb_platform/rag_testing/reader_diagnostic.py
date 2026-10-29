@@ -1,8 +1,3 @@
-"""Bounded full-authorized-corpus reader diagnosis through the unified runner.
-
-No gold reaches the adapter. This is a changed-budget capacity intervention,
-not retrieval quality, independent acceptance, or proof of semantic correctness.
-"""
 from __future__ import annotations
 
 import argparse
@@ -100,7 +95,7 @@ class FullCorpusReader:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Bounded full-authorized-corpus reader diagnosis through the unified runner.\n\nNo gold reaches the adapter. This is a changed-budget capacity intervention,\nnot retrieval quality, independent acceptance, or proof of semantic correctness.\n')
     parser.add_argument('--suite', type=Path, required=True)
     parser.add_argument('--gold', type=Path, required=True)
     parser.add_argument('--providers', type=Path, required=True)
@@ -115,7 +110,7 @@ def main():
         if not set(args.case_id) <= {c.input.case_id for c in suite.cases}:
             raise ValueError('UNKNOWN_DIAGNOSTIC_CASE')
         suite = suite.model_copy(update={'cases': tuple(c for c in suite.cases if c.input.case_id in args.case_id)})
-    # The old holdout is now explicitly seen development data. New budget is diagnostic only.
+
     suite = suite.model_copy(update={'cases': tuple(c.model_copy(update={'split': 'dev',
         'input': c.input.model_copy(update={'context_budget': 118784})}) for c in suite.cases)})
     if len(suite.cases) * len(PROMPTS) > CAPS['model']:
@@ -162,7 +157,7 @@ def main():
     provider = BoundedLuna(args.providers)
     provider.cache_mode, provider.retries, provider.max_requests = 'disabled', 0, caps['model']
     observe_client(provider, ledger, args.output / 'physical-requests', category='model')
-    gold = read(args.gold)['cases']  # scorer-only: never passed to the reader adapter
+    gold = read(args.gold)['cases']
     summary = {}
     try:
         for variant in PROMPTS:

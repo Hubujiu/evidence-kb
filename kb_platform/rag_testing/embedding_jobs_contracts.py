@@ -1,4 +1,3 @@
-"""Offline failure/recovery contracts; DB atomicity is covered by live operations tests."""
 import json
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -134,7 +133,7 @@ class EmbeddingJobsContracts(unittest.TestCase):
 
 
 def live_contract_suite(dsn):
-    """Run explicitly against an isolated DB initialized with 001 and 003 SQL."""
+
     from uuid import uuid4
 
     class LiveEmbeddingJobsContracts(unittest.TestCase):
@@ -242,7 +241,7 @@ def live_contract_suite(dsn):
                                 self.jobs.run(*scope, provider, self.units[:1], lambda: True, google_audit())
                     row = self.jobs.status(*scope)[0]
                     self.assertEqual((row['status'], row['error'], row['attempt']), ('RETRY', code, 0))
-                    # Jobs created by older versions may already contain permanent ERROR.
+
                     with self.jobs._tx(*scope[:2]) as conn:
                         conn.execute("UPDATE embedding_jobs SET status='ERROR' WHERE build_id=%s", (scope[2],))
                     with patch.object(provider, 'documents', return_value=[[1., 0.]]) as documents:

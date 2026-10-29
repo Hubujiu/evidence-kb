@@ -1,11 +1,3 @@
-"""Finite supplemental budgets linked to immutable predecessor ledgers.
-
-BudgetLedger remains the only reservation/accounting implementation. This module
-reads predecessors using SQLite mode=ro and attaches provenance/admission checks.
-It does not merge caps into a spendable pool or retry any physical request.
-The caller must keep predecessor producers quiescent: an unchanged old service
-cannot participate in a new cross-process admission lock without a restart.
-"""
 from __future__ import annotations
 
 from contextlib import closing
@@ -59,7 +51,7 @@ def _snapshot(path):
 
 
 def freeze_predecessor(path, expected_file_sha256=None):
-    """Return a JSON-safe frozen predecessor; terminal failures/unknown usage stay counted."""
+
     value = _snapshot(path)
     if expected_file_sha256 is not None and value['database_sha256'] != expected_file_sha256.lower():
         raise ValueError('PREDECESSOR_FILE_SHA256_MISMATCH')
@@ -101,12 +93,7 @@ def _unique(rows_by_ledger):
 
 
 class LinkedBudgetLedger:
-    """MeteredTransport-compatible facade over one existing BudgetLedger.
 
-    Parent identity, terminal-state and cross-ledger ID checks run before every
-    admission. Child pending/UNKNOWN checks are atomic with its reservation.
-    finish deliberately persists the actual result even if a parent changed.
-    """
 
     def __init__(self, path, caps, *, predecessors):
         self.path, self.caps = Path(path).resolve(), deepcopy(caps)
@@ -138,7 +125,7 @@ class LinkedBudgetLedger:
         return self.ledger.reserve(request_id, resources, category=category, require_settled=True)
 
     def finish(self, request_id, *, status, usage=None, diagnostic=None):
-        # Never lose a received response/expense because a later parent audit failed.
+
         return self.ledger.finish(request_id, status=status, usage=usage, diagnostic=diagnostic)
 
     def summary(self):
@@ -150,7 +137,7 @@ class LinkedBudgetLedger:
 
 
 def cumulative_summary(predecessors, child_path):
-    """Read-only audit, including drift/pending errors rather than hiding prior expenses."""
+
     predecessors = list(predecessors)
     for predecessor in predecessors:
         _validate_frozen_identity(predecessor)

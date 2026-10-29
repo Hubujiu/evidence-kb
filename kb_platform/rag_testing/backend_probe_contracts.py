@@ -1,4 +1,3 @@
-"""Offline boundary contracts for engine probes; synthetic inputs, no optional engines."""
 from pathlib import Path
 import tempfile
 import unittest

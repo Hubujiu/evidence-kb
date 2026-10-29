@@ -1,4 +1,3 @@
-"""Generic native lifecycle with host-owned effects and explicit cooperative cancellation."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -67,7 +66,7 @@ def execution_scope(*, deadline_seconds, cancellation=None):
     if parent is not None:
         parent.check()
         deadline = min(deadline, parent.deadline)
-        # A child cannot detach itself from its parent's cancellation authority.
+
         cancellation = parent.cancellation
     execution = Execution(deadline, cancellation if cancellation is not None else Event())
     token = _execution.set(execution)
@@ -113,7 +112,7 @@ class Runtime:
                     program.accept(instruction, result)
             except BaseException:
                 if kernel.phase in {'ready', 'waiting'}:
-                    # Cleanup never retries an effect and cannot replace the original error.
+
                     try:
                         apply('cancel' if execution.cancellation.is_set() else 'fail')
                     except KernelError:
@@ -123,7 +122,7 @@ class Runtime:
 
 @contextmanager
 def _program_lifecycle(program):
-    """Release native programs even when admission fails before the first step."""
+
     close = getattr(program, 'close', None)
     try:
         yield

@@ -59,22 +59,6 @@ class TableRequest(RequestModel):
     filters: list | None = None
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def create_app(settings: Settings | None = None, platform: Platform | None = None, *, agent_factory=None):
     settings = settings or Settings.from_environment()
     identities = settings.identities()
@@ -99,7 +83,7 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
         if credentials is not None and credentials.scheme.lower() == "bearer":
             for token, principal in identities.items():
                 if secrets.compare_digest(credentials.credentials, token):
-                    return Actor(**principal)
+                    return principal
         raise HTTPException(401, detail="身份验证失败", headers={"WWW-Authenticate": "Bearer"})
 
     principal = Annotated[Actor, Depends(identity)]
@@ -180,16 +164,6 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     def create_scope(body: NewKB, actor: principal):
         result = service.create_kb(actor, body.name)
         return {**result, 'scope_id': result['kb_id']}
-
-
-
-
-
-
-
-
-
-
 
 
     @app.put("/knowledge-bases/{kb_id}/members/{principal_id}")

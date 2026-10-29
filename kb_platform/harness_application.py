@@ -1,4 +1,3 @@
-"""Generic Agent application; concrete drivers and persistence are injected."""
 from .harness_sessions import SessionToolContext
 
 
@@ -27,7 +26,7 @@ class AgentApplication:
 
 
 class HostedAgentApplication:
-    """Every public operation holds the same host lease as other applications."""
+
 
     def __init__(self, host, application):
         self.host, self._application = host, application

@@ -1,4 +1,3 @@
-"""Measurement accounting contracts; synthetic failures must not vanish from reports."""
 import unittest
 
 from .harness_performance import _check_equal, _measure

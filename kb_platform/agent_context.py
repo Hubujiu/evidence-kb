@@ -1,8 +1,3 @@
-"""Pure, independently budgeted agent projections over durable conversation events.
-
-UTF-8 accounting is deliberately labelled an estimate.  It is not the tokenizer
-of the remote model and must never be advertised as a verified context limit.
-"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -13,7 +8,7 @@ import re
 
 from .context_budget import (
     ContextBudget, ContextBudgetError as ContextBudgetError,
-    canonical as canonical, digest as digest, estimate_messages as estimate_messages,
+    canonical as canonical, estimate_messages as estimate_messages,
 )
 
 
@@ -46,15 +41,13 @@ class ContextManager:
     @staticmethod
     def _groups(history, role):
         groups, positions = [], {}
-        seen = set()
         last_seq = -1
         for event in history:
             if not isinstance(event, dict) or not isinstance(event.get("seq"), int) or isinstance(event["seq"], bool):
                 raise ContextBudgetError("INVALID_CONTEXT_EVENT")
-            if event["seq"] <= last_seq or event["seq"] in seen:
+            if event["seq"] <= last_seq:
                 raise ContextBudgetError("INVALID_CONTEXT_EVENT_ORDER")
             last_seq = event["seq"]
-            seen.add(last_seq)
             payload = event.get("payload", {})
             visible_role = event.get("agent_role", payload.get("agent_role") if isinstance(payload, dict) else None)
             if visible_role and visible_role not in {role, "shared", "user"}:
@@ -72,7 +65,7 @@ class ContextManager:
                 if event.get("kind") not in {"tool_call", "tool_result"}:
                     continue
                 payload = event.get("payload", {})
-                call_id = payload.get("call_id", payload.get("tool_call_id")) if isinstance(payload, dict) else None
+                call_id = payload.get("call_id") if isinstance(payload, dict) else None
                 if not isinstance(call_id, str) or not call_id:
                     raise ContextBudgetError("INVALID_TOOL_BOUNDARY")
                 target = calls if event["kind"] == "tool_call" else results
@@ -85,11 +78,7 @@ class ContextManager:
 
     @staticmethod
     def compact(events, checkpoint=None):
-        """Extract event excerpts and durable ranges; never manufacture a summary fact.
 
-        The owner persists the returned checkpoint using revision/CAS.  Full event
-        bodies remain in its event store and are addressable by the covered range.
-        """
         prior = deepcopy(checkpoint) if checkpoint else None
         if prior and prior.get("protocol") != "extractive-checkpoint/1":
             raise ContextBudgetError("INVALID_CHECKPOINT")
@@ -101,22 +90,20 @@ class ContextManager:
         for event in fresh:
             raw = canonical(event.get("payload"))
             records.append({"seq": event["seq"], "kind": event.get("kind"),
-                            "group_id": event.get("group_id"), "event_hash": digest(event),
+                            "group_id": event.get("group_id"),
                             "excerpt": raw[:160], "excerpt_truncated": len(raw) > 160})
         start = prior.get("covered_from", fresh[0]["seq"]) if prior else fresh[0]["seq"]
         result = {"protocol": "extractive-checkpoint/1", "covered_from": start,
                   "covered_through": fresh[-1]["seq"],
-                  "previous_checkpoint_hash": digest(prior) if prior else None,
                   "records": records[-6:], "facts_generated": False,
                   "external_event_range": {"from_seq": start, "through_seq": fresh[-1]["seq"]}}
-        result["checkpoint_hash"] = digest(result)
         return result
 
     @staticmethod
     def _evidence_reference(item):
         if not isinstance(item, dict):
             raise ContextBudgetError("INVALID_CONTEXT_EVIDENCE")
-        # Identity, authorization and version metadata survive externalization.
+
         def metadata(value):
             if isinstance(value, dict):
                 return {key: metadata(child) for key, child in value.items()
@@ -125,27 +112,24 @@ class ContextManager:
                 return [metadata(child) for child in value]
             return deepcopy(value)
         result = metadata(item)
-        # PDF parent blocks can carry hundreds of exact geometry anchors. The
-        # server retains and revalidates every one; the model uses canonical
-        # citation handles, not geometry or raw parser-span identifiers.
+
+
         for field in ("anchors", "evidence_ids"):
             value = result.get(field)
             if isinstance(value, list) and (len(value) > 8 or len(canonical(value)) > 1000):
                 original = item[field]
                 result.pop(field)
                 result[field + "_reference"] = {
-                    "count": len(original), "sha256": digest(original),
+                    "count": len(original),
                     "storage": "server_canonical_citation", "externalized": True,
                 }
-        result.update(externalized=True, payload_hash=digest(item))
+        result["externalized"] = True
         return result
 
     @staticmethod
     def _minimal_checkpoint(checkpoint):
         result = deepcopy(checkpoint)
         result["records"] = []
-        result.pop("checkpoint_hash", None)
-        result["checkpoint_hash"] = digest(result)
         return result
 
     @staticmethod
@@ -160,7 +144,7 @@ class ContextManager:
 
     @classmethod
     def _history_tool_slots(cls, state):
-        """Externalize only restored prose, preserving every operation and numeric result."""
+
         slots = []
         for tool in state.get("tool_results", []):
             if not isinstance(tool, dict) or tool.get("name") != "read_history" or tool.get("status") != "ok":
@@ -186,8 +170,8 @@ class ContextManager:
                 metadata = {key: deepcopy(value) for key, value in item.items() if key != "text"}
                 metadata.update(tool_text_sha256=sha256(raw.encode("utf-8")).hexdigest(),
                                 tool_text_characters=len(raw), tool_text_offset=offset)
-                # Only the service has the entire historic event. Never label the
-                # tool's already bounded excerpt hash as that full event's hash.
+
+
                 metadata.setdefault("full_text_sha256", None)
                 metadata.setdefault("original_characters", None)
                 slot = {"target": item, "raw": raw, "offset": offset, "focus": focus,
@@ -216,7 +200,7 @@ class ContextManager:
         if checkpoint and checkpoint.get("protocol") != "extractive-checkpoint/1":
             raise ContextBudgetError("INVALID_CHECKPOINT")
         cutoff = checkpoint.get("covered_through", -1) if checkpoint else -1
-        # A boundary inside an existing group would silently lose half an interaction.
+
         if any(group[0]["seq"] <= cutoff < group[-1]["seq"] for group in groups):
             raise ContextBudgetError("CHECKPOINT_SPLITS_GROUP")
         groups = [group for group in groups if group[-1]["seq"] > cutoff]
@@ -229,7 +213,7 @@ class ContextManager:
         restored_history = self._history_tool_slots(projection["state"])
 
         def messages():
-            # Checkpoint is a stable prefix within an epoch; mutable state comes after it.
+
             result = [{"role": "system", "content": stable}]
             if projection["checkpoint"]:
                 result.append({"role": "user", "content": canonical({"checkpoint": projection["checkpoint"]})})
@@ -242,9 +226,8 @@ class ContextManager:
             projection["checkpoint"] = self._minimal_checkpoint(projection["checkpoint"])
         if estimate_messages(messages())["tokens"] > limit:
             raise ContextBudgetError("CONTEXT_REQUIRED_STATE_TOO_LARGE")
-        # Reserve only the exact minimal checkpoint/range overhead before filling
-        # evidence. Otherwise a full evidence budget could leave no room to record
-        # which historical events were externalized.
+
+
         base_cost = estimate_messages(messages())["tokens"]
         checkpoint_reserve = 0
         if groups:
@@ -259,8 +242,8 @@ class ContextManager:
         evidence_limit = limit - checkpoint_reserve
         externalized = False
         prose_fallback_used = False
-        # Source content outranks historical prose. Fairly divide remaining space
-        # across sources and expose only verbatim windows, never generated facts.
+
+
         for index, item in enumerate(evidence):
             reference = projection["evidence"][index]
             text = item.get("text")
@@ -296,15 +279,12 @@ class ContextManager:
                     projection["evidence"][index] = block_candidate(start, end)
                     return estimate_messages(messages())["tokens"] <= item_limit
 
-                # Whole tables/conditions may exceed the old arbitrary 2000
-                # character cap. The serialized-message fit check remains the
-                # authoritative limit, including all other request reserves.
+
                 selected_window = select_window(text, selection_query or question, offset, fits,
                                                 max_characters=policy.effective_input_budget)
                 if selected_window is None:
-                    # A bridge document need not repeat the question's words.
-                    # Keep its complete original when it fits. Typed tables
-                    # never fall through to arbitrary character-prefix cuts.
+
+
                     if fits(offset, len(text)):
                         selected_window = (offset, len(text))
                     else:
@@ -318,18 +298,15 @@ class ContextManager:
                 if selected_window == (offset, offset):
                     from .evidence_packing import ranked_blocks
 
-                    # A fair per-source quota must not exclude every complete
-                    # table. Try one ranked atomic block against the actual
-                    # remaining request budget; do not expand its neighbors.
+
                     for _, start, end in ranked_blocks(text, selection_query or question, offset):
                         projection["evidence"][index] = block_candidate(start, end)
                         if estimate_messages(messages())["tokens"] <= evidence_limit:
                             selected_window = (start, end)
                             break
                 if selected_window == (offset, offset):
-                    # Keep an intact paragraph/table whenever the established
-                    # quota or total-budget path can admit it. Only oversized
-                    # prose gains finer, question-independent line boundaries.
+
+
                     from .prose_windows import select_window as prose_window, ranked_blocks as prose_blocks
 
                     prose_fallback_used = True
@@ -361,8 +338,8 @@ class ContextManager:
                 externalized = True
             else:
                 externalized = externalized or offset != 0 or low != len(text)
-        # All restored history tools share the same remaining budget. Their
-        # complete outputs stay in durable artifacts; only this model view shrinks.
+
+
         for index, slot in enumerate(restored_history):
             remaining = len(restored_history) - index
             current_cost = estimate_messages(messages())["tokens"]
@@ -393,8 +370,8 @@ class ContextManager:
             projection["omitted_event_refs"] = [{"from_seq": omitted[0]["seq"],
                                                    "through_seq": omitted[-1]["seq"]}]
             projection["checkpoint"] = self.compact(omitted, checkpoint)
-            # Checkpoint overhead must also fit. Preserve atomic recent groups,
-            # moving entire oldest groups into the same checkpoint if necessary.
+
+
             if estimate_messages(messages())["tokens"] > limit:
                 projection["checkpoint"] = self._minimal_checkpoint(projection["checkpoint"])
             while estimate_messages(messages())["tokens"] > limit and selected:
@@ -404,14 +381,14 @@ class ContextManager:
                     moved.append(selected.pop(0))
                 omitted.extend(moved)
                 projection["history"] = selected
-                # This is one preparation transaction, not several committed
-                # checkpoints. Its predecessor stays the caller's checkpoint.
+
+
                 projection["checkpoint"] = self.compact(omitted, checkpoint)
                 projection["omitted_event_refs"][0]["through_seq"] = omitted[-1]["seq"]
                 if estimate_messages(messages())["tokens"] > limit:
                     projection["checkpoint"] = self._minimal_checkpoint(projection["checkpoint"])
             if estimate_messages(messages())["tokens"] > limit:
-                # Extracted prose is optional; durable coverage references are not.
+
                 projection["checkpoint"] = self._minimal_checkpoint(projection["checkpoint"])
             if estimate_messages(messages())["tokens"] > limit:
                 raise ContextBudgetError("CONTEXT_REQUIRED_STATE_TOO_LARGE")

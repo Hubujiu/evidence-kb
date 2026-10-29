@@ -1,10 +1,3 @@
-"""Durable embedding batches; physical costs remain owned by the provider ledger.
-
-Call run again with the same build and dependencies to resume. RETRY exposes retry_at
-instead of sleeping in a request. Expired RUNNING becomes UNKNOWN, never a new call.
-reconcile imports only a COMPLETE observed capture matched to a COMPLETE ledger row.
-Other unknown outcomes require operator investigation, not automatic resubmission.
-"""
 from contextlib import contextmanager, closing
 from copy import deepcopy
 import hashlib
@@ -34,7 +27,7 @@ class EmbeddingJobError(EmbeddingError):
 
 
 class EmbeddingPreflightError(EmbeddingJobError):
-    """A known Google admission refusal with no registered physical request."""
+    pass
 
 
 RECOVERABLE_PREFLIGHT = frozenset({'EMBEDDING_BUDGET_INSUFFICIENT', 'EMBEDDING_LEDGER_BLOCKED'})
@@ -44,7 +37,7 @@ def batch_size(provider):
     from .remote import GoogleEmbeddingProvider
 
     if isinstance(provider, GoogleEmbeddingProvider):
-        # Gemini API uses batchEmbedContents; Vertex sends one embedContent per item.
+
         return 16 if provider.platform == 'gemini_api' else 1
     return getattr(provider, 'max_batch_size', 1)
 
@@ -83,7 +76,7 @@ def validate_vectors(vectors, count, dimension):
 
 
 def retry_delay(exc, attempt):
-    """Retry only explicit rejection/unavailable statuses; timeout is ambiguous."""
+
     if getattr(exc, 'status', None) not in (429, 500, 502, 503, 504):
         return None
     delay = getattr(exc, 'retry_after_seconds', 0) or 0
@@ -263,7 +256,7 @@ class EmbeddingJobs:
                 (tenant_id, kb_id, build_id)).fetchall()
 
     def reconcile(self, tenant_id, kb_id, build_id, provider, authorize):
-        """No network calls or ledger mutations. Reconcile only verified COMPLETE captures."""
+
         self._auth(authorize)
         with self._tx(tenant_id, kb_id) as conn:
             conn.execute("UPDATE embedding_jobs SET status='UNKNOWN',error='LEASE_EXPIRED' WHERE "
@@ -298,7 +291,7 @@ def recovered_vectors(row, provider):
                 or record.get('texts') != texts or record.get('provider_manifest') != payload['manifest']
                 or provider.manifest != payload['manifest'] or record.get('audit_context') != payload['audit_context']):
             return None
-        # Google captures use the unified semantic digest, not this module's encoding.
+
         from .semantic_units import digest as semantic_digest
         vectors = validate_vectors(record.get('vectors'), len(texts), provider.dimension)
         if record.get('vectors_sha256') != semantic_digest(vectors):

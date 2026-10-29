@@ -1,4 +1,3 @@
-"""Refresh the source-derived function catalog in the architecture HTML."""
 from __future__ import annotations
 
 import ast
@@ -7,8 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGE = ROOT / 'docs/functional-architecture.html'
-START = '<!-- FUNCTION CATALOG START -->'
-END = '<!-- FUNCTION CATALOG END -->'
+START = '<template id="function-catalog-start"></template>'
+END = '<template id="function-catalog-end"></template>'
 GROUPS = {
     '接入与配置': {'api', 'agent_api', 'delivery', 'settings'},
     '通用 Agent 与插件宿主': {'agent_decisions', 'agent_engine', 'agent_native', 'agent_plugins',
@@ -17,11 +16,11 @@ GROUPS = {
     '知识库业务与会话': {'knowledge_application', 'knowledge_profile', 'knowledge_service',
                       'knowledge_tool', 'knowledge_turn', 'knowledge_workflow', 'knowledge_model',
                       'knowledge_planning', 'knowledge_answer', 'knowledge_policy',
-                      'knowledge_plugin_tools', 'agent_store', 'agent_work_state',
+                      'knowledge_plugin_tools', 'session_store', 'knowledge_sessions', 'knowledge_state', 'agent_work_state',
                       'agent_context', 'agent_history', 'agent_protocol', 'agent_schema', 'agent_model'},
     '工具与检索': {'agent_tools', 'agent_tool_registry', 'agent_builtin_tools', 'agent_tool_view',
                  'retrieval_pipeline', 'retrieval_expansion',
-                 'search', 'search_compat', 'search_tokens', 'postgres_search', 'embedded_search',
+                 'search', 'search_tokens', 'postgres_search', 'embedded_search',
                  'reranking', 'cross_document', 'table_query', 'workflow_query'},
     '证据与内容处理': {'evidence_selection', 'evidence_packing', 'delivery_units', 'documents',
                     'markdown_source', 'page_parsing', 'parsing_backends', 'pdf_layout', 'ocr',
@@ -44,9 +43,8 @@ def category(path: Path) -> str:
     return next((name for name, modules in GROUPS.items() if path.stem in modules), '其他产品模块')
 
 
-
 class FunctionFacts(ast.NodeVisitor):
-    """Collect syntax belonging to one function, excluding nested definitions."""
+
 
     def __init__(self):
         self.calls = []
@@ -124,13 +122,11 @@ def entries(path: Path) -> list[dict[str, object]]:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 qualified = '.'.join((*parents, child.name))
-                doc = ast.get_docstring(child)
                 signature = ('async ' if isinstance(child, ast.AsyncFunctionDef) else '') + child.name
                 signature += '(' + ast.unparse(child.args) + ')'
                 if child.returns:
                     signature += ' → ' + ast.unparse(child.returns)
                 rows.append({'name': qualified, 'signature': signature, 'line': child.lineno,
-                             'doc': doc.splitlines()[0] if doc else '',
                              **function_facts(child), 'kind': '嵌套函数' if any(isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))
                                                     for x in ancestors) else ('方法' if parents else '函数')})
                 ancestors.append(child)
@@ -160,14 +156,13 @@ def generate() -> str:
         relative = path.relative_to(ROOT).as_posix()
         for row in rows:
             row['explanation'] = explanations.get(f"{relative}:{row['name']}")
-        module_doc = ast.get_docstring(ast.parse(path.read_text(encoding='utf-8-sig'))) or ''
-        modules.append({'path': relative, 'group': category(path), 'doc': module_doc.splitlines()[0] if module_doc else '',
+        modules.append({'path': relative, 'group': category(path),
                         'functions': rows})
     payload = json.dumps(modules, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
     return f'''{START}
 <section class="panel" id="catalog"><div class="panel-head"><h2>06 / 源码函数归属目录</h2><span>从 Python 源码静态提取</span></div>
 <p class="catalog-note">按功能分组、文件和类查看定义。包含类方法、私有函数和嵌套函数；名称反映词法归属，不代表调用关系。输入、返回表达式、调用与写入位置由静态语法提取；这些是代码线索，并非完整的业务语义或运行时行为。覆盖 kb_platform 与 scripts 下的 Python 文件，包括评测合同和第三方代码。</p>
-<div class="catalog-controls"><label for="catalog-search">搜索函数、文件或说明</label><input id="catalog-search" type="search" placeholder="例如 AgentStore、reserve、retrieval"><label for="catalog-group">功能分组</label><select id="catalog-group"><option value="">全部分组</option></select></div>
+<div class="catalog-controls"><label for="catalog-search">搜索函数、文件或说明</label><input id="catalog-search" type="search" placeholder="例如 SessionStore、reserve、retrieval"><label for="catalog-group">功能分组</label><select id="catalog-group"><option value="">全部分组</option></select></div>
 <p id="catalog-count" class="catalog-note" aria-live="polite"></p><div id="catalog-list"></div><p class="catalog-note">更新目录：在项目根目录运行 <code>python scripts/generate_architecture_catalog.py</code>。</p></section>
 <style>.catalog-note{{font-size:13px;color:#617782}}.catalog-controls{{display:flex;gap:10px;align-items:center;flex-wrap:wrap}}.catalog-controls label{{font-size:12px;font-weight:bold}}.catalog-controls input,.catalog-controls select{{border:1px solid #cbdcda;border-radius:8px;padding:9px;background:#fff;font:inherit}}.catalog-controls input{{min-width:280px;flex:1}}.catalog-module{{border-top:1px solid #e2ecea;padding:10px 0}}.catalog-module summary{{cursor:pointer;font-weight:700}}.catalog-module summary span{{font-weight:400;color:#71828a;font-size:12px;margin-left:8px}}.catalog-row{{border-top:1px solid #eef2f2;padding:8px 8px 8px 20px;display:grid;grid-template-columns:minmax(150px,1fr) minmax(200px,2fr);gap:8px}}.reviewed{{background:#edf8f4;border-left:3px solid #168c79;padding:8px;margin:8px 0}}.catalog-row code{{font-size:12px;overflow-wrap:anywhere}}.catalog-row small{{display:block;color:#70828b}}.catalog-row a{{color:#087d79;text-decoration:none}}@media(max-width:700px){{.catalog-row{{grid-template-columns:1fr}}}}</style>
 <script type="application/json" id="catalog-data">{payload}</script>
@@ -175,7 +170,7 @@ def generate() -> str:
 (()=>{{const data=JSON.parse(document.getElementById('catalog-data').textContent), search=document.getElementById('catalog-search'), group=document.getElementById('catalog-group'), list=document.getElementById('catalog-list'), count=document.getElementById('catalog-count');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));
 [...new Set(data.map(m=>m.group))].forEach(g=>{{const o=document.createElement('option');o.value=g;o.textContent=g;group.append(o)}});
-function render(){{const q=search.value.trim().toLowerCase(), selected=group.value;let total=0,files=0;list.replaceChildren();for(const m of data){{if(selected&&m.group!==selected)continue;const moduleMatch=(m.path+' '+m.group+' '+m.doc).toLowerCase().includes(q);const rows=m.functions.filter(f=>moduleMatch||(f.name+' '+f.signature+' '+f.doc).toLowerCase().includes(q));if(!rows.length)continue;files++;total+=rows.length;const d=document.createElement('details');d.className='catalog-module';if(q)d.open=true;d.innerHTML='<summary>'+esc(m.group)+' · '+esc(m.path)+' <span>'+rows.length+' 项'+(m.doc?' · '+esc(m.doc):'')+'</span></summary>'+rows.map(f=>'<div class="catalog-row"><div><a href="../'+esc(m.path)+'">'+esc(f.name)+'</a><small>'+esc(f.kind)+' · 第 '+f.line+' 行</small></div><div><code>'+esc(f.signature)+'</code>'+(f.explanation?'<div class="reviewed"><b>已核对的功能说明</b><small><b>用途：</b>'+esc(f.explanation.purpose)+'</small><small><b>输入：</b>'+esc(f.explanation.inputs)+'</small><small><b>操作对象：</b>'+esc(f.explanation.objects)+'</small><small><b>输出：</b>'+esc(f.explanation.output)+'</small></div>':'<small>尚未完成人工功能说明；以下是静态代码线索。</small>')+(f.doc?'<small>源码说明：'+esc(f.doc)+'</small>':'')+'<small><b>输入：</b>'+esc(f.inputs.length?f.inputs.join('、'):'无显式参数')+'</small><small><b>操作对象：</b>'+esc(f.writes.length?f.writes.join('；')+(f.write_count>f.writes.length?' 等':''):'未发现属性或下标直接赋值；可能通过调用产生作用')+'</small><small><b>处理动作：</b>'+esc(f.calls.length?'调用 '+f.calls.join('、')+(f.call_count>f.calls.length?' 等':''):'未发现函数调用')+'</small><small><b>输出：</b>'+esc(f.returns.length?f.returns.join('；')+(f.return_count>f.returns.length?' 等':''):'没有显式 return，通常返回 None；生成器及异常路径需查看源码')+'</small>'+(f.raises.length?'<small><b>显式异常：</b>'+esc(f.raises.join('；'))+'</small>':'')+'</div></div>').join('');list.append(d)}}count.textContent='显示 '+files+' 个文件，'+total+' 个函数定义。点击文件展开。'}}search.addEventListener('input',render);group.addEventListener('change',render);render()}})();
+function render(){{const q=search.value.trim().toLowerCase(), selected=group.value;let total=0,files=0;list.replaceChildren();for(const m of data){{if(selected&&m.group!==selected)continue;const moduleMatch=(m.path+' '+m.group).toLowerCase().includes(q);const rows=m.functions.filter(f=>moduleMatch||(f.name+' '+f.signature).toLowerCase().includes(q));if(!rows.length)continue;files++;total+=rows.length;const d=document.createElement('details');d.className='catalog-module';if(q)d.open=true;d.innerHTML='<summary>'+esc(m.group)+' · '+esc(m.path)+' <span>'+rows.length+' 项'+'</span></summary>'+rows.map(f=>'<div class="catalog-row"><div><a href="../'+esc(m.path)+'">'+esc(f.name)+'</a><small>'+esc(f.kind)+' · 第 '+f.line+' 行</small></div><div><code>'+esc(f.signature)+'</code>'+(f.explanation?'<div class="reviewed"><b>已核对的功能说明</b><small><b>用途：</b>'+esc(f.explanation.purpose)+'</small><small><b>输入：</b>'+esc(f.explanation.inputs)+'</small><small><b>操作对象：</b>'+esc(f.explanation.objects)+'</small><small><b>输出：</b>'+esc(f.explanation.output)+'</small></div>':'<small>尚未完成人工功能说明；以下是静态代码线索。</small>')+'<small><b>输入：</b>'+esc(f.inputs.length?f.inputs.join('、'):'无显式参数')+'</small><small><b>操作对象：</b>'+esc(f.writes.length?f.writes.join('；')+(f.write_count>f.writes.length?' 等':''):'未发现属性或下标直接赋值；可能通过调用产生作用')+'</small><small><b>处理动作：</b>'+esc(f.calls.length?'调用 '+f.calls.join('、')+(f.call_count>f.calls.length?' 等':''):'未发现函数调用')+'</small><small><b>输出：</b>'+esc(f.returns.length?f.returns.join('；')+(f.return_count>f.returns.length?' 等':''):'没有显式 return，通常返回 None；生成器及异常路径需查看源码')+'</small>'+(f.raises.length?'<small><b>显式异常：</b>'+esc(f.raises.join('；'))+'</small>':'')+'</div></div>').join('');list.append(d)}}count.textContent='显示 '+files+' 个文件，'+total+' 个函数定义。点击文件展开。'}}search.addEventListener('input',render);group.addEventListener('change',render);render()}})();
 </script>
 {END}'''
 
@@ -183,13 +178,9 @@ function render(){{const q=search.value.trim().toLowerCase(), selected=group.val
 def main() -> None:
     page = PAGE.read_text(encoding='utf-8-sig')
     block = generate()
-    if START in page and END in page:
-        before, rest = page.split(START, 1)
-        _, after = rest.split(END, 1)
-        page = before + block + after
-    else:
-        page = page.replace('<section class="panel"><div class="panel-head"><h2>代码入口',
-                            block + '\n<section class="panel"><div class="panel-head"><h2>代码入口', 1)
+    before, rest = page.split(START, 1)
+    _, after = rest.split(END, 1)
+    page = before + block + after
     PAGE.write_text(page, encoding='utf-8')
     print(f'Updated {PAGE.relative_to(ROOT)}')
 
