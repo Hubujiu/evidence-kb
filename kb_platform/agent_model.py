@@ -163,7 +163,8 @@ class AgentModel:
             raise RemoteModelError("AGENT_CONTEXT_OVERFLOW")
         payload = {"model": self.luna.model, "messages": prepared, "max_tokens": output_limit}
         key = digest({"protocol": self.protocol, "endpoint": self.luna.base_url,
-                      "payload": payload, "role": role, "schema": schema})
+                      "payload": payload, "role": role, "schema": schema,
+                      "transport": getattr(self.luna, 'manifest', {}).get('transport')})
         # A caller-supplied logical call identity also guards interrupted
         # requests across retry/restart; a new physical retry gets its own ID.
         request_id = call_context.get('call_id') or uuid4().hex

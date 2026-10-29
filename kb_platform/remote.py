@@ -21,6 +21,7 @@ from uuid import uuid4
 import httpx
 
 from .embeddings import EmbeddingError
+from .luna_sdk import TRANSPORT_MANIFEST, chat_response
 from .provider_runtime import (ProviderCircuit, RequestReceipts, RuntimePolicyError,
                                classify_failure, retry_after_seconds)
 
@@ -388,8 +389,8 @@ class _Transport:
         metadata['physical_request_id'] = physical_id
         started = time.perf_counter()
         try:
-            options = {'timeout': min(self.timeout, remaining)} if remaining is not None else {}
-            response = self.client.post(self.base_url + path, json=payload, headers=headers, **options)
+            timeout = min(self.timeout, remaining) if remaining is not None else self.timeout
+            response = self._request_response(path, payload, headers, timeout)
         except BaseException as exc:
             failure = classify_failure(exc)
             state = failure.outcome if isinstance(exc, httpx.HTTPError) or failure.category == 'admission' else 'UNKNOWN'
@@ -402,6 +403,9 @@ class _Transport:
         self._receipts.finish(logical_id, physical_id, state, http_status=response.status_code)
         metadata['request_state'] = state
         return response, elapsed
+
+    def _request_response(self, path, payload, headers, timeout):
+        return self.client.post(self.base_url + path, json=payload, headers=headers, timeout=timeout)
 
     @_provider_guard
     def _post(self, path, payload, headers, purpose, key, units=1, *, trace=None):
@@ -505,6 +509,11 @@ class LunaClient(_Transport):
     contract_purposes = compile_purposes | {"ocr"}
     supports_contract_validation = True
 
+    def _request_response(self, path, payload, headers, timeout):
+        if path != '/chat/completions':
+            raise RemoteModelError('INVALID_LUNA_ENDPOINT')
+        return chat_response(self.client, self.base_url, headers, payload, timeout)
+
     def __init__(self, config_path=".local/providers.json"):
         config, selected = _read_config(config_path, "luna")
         super().__init__(config, selected, self.provider_id, trust_env=False)
@@ -515,6 +524,7 @@ class LunaClient(_Transport):
         self.failed_response_dir = Path(diagnostic_directory) if diagnostic_directory is not None else None
         self.manifest = {"provider": self.provider_id, "model": self.model, "base_url": self.base_url,
                          "protocol": "chat_completions", "adapter": "remote-models/0.1",
+                         "transport": dict(TRANSPORT_MANIFEST),
                          "compile_format_recovery": "one_correction/2",
                          "compile_contract_cache": "validate_before_cache/1"}
 
@@ -565,7 +575,8 @@ class LunaClient(_Transport):
         payload = {"model": self.model, "messages": [{"role": "system", "content": system},
                                                      {"role": "user", "content": content if images else user}]}
         semantic_key = _digest({"endpoint": self.base_url, "payload": payload, "purpose": purpose,
-                                "json_output": json_output, "adapter": self.manifest["adapter"]})
+                                "json_output": json_output, "adapter": self.manifest["adapter"],
+                                "transport": self.manifest["transport"]})
         key = _digest({"semantic_key": semantic_key, "contract_version": contract_version}) if validator is not None else semantic_key
         trace = {"request_id": uuid4().hex, "attempt": 0, "format_attempt": 0,
                  "semantic_request_hash": semantic_key, "contract_version": contract_version}

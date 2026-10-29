@@ -35,6 +35,16 @@ flowchart TD
 
 新响应与缓存结果都执行当前 Schema 校验及业务 validator。重复 JSON 键检查、证据与引用校验、预算预留、失败计费和错误码映射仍由原有边界负责。`agent_schema_contracts.py` 使用合成响应验证这些行为，统一质量入口自动发现；本轮未删除测试，也未新增模型调用。
 
+## Luna SDK 与物理请求边界
+
+`magpie_luna` 的 Chat Completions 通过 `luna_sdk.py` 调用 OpenAI Python SDK；Google Embedding 仍使用原适配器。Luna 不再直接调用 HTTP POST，也没有生产路径回退开关。SDK 每次使用提供者当前持有的 HTTP 客户端，因此 `observe_client` 的物理计量 transport 和交付服务的发送串行化继续生效。
+
+SDK 设置 `max_retries=0`，使用调用者客户端的禁止自动重定向配置，超时受当前请求剩余时间约束。SDK 返回原始 HTTP 响应，保留实际载荷、usage 缺失及错误响应，避免 SDK 类型转换影响现有合同。适配层还原 SDK 包装的底层连接/超时/准入异常，并将 HTTP 状态错误还原为响应；`remote.py` 继续唯一负责重试分类、Retry-After、重试等待上限和请求次数上限。
+
+每次获准重试仍创建新的物理身份并关联前次请求。`MeteredTransport` 继续在真实发送之前预留预算，保留失败和缺失 usage 的计费；读取/写入超时及取消保持 UNKNOWN，重启也不能绕过未决请求。收到 403 后关闭提供者准入；预算拒绝即使被 SDK 包装也保持零发送。SDK 不接管客户端关闭生命周期，也不采用环境中的 OpenAI 组织、项目及自定义头来改变提供者配置。
+
+提供者 manifest 和模型响应缓存键包含 SDK 版本及 transport 协议，升级后相关响应缓存失效，旧文件保持只读；这不会清零或迁移现有物理请求账本。`luna_sdk_contracts.py` 使用真实 SDK 加合成 HTTP transport 验证边界，没有调用真实提供者。该检查证明离线协议与计量行为，不代表线上模型兼容性或 RAG 质量验收。
+
 ## 产品与评测共享什么
 
 `rag_testing` 中有五个模块提供产品所需的稳定能力。
