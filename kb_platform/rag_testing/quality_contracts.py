@@ -276,16 +276,19 @@ class NativeBuildGateContracts(unittest.TestCase):
     def test_independent_builds_preserve_each_runs_release_library(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            (root / 'alias').mkdir()
             targets = []
             libraries = []
             for label in ('first', 'second'):
-                output = root / label
+                # The CLI canonicalizes paths, including Windows 8.3 temp paths.
+                # Exercise an alias on every platform and compare actual locations.
+                output = root / 'alias' / '..' / label
                 code, summary, calls = self.run_gate(root, output)
                 self.assertEqual(0, code)
                 library = Path(summary['native_library'])
                 libraries.append(library)
                 self.assertEqual(b'current release library', library.read_bytes())
-                self.assertTrue(library.is_relative_to(output))
+                self.assertTrue(library.resolve().is_relative_to(output.resolve()))
                 for name, command, env in calls:
                     if name == 'rust-build':
                         self.assertIn('--release', command)
