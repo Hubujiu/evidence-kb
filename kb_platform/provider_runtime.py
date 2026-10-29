@@ -18,6 +18,7 @@ import time
 from uuid import uuid4
 
 import httpx
+from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential
 
 
 class RuntimePolicyError(RuntimeError):
@@ -252,32 +253,57 @@ class ToolExecutor:
                     raise RuntimePolicyError('TOOL_REQUEST_IN_PROGRESS')
                 return ToolOutcome(**{**asdict(deepcopy(existing['outcome'])), 'reused': True})
             self._receipts[request_id] = {'fingerprint': fingerprint, 'outcome': None}
-        waited = 0.0
         outcome = None
+        attempt = 0
+        sleep_interrupted = False
+        backoff = wait_exponential(multiplier=.25)
+
+        def wait(retry_state):
+            delay = backoff(retry_state)
+            exc = retry_state.outcome.exception()
+            cause = exc if isinstance(exc, httpx.HTTPStatusError) else getattr(exc, '__cause__', None)
+            if isinstance(cause, httpx.HTTPStatusError):
+                delay = max(delay, retry_after_seconds(cause.response.headers.get('Retry-After')) or 0)
+            return delay
+
+        def stop(retry_state):
+            return (stop_after_attempt(self.max_attempts)(retry_state)
+                    or retry_state.idle_for + retry_state.upcoming_sleep > self.max_wait_seconds
+                    or (deadline_seconds is not None and
+                        time.monotonic() - started + retry_state.upcoming_sleep >= deadline_seconds))
+
+        def invoke():
+            nonlocal attempt
+            attempt += 1
+            if deadline_seconds is not None and time.monotonic() - started >= deadline_seconds:
+                return False, None
+            return True, function()
+
+        def sleep(delay):
+            nonlocal sleep_interrupted
+            try:
+                self.sleep(delay)
+            except BaseException:
+                sleep_interrupted = True
+                raise
+
+        retrying = Retrying(retry=retry_if_exception(lambda exc: read_only and classify_failure(exc).retryable),
+                            wait=wait, stop=stop, sleep=sleep, reraise=True)
         try:
-            for attempt in range(1, self.max_attempts + 1):
-                if deadline_seconds is not None and time.monotonic() - started >= deadline_seconds:
+            try:
+                invoked, value = retrying(invoke)
+            except Exception as exc:
+                if sleep_interrupted:
+                    raise
+                failure = classify_failure(exc)
+                code = getattr(exc, 'code', type(exc).__name__)
+                code = code if isinstance(code, str) and code.isidentifier() else 'TOOL_EXECUTION_FAILED'
+                outcome = ToolOutcome(failure.outcome, None, attempt, failure.category, code)
+            else:
+                elapsed = time.monotonic() - started
+                if not invoked:
                     outcome = ToolOutcome('ERROR', None, attempt - 1, 'deadline_exceeded',
-                                          'TOOL_DEADLINE_EXCEEDED', elapsed_seconds=time.monotonic() - started)
-                    break
-                try:
-                    value = function()
-                except Exception as exc:
-                    failure = classify_failure(exc)
-                    code = getattr(exc, 'code', type(exc).__name__)
-                    code = code if isinstance(code, str) and code.isidentifier() else 'TOOL_EXECUTION_FAILED'
-                    delay = .25 * 2 ** (attempt - 1)
-                    cause = exc if isinstance(exc, httpx.HTTPStatusError) else getattr(exc, '__cause__', None)
-                    if isinstance(cause, httpx.HTTPStatusError):
-                        retry_after = retry_after_seconds(cause.response.headers.get('Retry-After'))
-                        delay = max(delay, retry_after or 0)
-                    if (read_only and failure.retryable and attempt < self.max_attempts
-                            and waited + delay <= self.max_wait_seconds
-                            and (deadline_seconds is None or time.monotonic() - started + delay < deadline_seconds)):
-                        self.sleep(delay)
-                        waited += delay
-                        continue
-                    outcome = ToolOutcome(failure.outcome, None, attempt, failure.category, code)
+                                          'TOOL_DEADLINE_EXCEEDED', elapsed_seconds=elapsed)
                 else:
                     empty = is_empty(value) if is_empty is not None else value is None or value == []
                     elapsed = time.monotonic() - started
@@ -287,11 +313,8 @@ class ToolExecutor:
                     else:
                         outcome = ToolOutcome('EMPTY' if empty else 'COMPLETE', value, attempt,
                                               elapsed_seconds=elapsed)
-                break
             return deepcopy(outcome)
         except BaseException:
-            # Cancellation after invocation cannot establish whether a side
-            # effect completed. Preserve the receipt rather than enable replay.
             outcome = ToolOutcome('UNKNOWN', None, attempt, 'outcome_unknown', 'TOOL_EXECUTION_INTERRUPTED')
             raise
         finally:

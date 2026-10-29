@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from kb_platform.agent_context import canonical, digest
 from kb_platform.agent_model import AgentModel, schema_instruction
 from kb_platform.agent_schema import compile_schema, validate_output
-from kb_platform.agent_service import ANSWER_SCHEMA, DECISION_SCHEMA, VERDICT_SCHEMA
+from kb_platform.agent_protocol import ANSWER_SCHEMA, DECISION_SCHEMA, VERDICT_SCHEMA
 from kb_platform.remote import RemoteModelError
 
 
