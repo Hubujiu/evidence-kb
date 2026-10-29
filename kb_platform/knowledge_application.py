@@ -1,7 +1,38 @@
 """Knowledge application and model-facing capabilities assembled by a profile."""
 from copy import deepcopy
+import json
 
-from .agent_plugins import ToolContext, ToolPlugin, ToolResult
+from .agent_plugins import ToolContext, ToolPlugin, ToolPlugins, ToolResult
+from .agent_engine import execution_scope
+from .plugin_host import EventName
+
+
+class KnowledgeGraphDriver:
+    """Enter the domain's graph directly, without an outer temporary Agent loop."""
+
+    def __init__(self, host):
+        self.host = host
+
+    def invoke(self, tool, context, arguments):
+        identity = {'session_id': context.session_id, 'turn_id': context.turn_id}
+        metadata = {**identity, 'name': tool.name, 'effect_id': 1}
+        tools = ToolPlugins((tool,))
+        with self.host.lease(), execution_scope(deadline_seconds=900) as execution:
+            self.host.emit(EventName.RUN_STARTED, identity)
+            try:
+                self.host.emit(EventName.TOOL_BEFORE, metadata)
+                execution.check()
+                result = tools.execute(tool.name, context, arguments).data
+                # Preserve the public JSON value shape formerly enforced by
+                # the outer native loop (notably tuple -> array on first return).
+                result = json.loads(json.dumps(result, ensure_ascii=False, allow_nan=False))
+                execution.check()
+                self.host.emit(EventName.TOOL_AFTER, metadata)
+                self.host.emit(EventName.RUN_COMPLETED, identity)
+                return result
+            except BaseException as error:
+                self.host.emit(EventName.RUN_FAILED, {**identity, 'error': type(error).__name__})
+                raise
 
 
 class KnowledgeTools:

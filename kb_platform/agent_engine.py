@@ -83,7 +83,8 @@ class Runtime:
 
     def run(self, program: Program, *, before_operation=None, max_operations=128,
             deadline_seconds=900, cancellation=None):
-        with execution_scope(deadline_seconds=deadline_seconds, cancellation=cancellation) as execution:
+        with _program_lifecycle(program), execution_scope(
+                deadline_seconds=deadline_seconds, cancellation=cancellation) as execution:
             started = time.monotonic()
             kernel = Kernel(max_operations, max(1, math.ceil(execution.remaining_seconds * 1000)))
 
@@ -118,3 +119,21 @@ class Runtime:
                     except KernelError:
                         pass
                 raise
+
+
+@contextmanager
+def _program_lifecycle(program):
+    """Release native programs even when admission fails before the first step."""
+    close = getattr(program, 'close', None)
+    try:
+        yield
+    except BaseException as error:
+        if close is not None:
+            try:
+                close()
+            except BaseException as cleanup:
+                error.add_note(f'Program cleanup failed: {cleanup}')
+        raise
+    else:
+        if close is not None:
+            close()

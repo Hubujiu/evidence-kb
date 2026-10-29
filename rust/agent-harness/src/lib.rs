@@ -1,6 +1,7 @@
 //! Scoped plugin ownership and interchangeable agent loops, independent of adapters.
 
 pub mod agent_loop;
+pub mod graph;
 mod host;
 mod manifest;
 
@@ -54,6 +55,9 @@ fn dispatch(mut request: Value) -> Result<Value, Error> {
         .to_owned();
     if command.starts_with("loop_") {
         return agent_loop::dispatch(&command, request);
+    }
+    if command.starts_with("graph_") {
+        return graph::dispatch(&command, request);
     }
     static HOSTS: OnceLock<Mutex<HostRegistry>> = OnceLock::new();
     HOSTS

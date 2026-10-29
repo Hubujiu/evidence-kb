@@ -5,6 +5,7 @@ from dataclasses import replace
 from .agent_engine import Complete, Operation, current_execution, execution_scope
 from .plugin_host import EventName
 from .plugin_native import native_call
+from .session_identity import SessionPersistenceError
 
 
 class NativeLoop:
@@ -32,24 +33,37 @@ class NativeLoop:
         with self.host.lease(), execution_scope(deadline_seconds=limits['deadline_seconds'],
                                               cancellation=limits['cancellation']) as execution:
             program = _NativeProgram(self, tools, context, message, config)
+            primary_error = None
             try:
                 self.host.emit(EventName.RUN_STARTED, program.identity)
                 result = self.runtime.run(program, **limits)
                 execution.check()
                 if program.session is not None:
-                    program.session.finish(result)
+                    committed = program.session.finish(result)
+                    if committed is not None:
+                        result = committed
                 self.host.emit(EventName.RUN_COMPLETED, program.identity)
                 return result
             except BaseException as error:
+                primary_error = error
+                failure = None
                 if program.session is not None:
                     try:
-                        program.session.fail(error)
+                        failure = program.session.fail(error)
                     except BaseException as cleanup:
                         error.add_note(f'Session failure cleanup: {cleanup}')
                 self.host.emit(EventName.RUN_FAILED, {**program.identity, 'error': type(error).__name__})
+                if (failure is not None and isinstance(error, Exception)
+                        and not isinstance(error, SessionPersistenceError)):
+                    return failure
                 raise
             finally:
-                native_call('loop_close', loop_id=program.id)
+                try:
+                    native_call('loop_close', loop_id=program.id)
+                except BaseException as cleanup:
+                    if primary_error is None:
+                        raise
+                    primary_error.add_note(f'Native loop cleanup: {cleanup}')
 
 
 class _NativeProgram:

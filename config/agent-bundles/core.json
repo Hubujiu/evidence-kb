@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "runtime",
+      "use": "harness.runtime"
+    },
+    {
+      "id": "store",
+      "use": "harness.store.sqlite",
+      "config": {
+        "root": ".local/agent-core"
+      }
+    },
+    {
+      "id": "sessions",
+      "use": "harness.sessions.durable"
+    },
+    {
+      "id": "policy",
+      "use": "harness.context.policy"
+    },
+    {
+      "id": "compaction",
+      "use": "harness.compaction.recent"
+    },
+    {
+      "id": "prompt",
+      "use": "harness.context.history"
+    },
+    {
+      "id": "tools",
+      "use": "harness.tools"
+    },
+    {
+      "id": "model",
+      "use": "harness.model.callable"
+    },
+    {
+      "id": "loop",
+      "use": "harness.loop.model-tools"
+    },
+    {
+      "id": "application",
+      "use": "harness.application"
+    }
+  ]
+}

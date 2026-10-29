@@ -10,7 +10,7 @@ from threading import Lock
 import time
 from uuid import uuid4
 
-from .agent_context import ContextPolicy, canonical, digest, estimate_messages
+from .context_budget import ContextBudget as ContextPolicy, canonical, digest, estimate_messages
 from .model_errors import RemoteModelError
 from .agent_provider import ModelProvider
 from .agent_schema import check_schema, compile_schema, validate_output

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 from contextlib import contextmanager
-from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import json
 import math
@@ -16,6 +15,8 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from .session_identity import Actor as Actor, PlatformError as PlatformError
+
 from .search import OpenSearch, SearchUnavailable, TIE_BREAK_FIELDS, content_order, QUERY_PROTOCOL
 from .storage import OriginalStore
 from .embeddings import EmbeddingError
@@ -26,23 +27,6 @@ CAPABILITIES = {'kb.read', 'kb.write', 'kb.manage', 'kb.manage_members', 'kb.man
 DEFAULT_POLICY = {'native_parse': True, 'ocr': False, 'embedding': False, 'rerank': False,
                   'llm_context': False, 'compile': False, 'preview': True, 'download': True,
                   'allowed_providers': [], 'include_hidden': False, 'include_notes': False}
-
-
-@dataclass(frozen=True)
-class Actor:
-    tenant_id: str
-    principal_id: str
-
-    def __post_init__(self):
-        if not self.tenant_id or not self.principal_id:
-            raise ValueError('Identity requires tenant and principal')
-
-
-class PlatformError(RuntimeError):
-    def __init__(self, code: str, message: str, status_code: int = 400):
-        super().__init__(message)
-        self.code = code
-        self.status_code = status_code
 
 
 def _deny():

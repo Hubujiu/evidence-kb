@@ -1,6 +1,6 @@
 # Agent 插件与业务边界
 
-profile、插件生命周期和服务扩展示例见 [插件宿主](plugin-harness.md)，原生状态机和构建方式见 [Rust 通用运行时](rust-agent-runtime.md)。默认 API 通过 profile 选择应用服务；模型、上下文、会话、工具和 loop 都有独立服务边界，不读取全局可变工具目录。
+显式组合与独立持久 Agent 示例见 [Agent 组合包](agent-bundles.md)。profile、插件生命周期和服务扩展示例见 [插件宿主](plugin-harness.md)，原生状态机和构建方式见 [Rust 通用运行时](rust-agent-runtime.md)。默认 API 通过 profile 选择应用服务；模型、上下文、会话、工具和 loop 都有独立服务边界，不读取全局可变工具目录。
 
 ## 插件与工具的区别
 
@@ -54,12 +54,14 @@ plugin = ToolPlugin('lookup_rule', 'Read authorized original rules.',
 
 要把整条 RAG 能力提供给通用 Agent，使用 `knowledge_tool.query_tool(service, session_id)` 注册 `kb_query`，无需让通用核心依赖内部知识工具、证据 Schema 或数据库。该工具继承父执行边界，并直接交付服务已经核验的结果。
 
-默认 HTTP 应用通过 `knowledge_application.KnowledgeTools`（服务名 `knowledge.tools`）绑定 `kb_query`，保留 HTTP 调用者的原始 request ID、expected revision 和来源/工作流约束，再交给 `harness.loop` 的 `single-tool` 模式。该路径没有多余的外层模型决策和答案改写；模型、上下文、持久存储、授权网关、工具执行器及语义检索都由 `knowledge_profile.py` 注入。
+默认 HTTP 应用通过 `knowledge_application.KnowledgeTools`（服务名 `knowledge.tools`）绑定 `kb_query`，保留 HTTP 调用者的原始 request ID、expected revision 和来源/工作流约束，再交给 `knowledge.driver.graph` 直接进入知识库图流程。Rust 推进节点并检查结果关联，Python 继续选择业务路由和执行节点。该路径没有外层 single-tool loop、额外模型决策或答案改写；模型、上下文、持久存储、授权网关、工具执行器及语义检索都由 `knowledge_profile.py` 注入。
 
 ## 提供者与持久化
 
 `agent_provider.ModelProvider` 归一化模型结果、精确缓存身份与物理尝试记录；`agent_luna.LunaModelProvider` 适配现有 Luna 客户端。`AgentModel` 不导入具体 HTTP/SDK 提供者。新增提供者必须继续接入唯一的实际请求计量与费用账本，不能自建隐藏重试链。
 
-Rust 拥有插件生命周期和临时 loop 状态，消息存储通过会话服务接口完成。默认 `harness.sessions.memory` 仅保留单次运行的临时消息并在结束后释放。知识库会话与工具产物仍由 `AgentStore` 保存，现有范围授权、租约和哈希检查继续执行。通用内核没有隐式持久化、checkpoint 重放或失败自动恢复。
+Rust 拥有插件生命周期和临时 loop/graph 状态，消息存储通过会话服务接口完成。`ToolAgent` 的兼容默认仍使用单轮 `harness.sessions.memory`；`create_agent_application()` 的显式 core 组合使用持久会话，支持跨宿主加载持久历史。知识库通过 `KnowledgeSessions` 适配通用 `SessionStore`，旧 `AgentStore` 保留兼容入口；现有范围授权、租约和哈希检查继续执行。恢复持久会话不代表自动重放中断工具或恢复原生句柄。
+
+通用 `harness.context.history` 与 `harness.compaction.recent` 分开装配：前者组装模型输入，后者选择完整轮次后缀，不改写存储历史或调用摘要模型。`harness.model.structured` 适配已有计量的结构化模型，辅助插件可复用其 `complete()`；不必通过主 loop 请求一次辅助调用，但仍必须保留原有准入、实际请求身份和费用记录。
 
 `host.call()` 对服务调用取得运行租约。`drain()` 停止接收新调用；`close()` 在所属子树无活动租约时按启动相反顺序清理。忙碌和清理失败会明确报错，不能把卸载理解为取消、撤回或重复调用工具。同步 Python 效果仍依赖协作取消。
