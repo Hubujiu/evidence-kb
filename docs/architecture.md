@@ -1,6 +1,6 @@
 # 产品模块与评测边界
 
-通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/agent-profiles/knowledge.json`，取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由 allowlist catalog 提供。Rust 拥有依赖解析、作用域、生命周期和通用 loop 决策，Python 执行服务效果。通用宿主、loop 与工具目录不导入知识库业务。
+通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/agent-profiles/knowledge.json`，展开显式 knowledge 组合包并取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由 allowlist catalog 提供。Rust 拥有依赖解析、作用域、生命周期、通用 loop 和图节点推进，Python 执行服务效果与知识库路由策略。通用宿主、loop 与工具目录不导入知识库业务。
 
 默认检索由 `postgres_search.py` 提供，使用 pg_textsearch BM25 和 pgvector 精确检索。检索代际、语义页活动清单和 Embedding 恢复任务均在 PostgreSQL 中持久化。`search.py` 保留共有排序/绑定合同；`embedded_search.py` 与 OpenSearch 仅用于历史迁移和明确配置的对照。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件文件只供备份下载，证据以数据库不可变解析快照为准。持久化与切换说明见 [检索存储](search-storage.md)。
 
@@ -16,10 +16,10 @@ flowchart TD
     API --> Routes[agent_api]
     Routes --> Profile[knowledge_profile / PluginHost]
     Profile --> Application[knowledge_application]
-    Application --> Loop[Rust single-tool loop / Python effects]
-    Loop --> Query[kb_query 绑定可信请求控制]
+    Application --> Driver[knowledge.driver.graph]
+    Driver --> Query[kb_query 绑定可信请求控制]
     Query --> Agent[knowledge_service / knowledge_turn]
-    Agent --> Graph[knowledge_workflow / Rust lifecycle]
+    Agent --> Graph[knowledge_workflow / Rust graph + lifecycle]
     Agent --> Gateway[agent_tools]
     Gateway --> Pipeline[retrieval_pipeline]
     Pipeline --> Evidence[原文读取与权限复核]
@@ -38,17 +38,17 @@ flowchart TD
 
 `rust/agent-kernel` 保留操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-harness` 实现插件依赖排序、服务归属、父子作用域、运行租约和通用 loop。loop 发出会话、提示词、模型和工具效果，由 Python 适配器执行；没有在 Rust 核心写入知识库分支。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。LangGraph/LangSmith 调度实现和依赖已移除。
 
-默认 HTTP 路径调用插件提供的 `application` 服务，再由 `single-tool` loop 调用绑定的 `kb_query`。绑定保留原始身份、session、request ID、expected revision、来源策略和用户约束；模型参数仅包含问题。它不增加外层模型规划调用，返回已验证的原响应及 trace。通用 `model-tools` loop 是另一种可选策略；loop 自身可以替换。
+默认 HTTP 路径调用插件提供的 `application` 服务，由 `knowledge.driver.graph` 直接执行绑定的 `kb_query`，进入 `knowledge.workflow.graph` 提供的图程序，不再创建外层 single-tool loop。绑定保留原始身份、session、request ID、expected revision、来源策略和用户约束；模型参数仅包含问题。它不增加外层模型规划调用，返回已验证的原响应及 trace。通用 `model-tools` loop 是另一种可选策略；loop 自身可以替换。
 
 `knowledge_service.KnowledgeService` 提供独立知识库会话 API；`knowledge_turn` 持有单轮业务状态，`knowledge_model`、`knowledge_planning`、`knowledge_answer` 分别拥有模型调用、规划与答案合同。业务调用者仍可直接使用领域服务，不必额外建立 Agent。`knowledge_tool.query_tool` 保留通用工具接入方式，使用宿主绑定身份和会话，直接交付经过核验的结果。
 
-`AgentStore` 仍独占会话归属、请求指纹、revision、单写者租约和完成结果；提供者账本仍独占实际请求身份、预留与 UNKNOWN。原生完成后再次检查授权、证据和取消，再在同一事务保存 assistant 事件、状态与响应。重复完成请求仍经过当前授权复核；中断请求不会自动续跑。
+`session_store.SessionStore` 唯一实现会话归属、请求指纹、revision、单写者租约和完成结果事务；`KnowledgeSessions` 注入该存储并承担知识库状态初始化及失败响应规则，旧 `AgentStore` 保留兼容入口；提供者账本仍独占实际请求身份、预留与 UNKNOWN。原生完成后再次检查授权、证据和取消，再在同一事务保存 assistant 事件、状态与响应。重复完成请求仍经过当前授权复核；中断请求不会自动续跑。
 
-默认 `harness.sessions.memory` 只保存单次 loop 的临时消息，并在该次运行结束时释放；它不恢复知识库历史，也不成为第二套幂等或持久化账本。插件注册按作用域隔离；child 可显式覆盖父服务，关闭 child 只清理其拥有的子树。关闭流程先停止接收新调用，再检查活动租约与子作用域，最后按相反顺序释放注册效果和资源；忙碌时返回错误，不强制撤销已发送请求。
+旧 `ToolAgent` 入口的 `harness.sessions.memory` 只保存单次 loop 的临时消息；默认知识库组合已不加载它。显式创建的 core 组合使用 `harness.sessions.durable` 以及同一通用存储合同，持久历史可跨宿主恢复，不加载知识库模块。其上下文按完整轮次裁剪，不改写持久历史。core 不随知识库 HTTP 产品启动。插件注册按作用域隔离；child 可显式覆盖父服务，关闭 child 只清理其拥有的子树。关闭流程先停止接收新调用，再检查活动租约与子作用域，最后按相反顺序释放注册效果和资源；忙碌时返回错误，不强制撤销已发送请求。
 
 运行快照不是可重放 checkpoint，内核不自动重试模型或工具。子运行继承父截止时间及取消信号；同步 Python 效果不提供硬中断。原有 `graph_node_started` 和 `trace.graph` 保留为审计格式，协议为 `rust-agent-kernel/1`。
 
-详见 [插件配置与扩展](plugin-harness.md) 和 [基础生命周期](rust-agent-runtime.md)。所有原有行为合同继续运行，并覆盖真实 Rust 协议、非知识库工具、跨层取消、profile 替换和默认路由组合。`default_path_replay --service` 使用同一 profile/loop、已注册路由函数和请求模型，只替换模型及存储/检索夹具，继续交给统一 runner/scorer。它不启动 HTTP 服务、不验证身份认证中间件，也不调用真实提供者，不能代表线上 RAG 质量或性能验收。
+组合包覆盖规则、独立通用 Agent 用例及 DSH 对照见 [Agent 组合包](agent-bundles.md)。详见 [插件配置与扩展](plugin-harness.md) 和 [基础生命周期](rust-agent-runtime.md)。所有原有行为合同继续运行，并覆盖真实 Rust 协议、非知识库工具、跨层取消、profile 替换和默认路由组合。`default_path_replay --service` 使用同一 profile/图流程、已注册路由函数和请求模型，只替换模型及存储/检索夹具，继续交给统一 runner/scorer。它不启动 HTTP 服务、不验证身份认证中间件，也不调用真实提供者，不能代表线上 RAG 质量或性能验收。
 
 ## Agent 输出 Schema 边界
 

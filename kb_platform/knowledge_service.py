@@ -12,6 +12,7 @@ from .knowledge_plugin_tools import KnowledgeToolPlugins
 from .agent_engine import Runtime
 
 from .knowledge_turn import KnowledgeTurn
+from .knowledge_workflow import KnowledgeWorkflow
 
 _AUTO_SEMANTIC = object()
 
@@ -35,6 +36,7 @@ class KnowledgeService:
         tool_executor=None,
         context_manager=None,
         runtime=None,
+        workflow_factory=None,
     ):
         self.store = store or AgentStore(root)
         self.gateway = gateway or EvidenceGateway(platform, research, provider_id="magpie_luna")
@@ -45,6 +47,7 @@ class KnowledgeService:
         self.context = context_manager if context_manager is not None else ContextManager(self.context_policy)
         self.plugins = KnowledgeToolPlugins(tool_plugins)
         self.runtime = runtime if runtime is not None else Runtime()
+        self.workflow_factory = workflow_factory if workflow_factory is not None else KnowledgeWorkflow
         self.retrieval_config = retrieval_config or {
             "channels": ["bm25", "dense"],
             "rerank": True,

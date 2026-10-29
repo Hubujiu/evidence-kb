@@ -1,11 +1,11 @@
 """Allowlisted knowledge plugins and environment-compatible profile composition."""
-from copy import deepcopy
-import json
 import os
 from pathlib import Path
 
 from .plugin_host import PluginHost, PluginSpec
-from .knowledge_application import HostedKnowledgeApplication, KnowledgeApplication, KnowledgeTools
+from .knowledge_application import (HostedKnowledgeApplication, KnowledgeApplication, KnowledgeTools,
+                                    KnowledgeGraphDriver)
+from .plugin_profiles import expand_profile
 
 
 DEFAULT_PROFILE = Path(__file__).resolve().parents[1] / 'config/agent-profiles/knowledge.json'
@@ -19,7 +19,7 @@ ENVIRONMENT = {
     },
     'knowledge.budget': {'max_calls': ('KB_AGENT_MAX_CALLS', int),
                          'max_tokens': ('KB_AGENT_MAX_TOKENS', int)},
-    'knowledge.store': {'root': ('KB_AGENT_ROOT', str)},
+    'harness.store.sqlite': {'root': ('KB_AGENT_ROOT', str)},
     'knowledge.semantic': {'config_path': ('KB_SEMANTIC_PAGE_CONFIG', str)},
 }
 
@@ -28,7 +28,23 @@ def load_knowledge_profile(profile=None, *, environment=None):
     environment = os.environ if environment is None else environment
     if profile is None:
         profile = environment.get('KB_AGENT_PROFILE') or DEFAULT_PROFILE
-    value = deepcopy(profile) if isinstance(profile, dict) else json.loads(Path(profile).read_text('utf-8'))
+    value = expand_profile(profile, {'knowledge': DEFAULT_PROFILE.parent.parent / 'agent-bundles/knowledge.json'})
+    # Explicit flat profiles from the previous release owned their backend in
+    # knowledge.store. Preserve their path and service while separating ownership.
+    upgraded = []
+    legacy = False
+    for entry in value['plugins']:
+        if entry['use'] == 'knowledge.store':
+            legacy = True
+            upgraded.append({**entry, 'use': 'harness.store.sqlite',
+                             'config': {'root': '.local/agentic-v5', **entry.get('config', {})}})
+            upgraded.append({'id': entry['id'] + '-knowledge', 'use': 'knowledge.sessions',
+                             'disabled': entry.get('disabled', False)})
+        else:
+            upgraded.append(entry)
+    if legacy and not any(entry['use'] == 'knowledge.workflow.graph' for entry in upgraded):
+        upgraded.append({'id': 'knowledge-workflow', 'use': 'knowledge.workflow.graph'})
+    value['plugins'] = upgraded
     if not isinstance(value, dict) or not isinstance(value.get('plugins'), list):
         raise ValueError('INVALID_KNOWLEDGE_PROFILE')
     for entry in value['plugins']:
@@ -98,10 +114,20 @@ def knowledge_plugins(platform, research, *, service_factory=None):
             ledger=ctx.require('knowledge.budget')))
 
     def store(ctx, config):
-        from .agent_store import AgentStore
+        from .knowledge_sessions import KnowledgeSessions
 
-        _config(config, ('root',))
-        ctx.provide('knowledge.store', AgentStore(**config))
+        _config(config)
+        ctx.provide('knowledge.store', KnowledgeSessions(ctx.require('session.store')))
+
+    def workflow(ctx, config):
+        from .knowledge_workflow import KnowledgeWorkflow
+
+        _config(config)
+        ctx.provide('knowledge.workflow', KnowledgeWorkflow)
+
+    def driver(ctx, config):
+        _config(config)
+        ctx.provide('loop', KnowledgeGraphDriver(ctx.host))
 
     def gateway(ctx, config):
         from .agent_tools import EvidenceGateway
@@ -133,13 +159,18 @@ def knowledge_plugins(platform, research, *, service_factory=None):
         _config(config, ('retrieval_config',))
         factory = KnowledgeService if service_factory is None else service_factory
         session_store = ctx.require('knowledge.store')
-        ctx.provide('knowledge', factory(
+        service = factory(
             ctx.require('knowledge.platform'), ctx.require('knowledge.model'),
             research=ctx.require('knowledge.research'), root=session_store.root, store=session_store,
             context_policy=ctx.require('knowledge.context.policy'),
             context_manager=ctx.require('knowledge.context'), runtime=ctx.require('runtime'),
             gateway=ctx.require('knowledge.gateway'), tool_executor=ctx.require('knowledge.executor'),
-            semantic_pages=ctx.require('knowledge.semantic'), **config))
+            semantic_pages=ctx.require('knowledge.semantic'), **config)
+        # Keep the established service_factory call signature. The domain
+        # service's public execution port is bound before it is published.
+        if isinstance(service, KnowledgeService):
+            service.workflow_factory = ctx.require('knowledge.workflow')
+        ctx.provide('knowledge', service)
 
     def tools(ctx, config):
         _config(config)
@@ -158,7 +189,9 @@ def knowledge_plugins(platform, research, *, service_factory=None):
         PluginSpec('knowledge.budget', ('knowledge.budget',), (), budget),
         PluginSpec('knowledge.model', ('knowledge.model',),
                    ('knowledge.provider', 'knowledge.context.policy', 'knowledge.budget'), model),
-        PluginSpec('knowledge.store', ('knowledge.store',), (), store),
+        PluginSpec('knowledge.sessions', ('knowledge.store',), ('session.store',), store),
+        PluginSpec('knowledge.workflow.graph', ('knowledge.workflow',), (), workflow),
+        PluginSpec('knowledge.driver.graph', ('loop',), (), driver),
         PluginSpec('knowledge.gateway', ('knowledge.gateway',),
                    ('knowledge.platform', 'knowledge.research'), gateway),
         PluginSpec('knowledge.executor', ('knowledge.executor',), (), executor),
@@ -167,7 +200,7 @@ def knowledge_plugins(platform, research, *, service_factory=None):
         PluginSpec('knowledge.service', ('knowledge',),
                    ('knowledge.platform', 'knowledge.research', 'knowledge.model', 'knowledge.store',
                     'knowledge.context.policy', 'knowledge.context', 'runtime', 'knowledge.gateway',
-                    'knowledge.executor', 'knowledge.semantic'), knowledge),
+                    'knowledge.executor', 'knowledge.semantic', 'knowledge.workflow'), knowledge),
         PluginSpec('knowledge.tools', ('knowledge.tools',), ('knowledge',), tools),
         PluginSpec('knowledge.application', ('application',), ('knowledge', 'knowledge.tools', 'loop'), application),
     )

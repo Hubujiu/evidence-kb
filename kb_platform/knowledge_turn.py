@@ -12,7 +12,7 @@ from .agent_call_budget import CallBudget
 from .agent_work_state import begin_work_state, finish_work_state
 from .core import PlatformError
 from .knowledge_policy import VERSION, CONFIGS, SYSTEM, CLAIM_FIDELITY, _active_evidence_limit, source_policy
-from .knowledge_workflow import KnowledgeWorkflow, PROTOCOL as GRAPH_PROTOCOL
+from .knowledge_workflow import PROTOCOL as GRAPH_PROTOCOL
 from .agent_engine import current_execution
 
 from .knowledge_model import KnowledgeModelCalls
@@ -368,7 +368,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                 store=self.service.store,
             )
             self.trace["graph"] = {"protocol": GRAPH_PROTOCOL, "nodes": [], "automatic_replay": False}
-            program = KnowledgeWorkflow(
+            program = self.service.workflow_factory(
                 plan=self.plan_node,
                 tool=self.tool_node,
                 compose=self.compose_node,
