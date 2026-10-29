@@ -1,4 +1,5 @@
 """Domain-neutral persistence contracts against real SQLite; no provider calls."""
+from contextlib import closing
 import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
@@ -66,13 +67,13 @@ class SessionStoreContracts(unittest.TestCase):
         artifact = legacy.artifact(self.actor, sid, lease['token'], {'original': 'unchanged'})
         committed = legacy.finish(self.actor, sid, lease['token'], session['state'],
                                   {'status': 'answered', 'answer': 'Existing answer'})
-        with sqlite3.connect(legacy.path) as db:
+        with closing(sqlite3.connect(legacy.path)) as db:
             schema = db.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall()
         generic = SessionStore(self.root)
         self.assertEqual(generic.load(self.actor, sid)['state'], session['state'])
         self.assertEqual(generic.begin(self.actor, sid, 'request', 0, 'fingerprint'), {'cached': committed})
         self.assertEqual(generic.read_artifact(self.actor, sid, artifact['artifact_id']), {'original': 'unchanged'})
-        with sqlite3.connect(generic.path) as db:
+        with closing(sqlite3.connect(generic.path)) as db:
             self.assertEqual(db.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall(),
                              schema)
 
