@@ -2,6 +2,18 @@
 
 本轮从 `cbd8623f4907ae36e0e1b65bb990fa3e33875620` 实施 [执行计划](evidence-kb-rust-plugin-execution-plan.md)。V1 内置插件和 E0 进程插件已实现，当前分支默认入口使用同一个 Rust 生命周期运行时。代码通过分层 PR 交付；尚未合并到 `main`。E1 的不可信或可移植插件需求没有成立，按计划保留为条件扩展。
 
+## 交付与合并顺序
+
+| PR | 交付 | 实施提交 | 前置 |
+| --- | --- | --- | --- |
+| [#16](https://github.com/Hubujiu/evidence-kb/pull/16) | R0 来源、合同和基线 | `de71df7` | #15 |
+| [#17](https://github.com/Hubujiu/evidence-kb/pull/17) | R1–R6 Rust 运行时与 Python 桥 | `ea57cd2` | #16 |
+| [#18](https://github.com/Hubujiu/evidence-kb/pull/18) | E0 可安装进程插件 | `4432504` | #17 |
+| [#19](https://github.com/Hubujiu/evidence-kb/pull/19) | B1/B7 模型与通用 Agent | `c5920ca` | #18 |
+| [#20](https://github.com/Hubujiu/evidence-kb/pull/20) | B0/B2–B6/B8/C0–C2 知识库根组合 | `5d18294` | #19 |
+
+每个 PR 的 base 指向前置分支。通用 Agent 与知识库 workflow 分开交付；没有强制推送、绕过审查或合并默认分支。PR #14 的模型模块已在当前基线核对后移入，旧分支仍保持原状。合并需按仓库开发约定取得 reviewer 批准并通过 required 检查。
+
 ## 工作包与证据
 
 | 工作包 | 实际交付 | 验证位置 |
@@ -41,7 +53,7 @@
 | PostgreSQL 任务与恢复 | `postgres-acceptance-final-py312-01`、`postgres-acceptance-final-py313-01` | 各 16 项 PASS，合成 Embedding provider，远端调用为零 |
 | 当前默认业务图与证据 | `default-business-replay-final-01` | 48/48 PASS；FAIL/ERROR/NOT_RUN/UNCERTAIN 均为零；冻结合成原文、内存检索/存储、脚本模型；当前统一评分，不代表真实 HTTP 或模型质量 |
 | 独立插件环境 | `process-independent-final-01` | 3.12 宿主启动真实 3.13 插件，握手、相对导入、取消、deadline、崩溃及单次 UNKNOWN 发送通过 |
-| 固定预算与性能 | `acceptance-performance-final-20261030-03/analysis-reviewed` | 九项冻结绝对预算全部 PASS；五轮 baseline/current 交替进程、五个扩展进程、五个 native 进程；错误为零 |
+| 固定预算与性能 | `acceptance-performance-final-20261030-04/analysis` | 九项冻结绝对预算全部 PASS；五轮 baseline/current 交替进程、五个扩展进程、五个 native 进程；错误为零；233 个源码及三个制品哈希逐字节匹配 |
 
 真实集成使用新建专用数据库 `rust_plugin_acceptance_20261030_205528_e614d1`，没有修改既有 `evidence_kb` 数据库。PostgreSQL 18.6、pg_textsearch 1.5.1、vector 0.8.6。实际 TCP HTTP 验证认证、跨租户隔离和响应头；70 KiB 合成 Markdown 触发一次解析子进程，拒绝请求在解析前终止，72 个证据 span 绑定原文哈希，真实 BM25 build/publish 与引用读取通过。关闭时没有在途操作、租约、资源或残留工作线程。
 
@@ -49,9 +61,9 @@
 
 模型/通用 Agent 的独立检出位于 `.local/rust-models-check`，提交 `c5920ca0d34469a024046350ed1b323fc00e1de8`。该检出中 `models-independent-check-02/summary.json` 的正式 checker 为 PASS，不依赖后续知识库组合源码。第一次隔离检查被会话中断，保留部分输出，未计为通过。
 
-上述本地检查运行于 Windows。最终知识库 PR 的 Ubuntu/Windows × Python 3.12/3.13 CI 矩阵尚待远端完成，不能用本地双 Python 结果代替完整平台矩阵。基线、运行时和进程插件三个前置 PR 的矩阵已通过。
+上述本地检查运行于 Windows。五个实施提交均已通过 Ubuntu/Windows × Python 3.12/3.13、secrets 和 required 六项远端检查。最后两个实施提交的证据分别为 [#19 CI](https://github.com/Hubujiu/evidence-kb/actions/runs/41069992320) 和 [#20 CI](https://github.com/Hubujiu/evidence-kb/actions/runs/41070567841)。文档补充提交的最新检查状态以对应 PR 页面为准，本地双 Python 结果不替代远端平台矩阵。
 
-性能的规模 256 热调用 p95 进程中位数从 540.5 μs 到 106.4 μs，当前五个进程范围 96.4–116.0 μs，固定预算 614.2 μs。该结果主要反映桥接和 Windows 动态库路径解析成本。完整业务与 native 新增工作量只有当前结果，不宣称真实 RAG、生产模型或全业务获得相同比例收益。每个扩展进程执行 200 次根创建/关闭循环，八类 Rust 终结计数均为零；五个进程的当前 PrivateUsage 序列均持平。测量后唯一源码字节差异是 parser 文件末尾空行删除，语法树一致，原哈希和当前哈希保留在报告。
+性能的规模 256 热调用 p95 进程中位数从 579.5 μs 到 107.6 μs，当前五个进程范围 100.6–182.5 μs，固定预算 614.2 μs。该结果主要反映桥接和 Windows 动态库路径解析成本。完整业务与 native 新增工作量只有当前结果，不宣称真实 RAG、生产模型或全业务获得相同比例收益。每个扩展进程执行 200 次根创建/关闭循环，八类 Rust 终结计数均为零；五个进程的当前 PrivateUsage 序列均持平。最终测量冻结了包含两处夹具修正的提交 `5d18294`；233 个活动源码、冻结副本及三个制品的原始字节哈希全部匹配，差异列表为空。此前 final-03 及其 parser 空行差异记录保持只读，由 final-04 承担最终验收。
 
 ## 保留的失败与合同迁移
 
