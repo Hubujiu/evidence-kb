@@ -88,6 +88,12 @@ FAILED (failures=2)
 | 扩展工作量、资源残留与内存 | PASS，限定为合成工作量 | 五个 native 进程各执行 32 项组合；每个扩展进程完成 357 次关闭回调及 48 次合成模型调用，八类终态残留均为零。五个 200 次根循环的当前 PrivateUsage 序列均持平，句柄数 199、Python 线程数 1。236 个当前源码、197 个基线文件及三个制品逐字节核验通过，差异为空。新增完整业务只有当前测量，不宣称生产 RAG 提速。 |
 | 新增供应商模型、Embedding、judge 调用 | 已核对的本地回归均为 0 | 物理账本使用真实 SQLite，集成使用本地 PostgreSQL 与 MockTransport 或受控本地子进程。合成调用不是供应商调用。后续检查仍需以各自实际记录为准。 |
 
+最终文档提交 `05372fa` 的 [CI 41086852051](https://github.com/Hubujiu/evidence-kb/actions/runs/41086852051)另保留为 FAIL。Windows 3.12 和 Ubuntu 两个版本均通过；Windows 3.13 完整执行 482 项合同，0 FAIL、1 ERROR、discovery 完整。该错误发生在既有 `EmbeddedSearchContracts.test_cjk_boundaries` 的 setUp → `EmbeddedSearch.stage` → Tantivy `writer.commit()`，原生 I/O 返回 `Access is denied (os error 5)`，并非超时。原[合同汇总](../reports/rust-plugin-review-v1/ci20-failure-41086852051/evidence/contracts.json)和[完整错误](../reports/rust-plugin-review-v1/ci20-failure-41086852051/evidence/contracts-3/contracts.log)保持只读。现有证据尚不能确定该原生文件错误的根因。
+
+`105d664..6fd9ab8` 的 `embedded_search.py`、上述合同、`pyproject.toml` 和 `uv.lock` 差异为空。本机 Python 3.13 重复执行现有索引合同十轮，[80 次执行通过](../reports/rust-plugin-review-v1/tantivy-ci-error-local-py313-01/contracts.log)，未复现该错误。这些证据不能证明原生 I/O 错误已消失，也不足以支持修改 reader 策略或增加提交重试。
+
+统一 checker 补充逐题 wall/CPU 计时日志，并在分片执行到 150 秒时采集线程栈，以便下一次相同门禁保留定位信息。完整合同、四个分片、170/180 秒上限及原失败处理均不变。这是诊断能力，不代表上述 I/O 错误已被根治；最新结果仍以 PR 检查页为准。
+
 ## Attention
 
 reviewed by Codex（独立代理，与实施者同模型族）

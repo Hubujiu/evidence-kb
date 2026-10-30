@@ -4,6 +4,7 @@ import argparse
 import ast
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
+import faulthandler
 import importlib.util
 import json
 import io
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import unittest
 from uuid import uuid4
@@ -290,6 +292,37 @@ def combine_contract_reports(reports, expected):
             'discovery_complete': complete, 'scope': 'offline component contracts; no production RAG quality claim'}
 
 
+class ContractTimingResult(unittest.TextTestResult):
+    def __init__(self, *args, timing, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._timing = timing
+        self._outcomes = {'ERROR': self.errors, 'FAIL': self.failures, 'SKIP': self.skipped,
+            'EXPECTED_FAILURE': self.expectedFailures, 'UNEXPECTED_SUCCESS': self.unexpectedSuccesses}
+
+    def _record(self, test, event, status):
+        self._timing.write(json.dumps({'test': test.id(), 'event': event, 'status': status,
+            'monotonic': time.monotonic(), 'process_time': time.process_time()}) + '\n')
+        self._timing.flush()
+
+    def startTest(self, test):
+        super().startTest(test)
+        self._counts = {name: len(outcomes) for name, outcomes in self._outcomes.items()}
+        self._status = 'INCOMPLETE'
+        self._record(test, 'start', 'RUNNING')
+
+    def addSuccess(self, test):
+        super().addSuccess(test)
+        self._status = 'PASS'
+
+    def stopTest(self, test):
+        status = next((name for name, outcomes in self._outcomes.items()
+                       if len(outcomes) > self._counts[name]), self._status)
+        try:
+            self._record(test, 'stop', status)
+        finally:
+            super().stopTest(test)
+
+
 def run_contract_workers(output):
     def execute(index):
         directory = output / f'contracts-{index}'
@@ -323,41 +356,47 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
     sys.path.insert(0, str(ROOT))
     sys.addaudithook(deny_external_io)
     if kind == "contracts":
-        modules = contract_modules()
-        if not modules:
-            raise RuntimeError("No contract modules discovered")
-        tests = []
-        discovered = {}
+        faulthandler.dump_traceback_later(150)
+        try:
+            modules = contract_modules()
+            if not modules:
+                raise RuntimeError("No contract modules discovered")
+            tests = []
+            discovered = {}
 
-        def collect(suite, module):
-            for test in suite:
-                if isinstance(test, unittest.TestSuite):
-                    collect(test, module)
-                else:
-                    if test.id() in discovered:
-                        raise RuntimeError(f"Duplicate contract test: {test.id()}")
-                    discovered[test.id()] = module
-                    tests.append(test)
+            def collect(suite, module):
+                for test in suite:
+                    if isinstance(test, unittest.TestSuite):
+                        collect(test, module)
+                    else:
+                        if test.id() in discovered:
+                            raise RuntimeError(f"Duplicate contract test: {test.id()}")
+                        discovered[test.id()] = module
+                        tests.append(test)
 
-        for module in modules:
-            suite = unittest.defaultTestLoader.loadTestsFromName(module)
-            if not suite.countTestCases():
-                raise RuntimeError(f"Contract module has no discoverable tests: {module}")
-            collect(suite, module)
-        selected = sorted(tests, key=lambda test: test.id())[shard::4]
-        identities = [test.id() for test in selected]
-        counts = {module: sum(discovered[identity] == module for identity in identities) for module in modules}
-        suite = unittest.TestSuite(selected)
-        result = unittest.TextTestRunner(verbosity=2).run(suite)
-        passed = result.wasSuccessful() and not result.skipped and not result.expectedFailures
-        write_json(output / "contracts.json", {
-            "decision": "PASS" if passed else "FAIL", "modules": counts, "total": result.testsRun,
-            "discovered": discovered, "selected": identities,
-            "failures": len(result.failures), "errors": len(result.errors), "skipped": len(result.skipped),
-            "expected_failures": len(result.expectedFailures),
-            "scope": "offline component contracts; no production RAG quality claim",
-        })
-        return 0 if passed else 1
+            for module in modules:
+                suite = unittest.defaultTestLoader.loadTestsFromName(module)
+                if not suite.countTestCases():
+                    raise RuntimeError(f"Contract module has no discoverable tests: {module}")
+                collect(suite, module)
+            selected = sorted(tests, key=lambda test: test.id())[shard::4]
+            identities = [test.id() for test in selected]
+            counts = {module: sum(discovered[identity] == module for identity in identities) for module in modules}
+            suite = unittest.TestSuite(selected)
+            with (output / 'contracts-timing.jsonl').open('w', encoding='utf-8') as timing:
+                result = unittest.TextTestRunner(verbosity=2,
+                    resultclass=lambda *args, **kwargs: ContractTimingResult(*args, timing=timing, **kwargs)).run(suite)
+            passed = result.wasSuccessful() and not result.skipped and not result.expectedFailures
+            write_json(output / "contracts.json", {
+                "decision": "PASS" if passed else "FAIL", "modules": counts, "total": result.testsRun,
+                "discovered": discovered, "selected": identities,
+                "failures": len(result.failures), "errors": len(result.errors), "skipped": len(result.skipped),
+                "expected_failures": len(result.expectedFailures),
+                "scope": "offline component contracts; no production RAG quality claim",
+            })
+            return 0 if passed else 1
+        finally:
+            faulthandler.cancel_dump_traceback_later()
     from kb_platform.rag_testing.contracts import Plan, Suite, Trace
     from kb_platform.rag_testing.runner import run
 
