@@ -56,7 +56,7 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'harness_loop', 'harness_services', 'context_budget', 'session_identity', 'session_store',
                            'plugin_profiles', 'harness_graph', 'harness_context', 'harness_model',
                            'harness_application', 'harness_profile'})
-NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'}, 'agent-harness': {'serde', 'serde_json'}}
+NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'}, 'agent-harness': {'plugin-runtime', 'serde', 'serde_json'}, 'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
 @dataclass(frozen=True)
@@ -155,10 +155,10 @@ def native_architecture_violations(root: Path) -> list[str]:
             spec = spec if isinstance(spec, dict) else {'version': spec}
             if name not in allowed or spec.get('package', name) != name:
                 errors.append(f'{relative}: {name}: native harness cannot depend on business implementations')
-            elif name == 'agent-harness':
-                expected = (root / 'rust/agent-harness').resolve()
+            elif name in {'agent-harness', 'plugin-runtime'}:
+                expected = (root / 'rust' / name).resolve()
                 if not spec.get('path') or (directory / spec['path']).resolve() != expected:
-                    errors.append(f'{relative}: agent-harness must resolve to the reviewed workspace crate')
+                    errors.append(f'{relative}: {name} must resolve to the reviewed workspace crate')
             elif any(key in spec for key in ('path', 'git', 'workspace')):
                 errors.append(f'{relative}: {name}: native foundations must use their declared registry package')
         for source in sorted(directory.rglob('*.rs')):

@@ -140,7 +140,7 @@ class PluginHostContracts(unittest.TestCase):
                 host.close()
             self.assertEqual(calls, ['consumer top', 'pending alive'])
             self.assertEqual(host.service('model'), 'alive')
-            self.assertEqual(native_call('inspect', host=host.id)['state'], 'disposing')
+            self.assertEqual(native_call('runtime_inspect', host=host.id)['state'], 'cleanup_failed')
         finally:
             fail[0] = False
             host.close()
@@ -161,7 +161,7 @@ class PluginHostContracts(unittest.TestCase):
             with self.assertRaises(ValueError) as failure:
                 root.scope(profile(entry('broken')), [PluginSpec('broken', (), ('model',), broken)])
             failed_host = failure.exception.failed_host
-            self.assertEqual(native_call('inspect', host=root.id)['children'], [failed_host.id])
+            self.assertEqual(native_call('runtime_inspect', host=root.id)['children'], [failed_host.id])
             with self.assertRaises(ExceptionGroup):
                 root.close()
             self.assertEqual(root.service('model'), 'parent')
@@ -184,7 +184,7 @@ class PluginHostContracts(unittest.TestCase):
                     [PluginSpec('provider', ('model',), (), provider),
                      PluginSpec('broken', (), ('model',), broken)])
             self.assertFalse(hasattr(failure.exception, 'failed_host'))
-            self.assertEqual(native_call('inspect', host=parent.id)['children'], [])
+            self.assertEqual(native_call('runtime_inspect', host=parent.id)['children'], [])
         self.assertEqual(calls, ['partial', 'provider'])
 
     def test_draining_waits_for_lease_and_rejects_new_work(self):
@@ -259,7 +259,7 @@ class PluginHostContracts(unittest.TestCase):
             with host.lease():
                 host.drain()
                 self.assertEqual(host.call('action', 'invoke'), 'completed')
-                self.assertEqual(native_call('inspect', host=host.id)['leases'], 1)
+                self.assertEqual(native_call('runtime_inspect', host=host.id)['leases'], 1)
                 worker = Thread(target=new_request)
                 worker.start()
                 worker.join(5)
@@ -276,11 +276,11 @@ class PluginHostContracts(unittest.TestCase):
                 nested = host.lease()
                 inherited.run(nested.__enter__)
                 host.drain()
-            self.assertEqual(native_call('inspect', host=host.id)['leases'], 1)
+            self.assertEqual(native_call('runtime_inspect', host=host.id)['leases'], 1)
             with self.assertRaises(PluginError):
                 host.close()
             inherited.run(nested.__exit__, None, None, None)
-            self.assertEqual(native_call('inspect', host=host.id)['leases'], 0)
+            self.assertEqual(native_call('runtime_inspect', host=host.id)['leases'], 0)
             with self.assertRaises(PluginError) as failure:
                 inherited.run(lease_once, host)
             self.assertEqual(failure.exception.code, 'scope_unavailable')
@@ -440,7 +440,7 @@ class PluginHostContracts(unittest.TestCase):
                 self.assertFalse(worker.is_alive())
                 self.assertEqual(failures, ['scope_unavailable'])
                 self.assertEqual(completed, [])
-                self.assertEqual(native_call('inspect', host=host.id)['leases'], 1)
+                self.assertEqual(native_call('runtime_inspect', host=host.id)['leases'], 1)
         finally:
             host.close()
 
@@ -465,9 +465,9 @@ class PluginHostContracts(unittest.TestCase):
                 worker = Thread(target=lambda: inherited.run(request))
                 worker.start()
                 self.assertTrue(entered.wait(5))
-                self.assertEqual(native_call('inspect', host=host.id)['leases'], 2)
+                self.assertEqual(native_call('runtime_inspect', host=host.id)['leases'], 2)
                 host.drain()
-            self.assertEqual(native_call('inspect', host=host.id)['leases'], 1)
+            self.assertEqual(native_call('runtime_inspect', host=host.id)['leases'], 1)
             with self.assertRaises(PluginError) as failure:
                 host.close()
             self.assertEqual(failure.exception.code, 'scope_busy')
@@ -494,7 +494,7 @@ class PluginHostContracts(unittest.TestCase):
         try:
             with self.assertRaises(KeyboardInterrupt):
                 host.emit(EventName.RUN_STARTED, {})
-            self.assertEqual(native_call('inspect', host=host.id)['leases'], 0)
+            self.assertEqual(native_call('runtime_inspect', host=host.id)['leases'], 0)
         finally:
             host.close()
         self.assertEqual(disposed, [True])

@@ -3,10 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub id: String,
+    #[serde(default)]
+    pub implementation: String,
     pub version: String,
     pub provides: Vec<String>,
     pub requires: Vec<String>,
@@ -14,8 +16,15 @@ pub struct Manifest {
     pub overrides: Vec<String>,
     #[serde(default = "empty_config")]
     pub config: Value,
+    #[serde(default = "serial")]
+    pub concurrency: String,
+    #[serde(default)]
+    pub configuration_inputs: BTreeMap<String, String>,
 }
 
+fn serial() -> String {
+    "serial".into()
+}
 fn empty_config() -> Value {
     serde_json::json!({})
 }
@@ -42,11 +51,21 @@ pub fn order(plugins: &[Manifest], inherited: &BTreeSet<String>) -> Result<Vec<S
     let mut providers = BTreeMap::new();
     for (index, plugin) in plugins.iter().enumerate() {
         if !valid_name(&plugin.id)
+            || (!plugin.implementation.is_empty() && !valid_name(&plugin.implementation))
             || !valid_name(&plugin.version)
             || !plugin.config.is_object()
+            || plugin.configuration_inputs.len() > 256
+            || !plugin.configuration_inputs.iter().all(|(key, digest)| {
+                !key.is_empty()
+                    && key.len() <= 4096
+                    && !key.chars().any(char::is_control)
+                    && digest.len() == 64
+                    && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
             || !unique_names(&plugin.provides)
             || !unique_names(&plugin.requires)
             || !unique_names(&plugin.overrides)
+            || !matches!(plugin.concurrency.as_str(), "serial" | "concurrent")
         {
             return Err(Error::new(
                 "invalid_manifest",
@@ -82,26 +101,22 @@ pub fn order(plugins: &[Manifest], inherited: &BTreeSet<String>) -> Result<Vec<S
             }
         }
     }
-    let mut dependencies = vec![BTreeSet::new(); plugins.len()];
-    for (index, plugin) in plugins.iter().enumerate() {
-        for service in &plugin.requires {
-            if let Some(provider) = providers.get(service) {
-                dependencies[index].insert(*provider);
-            } else if !inherited.contains(service) {
-                return Err(Error::new(
-                    "missing_service",
-                    format!("{} requires {}", plugin.id, service),
-                ));
-            }
-        }
-    }
+    let dependencies: Vec<BTreeSet<usize>> = plugins
+        .iter()
+        .map(|plugin| {
+            plugin
+                .requires
+                .iter()
+                .filter_map(|service| providers.get(service).copied())
+                .collect()
+        })
+        .collect();
     let mut emitted = BTreeSet::new();
     let mut result = Vec::new();
     while emitted.len() < plugins.len() {
-        let next = (0..plugins.len()).find(|index| {
+        let Some(next) = (0..plugins.len()).find(|index| {
             !emitted.contains(index) && dependencies[*index].iter().all(|dep| emitted.contains(dep))
-        });
-        let Some(next) = next else {
+        }) else {
             return Err(Error::new(
                 "dependency_cycle",
                 "plugin service dependency cycle",
