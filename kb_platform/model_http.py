@@ -10,7 +10,7 @@ import httpx
 
 from .agent_engine import current_execution
 from .model_adapters import CompletionPort
-from .model_errors import RemoteModelError
+from .model_errors import ModelPreflightError, RemoteModelError
 from .model_service import Capability, Media, ModelInfo, ModelResult
 from .provider_admission import ProviderAdmission
 from .provider_runtime import retry_after_seconds
@@ -105,15 +105,21 @@ class OpenAICompatibleAdapter:
             raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
         path, wire = self._wire(request)
         execution = current_execution()
-        timeout = min(self.timeout, request.call_context.get('remaining_seconds', self.timeout))
-        deadline = request.call_context.get('deadline_monotonic')
-        if deadline is not None:
-            timeout = min(timeout, deadline - time.monotonic())
-        if execution is not None:
-            execution.check()
-            timeout = min(timeout, execution.remaining_seconds)
-        if timeout <= 0:
-            raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
+        deadline = request.call_context.get('deadline_monotonic', math.inf)
+        remaining = request.call_context.get('remaining_seconds')
+        if remaining is not None:
+            deadline = min(deadline, time.monotonic() + remaining)
+
+        def remaining_timeout():
+            timeout = min(self.timeout, deadline - time.monotonic())
+            if execution is not None:
+                execution.check()
+                timeout = min(timeout, execution.remaining_seconds)
+            if timeout <= 0:
+                raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
+            return timeout
+
+        timeout = remaining_timeout()
         self.admission.require_available()
         outbound = self.client.build_request('POST', self.endpoint + path, headers=self._headers(),
                                              timeout=timeout, **wire)
@@ -135,16 +141,18 @@ class OpenAICompatibleAdapter:
         save()
         try:
             self.ledger.reserve(identity, self.reservation, category=category, require_settled=True)
-        except BaseException:
+        except BaseException as exc:
             record['status'] = 'REJECTED'
             save()
+            if isinstance(exc, ValueError) and str(exc) in {
+                    'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST'}:
+                raise ModelPreflightError(str(exc)) from exc
             raise
         response, sending = None, False
         try:
             record['status'] = 'STARTED'
             save()
-            if execution is not None:
-                execution.check()
+            outbound.extensions['timeout'] = httpx.Timeout(remaining_timeout()).as_dict()
             sending = True
             response = self.client.send(outbound, follow_redirects=False)
 

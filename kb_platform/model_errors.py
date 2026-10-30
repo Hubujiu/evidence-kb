@@ -7,3 +7,12 @@ class RemoteModelError(RuntimeError):
 
 class TerminalContractError(ValueError):
     pass
+
+
+class ModelPreflightError(ValueError):
+
+    model_sent = False
+
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)

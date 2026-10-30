@@ -145,7 +145,8 @@ class ModelServiceContracts(unittest.TestCase):
 
     def test_call_context_timeout_reaches_transport(self):
         def reply(request):
-            self.assertEqual(request.extensions['timeout']['read'], 3)
+            self.assertGreater(request.extensions['timeout']['read'], 0)
+            self.assertLessEqual(request.extensions['timeout']['read'], 3)
             return httpx.Response(200, json={'data': [{'url': 'https://media.invalid/image.png'}]})
         result = self.adapter(reply).invoke(ModelRequest(C.IMAGE, {'prompt': 'x'}, {'remaining_seconds': 3}))
         self.assertEqual(result.data['images'][0]['url'], 'https://media.invalid/image.png')
@@ -274,6 +275,110 @@ class ModelServiceContracts(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'MODEL_BINDING_CHANGED'):
             bound.complete([], role='answer', schema={'type': 'object'}, call_context={})
         self.assertEqual(self.sent, [])
+
+    def test_structured_binding_cannot_cross_registration_even_with_same_adapter(self):
+        service = ModelService()
+        adapter = self.adapter({'choices': [{'message': {'content': '{"answer":"ok"}'},
+                                            'finish_reason': 'stop'}]})
+        remove = service.register('chat', adapter)
+        stale = service.structured('chat')
+        remove()
+        with self.assertRaisesRegex(RuntimeError, 'MODEL_ROUTE_UNAVAILABLE'):
+            stale.complete([{'role': 'user', 'content': 'q'}], role='answer',
+                           schema={'type': 'object'}, call_context={})
+        service.register('chat', adapter)
+        with self.assertRaisesRegex(RuntimeError, 'MODEL_BINDING_CHANGED'):
+            stale.complete([{'role': 'user', 'content': 'q'}], role='answer',
+                           schema={'type': 'object'}, call_context={})
+        self.assertEqual(self.sent, [])
+        fresh = service.structured('chat')
+        result = fresh.complete([{'role': 'user', 'content': 'q'}], role='answer',
+                                schema={'type': 'object'}, call_context={})
+        self.assertEqual(result.value, {'answer': 'ok'})
+        self.assertEqual(len(self.sent), 1)
+
+    def test_standalone_structured_deadline_is_rechecked_after_reservation(self):
+        for elapsed in (5, 6, 2):
+            with self.subTest(elapsed=elapsed):
+                clock = [100.0]
+                service = ModelService()
+                service.register('chat', self.adapter({'choices': [{'message': {'content': '{}'},
+                                                                    'finish_reason': 'stop'}]}))
+                model = service.structured('chat')
+                reserve = self.ledger.reserve
+                def slow_reserve(*args, **kwargs):
+                    result = reserve(*args, **kwargs)
+                    clock[0] += elapsed
+                    return result
+                before = len(self.sent)
+                usage_before = self.ledger.summary()['effective_usage_or_reserved']
+                with patch('kb_platform.model_http.time.monotonic', side_effect=lambda: clock[0]), \
+                        patch.object(self.ledger, 'reserve', side_effect=slow_reserve):
+                    options = dict(role='answer', schema={'type': 'object'},
+                                   call_context={'remaining_seconds': 5})
+                    if elapsed >= 5:
+                        with self.assertRaisesRegex(RuntimeError, 'PROVIDER_DEADLINE_EXCEEDED'):
+                            model.complete([{'role': 'user', 'content': 'q'}], **options)
+                    else:
+                        model.complete([{'role': 'user', 'content': 'q'}], **options)
+                self.assertEqual(self.ledger.summary()['pending_or_unknown'], 0)
+                if elapsed >= 5:
+                    self.assertEqual(len(self.sent), before)
+                    self.assertEqual(self.ledger.summary()['effective_usage_or_reserved'], usage_before)
+                else:
+                    self.assertEqual(len(self.sent), before + 1)
+                    self.assertEqual(self.sent[-1].extensions['timeout']['read'], 3)
+
+    def test_embedding_job_admission_refusal_is_retryable_without_circuit_failure(self):
+        from contextlib import contextmanager
+        from unittest.mock import Mock
+        from kb_platform.embedding_jobs import EmbeddingJobs, EmbeddingJobError
+
+        for scenario in ('pending', 'budget'):
+            with self.subTest(scenario=scenario):
+                ledger = BudgetLedger(self.root / (scenario + '.sqlite3'), {'requests': 1, 'units': 10})
+                adapter = self.adapter({'data': [{'index': 0, 'embedding': [1., 2.]}]},
+                                       capabilities=[C.EMBEDDING])
+                adapter.ledger = ledger
+                if scenario == 'pending':
+                    ledger.reserve('other-chat', {'requests': 1, 'units': 10})
+                else:
+                    adapter.reservation['requests'] = 2
+                models = ModelService()
+                models.register('embedding', adapter)
+                view = EmbeddingView(models, dimension=2)
+                jobs = EmbeddingJobs('synthetic')
+                row = dict(tenant_id='t', kb_id='k', build_id='b', batch_no=0, request_id='attempt-1',
+                           provider_hash='p', attempt=1, status='RUNNING', payload={'units': [{'text': 'one'}]})
+                conn = Mock()
+                conn.execute.return_value.fetchone.return_value = {'retry_at': None}
+                @contextmanager
+                def tx(*args):
+                    yield conn
+                before = len(self.sent)
+                summary = ledger.summary()
+                with patch.object(jobs, '_tx', tx), \
+                        patch.object(jobs, '_prepare', return_value=(view.manifest, 'dependency')), \
+                        patch.object(jobs, '_claim', return_value=row), \
+                        patch.object(jobs, 'status', return_value=[row]):
+                    expected = 'EMBEDDING_LEDGER_BLOCKED' if scenario == 'pending' else 'EMBEDDING_BUDGET_INSUFFICIENT'
+                    with self.assertRaisesRegex(EmbeddingJobError, expected):
+                        jobs.run('t', 'k', 'b', view, [{'text': 'one'}], lambda: True, {})
+                    calls = conn.execute.call_args_list
+                    self.assertEqual(calls[0].args[1][0], 'RETRY')
+                    self.assertEqual(calls[0].args[1][3], expected)
+                    self.assertTrue(calls[0].args[1][4])
+                    self.assertFalse(any('UPDATE embedding_circuits' in c.args[0] for c in calls))
+                    self.assertEqual(len(self.sent), before)
+                    self.assertEqual(ledger.summary(), summary)
+                    if scenario == 'pending':
+                        ledger.finish('other-chat', status='ERROR', usage={'requests': 0, 'units': 0})
+                    else:
+                        adapter.reservation['requests'] = 1
+                    result = jobs.run('t', 'k', 'b', view, [{'text': 'one'}], lambda: True, {})
+                    self.assertEqual(result[0]['vector'], [1., 2.])
+                    self.assertEqual(len(self.sent), before + 1)
+                    self.assertEqual(conn.execute.call_args_list[-3].args[1][0], 'COMPLETE')
 
     def test_generic_agent_uses_public_llm_dependency_and_persists_answer(self):
         from kb_platform.harness_profile import create_agent_application

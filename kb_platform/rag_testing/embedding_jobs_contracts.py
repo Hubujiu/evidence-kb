@@ -79,6 +79,15 @@ class EmbeddingJobsContracts(unittest.TestCase):
                     provider.ledger.reserve('fresh', {'remote_embedding_calls': 1, 'input_tokens': 8192})
                     self.assertIs(classify_provider_failure({'request_id': 'fresh'}, provider, original), original)
 
+    def test_untyped_budget_diagnostic_does_not_prove_request_was_unsent(self):
+        from kb_platform.embeddings import EmbeddingCallError
+        from kb_platform.model_errors import RemoteModelError
+
+        for original in (ValueError('BUDGET_INSUFFICIENT'), ValueError('UNRESOLVED_PHYSICAL_REQUEST'),
+                         RemoteModelError('PROVIDER_OUTCOME_UNKNOWN')):
+            error = EmbeddingCallError(original)
+            self.assertIs(classify_provider_failure({'request_id': 'fresh'}, object(), error), error)
+
     def test_ambiguous_transport_never_retries(self):
         for error in (TimeoutError(), ConnectionError(), RuntimeError()):
             self.assertIsNone(retry_delay(error, 1))

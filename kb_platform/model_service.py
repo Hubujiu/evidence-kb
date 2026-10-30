@@ -228,11 +228,11 @@ class ModelService:
 
     def structured(self, name, *, policy=None, ledger=None):
 
-        with self.lease(name, Capability.CHAT) as adapter:
+        with self._lock, self.lease(name, Capability.CHAT) as adapter:
             if not callable(getattr(adapter, 'completion_port', None)):
                 raise RemoteModelError('STRUCTURED_MODEL_UNAVAILABLE')
             model = AgentModel(adapter.completion_port(), policy=policy, ledger=ledger)
-        return StructuredModel(self, name, adapter, model)
+            return StructuredModel(self, name, self._entries[name], model)
 
     def close(self):
         with self._lock:
@@ -260,8 +260,9 @@ class BoundModel:
 
 
 class StructuredModel:
-    def __init__(self, service, name, adapter, model):
-        self._service, self._name, self._adapter, self._model = service, name, adapter, model
+    def __init__(self, service, name, entry, model):
+        self._service, self._name, self._entry, self._model = service, name, entry, model
+        adapter = entry[0]
         self.policy, self.ledger, self.capabilities = model.policy, model.ledger, model.capabilities
         self.provider_id = adapter.info.provider
         self.manifest = {'provider': adapter.info.provider, 'model': adapter.info.model,
@@ -272,7 +273,5 @@ class StructuredModel:
         return getattr(self._model.provider, 'max_attempts', 1)
 
     def complete(self, messages, **options):
-        with self._service.lease(self._name, Capability.CHAT) as adapter:
-            if adapter is not self._adapter:
-                raise RemoteModelError('MODEL_BINDING_CHANGED')
+        with self._service.lease(self._name, Capability.CHAT, expected=self._entry):
             return self._model.complete(messages, **options)
