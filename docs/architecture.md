@@ -70,7 +70,7 @@ SDK 设置 `max_retries=0`，使用调用者客户端的禁止自动重定向配
 
 ## Markdown 原文解析边界
 
-本系列改造的逐项状态、工具类型注册、重试所有权与未完成的 token 计量依赖见 [框架替换计划](framework-migration-plan.md)。
+本系列改造的逐项状态、工具类型注册、重试所有权与已确定的启发式 token 估算方案见 [框架替换计划](framework-migration-plan.md)。
 
 `markdown_source.py` 使用 markdown-it-py 的 CommonMark 块解析并启用 table 规则，关闭不需要的 inline 解析。标题（含 Setext）、匹配长度和标记的围栏、缩进代码及容器中的块均由库识别。库只提供结构与行范围；证据、quote、偏移始终从 UTF-8-SIG 解码后的原文切片生成，不使用渲染结果或 token.content 重建原文。原件 SHA-256 仍覆盖包含 BOM 的完整字节；偏移仍是解码文本的 Unicode codepoint。CRLF/CR 的规范化映射保持原有合同，U+2028 等字符不冒充 Markdown 换行。
 
