@@ -23,13 +23,12 @@ class TurnRequest(BaseModel):
     workflow_state: dict | None = None
 
 
-def install_agent_routes(app, platform, research, identity, *, service_factory=None):
+def install_agent_routes(app, platform, research, identity, *, service_factory=None, application=None, host=None):
     from .knowledge_profile import create_knowledge_application
     from .core import Actor
 
-    service = None
-    host = None
-    if research is not None:
+    service = application
+    if service is None and host is None and research is not None:
         service, host = create_knowledge_application(platform, research, service_factory=service_factory)
         app.router.add_event_handler('shutdown', host.close)
     app.state.agent = service

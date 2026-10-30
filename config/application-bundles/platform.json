@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "repository",
+      "use": "platform.repository.postgres"
+    },
+    {
+      "id": "originals",
+      "use": "platform.originals.files"
+    },
+    {
+      "id": "parser",
+      "use": "platform.parser.native"
+    },
+    {
+      "id": "embedding-jobs",
+      "use": "platform.embedding_jobs"
+    },
+    {
+      "id": "search",
+      "use": "platform.search.postgres"
+    },
+    {
+      "id": "capabilities",
+      "use": "platform.capabilities.none"
+    },
+    {
+      "id": "platform",
+      "use": "platform.service"
+    },
+    {
+      "id": "research",
+      "use": "platform.research.borrowed"
+    }
+  ]
+}

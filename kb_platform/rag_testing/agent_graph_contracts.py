@@ -13,7 +13,7 @@ import httpx
 from kb_platform.agent_luna import LunaModelProvider
 from kb_platform.agent_model import AgentModel, CompletionEnvelope
 from kb_platform.agent_schema import compile_schema, validate_output
-from kb_platform.knowledge_service import KnowledgeService as AgentService
+from .product_fixture import knowledge_service as AgentService
 from kb_platform.knowledge_policy import CONFIGS, RECOMMENDED
 from kb_platform.core import Actor, PlatformError
 from .budget import BudgetLedger

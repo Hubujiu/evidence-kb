@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
@@ -288,6 +289,17 @@ def _serialize_client_sends(provider, lock):
 
 def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
                         app_factory=None, inner_factory=None, budget_batch=None, dependency_probe=None):
+    with ExitStack() as cleanup:
+        app = _create_delivery_app(config_path, providers_path, run_root, app_factory=app_factory,
+                                   dependency_probe=dependency_probe, budget_batch=budget_batch,
+                                   inner_factory=inner_factory, cleanup=cleanup)
+        resources = cleanup.pop_all()
+        app.router.add_event_handler('shutdown', resources.close)
+        return app
+
+
+def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
+                         dependency_probe, budget_batch, inner_factory, cleanup):
     profile = load_profile(config_path, providers_path, run_root)
     batch = load_budget_batch(profile, budget_batch or os.getenv('KB_DELIVERY_BUDGET_BATCH') or None)
     ensure_private_identity(profile)
@@ -301,7 +313,22 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
         from kb_platform.api import create_app
 
         app_factory = create_app
-    app = app_factory(settings)
+    from .remote import GoogleEmbeddingProvider
+    from .platform_plugins import OwnedModelClients
+
+    if os.getenv('KB_MODELS_CONFIG'):
+        raise DeliveryConfigurationError('DELIVERY_REQUIRES_FROZEN_PROVIDER_CONFIG')
+    captured = CapturedLuna(profile.provider_path)
+    try:
+        embedding = GoogleEmbeddingProvider(profile.provider_path)
+    except BaseException:
+        captured.close()
+        raise
+    owned_clients = OwnedModelClients(captured, embedding)
+    cleanup.callback(owned_clients.close_unclaimed)
+    app = app_factory(settings, model_clients=owned_clients)
+    if getattr(app.state, 'root_plugins', None) is not None:
+        cleanup.callback(app.state.root_plugins.close)
     research, agent, platform = app.state.research, app.state.agent, app.state.platform
     if research is None or agent is None or platform.embedding_provider is not research.embedding:
         raise DeliveryConfigurationError('DELIVERY_PROVIDER_WIRING_INVALID')
@@ -309,15 +336,6 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
     if (policy.model_window, policy.input_budget, policy.output_reserve, policy.safety_reserve) != (
             WINDOW['total'], WINDOW['input'], WINDOW['output'], WINDOW['safety']):
         raise DeliveryConfigurationError('DELIVERY_AGENT_WINDOW_MISMATCH')
-    prior_clients = {id(value): value for value in (research.luna, agent.model.provider.client, platform.ocr_client)
-                     if value is not None}
-    captured = CapturedLuna(profile.provider_path)
-    from .agent_luna import LunaModelProvider
-
-    research.luna = platform.ocr_client = captured
-    agent.model.provider = LunaModelProvider(captured)
-    for old in prior_clients.values():
-        old.close()
     agent.tool_context = request_context
     providers, seen, lock = [], set(), Lock()
 
@@ -332,7 +350,7 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
         providers.append(provider)
 
     observe(captured, 'delivery_model')
-    observe(research.embedding, 'delivery_embedding')
+    observe(embedding, 'delivery_embedding')
     semantic = getattr(agent, 'semantic_pages', None)
     if semantic is not None:
         semantic_provider = getattr(semantic, 'provider', None)
@@ -418,10 +436,6 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
         response.headers['X-Delivery-Profile'] = profile.config['id']
         return response
 
-    def close_providers():
-        for provider in providers:
-            provider.close()
-    app.router.add_event_handler('shutdown', close_providers)
     manifest = {**profile.public(), 'config_sha256': hashlib.sha256(profile.config_path.read_bytes()).hexdigest(),
                 'provider_config_sha256': hashlib.sha256(profile.provider_path.read_bytes()).hexdigest(),
                 'physical_ledger': str(ledger.path), 'physical_capture_root': str(capture_root),

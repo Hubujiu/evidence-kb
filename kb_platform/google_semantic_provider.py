@@ -62,6 +62,26 @@ def write_google_page_capsule(path, *, source_identity, pages, source_text, vect
             "new_embedding_calls": 0}
 
 
+def semantic_provider_manifest(remote, dimension):
+    if (remote.get("provider") != "google_gemini" or remote.get("normalization") != "l2"
+            or remote.get("model") not in {"gemini-embedding-2", "gemini-embedding-001"}
+            or remote.get("dimension") != dimension):
+        raise EmbeddingError("Explicit fixed Google model/dimension/task protocol required")
+    from . import remote as remote_module, semantic_units
+    return {"provider": "google_gemini", "model": remote["model"], "dimension": dimension,
+            "max_tokens": 8192 if remote["model"] == "gemini-embedding-2" else 2048,
+            "max_input_characters": remote["max_input_characters"],
+            "normalization": "l2", "document_format": remote["document_format"],
+            "query_format": remote["query_format"], "remote": deepcopy(remote),
+            "adapter": "observed-google-semantic/1", "execution": "google_api",
+            "input_admission": "formatted-text-utf8-byte-upper-bound/no-truncation",
+            "usage_source": "provider-usageMetadata.promptTokenCount",
+            "automatic_retries": 0, "embedding_cache": "disabled",
+            "physical_batch_size": 1,
+            "implementation_sha256": {Path(p).name: _sha(p) for p in
+                (__file__, remote_module.__file__, semantic_units.__file__)}}
+
+
 class GoogleSemanticProvider:
     provider_id = "google_gemini"
     call_resource = "remote_embedding_calls"
@@ -90,24 +110,7 @@ class GoogleSemanticProvider:
         self.last_observation = None
 
     def _current_manifest(self):
-        remote = self.remote.manifest
-        if (remote.get("provider") != self.provider_id or remote.get("normalization") != "l2"
-                or remote.get("model") not in {"gemini-embedding-2", "gemini-embedding-001"}
-                or remote.get("dimension") != self.dimension):
-            raise EmbeddingError("Explicit fixed Google model/dimension/task protocol required")
-        from . import remote as remote_module, semantic_units
-        return {"provider": self.provider_id, "model": remote["model"], "dimension": self.dimension,
-                "max_tokens": 8192 if remote["model"] == "gemini-embedding-2" else 2048,
-                "max_input_characters": remote["max_input_characters"],
-                "normalization": "l2", "document_format": remote["document_format"],
-                "query_format": remote["query_format"], "remote": deepcopy(remote),
-                "adapter": "observed-google-semantic/1", "execution": "google_api",
-                "input_admission": "formatted-text-utf8-byte-upper-bound/no-truncation",
-                "usage_source": "provider-usageMetadata.promptTokenCount",
-                "automatic_retries": 0, "embedding_cache": "disabled",
-                "physical_batch_size": 1,
-                "implementation_sha256": {Path(p).name: _sha(p) for p in
-                    (__file__, remote_module.__file__, semantic_units.__file__)}}
+        return semantic_provider_manifest(self.remote.manifest, self.dimension)
 
     def _unchanged(self):
         if (self.remote.manifest != self._remote_manifest or self._current_manifest() != self.manifest

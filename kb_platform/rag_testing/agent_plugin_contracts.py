@@ -14,7 +14,7 @@ from kb_platform.agent_provider import ProviderCompletion
 from kb_platform.agent_runtime import send_deadline, serialized_send
 from kb_platform.agent_call_budget import CallBudget
 from kb_platform.agent_tool_view import project_tool_results
-from kb_platform.knowledge_service import KnowledgeService as AgentService
+from .product_fixture import knowledge_service as AgentService
 from kb_platform.core import PlatformError
 from kb_platform.model_errors import RemoteModelError
 from kb_platform.provider_runtime import RuntimePolicyError

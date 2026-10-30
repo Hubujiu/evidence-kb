@@ -12,8 +12,8 @@ from kb_platform.plugin_host import PluginSpec
 
 
 class _KnowledgeFixture:
-    def __init__(self, platform, model, *, research, root, store, context_policy, context_manager, runtime,
-                 gateway, tool_executor, semantic_pages, workflow_factory):
+    def __init__(self, platform, model, *, store, context_policy, context_manager, runtime,
+                 gateway, tool_executor, semantic_pages, workflow_factory, retrieval_config, tool_plugins):
         self.model, self.store, self.runtime = model, store, runtime
         self.semantic_pages, self.tool_context = None, None
         self.calls = []
@@ -36,7 +36,7 @@ class KnowledgeProfileContracts(unittest.TestCase):
 
     def application(self, root, *, profile=None, plugins=()):
         application, host = create_knowledge_application(
-            object(), SimpleNamespace(luna=object()), profile=profile or self.profile(root),
+            object(), SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={})), profile=profile or self.profile(root),
             service_factory=_KnowledgeFixture, extra_plugins=plugins, environment={})
         self.addCleanup(host.close)
         return application, host
@@ -100,7 +100,7 @@ class KnowledgeProfileContracts(unittest.TestCase):
             environment['KB_AGENT_ROOT'] = str(Path(directory) / 'sessions')
             with patch.dict(os.environ, environment, clear=True):
                 app = FastAPI()
-                install_agent_routes(app, object(), SimpleNamespace(luna=object()),
+                install_agent_routes(app, object(), SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={})),
                                      lambda: Actor('tenant', 'owner'), service_factory=_KnowledgeFixture)
                 request = self.request()
                 body = {**request, 'source_policy': request['policy']}

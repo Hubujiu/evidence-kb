@@ -409,6 +409,20 @@ class ModelServiceContracts(unittest.TestCase):
             self.assertIs(host.service('model').model, host.service('llm'))
         self.assertEqual(len(self.sent), 1)
 
+    def test_explicit_knowledge_injection_never_constructs_second_environment_provider(self):
+        from types import SimpleNamespace
+        from kb_platform.knowledge_profile import create_knowledge_application
+        from .knowledge_profile_contracts import _KnowledgeFixture
+
+        models = ModelService()
+        models.register('generation', self.adapter({}))
+        with patch('kb_platform.remote.LunaClient', side_effect=AssertionError('second client')):
+            app, host = create_knowledge_application(object(), SimpleNamespace(luna=None),
+                models=models, service_factory=_KnowledgeFixture,
+                environment={'KB_AGENT_PROVIDERS_CONFIG': 'not-opened.json', 'KB_AGENT_ROOT': str(self.root)})
+            with host:
+                self.assertIs(host.service('models'), models)
+                self.assertIs(host.service('llm'), app.model)
 
     def test_endpoint_change_changes_embedding_identity(self):
         first = self.adapter({}, capabilities=[C.EMBEDDING])
@@ -428,6 +442,38 @@ class ModelServiceContracts(unittest.TestCase):
         self.assertEqual(len(rows[0]['payload_sha256']), 64)
         self.assertNotIn('PRIVATE PROMPT', json.dumps(rows))
 
+    def test_http_application_with_chat_only_config_and_owned_cleanup(self):
+        from types import SimpleNamespace
+        from .knowledge_profile_contracts import _KnowledgeFixture
+        from kb_platform.core import Actor
+
+        config_path = self.root / 'application.json'
+        config_path.write_text(json.dumps(self.configuration(('generation',))))
+        models = ModelService()
+        models.register('generation', self.adapter({}))
+        settings = SimpleNamespace(identities=lambda: {}, dsn='', search_url='', storage_root=self.root,
+                                   search_backend='postgres')
+        fake_platform = SimpleNamespace(embedding_provider=None, ocr_client=None)
+        with patch.dict('os.environ', {'KB_DEFER_DEFAULT_APP': '1', 'KB_REMOTE_MODELS': '1',
+                        'KB_MODELS_CONFIG': str(config_path), 'KB_AGENT_ROOT': str(self.root / 'app-sessions'),
+                        'SYNTH_KEY': 'synthetic'}):
+            from kb_platform.api import create_app
+            with patch('kb_platform.core.Platform', return_value=fake_platform), \
+                    patch('kb_platform.model_configuration.from_config', return_value=models):
+                app = create_app(settings, agent_factory=_KnowledgeFixture)
+        try:
+            endpoint = next(route.endpoint for route in app.routes if route.path == '/capabilities')
+            result = endpoint(Actor('t', 'u'))
+            self.assertEqual(result['remote_configured'], {'luna': None, 'embedding': None})
+            self.assertIs(app.state.models, models)
+            self.assertIs(app.state.root_plugins, app.state.agent_plugins)
+            self.assertIs(app.state.root_plugins.service('models'), models)
+            self.assertEqual(app.state.agent_plugins.service('knowledge.gateway').provider_id, 'vendor-a')
+            self.assertIs(app.state.research.luna.structured, app.state.agent.model)
+        finally:
+            for shutdown in app.router.on_shutdown:
+                shutdown()
+        self.assertEqual(models.catalog(), {})
 
     def test_embedding_and_ocr_bindings_reject_replacement_even_with_same_adapter(self):
         from kb_platform.embeddings import EmbeddingError
@@ -555,6 +601,42 @@ class ModelServiceContracts(unittest.TestCase):
             self.assertEqual(host.call('embedding', 'documents', ['Do not exceed 5 mg.']), [[1., 2.]])
         self.assertIn('ocr', models.catalog())
 
+    def test_http_application_allows_document_models_without_generation(self):
+        from types import SimpleNamespace
+        from kb_platform.core import Actor
+
+        config_path = self.root / 'document-models.json'
+        settings = SimpleNamespace(identities=lambda: {}, dsn='', search_url='', storage_root=self.root,
+                                   search_backend='postgres')
+        for routes in [('embedding',), ('ocr',), ('embedding', 'ocr')]:
+            with self.subTest(routes=routes):
+                models = ModelService()
+                config_path.write_text(json.dumps(self.configuration(routes)))
+                for route in routes:
+                    models.register(route, self.adapter({}, capabilities=[C(route)]))
+                def platform(**ports):
+                    return SimpleNamespace(embedding_provider=ports["embedding_provider"],
+                                           ocr_client=ports["ocr_client"])
+                with patch.dict('os.environ', {'KB_DEFER_DEFAULT_APP': '1', 'KB_REMOTE_MODELS': '1',
+                                               'KB_MODELS_CONFIG': str(config_path), 'SYNTH_KEY': 'synthetic'}):
+                    from kb_platform.api import create_app
+                    with patch('kb_platform.core.Platform', side_effect=platform), \
+                            patch('kb_platform.model_configuration.from_config', return_value=models), \
+                            patch('kb_platform.remote.LunaClient', side_effect=AssertionError('unexpected generation')):
+                        app = create_app(settings)
+                try:
+                    self.assertIsNone(app.state.agent)
+                    self.assertIsNone(app.state.research)
+                    self.assertEqual(app.state.platform.embedding_provider is not None, 'embedding' in routes)
+                    self.assertEqual(app.state.platform.ocr_client is not None, 'ocr' in routes)
+                    endpoint = next(route.endpoint for route in app.routes if route.path == '/capabilities')
+                    result = endpoint(Actor('t', 'u'))
+                    self.assertIsNone(result['agent_conversations'])
+                    self.assertNotIn('rerank', result['configured_requires_verification'])
+                finally:
+                    for shutdown in app.router.on_shutdown:
+                        shutdown()
+                self.assertEqual(models.catalog(), {})
 
 
 class ModelRouteLifecycleContracts(unittest.TestCase):

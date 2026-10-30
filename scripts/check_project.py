@@ -424,7 +424,12 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=ROOT / ".local/checks" / uuid4().hex)
     parser.add_argument("--worker", choices=("contracts", "scorer"), help=argparse.SUPPRESS)
     parser.add_argument('--contract-shard', type=int, choices=range(4), help=argparse.SUPPRESS)
+    parser.add_argument('--local-integration', action='store_true',
+                        help='Run controlled loopback HTTP/parser/PostgreSQL checks using KB_INTEGRATION_DSN.')
     args = parser.parse_args()
+    integration_dsn = os.environ.get('KB_INTEGRATION_DSN') if args.local_integration else None
+    if args.local_integration and not integration_dsn:
+        parser.error('--local-integration requires KB_INTEGRATION_DSN for a dedicated acceptance database')
     output = args.output.resolve()
     if args.worker:
         return run_worker(args.worker, output, args.contract_shard)
@@ -472,6 +477,15 @@ def main() -> int:
             results.append(run_check('plugin-process-integration',
                 [sys.executable, '-B', '-m', 'kb_platform.rag_testing.plugin_process_integration',
                  '--output', str(output / 'plugin-process-integration')], output, env))
+        if args.local_integration:
+            if native_library is None:
+                results.append(run_check('runtime-integration', [sys.executable, '-c',
+                    'raise RuntimeError("current native build is required for integration")'], output, env))
+            else:
+                integration_env = {**env, 'KB_DSN': integration_dsn}
+                results.append(run_check('runtime-integration',
+                    [sys.executable, '-B', '-m', 'kb_platform.rag_testing.runtime_integration',
+                     '--output', str(output / 'runtime-integration')], output, integration_env))
         results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts"], output, env))
         for kind in ("contracts", "scorer"):
             if kind == "contracts" and native_library is None:
@@ -484,7 +498,10 @@ def main() -> int:
         "checks": [asdict(result) for result in results], "new_model_calls": 0,
         "new_embedding_calls": 0, "new_judge_calls": 0,
         "native_library": str(native_library) if native_library is not None else None,
-        "scope": "offline gates; component checks and scorer controls reported separately"})
+        "controlled_local_integration": args.local_integration,
+        "scope": ("offline gates plus controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
+                  if args.local_integration else
+                  "offline gates; component checks and scorer controls reported separately")})
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1
 

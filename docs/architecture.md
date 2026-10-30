@@ -1,6 +1,6 @@
 # 产品模块与评测边界
 
-通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/agent-profiles/knowledge.json`，展开显式 knowledge 组合包并取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由 allowlist catalog 提供。Rust 拥有依赖解析、作用域、生命周期、通用 loop 和图节点推进，Python 执行服务效果与知识库路由策略。通用宿主、loop 与工具目录不导入知识库业务。
+通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/application-profiles/` 中选定的根 profile，展开 platform 与 knowledge 组合包并取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由可信 catalog 提供。Rust 拥有依赖解析、作用域、生命周期、通用 loop 和图节点推进，Python 执行服务效果与知识库路由策略。通用宿主、loop 与工具目录不导入知识库业务。
 
 默认检索由 `postgres_search.py` 提供，使用 pg_textsearch BM25 和 pgvector 精确检索。检索代际、语义页活动清单和 Embedding 恢复任务均在 PostgreSQL 中持久化。`search.py` 保留共有排序/绑定合同；`embedded_search.py` 与 OpenSearch 仅用于历史迁移和明确配置的对照。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件文件只供备份下载，证据以数据库不可变解析快照为准。持久化与切换说明见 [检索存储](search-storage.md)。
 
@@ -36,7 +36,7 @@ flowchart TD
 
 ## Rust Agent 运行时与知识库业务
 
-`rust/agent-kernel` 保留操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-harness` 实现插件依赖排序、服务归属、父子作用域、运行租约和通用 loop。loop 发出会话、提示词、模型和工具效果，由 Python 适配器执行；没有在 Rust 核心写入知识库分支。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。LangGraph/LangSmith 调度实现和依赖已移除。
+`rust/plugin-runtime` 独占实例、代次、依赖、服务注册、作用域、调用租约、配置与资源清理。`rust/agent-kernel` 保留单次运行的操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-harness` 保留通用 loop 和 graph，将版本化生命周期命令交给 plugin-runtime。Python 只执行派发动作并回报结果，不再通知 ready 或最终 disposed。loop 发出会话、提示词、模型和工具效果，由 Python 适配器执行。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。
 
 默认 HTTP 路径调用插件提供的 `application` 服务，由 `knowledge.driver.graph` 直接执行绑定的 `kb_query`，进入 `knowledge.workflow.graph` 提供的图程序，不再创建外层 single-tool loop。绑定保留原始身份、session、request ID、expected revision、来源策略和用户约束；模型参数仅包含问题。它不增加外层模型规划调用，返回已验证的原响应及 trace。通用 `model-tools` loop 是另一种可选策略；loop 自身可以替换。
 
