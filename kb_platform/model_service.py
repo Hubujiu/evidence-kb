@@ -268,19 +268,22 @@ class ModelService:
     def lease(self, name, capability, *, expected=None):
         with self._lock:
             entry = self._entry(name, capability, expected)
-            entry.active += 1
-        try:
-            ownership = entry.owner_lease() if entry.owner_lease is not None else nullcontext()
-            with ownership:
+            identity, owner_lease = entry.registration_id, entry.owner_lease
+        ownership = owner_lease() if owner_lease is not None else nullcontext()
+        with ownership:
+            with self._lock:
+                entry = self._entry(name, capability, expected=identity)
+                entry.active += 1
+            try:
                 execution = current_execution()
                 if execution is not None:
                     execution.check()
                 yield entry.adapter
                 if execution is not None:
                     execution.check()
-        finally:
-            with self._lock:
-                entry.active -= 1
+            finally:
+                with self._lock:
+                    entry.active -= 1
 
     def invoke(self, name, request):
         return self._invoke(name, request)

@@ -1,3 +1,5 @@
+from copy import deepcopy
+from typing import Protocol
 from uuid import uuid4
 
 from .agent_luna import LunaModelProvider
@@ -36,9 +38,20 @@ class LunaAdapter:
                            response.usage, trace['request_id'])
 
 
+class ObservedEmbeddingPort(Protocol):
+    manifest: dict
+    def documents(self, texts, *, request_id, audit_context, authorize): ...
+    def query(self, text, *, request_id, audit_context, authorize): ...
+    def recover_embedding(self, request_id): ...
+    def embedding_preflight(self, request_id, error): ...
+
+
 class EmbeddingAdapter:
     def __init__(self, provider):
         self.provider = provider
+        factory = getattr(provider, 'embedding_port', None)
+        self._observed: ObservedEmbeddingPort | None = factory() if factory is not None else None
+        self.embedding_manifest = deepcopy(self._observed.manifest) if self._observed is not None else None
         batch_size = getattr(provider, 'max_batch_size', 1)
         self.info = ModelInfo(getattr(provider, 'provider_id', 'embedding'),
                               getattr(provider, 'model', 'configured'), frozenset({Capability.EMBEDDING}),
@@ -49,9 +62,25 @@ class EmbeddingAdapter:
         if dimension is not None and request.payload.get('dimensions', dimension) != dimension:
             raise ValueError('EMBEDDING_DIMENSION_MISMATCH')
         texts = request.payload['texts']
-        vectors = ([self.provider.query(text) for text in texts]
-                   if request.payload.get('task') == 'query' else self.provider.documents(texts))
+        if self._observed is not None:
+            options = {key: request.call_context.get(key) for key in ('request_id', 'audit_context', 'authorize')}
+            if request.payload.get('task') == 'query':
+                if len(texts) != 1:
+                    raise ValueError('OBSERVED_EMBEDDING_QUERY_REQUIRES_ONE_INPUT')
+                vectors = [self._observed.query(texts[0], **options)]
+            else:
+                vectors = self._observed.documents(texts, **options)
+        else:
+            vectors = ([self.provider.query(text) for text in texts]
+                       if request.payload.get('task') == 'query' else self.provider.documents(texts))
         return ModelResult(self.info.provider, self.info.model, request.capability, {'vectors': vectors})
+
+    def recover_embedding(self, request_id):
+        return self._observed.recover_embedding(request_id) if self._observed is not None else None
+
+    def embedding_preflight(self, request_id, error):
+        return (self._observed.embedding_preflight(request_id, error) if self._observed is not None
+                else getattr(error, 'preflight_code', None))
 
 
 class CompletionPort:
