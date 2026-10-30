@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
@@ -8,6 +9,34 @@ from kb_platform.search import OpenSearch
 
 
 class PostgresSearchContracts(unittest.TestCase):
+    def test_unbuilt_optional_semantic_index_does_not_block_knowledge_turn(self):
+        from kb_platform.knowledge_service import KnowledgeService
+        from kb_platform.semantic_pages_v2 import SemanticPageService
+
+        backend = PostgresSearch.__new__(PostgresSearch)
+        backend.pool = Mock()
+        connection = Mock()
+        backend.pool.connection.side_effect = lambda: nullcontext(connection)
+        connection.execute.return_value.fetchone.return_value = None
+        semantic = SemanticPageService.__new__(SemanticPageService)
+        semantic.platform = SimpleNamespace(backend=backend)
+        semantic.gateway = Mock()
+        service = KnowledgeService.__new__(KnowledgeService)
+        service.semantic_pages = semantic
+        actor = Actor('tenant', 'user')
+        self.assertFalse(service._semantic_available(actor, 'kb'))
+        connection.execute.return_value.fetchone.return_value = {'manifest': {}, 'checksum': 'corrupt'}
+        with self.assertRaises(PlatformError) as rejected:
+            service._semantic_available(actor, 'kb')
+        self.assertEqual(rejected.exception.code, 'SEMANTIC_PAGE_INDEX_UNAVAILABLE')
+        self.assertIsInstance(rejected.exception.__cause__, ValueError)
+        for code in ('FORBIDDEN', 'SEMANTIC_PAGE_INDEX_STALE', 'SEMANTIC_PAGE_MODEL_MISMATCH'):
+            with self.subTest(code=code):
+                semantic.gateway.authorize.side_effect = PlatformError(code, 'synthetic refusal', 409)
+                with self.assertRaises(PlatformError) as refused:
+                    service._semantic_available(actor, 'kb')
+                self.assertEqual(refused.exception.code, code)
+
     def test_token_boundaries_survive_sql_parser(self):
         self.assertEqual(lexical_text('企业 知识'), lexical_text('企业，知识'))
         self.assertNotEqual(lexical_text('企业知识'), lexical_text('企业 知识'))
