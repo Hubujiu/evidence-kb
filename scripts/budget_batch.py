@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from kb_platform.rag_testing.budget_batches import (LinkedBudgetLedger, cumulative_summary,
                                                     freeze_predecessor)
+from kb_platform.rag_testing.budget_batches import freeze_reviewed_predecessor, validate_predecessor
 
 
 def _read(path):
@@ -28,6 +29,7 @@ def main(argv=None):
     freeze = sub.add_parser('freeze')
     freeze.add_argument('--prior-ledger', type=Path, required=True)
     freeze.add_argument('--expected-sha256')
+    freeze.add_argument('--review', type=Path, help='Immutable review of unknown model outcomes; reservations remain charged')
     freeze.add_argument('--output', type=Path, required=True)
     create = sub.add_parser('create')
     create.add_argument('--predecessor', type=Path, action='append', required=True)
@@ -48,7 +50,10 @@ def main(argv=None):
     if args.output.exists():
         parser.error('Use a new output path; existing artifacts stay read-only')
     if args.command == 'freeze':
-        value = freeze_predecessor(args.prior_ledger, args.expected_sha256)
+        value = (freeze_reviewed_predecessor(args.prior_ledger, args.review) if args.review else
+                 freeze_predecessor(args.prior_ledger, args.expected_sha256))
+        if args.expected_sha256 and value['database_sha256'] != args.expected_sha256.lower():
+            raise ValueError('PREDECESSOR_FILE_SHA256_MISMATCH')
         _write(args.output, value)
     elif args.command == 'create':
         predecessors = [_read(path) for path in args.predecessor]
@@ -65,7 +70,7 @@ def main(argv=None):
         from kb_platform.delivery import RUNTIME_CAPS
 
         predecessors = [_read(path) for path in args.predecessor]
-        parents = [freeze_predecessor(value['path'], value['database_sha256']) for value in predecessors]
+        parents = [validate_predecessor(value) for value in predecessors]
         if any(parent['snapshot_sha256'] != old['snapshot_sha256']
                for old, parent in zip(predecessors, parents, strict=True)):
             raise ValueError('PREDECESSOR_LEDGER_CHANGED')

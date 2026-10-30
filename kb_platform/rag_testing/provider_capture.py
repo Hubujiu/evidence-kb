@@ -63,6 +63,11 @@ class MeteredTransport(httpx.BaseTransport):
         record = {'physical_request_id': identity, 'payload_sha256': digest(payload),
                   'category': self.category, 'payload': payload, 'context': deepcopy(_context.get()),
                   'status': 'STARTED', 'reserved': resources}
+        reviews = [{'path': parent['review_path'], 'sha256': parent['review_sha256'],
+                    'unknown_physical_ids': parent['reviewed_unknown_ids']}
+                   for parent in getattr(self.ledger, 'predecessors', []) if parent.get('reviewed_unknown_ids')]
+        if reviews:
+            record['reviewed_predecessors'] = reviews
         if self.admission is not None:
             record['provider_scope'] = self.admission.scope_hash
         target = self.root / (identity + '.json')
