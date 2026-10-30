@@ -126,6 +126,28 @@ class AgentSchemaContracts(unittest.TestCase):
 
 
 class AgentSchemaBoundaryContracts(unittest.TestCase):
+    def test_schema_failure_preserves_specific_bound_without_echoing_values(self):
+        import json
+
+        content = {'intent': 'knowledge', 'action': 'answer', 'subquestions': ['untrusted instruction'] * 9}
+        model, provider = self.model(json.dumps(content))
+        with self.assertRaises(RemoteModelError) as caught:
+            self.complete(model, schema=DECISION_SCHEMA)
+        issue = caught.exception.output_diagnostics['validator_issue']
+        self.assertEqual(issue, {'path': ['subquestions'], 'rule': 'maxItems', 'limit': 6})
+        self.assertNotIn('untrusted instruction', repr(issue))
+        self.assertEqual(model.ledger.snapshot()['calls'], 1)
+        provider._cache_put.assert_not_called()
+
+    def test_malformed_json_preserves_parser_location(self):
+        model, _ = self.model('{"count":1,"}')
+        with self.assertRaises(RemoteModelError) as caught:
+            self.complete(model)
+        issue = caught.exception.output_diagnostics['validator_issue']
+        self.assertEqual(issue['rule'], 'json_syntax')
+        self.assertEqual(issue['line'], 1)
+        self.assertGreater(issue['column'], 1)
+
     def model(self, content='{"count":1}', cached=None):
         def post(*args, trace, **kwargs):
             trace['attempt'] += 1

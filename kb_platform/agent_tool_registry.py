@@ -69,3 +69,22 @@ def tool_arguments(action, decision, message, config):
         args.update(left_key=decision['left_key'], right_key=decision['right_key'],
                     how=decision.get('join_how', 'inner'))
     return args
+
+
+def bind_decision_evidence(schema, identities):
+    schema = deepcopy(schema)
+    identities = sorted(set(identities))
+    actions = schema['properties']['action']['enum']
+    referenced = {name for name in actions if name in TOOLS
+                  and TOOLS[name].arguments in {'read', 'references', 'table', 'join'}}
+    citations = schema['properties']['citation_ids']
+    if not identities:
+        schema['properties']['action']['enum'] = [name for name in actions if name not in referenced]
+        citations['maxItems'] = 0
+    else:
+        citations['items'] = {'type': 'string', 'enum': identities}
+        schema.setdefault('allOf', []).append({'anyOf': [
+            {'properties': {'action': {'enum': [name for name in actions if name not in referenced]}}},
+            {'required': ['citation_ids'], 'properties': {'citation_ids': {'minItems': 1}}},
+        ]})
+    return schema

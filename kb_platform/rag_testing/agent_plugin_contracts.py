@@ -141,13 +141,15 @@ class RuntimeLifecycleContracts(TestCase):
     def test_planning_with_reranking_preserves_answer_and_verification_calls(self):
         def ranking(messages):
             projection = json.loads(messages[-1]['content'])
-            return {'ranking': [{'citation_id': item['citation_id'], 'score': 0.5}
-                                for item in projection['evidence']]}
+            return {'scores': [index / len(projection['evidence'])
+                               for index, _ in enumerate(projection['evidence'])]}
 
         def search_pipeline(gateway, actor, scope, query, policy, config, **kwargs):
             hits = gateway.search(actor, scope, query, policy)
             if config.get('rerank'):
-                gateway.pipeline_reranker.rank(query, hits)
+                ranked = gateway.pipeline_reranker.rank(query, hits)
+                self.assertEqual(ranked, [{'citation_id': item['citation_id'], 'score': index / len(hits)}
+                                         for index, item in enumerate(hits)])
             return {'hits': hits, 'trace': {'expansion': []}}
 
         for limit in (5, 6):

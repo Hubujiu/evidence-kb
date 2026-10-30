@@ -1,5 +1,6 @@
 from __future__ import annotations
 from copy import copy, deepcopy
+import json
 import math
 import time
 from .agent_protocol import ANSWER_SCHEMA, VERDICT_SCHEMA, object_schema
@@ -156,6 +157,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
             auth_changed = self.state["authority"] is not None and self.state["authority"] != self.authority
             if policy_changed or auth_changed:
                 self.state.pop("workflow_state", None)
+                self.state['evidence_catalog'] = {}
+                self.state['evidence_offsets'] = {}
                 pinned = []
                 if not policy_changed and self.state["source_policy"]["version_policy"] == "pinned":
                     try:
@@ -203,6 +206,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                         )
                     }
                 except PlatformError:
+                    self.state['evidence_catalog'] = {}
+                    self.state['evidence_offsets'] = {}
                     self.state["evidence"], self.state["checkpoints"], self.state["last_answer"] = (
                         {},
                         {},
@@ -257,39 +262,32 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                     ids = [item["citation_id"] for item in candidates]
                     schema = object_schema(
                         {
-                            "ranking": {
-                                "type": "array",
-                                "minItems": len(ids),
-                                "maxItems": len(ids),
-                                "items": object_schema(
-                                    {
-                                        "citation_id": {"type": "string", "enum": ids},
-                                        "score": {"type": "number", "minimum": 0, "maximum": 1},
-                                    }
-                                ),
-                            }
+                            "scores": {"type": "array", "minItems": len(ids), "maxItems": len(ids),
+                                       "items": {"type": "number", "minimum": 0, "maximum": 1}}
                         }
                     )
 
                     def validate(value):
                         if (
                             not isinstance(value, dict)
-                            or not isinstance(value.get("ranking"), list)
-                            or sorted((item.get("citation_id", "") for item in value["ranking"]))
-                            != sorted(ids)
+                            or not isinstance(value.get("scores"), list)
+                            or len(value['scores']) != len(ids)
                         ):
                             raise ValueError("INVALID_RERANK_OUTPUT")
 
                     ranked = self.call(
                         "rerank",
                         SYSTEM
-                        + "\nScore every provided candidate for relevance to the query. Return exactly the supplied citation identities; do not answer the question or invent evidence.",
+                        + "\nScore every provided candidate for relevance to the query. Return only a scores array of numbers in exactly the following candidate order: "
+                        + json.dumps(ids)
+                        + ". Each position maps to that candidate, including irrelevant candidates. Do not return identifiers, reorder candidates, answer the question or invent evidence.",
                         schema,
                         validate,
                         question=query,
                         evidence_override=candidates,
                     )
-                    return ranked["ranking"]
+                    return [{'citation_id': identity, 'score': score}
+                            for identity, score in zip(ids, ranked['scores'], strict=True)]
 
             turn_gateway.pipeline_reranker = BudgetedReranker()
             if "search_pipeline" in self.advanced and hasattr(turn_gateway, "pipeline_capabilities"):
@@ -456,6 +454,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                 key = item["citation_id"]
                 item = {**item, "evidence_id": key}
                 self.state["evidence"][key] = item
+                self.state['evidence_offsets'][key] = 0
                 self.turn_lineage[key] = item
                 self.state["evidence_catalog"][key] = {
                     **artifact,

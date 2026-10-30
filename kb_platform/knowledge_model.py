@@ -4,6 +4,7 @@ from hashlib import sha256
 import time
 from uuid import uuid4
 from .agent_model import schema_instruction
+from .context_budget import canonical
 from .session_store import digest
 from .agent_tool_view import project_tool_results
 from .core import PlatformError
@@ -181,6 +182,9 @@ class KnowledgeModelCalls:
                 )
                 if role in {"decision", "retrieval"}:
                     repair_system += ' This role only routes the next action. action="answer" means the evidence is ready for a later answer role; it does not ask you to write that answer now. Return the planner intent/action and applicable citation_ids. Do not emit answer, claims, quotes, evidence_ids or final-answer prose. Preserve the current planner schema rather than switching to an answer schema.'
+                if failed.get('validator_issue'):
+                    repair_system += '\nValidation location and constraint: ' + canonical(failed['validator_issue'])
+                    repair_system += '. Fix this specific constraint. Group related subquestions when the list exceeds its limit, preserving the full task scope. Return only required fields and fields needed for the chosen action; omit other optional fields.'
                 with self.service.tool_context(
                     {
                         "session_id": self.session_id,

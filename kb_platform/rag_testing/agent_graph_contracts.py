@@ -65,6 +65,65 @@ class ScenarioModel:
 
 
 class AgentGraphContracts(unittest.TestCase):
+    def test_fresh_evidence_resets_old_read_window_but_explicit_read_keeps_it(self):
+        for refresh in (False, True):
+            with self.subTest(refresh=refresh):
+                def read_window(messages):
+                    item = json.loads(messages[-1]['content'])['evidence'][0]
+                    return decision('read', citation_ids=[item['citation_id']], offset=10)
+
+                script = [('decision', decision()), ('retrieval', read_window)]
+                if refresh:
+                    script += [('retrieval', decision('search', query='refresh original'))]
+                script += [('retrieval', decision('answer')), ('answer', cited_answer), ('verifier', verdict())]
+                case = self.setup_service(script, policy={'mode': 'LOCKED', 'source_ids': ['s0']},
+                                          config={'novelty_search': False})
+                result = self.turn(case)
+                self.assertEqual(result['status'], 'answered', result)
+                self.assertEqual(result['answer'], 'Original rule: value 42.'[0 if refresh else 10:])
+
+    def test_source_switch_does_not_expose_old_catalog_in_planning_schema(self):
+        case = self.setup_service(normal_script(), policy={'mode': 'LOCKED', 'source_ids': ['s0']})
+        first = self.turn(case)
+        old_ids = {item['citation_id'] for item in first['evidence']}
+
+        def plan_new_scope(messages):
+            for identity in old_ids:
+                self.assertNotIn(identity, json.dumps(messages))
+            return decision()
+
+        case.model.script = [('decision', plan_new_scope), *normal_script()[1:]]
+        result = case.service.turn(case.authority.actor, case.session, message='What is the new rule?',
+            request_id='switch', expected_revision=1, policy={'mode': 'LOCKED', 'source_ids': ['s1']})
+        self.assertEqual(result['status'], 'answered', result)
+        self.assertEqual({item['source_id'] for item in result['evidence']}, {'s1'})
+
+    def test_format_repair_receives_specific_constraint_and_remains_bounded(self):
+        from kb_platform.model_errors import RemoteModelError
+
+        for repaired in (True, False):
+            with self.subTest(repaired=repaired):
+                error = RemoteModelError('INVALID_AGENT_OUTPUT')
+                error.call_record = {'finish_reason': 'stop', 'validator_reason': 'AGENT_SCHEMA_MISMATCH',
+                    'validator_issue': {'path': ['subquestions'], 'rule': 'maxItems', 'limit': 6}}
+
+                def corrected(messages):
+                    instruction = messages[0]['content']
+                    self.assertIn('"path":["subquestions"]', instruction)
+                    self.assertIn('"limit":6', instruction)
+                    return decision('answer', subquestions=['List all nine required items'])
+
+                script = [('decision', decision()), ('retrieval', error),
+                          ('retrieval', corrected if repaired else error)]
+                if repaired:
+                    script += [('answer', cited_answer), ('verifier', verdict())]
+                case = self.setup_service(script)
+                result = self.turn(case)
+                self.assertEqual(result['status'], 'answered' if repaired else 'error', result)
+                self.assertEqual(len(result['trace']['format_repairs']), 1)
+                self.assertEqual(len(case.model.calls), 5 if repaired else 3)
+                self.assertEqual(result['trace']['calls'][1]['validator_issue']['limit'], 6)
+
     def setup_service(self, script=(), *, after=None, policy=None, config=None):
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

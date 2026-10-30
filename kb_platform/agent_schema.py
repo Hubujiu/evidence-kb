@@ -66,12 +66,23 @@ def check_schema(schema):
     return _check_subset(schema)
 
 
+class AgentSchemaError(ValueError):
+    def __init__(self, issue):
+        super().__init__('AGENT_SCHEMA_MISMATCH')
+        self.issue = issue
+
+
 def validate_output(value, validator):
     try:
 
         json.dumps(value, allow_nan=False)
         validator.validate(value)
-    except (ValidationError, TypeError, ValueError):
+    except ValidationError as exc:
+        issue = {'path': list(exc.absolute_path), 'rule': exc.validator}
+        if exc.validator in {'minItems', 'maxItems', 'minLength', 'maxLength', 'minimum', 'maximum'}:
+            issue['limit'] = exc.validator_value
+        raise AgentSchemaError(issue) from None
+    except (TypeError, ValueError):
         raise ValueError("AGENT_SCHEMA_MISMATCH") from None
 
 
