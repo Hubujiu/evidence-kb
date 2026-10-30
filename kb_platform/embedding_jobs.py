@@ -1,10 +1,9 @@
-from contextlib import contextmanager, closing
+from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
 import inspect
 import json
 import math
-from pathlib import Path
 import sqlite3
 from uuid import uuid4
 
@@ -12,7 +11,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from .embeddings import EmbeddingCallError, EmbeddingError
+from .embeddings import EmbeddingCallError, EmbeddingError, read_embedding_capture
 from .provider_admission import CapturePreflightError
 
 
@@ -39,44 +38,26 @@ def batch_size(provider):
 
 
 def classify_provider_failure(row, provider, error):
-    from .google_semantic_provider import GoogleSemanticProvider
-
+    preflight = getattr(provider, 'embedding_preflight', None)
     if isinstance(error, CapturePreflightError):
-        code = {'BUDGET_INSUFFICIENT': 'EMBEDDING_BUDGET_INSUFFICIENT',
-                'UNRESOLVED_PHYSICAL_REQUEST': 'EMBEDDING_LEDGER_BLOCKED',
-                'BUDGET_PRODUCER_BUSY': 'EMBEDDING_LEDGER_BLOCKED',
-                'BUDGET_PRODUCER_SEALED': 'EMBEDDING_LEDGER_BLOCKED'}.get(error.reason)
-        if code is not None:
-            return EmbeddingPreflightError(code)
-
-    if isinstance(error, EmbeddingCallError):
-        code = {'BUDGET_INSUFFICIENT': 'EMBEDDING_BUDGET_INSUFFICIENT',
-                'UNRESOLVED_PHYSICAL_REQUEST': 'EMBEDDING_LEDGER_BLOCKED',
-                'BUDGET_PRODUCER_BUSY': 'EMBEDDING_LEDGER_BLOCKED',
-                'BUDGET_PRODUCER_SEALED': 'EMBEDDING_LEDGER_BLOCKED'}.get(error.preflight_code)
-        if code is not None:
-            return EmbeddingPreflightError(code)
-
-    diagnostics = {
-        'Formatted input exceeds conservative native token admission; no truncation': 'EMBEDDING_INPUT_TOO_LARGE',
+        reason = error.reason
+    elif isinstance(error, EmbeddingCallError) and error.preflight_code in {
+            'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST', 'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
+        reason = error.preflight_code
+    elif preflight is not None:
+        reason = preflight(row.get('request_id'), error)
+    elif isinstance(error, EmbeddingCallError):
+        reason = error.preflight_code
+    else:
+        return error
+    code = {
+        'EMBEDDING_INPUT_TOO_LARGE': 'EMBEDDING_INPUT_TOO_LARGE',
         'BUDGET_INSUFFICIENT': 'EMBEDDING_BUDGET_INSUFFICIENT',
+        'UNRESOLVED_PHYSICAL_REQUEST': 'EMBEDDING_LEDGER_BLOCKED',
         'BUDGET_PRODUCER_BUSY': 'EMBEDDING_LEDGER_BLOCKED',
         'BUDGET_PRODUCER_SEALED': 'EMBEDDING_LEDGER_BLOCKED',
-        'Unresolved physical outcome requires inspection before another embedding request': 'EMBEDDING_LEDGER_BLOCKED',
-    }
-    code = diagnostics.get(str(error))
-    if type(provider) is not GoogleSemanticProvider or code is None:
-        return error
-    try:
-        if (Path(provider.audit_dir) / (row['request_id'] + '.json')).exists():
-            return error
-        with closing(sqlite3.connect(Path(provider.ledger.path).as_uri() + '?mode=ro', uri=True)) as ledger:
-            registered = ledger.execute('SELECT 1 FROM calls WHERE id=?', (row['request_id'],)).fetchone()
-        if registered is None:
-            return EmbeddingPreflightError(code)
-    except (OSError, ValueError, sqlite3.Error):
-        pass
-    return error
+    }.get(reason)
+    return EmbeddingPreflightError(code) if code is not None else error
 
 
 def validate_vectors(vectors, count, dimension):
@@ -291,13 +272,17 @@ class EmbeddingJobs:
 
 
 def recovered_vectors(row, provider):
-    if not hasattr(provider, 'audit_dir') or not hasattr(provider, 'ledger'):
-        return None
-    path = Path(provider.audit_dir) / (row['request_id'] + '.json')
-    if not path.is_file():
-        return None
     try:
-        record = json.loads(path.read_text('utf-8'))
+        recover = getattr(provider, 'recover_embedding', None)
+        if recover is not None:
+            observation = recover(row['request_id'])
+        elif hasattr(provider, 'audit_dir') and hasattr(provider, 'ledger'):
+            observation = read_embedding_capture(provider.audit_dir, provider.ledger.path, row['request_id'])
+        else:
+            return None
+        if observation is None:
+            return None
+        record = observation['record']
         payload = row['payload']
         texts = [unit['text'] for unit in payload['units']]
         if (record.get('status') != 'COMPLETE' or record.get('request_id') != row['request_id']
@@ -310,9 +295,8 @@ def recovered_vectors(row, provider):
         vectors = validate_vectors(record.get('vectors'), len(texts), provider.dimension)
         if record.get('vectors_sha256') != semantic_digest(vectors):
             return None
-        with closing(sqlite3.connect(Path(provider.ledger.path).as_uri() + '?mode=ro', uri=True)) as ledger:
-            state = ledger.execute('SELECT status,usage FROM calls WHERE id=?', (row['request_id'],)).fetchone()
-        if not state or state[0] != 'COMPLETE' or json.loads(state[1]) != record.get('usage'):
+        if (observation['physical_status'] != 'COMPLETE'
+                or observation['physical_usage'] != record.get('usage')):
             return None
         return vectors
     except (ValueError, OSError, sqlite3.Error, EmbeddingError):

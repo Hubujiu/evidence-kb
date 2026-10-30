@@ -111,32 +111,56 @@ class EmbeddingView:
             raise ValueError('INVALID_EMBEDDING_ROUTE')
         self.provider_id, self.model = info.provider, info.model
         self.max_batch_size = info.preferred_batch_size
+        if manifest is None:
+            with models.lease(route, Capability.EMBEDDING, expected=self._bound.registration_id) as adapter:
+                manifest = getattr(adapter, 'embedding_manifest', None)
         self.manifest = deepcopy(manifest) if manifest is not None else {'provider': info.provider, 'model': info.model,
             'dimension': dimension, 'adapter': 'model-service/1', 'route': route, 'revision': info.revision}
 
     def documents(self, texts, *, request_id=None, audit_context=None, authorize=None):
-        if authorize is not None and authorize() is not True:
-            raise ValueError('EMBEDDING_AUTHORIZATION_FAILED')
-        context = {'purpose': 'embedding_document'}
+        return self._invoke(texts, 'document', self._context('document', request_id, audit_context, authorize))
+
+    def query(self, query, *, request_id=None, audit_context=None, authorize=None):
+        return self._invoke([query], 'query', self._context('query', request_id, audit_context, authorize))[0]
+
+    @staticmethod
+    def _context(task, request_id, audit_context, authorize):
+        context = {'purpose': 'embedding_' + task, 'authorize': authorize}
         if request_id is not None:
             context['request_id'] = request_id
         if audit_context is not None:
+            context['audit_context'] = deepcopy(audit_context)
             context['audit_context_sha256'] = digest(audit_context)
-        result = self._invoke(texts, 'document', context)
-        if authorize is not None and authorize() is not True:
-            raise ValueError('EMBEDDING_AUTHORIZATION_FAILED')
-        return result
+        return context
 
-    def query(self, query):
-        return self._invoke([query], 'query')[0]
+    def recover_embedding(self, request_id):
+        try:
+            with self.models.lease(self.route, Capability.EMBEDDING, expected=self._bound.registration_id) as adapter:
+                recover = getattr(adapter, 'recover_embedding', None)
+                return recover(request_id) if recover is not None else None
+        except (RemoteModelError, ValueError) as exc:
+            raise EmbeddingCallError(exc) from exc
+
+    def embedding_preflight(self, request_id, error):
+        try:
+            with self.models.lease(self.route, Capability.EMBEDDING, expected=self._bound.registration_id) as adapter:
+                preflight = getattr(adapter, 'embedding_preflight', None)
+                return preflight(request_id, error) if preflight is not None else getattr(error, 'preflight_code', None)
+        except (RemoteModelError, ValueError):
+            return None
 
     def _invoke(self, texts, task, context=None):
+        authorize = (context or {}).get('authorize')
+        if authorize is not None and authorize() is not True:
+            raise ValueError('EMBEDDING_AUTHORIZATION_FAILED')
         try:
             result = self._bound.invoke(ModelRequest(Capability.EMBEDDING,
                 {'texts': texts, 'task': task, 'dimensions': self.dimension},
                 context or {'purpose': 'embedding_query'}))
         except (RemoteModelError, ValueError) as exc:
             raise EmbeddingCallError(exc) from exc
+        if authorize is not None and authorize() is not True:
+            raise ValueError('EMBEDDING_AUTHORIZATION_FAILED')
         vectors = result.data['vectors']
         if len(vectors) != len(texts) or any(len(v) != self.dimension for v in vectors):
             raise ValueError('EMBEDDING_DIMENSION_MISMATCH')
@@ -176,7 +200,17 @@ class TextView:
         self.provider_id, self.model = info.provider, info.model
         self.manifest = {'provider': info.provider, 'model': info.model, 'adapter': 'model-service/1'}
         self.structured = structured
+        self._turn_complete = None
+
+    def bind_turn(self, completion):
+        from copy import copy
+
+        bound = copy(self)
+        bound._turn_complete = completion
+        return bound
 
     def complete_json(self, system, user, *, purpose):
+        if self._turn_complete is not None:
+            return self._turn_complete(self.structured, system, user, purpose)
         return self.structured.complete([{'role': 'system', 'content': system},
             {'role': 'user', 'content': user}], role=purpose, schema={'type': 'object'}, call_context={}).value

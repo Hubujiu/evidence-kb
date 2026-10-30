@@ -160,14 +160,12 @@ class OpenAICompatibleAdapter:
             temporary.write_text(json.dumps(record), encoding='utf-8')
             temporary.replace(target)
 
-        save()
         try:
             self.ledger.reserve(identity, self.reservation, category=category, require_settled=True)
         except BaseException as exc:
-            record['status'] = 'REJECTED'
-            save()
             if isinstance(exc, ValueError) and str(exc) in {
-                    'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST'}:
+                    'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
+                    'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
                 raise ModelPreflightError(str(exc)) from exc
             raise
         response, sending = None, False
@@ -198,7 +196,7 @@ class OpenAICompatibleAdapter:
                 raise
             error = RemoteModelError('PROVIDER_TRANSPORT_ERROR' if response is None and known_unsent else
                                      'PROVIDER_OUTCOME_UNKNOWN' if response is None else 'PROVIDER_LEDGER_ERROR')
-            error.model_sent = True
+            error.model_sent = not known_unsent if response is None else True
             error.physical_request_id = identity
             raise error from exc
         try:
