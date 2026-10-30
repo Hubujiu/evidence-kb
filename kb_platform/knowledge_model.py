@@ -14,12 +14,14 @@ from .planning_references import (bind_planning_schema, planning_bindings, proje
 
 
 class KnowledgeModelCalls:
-    def call(self, role, system, schema, validator, question=None, evidence_override=None):
+    def call(self, role, system, schema, validator, question=None, evidence_override=None, *, model=None):
         self.check_execution()
+        selected_model = self.service.model if model is None else model
         if question is None:
             question = self.message
         if role in {"decision", "retrieval", "rerank"} and (
-            not self.call_budget.can_explore(self.trace["calls"])
+            not self.call_budget.can_explore(self.trace["calls"], max_attempts=
+                getattr(getattr(selected_model, 'provider', None), 'max_attempts', 1))
         ):
             raise PlatformError("AGENT_BUDGET_EXHAUSTED", "Answer and verification budget reserved", 409)
         if (
@@ -145,7 +147,7 @@ class KnowledgeModelCalls:
                     }
                 )
             self.check_execution()
-            envelope = self.service.model.complete(
+            envelope = selected_model.complete(
                 prepared.messages,
                 role=role,
                 schema=wire_schema,
@@ -211,7 +213,8 @@ class KnowledgeModelCalls:
                     }
                 ):
                     try:
-                        return self.call(role, repair_system, schema, validator, question, evidence_override)
+                        return self.call(role, repair_system, schema, validator, question, evidence_override,
+                                         model=selected_model)
                     finally:
                         repair["new_call_id"] = self.trace["calls"][-1]["call_id"]
             raise

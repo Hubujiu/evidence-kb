@@ -299,7 +299,7 @@ class EvidenceGateway:
                 provider.provider_id in row['policy'].get('allowed_providers', []) and
                 row['source_id'] in config.get('vector_source_ids', [])})
             dense_reason = None if dense_count else 'NO_AUTHORIZED_DENSE_SOURCES'
-        reranker = self.pipeline_reranker or (getattr(self.research, 'luna', None) if self.research else None)
+        reranker = self.pipeline_reranker
         rerank_count = len({row['source_id'] for row in allowed if reranker is not None and
             row['policy'].get('rerank', False) and
             reranker.provider_id in row['policy'].get('allowed_providers', [])})

@@ -93,10 +93,11 @@ def knowledge_plugins(platform, research, *, service_factory=None, tool_plugins=
         from .model_configuration import TextView
         from .retrieval_pipeline import LunaCandidateReranker
 
-        research = ctx.require('knowledge.research')
-        text = TextView(ctx.require('models'), ctx.require('knowledge.model'),
-                        config.get('route', 'generation')) if research is not None else None
-        ctx.provide('knowledge.reranker', LunaCandidateReranker(text) if text is not None else None)
+        route = config.get('route', 'generation')
+        model = ctx.require('knowledge.model')
+        structured = ctx.require('models').structured(route, policy=model.policy, ledger=model.ledger)
+        text = TextView(ctx.require('models'), structured, route)
+        ctx.provide('knowledge.reranker', LunaCandidateReranker(text))
 
     def no_reranker(ctx, config):
         ctx.provide('knowledge.reranker', None)
@@ -202,7 +203,7 @@ def knowledge_plugins(platform, research, *, service_factory=None, tool_plugins=
         PluginSpec('knowledge.gateway', ('knowledge.gateway',),
                    ('knowledge.platform', 'knowledge.research', 'knowledge.model', 'knowledge.reranker'), gateway),
         PluginSpec('knowledge.reranker', ('knowledge.reranker',),
-                   ('knowledge.research', 'models', 'knowledge.model'), reranker),
+                   ('models', 'knowledge.model'), reranker),
         PluginSpec('knowledge.reranker.none', ('knowledge.reranker',), (), no_reranker),
         PluginSpec('knowledge.executor', ('knowledge.executor',), (), executor),
         PluginSpec('knowledge.semantic', ('knowledge.semantic',),

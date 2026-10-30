@@ -2,6 +2,7 @@ from copy import deepcopy
 from dataclasses import replace
 import json
 from threading import Lock
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -18,6 +19,8 @@ from .product_fixture import knowledge_service as AgentService
 from kb_platform.core import PlatformError
 from kb_platform.model_errors import RemoteModelError
 from kb_platform.provider_runtime import RuntimePolicyError
+from kb_platform.model_configuration import TextView
+from kb_platform.retrieval_pipeline import LunaCandidateReranker
 from . import agent_graph_contracts as fixtures
 
 
@@ -138,11 +141,17 @@ class RuntimeLifecycleContracts(TestCase):
     setup_service = fixtures.AgentGraphContracts.setup_service
     turn = fixtures.AgentGraphContracts.turn
 
+    def install_reranker(self, case):
+        models = SimpleNamespace(catalog=lambda: {'generation': SimpleNamespace(
+            provider='magpie_luna', model='synthetic-reranker', revision=1)})
+        case.gateway.pipeline_reranker = LunaCandidateReranker(TextView(models, case.model))
+
     def test_planning_with_reranking_preserves_answer_and_verification_calls(self):
         def ranking(messages):
             projection = json.loads(messages[-1]['content'])
             return {'scores': [index / len(projection['evidence'])
-                               for index, _ in enumerate(projection['evidence'])]}
+                               for index, _ in enumerate(projection['evidence'])],
+                    'requirements': [{'need': 'original rule', 'supported': False, 'evidence': []}]}
 
         def search_pipeline(gateway, actor, scope, query, policy, config, **kwargs):
             hits = gateway.search(actor, scope, query, policy)
@@ -150,8 +159,9 @@ class RuntimeLifecycleContracts(TestCase):
                 hits.reverse()
             if config.get('rerank'):
                 ranked = gateway.pipeline_reranker.rank(query, hits)
-                self.assertEqual(ranked, [{'citation_id': item['citation_id'], 'score': index / len(hits)}
-                                         for index, item in enumerate(hits)])
+                self.assertEqual(ranked, list(reversed([
+                    {'citation_id': item['citation_id'], 'score': index / len(hits)}
+                    for index, item in enumerate(hits)])))
             return {'hits': hits, 'trace': {'expansion': []}}
 
         for limit in (5, 6):
@@ -161,6 +171,7 @@ class RuntimeLifecycleContracts(TestCase):
                 script.append(('rerank', ranking))
             case = self.setup_service(script + [('answer', fixtures.cited_answer), ('verifier', fixtures.verdict())],
                                       config={'max_model_calls': limit})
+            self.install_reranker(case)
             case.service.retrieval_config = {'channels': ['bm25'], 'rerank': True}
             with patch.object(type(case.gateway), 'search_pipeline', search_pipeline), \
                     patch.object(type(case.gateway), 'pipeline_capabilities', return_value={
@@ -192,8 +203,11 @@ class RuntimeLifecycleContracts(TestCase):
 
                 case = self.setup_service([
                     ('decision', fixtures.decision('search_pipeline', query='original')),
-                    ('rerank', {'scores': [score]}), ('retrieval', fixtures.decision('answer')),
+                    ('rerank', {'scores': [score], 'requirements': [
+                        {'need': 'original rule', 'supported': False, 'evidence': []}]}),
+                    ('retrieval', fixtures.decision('answer')),
                     ('answer', fixtures.cited_answer), ('verifier', fixtures.verdict())])
+                self.install_reranker(case)
                 case.service.retrieval_config = {'channels': ['bm25'], 'rerank': True}
                 with patch.object(type(case.gateway), 'search_pipeline', search_pipeline), \
                         patch.object(type(case.gateway), 'pipeline_capabilities', return_value={
