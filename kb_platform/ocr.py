@@ -8,7 +8,7 @@ import math
 from PIL import Image, ImageOps, ImageSequence
 
 from .documents import _hash, _normalize, _pdf_location, _text_kind
-from .remote import RemoteModelError, TerminalContractError
+from .model_errors import RemoteModelError, TerminalContractError
 
 
 OCR_VERSION = "luna-vision-ocr/0.2"
@@ -131,7 +131,8 @@ def augment_ocr(data: bytes, filename: str, bundle: dict, client) -> dict:
     if any(item.get("decision") == "BLOCKED_BY_POLICY" for item in report.get("ocr_decisions", [])):
         return result
     recognized, failures, attempts = [], [], 0
-    before_calls = client.snapshot_stats()["by_purpose"].get("ocr", {}).get("requests", 0)
+    statistics = getattr(client, 'snapshot_stats', None)
+    before_calls = statistics()["by_purpose"].get("ocr", {}).get("requests", 0) if statistics else None
     try:
         for index, image, location in _frames(data, result):
             if attempts >= MAX_OCR_PAGES:
@@ -150,12 +151,17 @@ def augment_ocr(data: bytes, filename: str, bundle: dict, client) -> dict:
     except (ValueError, OSError):
         failures.append({"code": "ocr_render_failed"})
     report["ocr_invocations"] = attempts
-    after_calls = client.snapshot_stats()["by_purpose"].get("ocr", {}).get("requests", 0)
-    report["model_calls"] += after_calls - before_calls
+    if statistics:
+        after_calls = statistics()["by_purpose"].get("ocr", {}).get("requests", 0)
+        report["model_calls"] += after_calls - before_calls
+        report['model_call_observation'] = 'provider_requests'
+    else:
+        report["model_calls"] += attempts
+        report['model_call_observation'] = 'logical_invocations'
     report["ocr_provider"] = dict(client.manifest)
     report["ocr_protocol"] = {"version": OCR_VERSION, "contract_version": OCR_CONTRACT_VERSION,
                               "contract_validation_before_cache": True,
-                              "maximum_format_corrections": 1,
+                              "maximum_format_corrections": getattr(client, 'maximum_format_corrections', 1),
                               "unreadable_policy": "terminal_partial_without_correction"}
     report["ocr_coordinate_quality"] = "model_estimated"
     report["ocr_quality_verified_by_human"] = False

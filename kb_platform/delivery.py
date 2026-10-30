@@ -300,7 +300,21 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
         from kb_platform.api import create_app
 
         app_factory = create_app
-    app = app_factory(settings)
+    from .remote import GoogleEmbeddingProvider
+    if os.getenv('KB_MODELS_CONFIG'):
+        raise DeliveryConfigurationError('DELIVERY_REQUIRES_FROZEN_PROVIDER_CONFIG')
+    captured = CapturedLuna(profile.provider_path)
+    try:
+        embedding = GoogleEmbeddingProvider(profile.provider_path)
+    except BaseException:
+        captured.close()
+        raise
+    try:
+        app = app_factory(settings, model_clients=(captured, embedding))
+    except BaseException:
+        captured.close()
+        embedding.close()
+        raise
     research, agent, platform = app.state.research, app.state.agent, app.state.platform
     if research is None or agent is None or platform.embedding_provider is not research.embedding:
         raise DeliveryConfigurationError('DELIVERY_PROVIDER_WIRING_INVALID')
@@ -308,15 +322,6 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
     if (policy.model_window, policy.input_budget, policy.output_reserve, policy.safety_reserve) != (
             WINDOW['total'], WINDOW['input'], WINDOW['output'], WINDOW['safety']):
         raise DeliveryConfigurationError('DELIVERY_AGENT_WINDOW_MISMATCH')
-    prior_clients = {id(value): value for value in (research.luna, agent.model.provider.client, platform.ocr_client)
-                     if value is not None}
-    captured = CapturedLuna(profile.provider_path)
-    from .agent_luna import LunaModelProvider
-
-    research.luna = platform.ocr_client = captured
-    agent.model.provider = LunaModelProvider(captured)
-    for old in prior_clients.values():
-        old.close()
     agent.tool_context = request_context
     providers, seen, lock = [], set(), Lock()
 
@@ -331,7 +336,7 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
         providers.append(provider)
 
     observe(captured, 'delivery_model')
-    observe(research.embedding, 'delivery_embedding')
+    observe(embedding, 'delivery_embedding')
     semantic = getattr(agent, 'semantic_pages', None)
     if semantic is not None:
         semantic_provider = getattr(semantic, 'provider', None)

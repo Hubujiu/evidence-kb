@@ -1,5 +1,9 @@
 # 产品模块与评测边界
 
+模型接入已增加公共 `models` 服务和 `llm` 结构化端口。默认知识库组合依赖通用模型注册表；
+聊天、Embedding、OCR、转写、语音合成和生图使用按能力区分的统一合同。Luna/Google
+兼容适配、新的 OpenAI 兼容及 Anthropic 原生适配、配置和限制见 [公共模型服务](model-services.md)。
+
 通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/agent-profiles/knowledge.json`，展开显式 knowledge 组合包并取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由 allowlist catalog 提供。Rust 拥有依赖解析、作用域、生命周期、通用 loop 和图节点推进，Python 执行服务效果与知识库路由策略。通用宿主、loop 与工具目录不导入知识库业务。
 
 默认检索由 `postgres_search.py` 提供，使用 pg_textsearch BM25 和 pgvector 精确检索。检索代际、语义页活动清单和 Embedding 恢复任务均在 PostgreSQL 中持久化。`search.py` 保留共有排序/绑定合同；`embedded_search.py` 与 OpenSearch 仅用于历史迁移和明确配置的对照。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件文件只供备份下载，证据以数据库不可变解析快照为准。持久化与切换说明见 [检索存储](search-storage.md)。
