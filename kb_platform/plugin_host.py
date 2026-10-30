@@ -37,6 +37,7 @@ class _Lease:
     users: int = 1
     operation: int | None = None
     completion: dict | None = None
+    parent_operation: int | None = None
 
 
 class EventName(StrEnum):
@@ -156,10 +157,15 @@ class PluginContext:
     @contextmanager
     def lease(self, *, parent_lease=None):
         authority = self.host._authority()
+        call_authority = self.host._call_authority(self.identity)
+        if call_authority is not None and (authority is None
+                or (authority.operation or authority.parent_operation) != call_authority.operation):
+            authority = call_authority
         acquired = native_call('runtime_acquire', host=self.host.id, instance=self.identity['instance'],
             generation=self.identity['generation'],
             parent_lease=parent_lease if parent_lease is not None else authority.identity if authority else None)
-        lease = _Lease(acquired['lease'], current_thread())
+        lease = _Lease(acquired['lease'], current_thread(),
+            parent_operation=(authority.operation or authority.parent_operation) if authority else None)
         with self.host._lock:
             token = _leases.set(tuple(item for item in _leases.get() if item[0] != self.host.id)
                 + ((self.host.id, lease),))
@@ -167,10 +173,7 @@ class PluginContext:
             yield self
         finally:
             _leases.reset(token)
-            with self.host._lock:
-                lease.users -= 1
-                if not lease.users:
-                    self.host._settle(lease)
+            self.host._release(lease)
 
 
 class ServiceBinding:
@@ -191,6 +194,8 @@ class PluginHost:
         self.dynamic = dynamic
         self._lock = parent._lock if parent is not None else RLock()
         self._root = parent._root if parent is not None else self
+        if parent is None:
+            self._pump_owner = None
         self._cancellations = parent._cancellations if parent is not None else {}
         self._contexts, self._children = {}, {}
         self._final_snapshot = None
@@ -326,31 +331,47 @@ class PluginHost:
         raise PluginError('UNKNOWN_PLUGIN_ACTION', action['kind'])
 
     def _pump(self):
+        root, owner = self._root, object()
+        with self._lock:
+            if root._pump_owner is not None or root._final_snapshot is not None:
+                return []
+            root._pump_owner = owner
         failures = []
-        while True:
-            actions = native_call('runtime_poll', host=self.id, limit=1)['actions']
-            if not actions:
-                return failures
-            action = actions[0]
-            if action['kind'] == 'cancel':
+        try:
+            while True:
                 with self._lock:
-                    signal = self._cancellations.get(action['operation'])
-                if signal is not None:
-                    signal.set()
-                continue
-            token = _executing.set((self.runtime_id, action['operation']))
-            try:
-                services = self._execute(action)
-            except BaseException as exc:
-                native_call('runtime_complete', host=action['host'], operation=action['operation'],
-                    status='error', error=f'{type(exc).__name__}: {exc}')
-                failures.append(exc)
-            else:
-                native_call('runtime_complete', host=action['host'], operation=action['operation'],
-                    status='ok', services=services)
-            finally:
-                _executing.reset(token)
-            native_call('runtime_ack', host=action['host'], operations=[action['operation']])
+                    if root._final_snapshot is not None:
+                        root._pump_owner = None
+                        return failures
+                    actions = native_call('runtime_poll', host=root.id, limit=1)['actions']
+                    if not actions:
+                        root._pump_owner = None
+                        return failures
+                action = actions[0]
+                if action['kind'] == 'cancel':
+                    with self._lock:
+                        signal = self._cancellations.get(action['operation'])
+                    if signal is not None:
+                        signal.set()
+                    continue
+                token = _executing.set((self.runtime_id, action['operation']))
+                try:
+                    services = self._execute(action)
+                except BaseException as exc:
+                    completion = {'status': 'error', 'error': f'{type(exc).__name__}: {exc}'}
+                    failures.append(exc)
+                else:
+                    completion = {'status': 'ok', 'services': services}
+                finally:
+                    _executing.reset(token)
+                with self._lock:
+                    native_call('runtime_complete', host=action['host'], operation=action['operation'],
+                        **completion)
+                    native_call('runtime_ack', host=action['host'], operations=[action['operation']])
+        finally:
+            with self._lock:
+                if root._pump_owner is owner:
+                    root._pump_owner = None
 
     def inspect(self):
         if self._final_snapshot is not None:
@@ -369,6 +390,15 @@ class PluginHost:
         return next((lease for host, lease in _leases.get() if host == self.id
             and lease.users and lease.thread is current_thread()), None)
 
+    def _call_authority(self, identity):
+        call = self.current_call
+        if (call is None or call['runtime'] != identity['runtime']
+                or call['instance'] != identity['instance'] or call['generation'] != identity['generation']):
+            return None
+        return next((lease for host, lease in _leases.get() if host == call['host']
+            and lease.identity == call['lease'] and lease.operation == call['operation']
+            and lease.users and lease.thread is current_thread()), None)
+
     def _settle(self, authority):
         if authority.operation is None:
             native_call('runtime_release', host=self.id, lease=authority.identity)
@@ -376,6 +406,15 @@ class PluginHost:
             native_call('runtime_complete', host=self.id, operation=authority.operation,
                 **authority.completion)
             native_call('runtime_ack', host=self.id, operations=[authority.operation])
+
+    def _release(self, authority):
+        with self._lock:
+            authority.users -= 1
+            settled = not authority.users
+            if settled:
+                self._settle(authority)
+        if settled:
+            self._pump()
 
     @contextmanager
     def lease(self):
@@ -391,10 +430,7 @@ class PluginHost:
             yield self
         finally:
             _leases.reset(token)
-            with self._lock:
-                authority.users -= 1
-                if not authority.users:
-                    self._settle(authority)
+            self._release(authority)
 
     def _invoke(self, binding, method, args, kwargs, *, timeout=None):
         deadline = None
@@ -443,9 +479,7 @@ class PluginHost:
             _leases.reset(token)
             with self._lock:
                 self._cancellations.pop(action['operation'], None)
-                invocation.users -= 1
-                if not invocation.users:
-                    self._settle(invocation)
+            self._release(invocation)
 
     def call(self, service, method, *args, **kwargs):
         return self.bind(service).call(method, *args, **kwargs)
@@ -588,11 +622,13 @@ class PluginHost:
             raise failure
 
     def _collect(self):
-        if self._final_snapshot is None:
-            self._collection = native_call('runtime_collect', host=self.id)
-            self._final_snapshot = self._collection['snapshot']
-        if self.parent is not None:
-            with self._lock:
+        with self._lock:
+            if self._final_snapshot is None:
+                for child in tuple(self._children.values()):
+                    child._collect()
+                self._collection = native_call('runtime_collect', host=self.id)
+                self._final_snapshot = self._collection['snapshot']
+            if self.parent is not None:
                 self.parent._children.pop(self.id, None)
 
     def close(self):
