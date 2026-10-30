@@ -18,7 +18,7 @@ class ReviewedPredecessorContracts(unittest.TestCase):
     def setUp(self):
         self.temporary = TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         from kb_platform.delivery import RUNTIME_CAPS
         self.caps = dict(RUNTIME_CAPS)
         self.old = BudgetLedger(self.root / 'old' / 'physical-calls.sqlite3', self.caps)
