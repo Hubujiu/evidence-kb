@@ -5,6 +5,8 @@ import ast
 from dataclasses import asdict, dataclass
 import importlib.util
 import json
+import io
+import tokenize
 import os
 from pathlib import Path
 import re
@@ -173,6 +175,30 @@ def native_architecture_violations(root: Path) -> list[str]:
     return errors
 
 
+def source_quality_violations(root: Path) -> list[str]:
+    errors = []
+    retired = {'kb_platform.agent_store', 'kb_platform.search_compat'}
+    for directory in ('kb_platform', 'scripts'):
+        for path in sorted((root / directory).rglob('*.py')):
+            relative = path.relative_to(root).as_posix()
+            source = path.read_text('utf-8-sig')
+            tree = ast.parse(source, filename=relative)
+            module = relative.removesuffix('.py').replace('/', '.')
+            if module in retired:
+                errors.append(f'{relative}: retired compatibility module')
+            for token in tokenize.generate_tokens(io.StringIO(source).readline):
+                if token.type == tokenize.COMMENT:
+                    errors.append(f'{relative}:{token.start[0]}: code comments are not allowed')
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if ast.get_docstring(node) is not None:
+                        errors.append(f'{relative}:{node.body[0].lineno}: docstrings belong in documentation')
+            for line, target in imports(tree, module):
+                if any(target == name or target.startswith(name + '.') for name in retired):
+                    errors.append(f'{relative}:{line}: retired compatibility import: {target}')
+    return errors
+
+
 def architecture_violations(root: Path) -> list[str]:
     errors = []
     sources = sorted((root / "kb_platform").rglob("*.py"))
@@ -220,6 +246,7 @@ def architecture_violations(root: Path) -> list[str]:
                 errors.append(f"{relative.as_posix()}:{line}: product code cannot mutate sys.path")
     if (root / "tests").exists():
         errors.append("Keep contract checks in kb_platform/rag_testing; do not restore a parallel tests directory")
+    errors.extend(source_quality_violations(root))
     errors.extend(native_architecture_violations(root))
     return sorted(set(errors))
 

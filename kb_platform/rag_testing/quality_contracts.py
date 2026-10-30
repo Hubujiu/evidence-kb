@@ -303,3 +303,30 @@ class NativeBuildGateContracts(unittest.TestCase):
             self.assertNotEqual(targets[0], targets[1])
             self.assertNotEqual(libraries[0], libraries[1])
             self.assertEqual(b'current release library', libraries[0].read_bytes())
+
+
+class SourceQualityContracts(unittest.TestCase):
+    def check_source(self, source, name='sample.py'):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / 'kb_platform' / name
+            path.parent.mkdir()
+            path.write_text(source, encoding='utf-8')
+            return check_project.source_quality_violations(root)
+
+    def test_rejects_comments_and_docstrings(self):
+        for source in ('x = 1 # note', '# noqa: F401\nimport os',
+                       '"""module docs"""', 'def f():\n    """function docs"""',
+                       'class C:\n    """class docs"""'):
+            with self.subTest(source=source):
+                self.assertTrue(self.check_source(source))
+
+    def test_accepts_comment_characters_in_runtime_strings(self):
+        self.assertEqual([], self.check_source('text = "# heading"\nquery = "https://example.com"'))
+
+    def test_rejects_retired_modules_and_imports(self):
+        self.assertTrue(self.check_source('', 'agent_store.py'))
+        for source in ('from .search_compat import resume', 'import kb_platform.agent_store',
+                       'from kb_platform import search_compat'):
+            with self.subTest(source=source):
+                self.assertTrue(self.check_source(source))
