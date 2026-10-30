@@ -93,6 +93,7 @@ class AgentGraphContracts(unittest.TestCase):
             state = json.loads(messages[-1]['content'])['state']
             self.assertEqual(state['source_policy_update']['origin'], 'validated_request_control')
             self.assertTrue(state['source_policy_update']['applied'])
+            self.assertEqual([row['source_id'] for row in state['source_policy_update']['selected_sources']], ['s1'])
             return decision()
 
         case.model.script = [('decision', plan_new_scope), *normal_script()[1:]]

@@ -52,7 +52,11 @@ Do not invent sources, ids, versions, tool outputs or successful actions. A refe
 document may be preferred or locked; obey that policy even if other sources look useful.
 When evidence does not answer the question, say what is missing. Distinguish quoted facts,
 user statements, general knowledge and arithmetic. User corrections supersede earlier user
-statements, but do not change the original documents. Return only the required JSON object.
+statements, but do not change the original documents. When asked to remember, correct or
+restate the user's own budget or preference, attribute it to the user; that task does not
+require a document to independently confirm it. Do not mark such a task incomplete merely
+because its source is the user. Independent verification is a different request and still
+requires evidence. Return only the required JSON object.
 """
 CLAIM_FIDELITY = """
 Preserve the original strength and scope of every assertion. An amount is not necessarily
@@ -70,7 +74,10 @@ only for literal presence in the answer model's visible originals; that check do
 not establish semantic entailment. Duplicate document quotation strings are omitted
 from this candidate view to reserve room for current original evidence. Independently
 verify the full answer and every claim against the originals currently visible to you.
-User-statement quotes remain and must be checked against current visible user history.
+User-statement quotes remain and must be checked against visible user history or the current
+question window identified by state.current_user_event. The current event may not yet be in
+history. Its event_seq and question_start/question_end bind its exact visible text. Attribution
+to the user is sufficient for remembering their own statement; it is not proof of a document fact.
 """
 
 
