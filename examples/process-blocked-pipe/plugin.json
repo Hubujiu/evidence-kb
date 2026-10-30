@@ -1,0 +1,7 @@
+{
+  "protocol": "evidence-plugin-process/1",
+  "name": "blocked-pipe",
+  "version": "1",
+  "entry": "plugin.py",
+  "services": {"external.blocked": ["accept"]}
+}
