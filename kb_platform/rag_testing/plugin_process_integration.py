@@ -3,14 +3,103 @@ import json
 from pathlib import Path
 from threading import Event, Thread
 from time import monotonic
+from unittest.mock import patch
 import sys
 import subprocess
 import shutil
 import tempfile
 
-from kb_platform.plugin_host import PluginHost
+from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
 from kb_platform.plugin_process import PROCESS_LAUNCHER, ProcessPackages
+
+
+def wait_until(predicate, seconds):
+    expires = monotonic() + seconds
+    while monotonic() < expires:
+        if predicate():
+            return True
+        Event().wait(0.005)
+    return bool(predicate())
+
+
+def idle_exit_case(manager, installed, root):
+    journal = root / 'idle-exit-journal'
+    spec = manager.catalog(installed['package'], journal=journal)
+    disposed = Event()
+
+    def mount(ctx, config):
+        ctx.require('external.supervision')
+        ctx.defer(disposed.set)
+
+    dependent = PluginSpec('fixture.dependent', (), ('external.supervision',), mount)
+    host = PluginHost({'version': 1, 'plugins': [{'id': 'process', 'use': spec.key},
+        {'id': 'dependent', 'use': dependent.key}]}, [spec, dependent])
+    transport = host.service('external.supervision').transport
+    marker = root / 'idle-exit-release'
+    value = host.call('external.supervision', 'idle_exit', str(marker))
+    leases_before_exit = host.inspect()['leases']
+    marker.touch()
+    completed = wait_until(lambda: transport._closed and disposed.is_set(), 3)
+    snapshot = host.inspect()
+    observation = {'mode': 'idle_exit', 'armed': value, 'leases_before_exit': leases_before_exit,
+        'closed_without_retry': completed, 'runtime_state': snapshot['state'],
+        'runtime_leases': snapshot['leases'], 'queued_actions': snapshot['counts']['queued_actions'],
+        'resources': snapshot['counts']['resources'], 'dependent_disposed': disposed.is_set(),
+        'writer_alive': transport._writer.is_alive(), 'reader_alive': transport._reader.is_alive(),
+        'child_alive': transport._process.poll() is None}
+    observation['decision'] = 'PASS' if (value == 'armed' and not leases_before_exit and completed
+        and not any(observation[key] for key in ('runtime_leases', 'queued_actions', 'resources',
+            'writer_alive', 'reader_alive', 'child_alive')) and disposed.is_set()) else 'FAIL'
+    host.close()
+    return observation
+
+
+def completed_cancel_writes_case(manager, installed, root):
+    journal = root / 'cancel-write-journal'
+    spec = manager.catalog(installed['package'], journal=journal, timeout=15)
+    host = PluginHost({'version': 1, 'plugins': [{'id': 'process', 'use': spec.key}]}, [spec])
+    transport = host.service('external.supervision').transport
+    count, grace = 256, 2.0
+    ready, release = root / 'batch-ready', root / 'batch-release'
+    cancel, completed, failures = Event(), [], []
+    workers = []
+
+    def invoke():
+        try:
+            completed.append(transport.request('invoke', service='external.supervision', method='batch',
+                args=[count, str(ready), str(release)], kwargs={}, cancel_signal=cancel))
+        except BaseException as error:
+            failures.append(getattr(error, 'code', type(error).__name__))
+
+    with patch('kb_platform.plugin_process.CANCEL_GRACE_SECONDS', grace):
+        for _ in range(count):
+            worker = Thread(target=invoke, daemon=True)
+            workers.append(worker)
+            worker.start()
+        if not wait_until(ready.exists, 10):
+            transport._terminate()
+            raise RuntimeError('CANCEL_WRITE_BATCH_NOT_RECEIVED')
+        cancel.set()
+        controls_ready = wait_until(lambda: len(list(journal.glob('*-CANCEL_REQUESTED.json'))) == count, grace)
+        release.touch()
+        calls_completed = wait_until(lambda: len(completed) + len(failures) == count, grace)
+        for worker in workers:
+            worker.join(0.01)
+        pending_after_completion = len(transport._pending)
+        stopped = wait_until(lambda: transport._process.poll() is not None
+            and not transport._writer.is_alive(), grace + 2)
+    observation = {'mode': 'completed_cancel_writes', 'call_count': count, 'cancel_grace_seconds': grace,
+        'controls_enqueued_before_results': controls_ready, 'all_calls_returned': calls_completed,
+        'completed_calls': len(completed), 'call_errors': failures,
+        'pending_after_completion': pending_after_completion, 'queued_writes': transport._outgoing.qsize(),
+        'stopped_without_external_cleanup': stopped, 'writer_alive': transport._writer.is_alive(),
+        'child_alive': transport._process.poll() is None}
+    observation['decision'] = 'PASS' if (controls_ready and calls_completed and len(completed) == count
+        and not failures and not pending_after_completion and stopped) else 'FAIL'
+    transport._terminate()
+    host.close()
+    return observation
 
 
 def blocked_pipe_cases(manager, installed, root):
@@ -96,13 +185,13 @@ def blocked_pipe_cases(manager, installed, root):
     return observations
 
 
-def run(output, plugin_python=None, *, blocked_only=False):
+def run(output, plugin_python=None, *, blocked_only=False, supervision_only=False):
     examples = Path(__file__).resolve().parents[2] / 'examples'
     with tempfile.TemporaryDirectory(prefix='kb-process-integration-') as temporary:
         root = Path(temporary)
         manager = ProcessPackages(root / 'installed')
         packages = {}
-        for name in ('process-echo', 'process-blocked-pipe'):
+        for name in ('process-echo', 'process-blocked-pipe', 'process-supervision'):
             source = examples / name
             if plugin_python is not None:
                 copied = root / name
@@ -125,7 +214,18 @@ def run(output, plugin_python=None, *, blocked_only=False):
                     args[1] in (command, subprocess.list2cmdline(command)) for command in commands):
                 raise RuntimeError('PROCESS_FIXTURE_REJECTS_OTHER_COMMAND')
         sys.addaudithook(audit)
-        blocked = blocked_pipe_cases(manager, packages['process-blocked-pipe'], root)
+        blocked = [] if supervision_only else blocked_pipe_cases(manager, packages['process-blocked-pipe'], root)
+        supervision = [] if blocked_only else [
+            idle_exit_case(manager, packages['process-supervision'], root),
+            completed_cancel_writes_case(manager, packages['process-supervision'], root)]
+        if supervision_only or any(row['decision'] != 'PASS' for row in supervision):
+            output.mkdir(parents=True, exist_ok=False)
+            (output / 'result.json').write_text(json.dumps({'decision': 'PASS' if all(
+                row['decision'] == 'PASS' for row in supervision) else 'FAIL', 'supervision': supervision,
+                'new_model_calls': 0, 'new_embedding_calls': 0}, indent=2), 'utf-8')
+            if any(row['decision'] != 'PASS' for row in supervision):
+                raise RuntimeError('PROCESS_EXIT_OR_CONTROL_WRITE_NOT_SUPERVISED')
+            return
         if blocked_only or any(row['decision'] != 'PASS' for row in blocked):
             output.mkdir(parents=True, exist_ok=False)
             (output / 'result.json').write_text(json.dumps({'decision': 'PASS' if all(
@@ -228,6 +328,7 @@ def run(output, plugin_python=None, *, blocked_only=False):
             'unknown': unknown, 'cancel_and_deadline': 'completion or process termination observed before lease release',
             'deadline_outcome': deadline_outcome,
             'blocked_pipe': blocked,
+            'supervision': supervision,
             'new_model_calls': 0, 'new_embedding_calls': 0}), 'utf-8')
 
 
@@ -236,8 +337,10 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--plugin-python', type=Path)
     parser.add_argument('--blocked-pipe-only', action='store_true')
+    parser.add_argument('--supervision-only', action='store_true')
     args = parser.parse_args()
-    run(args.output, args.plugin_python, blocked_only=args.blocked_pipe_only)
+    run(args.output, args.plugin_python, blocked_only=args.blocked_pipe_only,
+        supervision_only=args.supervision_only)
     return 0
 
 
