@@ -65,6 +65,41 @@ class ScenarioModel:
 
 
 class AgentGraphContracts(unittest.TestCase):
+    def test_planner_expansion_is_not_final_answer_or_verifier_task_authority(self):
+        for requested_extra in (False, True):
+            with self.subTest(requested_extra=requested_extra):
+                message = 'What is the new rule?' + (' Also give its expiry date.' if requested_extra else '')
+
+                def answer(messages):
+                    projection = json.loads(messages[-1]['content'])
+                    self.assertNotIn('work_state', projection['state'])
+                    self.assertEqual(projection['question'], message)
+                    value = cited_answer(messages)
+                    if requested_extra:
+                        value.update(completion='partial', unresolved=['expiry date'])
+                    return value
+
+                def verify(messages):
+                    projection = json.loads(messages[-1]['content'])
+                    self.assertNotIn('work_state', projection['state'])
+                    candidate = json.loads(projection['question'].split('Candidate answer (not evidence): ', 1)[1])
+                    self.assertNotIn('completion', candidate)
+                    self.assertNotIn('unresolved', candidate)
+                    return verdict(complete=not requested_extra)
+
+                case = self.setup_service(normal_script(), policy={'mode': 'LOCKED', 'source_ids': ['s0']})
+                self.turn(case)
+                case.model.script = [
+                    ('decision', decision(subquestions=['new rule', 'expiry date'], sufficiency='unknown')),
+                    ('retrieval', decision('answer', subquestions=['new rule', 'expiry date'],
+                                           missing_information=['expiry date'], sufficiency='insufficient')),
+                    ('answer', answer), ('verifier', verify)]
+                result = case.service.turn(case.authority.actor, case.session, message=message,
+                    request_id='switch-scope', expected_revision=1, policy={'mode': 'LOCKED', 'source_ids': ['s1']})
+                self.assertEqual(result['status'], 'partial' if requested_extra else 'answered', result)
+                self.assertEqual({item['source_id'] for item in result['evidence']}, {'s1'})
+                self.assertEqual(bool(result['unresolved']), requested_extra)
+
     def test_fresh_evidence_resets_old_read_window_but_explicit_read_keeps_it(self):
         for refresh in (False, True):
             with self.subTest(refresh=refresh):

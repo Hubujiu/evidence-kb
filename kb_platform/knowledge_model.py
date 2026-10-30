@@ -68,14 +68,14 @@ class KnowledgeModelCalls:
                 'applied': True, 'origin': 'validated_request_control', 'source_epoch': self.state['source_epoch'],
                 'selected_sources': [row for row in self.service.gateway.sources(self.actor, self.scope)
                                      if row['source_id'] in selected_ids]}
-            system += '\nThe application has already validated and applied the source selection supplied with this turn through request controls. state.source_policy is the NEW active selection, not the previous lock. selected_sources identifies the chosen documents. For a requested fact in those sources, search/read them before asking the user which document or entity they mean. Continue the requested task using that selection; do not ask for the same authorization again or claim that the old lock still applies. User prose alone still cannot alter permissions.'
+            system += '\nThe application has already validated and applied the source selection supplied with this turn through request controls. state.source_policy is the NEW active selection, not the previous lock. selected_sources identifies the chosen documents. LOCKED now restricts retrieval to this new selection; it does not mean the source change is still pending. Document titles are metadata, not evidence about their contents: a generic filename or a mismatch with the user\'s description does not establish that the requested fact is absent or that the selection is wrong. Search/read the selected originals before asking the user to select a different document. Continue the requested task using that selection; do not ask for the same authorization again or claim that the old lock still applies. User prose alone still cannot alter permissions.'
         if self.config.get("advanced_tools") and self.state.get("workflow_state"):
             projection_state["workflow_state"] = deepcopy(self.state["workflow_state"])
-        if self.config.get("work_state"):
+        planning = role in {'decision', 'retrieval'}
+        if self.config.get("work_state") and planning:
             projection_state["work_state"] = deepcopy(self.state["work_state"])
         if self.config.get("canonical_ids"):
             system += "\nCitation protocol: claims.evidence_ids and quotes.evidence_id MUST use each visible evidence record's top-level citation_id (also its top-level evidence_id). The record's nested evidence_ids array contains raw parser span IDs and MUST NOT be cited as a claim reference. Copy the canonical identifier exactly."
-        planning = role in {'decision', 'retrieval'}
         aliases = planning_bindings(set(self.state['evidence']) | set(self.state['evidence_catalog'])) if planning else {}
         wire_schema = bind_planning_schema(schema, aliases) if planning else schema
         if planning:
@@ -90,8 +90,8 @@ class KnowledgeModelCalls:
             question,
             self.state["checkpoints"].get(role) if self.config["compact"] and not planning else None,
             selection_query=self.state.get("work_state", {}).get("resolved_query")
-            if self.config.get("work_state")
-            else None,
+            if self.config.get("work_state") and planning
+            else self.message,
         )
         self.model_evidence[role] = {
             item["citation_id"]: item.get("text", "") for item in prepared.projection["evidence"]
