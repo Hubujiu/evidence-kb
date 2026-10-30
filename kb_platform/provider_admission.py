@@ -15,6 +15,12 @@ class CaptureAdmissionError(RuntimeError):
     code = 'RAG_PHYSICAL_REQUEST_ADMISSION_FAILED'
 
 
+class CapturePreflightError(CaptureAdmissionError):
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__(reason)
+
+
 def _read(path):
     return json.loads(Path(path).read_text('utf-8'))
 

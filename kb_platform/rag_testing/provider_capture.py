@@ -13,7 +13,7 @@ import httpx
 
 from .contracts import digest
 from kb_platform.agent_context import estimate_messages
-from kb_platform.provider_admission import CaptureAdmissionError, ProviderAdmission
+from kb_platform.provider_admission import CaptureAdmissionError, CapturePreflightError, ProviderAdmission
 from kb_platform.remote import LunaClient
 
 
@@ -43,7 +43,7 @@ class MeteredTransport(httpx.BaseTransport):
         except (ValueError, OSError, sqlite3.Error) as exc:
             raise CaptureAdmissionError('Physical budget authority is unavailable; no request was sent') from exc
         if pending:
-            raise CaptureAdmissionError('Inspect the unresolved physical request before continuing')
+            raise CapturePreflightError('UNRESOLVED_PHYSICAL_REQUEST')
         payload = json.loads(request.content)
         model = 'messages' in payload
         resources = dict.fromkeys(self.ledger.caps, 0)
@@ -57,6 +57,8 @@ class MeteredTransport(httpx.BaseTransport):
         try:
             self.ledger.reserve(identity, resources, category=self.category)
         except (ValueError, OSError, sqlite3.Error) as exc:
+            if isinstance(exc, ValueError) and str(exc) in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST'}:
+                raise CapturePreflightError(str(exc)) from exc
             raise CaptureAdmissionError(str(exc)) from exc
         record = {'physical_request_id': identity, 'payload_sha256': digest(payload),
                   'category': self.category, 'payload': payload, 'context': deepcopy(_context.get()),

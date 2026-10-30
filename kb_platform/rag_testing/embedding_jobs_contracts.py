@@ -14,6 +14,45 @@ from kb_platform.rag_testing.contracts import digest as semantic_digest
 
 
 @contextmanager
+def captured_google_fixture(platform):
+    import httpx
+    from kb_platform.remote import GoogleEmbeddingProvider
+    from kb_platform.rag_testing.budget import BudgetLedger
+    from kb_platform.rag_testing.provider_capture import observe_client
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        config = {'google': {'platform': platform, 'model': 'gemini-embedding-2',
+            'base_url': 'https://fixture.invalid/v1', 'api_key': 'synthetic', 'dimension': 768,
+            'project_id': 'fixture-project', 'location': 'us', 'service_account_file': 'unused',
+            'cache_mode': 'disabled', 'retries': 0, 'workers': 1},
+            'cache_dir': str(root / 'cache'), 'log_path': str(root / 'calls.jsonl')}
+        path = root / 'providers.json'
+        path.write_text(json.dumps(config), 'utf-8')
+        sent = []
+
+        def respond(request):
+            payload = json.loads(request.content)
+            sent.append(payload)
+            vector = [1.] + [0.] * 767
+            body = ({'embeddings': [{'values': vector} for _ in payload['requests']]}
+                    if 'requests' in payload else {'embedding': {'values': vector}})
+            return httpx.Response(200, json={**body, 'usageMetadata': {'promptTokenCount': 1}})
+
+        with patch.object(GoogleEmbeddingProvider, '_init_vertex_auth'), \
+                patch.object(GoogleEmbeddingProvider, '_vertex_headers', return_value={}):
+            provider = GoogleEmbeddingProvider(path)
+            caps = dict(model=0, input_tokens=0, output_tokens=0,
+                        remote_embedding_calls=1, embedding_input_tokens=50000)
+            ledger = BudgetLedger(root / 'physical.sqlite', caps)
+            observe_client(provider, ledger, root / 'capture', category='synthetic', inner=httpx.MockTransport(respond))
+            try:
+                yield SimpleNamespace(provider=provider, ledger=ledger, root=root, sent=sent, respond=respond)
+            finally:
+                provider.close()
+
+
+@contextmanager
 def google_preflight_fixture():
     from kb_platform.google_semantic_provider import GoogleSemanticProvider
     from kb_platform.rag_testing.budget import BudgetLedger
@@ -52,6 +91,32 @@ def google_audit():
 
 
 class EmbeddingJobsContracts(unittest.TestCase):
+    def test_captured_google_refusal_preserves_zero_send_classification(self):
+        for platform in ('gemini_api', 'vertex_ai'):
+            for scenario, expected in [('budget', 'EMBEDDING_BUDGET_INSUFFICIENT'),
+                                       ('pending', 'EMBEDDING_LEDGER_BLOCKED')]:
+                with self.subTest(platform=platform, scenario=scenario), captured_google_fixture(platform) as f:
+                    resources = dict.fromkeys(f.ledger.caps, 0)
+                    resources['remote_embedding_calls'] = 1
+                    f.ledger.reserve('prior', resources)
+                    if scenario == 'budget':
+                        f.ledger.finish('prior', status='COMPLETE', usage=resources)
+                    before = f.ledger.summary()
+                    with self.assertRaises(Exception) as raised:
+                        f.provider.documents(['synthetic source'])
+                    error = classify_provider_failure({}, f.provider, raised.exception)
+                    self.assertIsInstance(error, EmbeddingPreflightError)
+                    self.assertEqual(error.code, expected)
+                    self.assertEqual(f.sent, [])
+                    self.assertEqual(f.ledger.summary(), before)
+
+    def test_error_text_and_general_admission_failure_do_not_prove_zero_send(self):
+        from kb_platform.provider_admission import CaptureAdmissionError
+
+        for error in (RuntimeError('BUDGET_INSUFFICIENT'), CaptureAdmissionError('BUDGET_INSUFFICIENT'),
+                      TimeoutError('UNRESOLVED_PHYSICAL_REQUEST')):
+            self.assertIs(classify_provider_failure({}, object(), error), error)
+
     def test_real_google_preflight_errors_are_known_without_network(self):
         for scenario, expected in [('input', 'EMBEDDING_INPUT_TOO_LARGE'),
                                    ('budget', 'EMBEDDING_BUDGET_INSUFFICIENT'),
@@ -164,6 +229,36 @@ def live_contract_suite(dsn):
         def run_jobs(self, *, units=None, build=None):
             return self.jobs.run(*self.scope[:2], build or self.scope[2], self.provider,
                                  units if units is not None else self.units, lambda: True, self.audit)
+
+        def test_captured_google_budget_resume_reuses_completed_batches(self):
+            import httpx
+            from kb_platform.rag_testing.budget_batches import LinkedBudgetLedger, freeze_predecessor
+            from kb_platform.rag_testing.provider_capture import observe_client
+
+            for platform in ('gemini_api', 'vertex_ai'):
+                with self.subTest(platform=platform), captured_google_fixture(platform) as f:
+                    scope = (*self.scope[:2], platform)
+                    units = [{'text': f'synthetic {i}'} for i in range(17 if platform == 'gemini_api' else 2)]
+                    for _ in range(2):
+                        with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_BUDGET_INSUFFICIENT'):
+                            self.jobs.run(*scope, f.provider, units, lambda: True, self.audit)
+                    rows = self.jobs.status(*scope)
+                    self.assertEqual([(r['status'], r['attempt']) for r in rows], [('COMPLETE', 1), ('RETRY', 0)])
+                    self.assertEqual(len(f.sent), 1)
+                    with self.jobs._tx(*scope[:2]) as conn:
+                        self.assertEqual(conn.execute('SELECT max(failures) n FROM embedding_circuits').fetchone()['n'], 0)
+                    before = freeze_predecessor(f.ledger.path)
+                    next_ledger = LinkedBudgetLedger(f.root / 'next.sqlite', f.ledger.caps, predecessors=[before])
+                    observe_client(f.provider, next_ledger, f.root / 'next-capture', category='synthetic-resume',
+                                   inner=httpx.MockTransport(f.respond))
+                    restarted = EmbeddingJobs(dsn)
+                    result = restarted.run(*scope, f.provider, units, lambda: True, self.audit)
+                    self.assertEqual(len(result), len(units))
+                    self.assertEqual(len(f.sent), 2)
+                    self.assertEqual([r['status'] for r in restarted.status(*scope)], ['COMPLETE', 'COMPLETE'])
+                    self.assertNotEqual(rows[-1]['request_id'], restarted.status(*scope)[-1]['request_id'])
+                    self.assertEqual(freeze_predecessor(f.ledger.path)['snapshot_sha256'], before['snapshot_sha256'])
+                    self.assertEqual(next_ledger.cumulative_summary()['cumulative']['pending_or_unknown'], 0)
 
         def test_partial_restart_reuses_only_completed_batches(self):
             self.provider.error_on = 'two'
