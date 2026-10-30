@@ -211,12 +211,20 @@ class PluginHost:
         if not dynamic:
             native_call('runtime_validate', **arguments)
         self._entries = entries
-        created = native_call('runtime_create', **arguments)
-        self.id, self.runtime_id, self.order = created['host'], created['runtime'], tuple(created['order'])
+        pump_owner = object()
         with self._lock:
-            if parent is not None:
-                parent._children[self.id] = self
-        failures = self._pump()
+            if self._root._pump_owner is not None:
+                raise PluginError('PLUGIN_LIFECYCLE_BUSY')
+            self._root._pump_owner = pump_owner
+            try:
+                created = native_call('runtime_create', **arguments)
+                self.id, self.runtime_id, self.order = created['host'], created['runtime'], tuple(created['order'])
+                if parent is not None:
+                    parent._children[self.id] = self
+            except BaseException:
+                self._root._pump_owner = None
+                raise
+        failures = self._pump(owner=pump_owner)
         if failures:
             failure = failures[0]
             native_call('runtime_drain', host=self.id, remove=True)
@@ -330,12 +338,16 @@ class PluginHost:
             return []
         raise PluginError('UNKNOWN_PLUGIN_ACTION', action['kind'])
 
-    def _pump(self):
-        root, owner = self._root, object()
+    def _pump(self, *, owner=None):
+        root = self._root
         with self._lock:
-            if root._pump_owner is not None or root._final_snapshot is not None:
-                return []
-            root._pump_owner = owner
+            if owner is None:
+                if root._pump_owner is not None or root._final_snapshot is not None:
+                    return []
+                owner = object()
+                root._pump_owner = owner
+            elif root._pump_owner is not owner:
+                raise PluginError('PLUGIN_LIFECYCLE_BUSY')
         failures = []
         try:
             while True:

@@ -414,3 +414,70 @@ class RuntimeReviewContracts(unittest.TestCase):
             release.set()
             worker.join(5)
             root.close()
+
+    def test_scope_constructor_rejects_busy_root_before_creating_a_child_or_running_mount(self):
+        cleaning, release = Event(), Event()
+        mounts, failures = [], []
+
+        def stable(context, config):
+            def cleanup():
+                cleaning.set()
+                if not release.wait(5):
+                    raise RuntimeError('constructor cleanup barrier was not released')
+
+            context.defer(cleanup)
+
+        def broken(context, config):
+            mounts.append('broken')
+            raise RuntimeError('synthetic child mount failure')
+
+        root = PluginHost(profile({'id': 'stable', 'use': 'stable'}),
+            [PluginSpec('stable', (), (), stable)])
+
+        def disable():
+            try:
+                root.update('stable', enabled=False)
+            except BaseException as error:
+                failures.append(error)
+
+        worker = Thread(target=disable)
+        worker.start()
+        try:
+            self.assertTrue(cleaning.wait(5))
+            before = root.inspect()
+            with self.assertRaises(PluginError) as busy:
+                root.scope(profile({'id': 'broken', 'use': 'broken'}),
+                    [PluginSpec('broken', (), (), broken)])
+            self.assertEqual(busy.exception.code, 'PLUGIN_LIFECYCLE_BUSY')
+            after = root.inspect()
+            self.assertEqual(after['children'], before['children'])
+            self.assertEqual(after['counts']['scopes'], before['counts']['scopes'])
+            self.assertEqual(mounts, [])
+            release.set()
+            worker.join(5)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(failures, [])
+            with self.assertRaisesRegex(RuntimeError, 'synthetic child mount failure'):
+                root.scope(profile({'id': 'broken', 'use': 'broken'}),
+                    [PluginSpec('broken', (), (), broken)])
+            self.assertEqual(mounts, ['broken'])
+            self.assertEqual(root.inspect()['children'], before['children'])
+        finally:
+            release.set()
+            worker.join(5)
+            root.close()
+
+    def test_native_creation_rejection_releases_constructor_reservation(self):
+        def mount(context, config):
+            self.fail('an invalid manifest must not run a mount')
+
+        with PluginHost(profile(), []) as root:
+            before = root.inspect()
+            with self.assertRaises(PluginError) as rejected:
+                root.scope(profile({'id': 'first', 'use': 'first'}, {'id': 'second', 'use': 'second'}),
+                    [PluginSpec('first', ('same-service',), (), mount),
+                     PluginSpec('second', ('same-service',), (), mount)], dynamic=True)
+            self.assertEqual(rejected.exception.code, 'duplicate_service')
+            self.assertEqual(root.inspect()['children'], before['children'])
+            with root.scope(profile()) as child:
+                self.assertEqual(child.inspect()['state'], 'ready')
