@@ -1,0 +1,112 @@
+{
+  "schema": "cordis-reference-lock/1",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "commit": "ce7073d51254c26cd63b22a60835b8f948deb447",
+  "node_version": "v22.23.1",
+  "packages": {
+    "@deepseek-ai/cordis": {
+      "vendor_version": "4.0.6-alpha.1",
+      "upstream_version": "4.0.0-rc.11",
+      "upstream_commit": "0b96d9fd517b998e44e2209560c9e5f0671ce933"
+    },
+    "@deepseek-ai/cosmokit": {
+      "vendor_version": "1.8.7-alpha.1",
+      "upstream_version": "1.8.1",
+      "upstream_commit": "16f6fc058ade66e8ac5da0033d35a8d0f279f544"
+    }
+  },
+  "runtime_dependencies": [
+    "@deepseek-ai/cosmokit"
+  ],
+  "erased_type_dependencies": [
+    "@standard-schema/spec"
+  ],
+  "module_resolution": "custom resolver maps only cosmokit bare import to exact vendored TS source; no source patches",
+  "files": [
+    {
+      "path": "vendor/cordis/LICENSE",
+      "sha256": "034fb52b1d57360ecbae6cb1632a88f86fd7c3d3f5631a5f082710203dda0be7"
+    },
+    {
+      "path": "vendor/cordis/package.json",
+      "sha256": "aa2f620ef996fa06e72471d40f8ce996533de7d21f9fca8c930c16e45725701c"
+    },
+    {
+      "path": "vendor/cordis/src/context.ts",
+      "sha256": "fd5a4f1d2bc6b8b34729c87fda7639a07759ce07fb070ab05374acbcb9ccdc0e"
+    },
+    {
+      "path": "vendor/cordis/src/events.ts",
+      "sha256": "a464c843822da4eb31a8d998c5e2216a817b8a7dfeacb6e1aab7f830e7320d6b"
+    },
+    {
+      "path": "vendor/cordis/src/fiber.ts",
+      "sha256": "b64c3a97f15f0381479dcf3d25965e56dc4cecfa4a0881fc055a49f65b9945df"
+    },
+    {
+      "path": "vendor/cordis/src/index.ts",
+      "sha256": "071fb226e9a21556625e4391b28e6641b9b34b1cd402155246e0437993d8b740"
+    },
+    {
+      "path": "vendor/cordis/src/logger.ts",
+      "sha256": "a6836ace311d0bd1abc9c1211cffcba73eff61c89ca47641efd82d91747401cb"
+    },
+    {
+      "path": "vendor/cordis/src/reflect.ts",
+      "sha256": "047f01fcdef2aa34b4afc39deaf18c16733fabd2a5ef0d55e5c2595b22caadfd"
+    },
+    {
+      "path": "vendor/cordis/src/registry.ts",
+      "sha256": "34bbd60ae502b4f85201c204afb52a9acabde6878d9278493478c1b2183debd3"
+    },
+    {
+      "path": "vendor/cordis/src/service.ts",
+      "sha256": "614205c6ce7cf1a057b8b352e96aa4fcd734c967a3d2283a126c9c61f268e3be"
+    },
+    {
+      "path": "vendor/cordis/src/utils.ts",
+      "sha256": "c68bab85514ebd8cb08227367ea306b0109a214cd10965c497474eeadaaca756"
+    },
+    {
+      "path": "vendor/cosmokit/LICENSE",
+      "sha256": "034fb52b1d57360ecbae6cb1632a88f86fd7c3d3f5631a5f082710203dda0be7"
+    },
+    {
+      "path": "vendor/cosmokit/package.json",
+      "sha256": "539291e961fd901dbe583abb71ba87537bfb2db518f361d825138a3a4bb3f960"
+    },
+    {
+      "path": "vendor/cosmokit/src/array.ts",
+      "sha256": "cf4de899ecffd66a90d8cef6f4c7d127d31f77f776d8e173d41c30d2d7632cf7"
+    },
+    {
+      "path": "vendor/cosmokit/src/index.ts",
+      "sha256": "1087da74b9c461984e547d524ee766eebcf329a78e4720bff5b60a004ccf6e8c"
+    },
+    {
+      "path": "vendor/cosmokit/src/misc.ts",
+      "sha256": "117617943074ea57c15f216905dacd2f6d1c4c2ff16586f97a7a7a87dbf2141f"
+    },
+    {
+      "path": "vendor/cosmokit/src/string.ts",
+      "sha256": "5564272b3e15e49235cbe3a8b453f27306baf282d23a893982841670f65d3c04"
+    },
+    {
+      "path": "vendor/cosmokit/src/time.ts",
+      "sha256": "49957c4608465a1fbd738186a92c47fffcd1fc4ba59dbf89524f8a773fe16fe2"
+    },
+    {
+      "path": "vendor/cosmokit/src/types.ts",
+      "sha256": "cc49c12e4a637f7b0754ff78a8299e9c42fa40ee8c678550af0c538a80146a92"
+    },
+    {
+      "path": "vendor/cosmokit/src/volatile.ts",
+      "sha256": "937433215595f89da249ec7cabb89e331ff4135a40c6686a95666d2095315e55"
+    }
+  ],
+  "harness_text_sha256": {
+    "scripts/fixtures/cordis-reference-loader.mjs": "abdf73a75ffcc49b75047de8da82c895636da8c142aaefc1b5dc939724ea7933",
+    "scripts/fixtures/cordis-reference-runner.mjs": "0aad8d90b52cf4142c590aaa8af0b362226984eb7b5080ae26e911b532087ae8",
+    "scripts/generate_cordis_reference.py": "756226674f1c1573e18b50f00eb660a2cb12976cf7aea79ad7f750c65d7e80a6"
+  }
+}
