@@ -268,16 +268,18 @@ def contract_modules():
 
 
 def combine_contract_reports(reports, expected):
-    modules = [(name, count) for report in reports for name, count in report.get('modules', {}).items()]
+    discovered = reports[0].get('discovered', {}) if reports else {}
+    selected = [identity for report in reports for identity in report.get('selected', [])]
+    modules = {name: sum(owner == name for owner in discovered.values()) for name in expected}
     counts = {key: sum(report.get(key, 0) for report in reports)
               for key in ('total', 'failures', 'errors', 'skipped', 'expected_failures')}
-    complete = (bool(expected) and len(modules) == len(expected) and
-                {name for name, _ in modules} == set(expected) and
-                all(type(count) is int and count > 0 for _, count in modules) and
-                all(report.get('total') == sum(report.get('modules', {}).values()) for report in reports))
+    complete = (bool(expected) and bool(discovered) and set(discovered.values()) == set(expected) and
+                len(selected) == len(set(selected)) and set(selected) == set(discovered) and
+                all(report.get('discovered') == discovered and
+                    report.get('total') == len(report.get('selected', [])) for report in reports))
     passed = complete and all(report.get('decision') == 'PASS' for report in reports) and not any(
         counts[key] for key in ('failures', 'errors', 'skipped', 'expected_failures'))
-    return {'decision': 'PASS' if passed else 'FAIL', 'modules': dict(modules), **counts,
+    return {'decision': 'PASS' if passed else 'FAIL', 'modules': modules, **counts,
             'discovery_complete': complete, 'scope': 'offline component contracts; no production RAG quality claim'}
 
 
@@ -314,22 +316,36 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
     sys.path.insert(0, str(ROOT))
     sys.addaudithook(deny_external_io)
     if kind == "contracts":
-        modules = contract_modules()[shard::4]
+        modules = contract_modules()
         if not modules:
             raise RuntimeError("No contract modules discovered")
-        suite = unittest.TestSuite()
-        counts = {}
+        tests = []
+        discovered = {}
+
+        def collect(suite, module):
+            for test in suite:
+                if isinstance(test, unittest.TestSuite):
+                    collect(test, module)
+                else:
+                    if test.id() in discovered:
+                        raise RuntimeError(f"Duplicate contract test: {test.id()}")
+                    discovered[test.id()] = module
+                    tests.append(test)
+
         for module in modules:
-            tests = unittest.defaultTestLoader.loadTestsFromName(module)
-            count = tests.countTestCases()
-            if not count:
+            suite = unittest.defaultTestLoader.loadTestsFromName(module)
+            if not suite.countTestCases():
                 raise RuntimeError(f"Contract module has no discoverable tests: {module}")
-            counts[module] = count
-            suite.addTests(tests)
+            collect(suite, module)
+        selected = sorted(tests, key=lambda test: test.id())[shard::4]
+        identities = [test.id() for test in selected]
+        counts = {module: sum(discovered[identity] == module for identity in identities) for module in modules}
+        suite = unittest.TestSuite(selected)
         result = unittest.TextTestRunner(verbosity=2).run(suite)
         passed = result.wasSuccessful() and not result.skipped and not result.expectedFailures
         write_json(output / "contracts.json", {
             "decision": "PASS" if passed else "FAIL", "modules": counts, "total": result.testsRun,
+            "discovered": discovered, "selected": identities,
             "failures": len(result.failures), "errors": len(result.errors), "skipped": len(result.skipped),
             "expected_failures": len(result.expectedFailures),
             "scope": "offline component contracts; no production RAG quality claim",
