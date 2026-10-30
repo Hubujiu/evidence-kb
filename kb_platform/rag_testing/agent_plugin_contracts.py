@@ -149,8 +149,8 @@ class RuntimeLifecycleContracts(TestCase):
     def test_planning_with_reranking_preserves_answer_and_verification_calls(self):
         def ranking(messages):
             projection = json.loads(messages[-1]['content'])
-            return {'scores': [index / len(projection['evidence'])
-                               for index, _ in enumerate(projection['evidence'])],
+            return {'scores': [index / len(projection['documents'])
+                               for index, _ in enumerate(projection['documents'])],
                     'requirements': [{'need': 'original rule', 'supported': False, 'evidence': []}]}
 
         def search_pipeline(gateway, actor, scope, query, policy, config, **kwargs):

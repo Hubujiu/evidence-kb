@@ -1,5 +1,6 @@
 from __future__ import annotations
 from copy import copy, deepcopy
+import json
 import math
 import time
 from .agent_protocol import ANSWER_SCHEMA, VERDICT_SCHEMA, object_schema
@@ -275,7 +276,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                                 'items': {'type': 'number', 'minimum': 0, 'maximum': 1}}
                             required = ['scores']
                         return self.call('rerank', system, object_schema(properties, required),
-                            lambda value: None, question=user, evidence_override=candidates, model=model)
+                            lambda value: None, question=query, evidence_override=candidates, model=model,
+                            rerank_payload=json.loads(user))
 
                     bind = getattr(selected_reranker, 'bind_turn', None)
                     reranker = bind(complete) if bind is not None else selected_reranker
