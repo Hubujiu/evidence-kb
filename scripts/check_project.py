@@ -1,4 +1,3 @@
-"""Run local and CI quality gates without provider credentials or live services."""
 from __future__ import annotations
 
 import argparse
@@ -6,6 +5,8 @@ import ast
 from dataclasses import asdict, dataclass
 import importlib.util
 import json
+import io
+import tokenize
 import os
 from pathlib import Path
 import re
@@ -65,7 +66,7 @@ class CheckResult:
 
 
 def imports(tree: ast.AST, module: str):
-    """Resolve relative imports without importing application code."""
+
     package = module.rpartition(".")[0]
     dynamic_names = {"__import__", "import_module"}
     for node in ast.walk(tree):
@@ -174,6 +175,30 @@ def native_architecture_violations(root: Path) -> list[str]:
     return errors
 
 
+def source_quality_violations(root: Path) -> list[str]:
+    errors = []
+    retired = {'kb_platform.agent_store', 'kb_platform.search_compat'}
+    for directory in ('kb_platform', 'scripts'):
+        for path in sorted((root / directory).rglob('*.py')):
+            relative = path.relative_to(root).as_posix()
+            source = path.read_text('utf-8-sig')
+            tree = ast.parse(source, filename=relative)
+            module = relative.removesuffix('.py').replace('/', '.')
+            if module in retired:
+                errors.append(f'{relative}: retired compatibility module')
+            for token in tokenize.generate_tokens(io.StringIO(source).readline):
+                if token.type == tokenize.COMMENT:
+                    errors.append(f'{relative}:{token.start[0]}: code comments are not allowed')
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if ast.get_docstring(node) is not None:
+                        errors.append(f'{relative}:{node.body[0].lineno}: docstrings belong in documentation')
+            for line, target in imports(tree, module):
+                if any(target == name or target.startswith(name + '.') for name in retired):
+                    errors.append(f'{relative}:{line}: retired compatibility import: {target}')
+    return errors
+
+
 def architecture_violations(root: Path) -> list[str]:
     errors = []
     sources = sorted((root / "kb_platform").rglob("*.py"))
@@ -221,6 +246,7 @@ def architecture_violations(root: Path) -> list[str]:
                 errors.append(f"{relative.as_posix()}:{line}: product code cannot mutate sys.path")
     if (root / "tests").exists():
         errors.append("Keep contract checks in kb_platform/rag_testing; do not restore a parallel tests directory")
+    errors.extend(source_quality_violations(root))
     errors.extend(native_architecture_violations(root))
     return sorted(set(errors))
 
@@ -298,7 +324,7 @@ def kernel_library_path(target: Path) -> Path:
 
 
 def snapshot_native_library(build: CheckResult, target: Path, output: Path) -> Path | None:
-    """Only a successful current build can publish the per-run test library."""
+
     if build.exit_code:
         return None
     source = kernel_library_path(target)
@@ -323,7 +349,7 @@ def blocked_contracts(output: Path, reason: str) -> CheckResult:
 def main() -> int:
     if callable(getattr(sys.stdout, "reconfigure", None)):
         sys.stdout.reconfigure(encoding="utf-8")
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Run local and CI quality gates without provider credentials or live services.')
     parser.add_argument("--output", type=Path, default=ROOT / ".local/checks" / uuid4().hex)
     parser.add_argument("--worker", choices=("contracts", "scorer"), help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -351,8 +377,8 @@ def main() -> int:
                     "KB_STORAGE_ROOT": scratch, "KB_AGENT_ROOT": scratch, "KB_RESEARCH_ROOT": scratch,
                     "KB_IDENTITIES_FILE": str(Path(scratch) / "missing-identities.json")})
         env.pop("PYTHONPATH", None)
-        # Isolate concurrent builds before copying the library: a shared Cargo
-        # directory could change between successful build exit and snapshot.
+
+
         target = ROOT / "target/checks" / uuid4().hex
         cargo = ["cargo", "--color", "never"]
         results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))

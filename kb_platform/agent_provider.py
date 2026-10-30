@@ -1,8 +1,3 @@
-"""Provider port: normalized text completions, exact cache identity and attempt accounting.
-
-Implementations own transport, credentials, retries and durable physical receipts.
-They must update trace['attempt'] for each admitted attempt, including failures.
-"""
 from dataclasses import dataclass
 from typing import Protocol
 

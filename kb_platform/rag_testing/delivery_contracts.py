@@ -1,4 +1,3 @@
-"""Offline delivery boundary contracts using only temporary synthetic state."""
 from copy import deepcopy
 import json
 import os
@@ -51,6 +50,19 @@ class DeliveryContracts(unittest.TestCase):
         environment = patch.dict(os.environ, self.environment, clear=True)
         environment.start()
         self.addCleanup(environment.stop)
+
+    def test_identity_configuration_is_validated_before_requests(self):
+        from kb_platform.session_identity import Actor
+        from kb_platform.settings import Settings
+
+        path = self.root / 'identities.json'
+        token = 'a' * 32
+        settings = Settings('', '', self.root, path)
+        path.write_text(json.dumps({token: {'tenant_id': 'tenant', 'principal_id': 'alice'}}))
+        self.assertEqual(settings.identities(), {token: Actor('tenant', 'alice')})
+        path.write_text(json.dumps({token: {'tenant_id': '', 'principal_id': 'alice'}}))
+        with self.assertRaises(ValueError):
+            settings.identities()
 
     def save(self):
         self.config_path.write_text(json.dumps(self.config), encoding='utf-8')
@@ -163,3 +175,17 @@ class DeliveryContracts(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PreparedProtocolContracts(unittest.TestCase):
+    def test_only_current_prepared_protocol_is_accepted(self):
+        from .delivery_http import VERSION, load_prepared
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / 'prepared.json'
+            target.write_text(json.dumps({'protocol': VERSION, 'file_sha256': {}}), 'utf-8')
+            self.assertEqual(load_prepared(root)['protocol'], VERSION)
+            target.write_text(json.dumps({'protocol': 'delivery-real-http-actual-payload/1',
+                                          'file_sha256': {}}), 'utf-8')
+            with self.assertRaisesRegex(ValueError, 'UNKNOWN_PREPARED_PROTOCOL'):
+                load_prepared(root)

@@ -1,10 +1,3 @@
-"""Loopback OpenAI gateway for metering third-party SDKs with the shared ledger.
-
-SDK code and prompts stay unchanged. Serializes physical sends, blocks repeated
-payloads within an operation and closes admission after any upstream failure.
-Credentials stay in memory; only MeteredTransport's credential-free payloads persist.
-"""
-
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

@@ -1,4 +1,3 @@
-"""Small compatibility facade over the profile-selected native harness."""
 from .agent_decisions import Answer, ToolCall
 from .agent_plugins import ToolContext
 from .harness_services import builtin_plugins, model_tools_profile

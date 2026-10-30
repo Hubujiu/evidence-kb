@@ -1,9 +1,3 @@
-"""Import immutable local generations into a restored candidate PostgreSQL database.
-
-Does not change authority pointers or call models. Semantic indexes can be copied,
-but their old published manifests remain read-only: current dependency-bound
-semantic manifests must be rebuilt separately from verified original capsules.
-"""
 import argparse
 import hashlib
 import json
@@ -15,11 +9,11 @@ import psycopg
 from psycopg.rows import dict_row
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from kb_platform.embedded_search import EmbeddedSearch  # noqa: E402
-from kb_platform.postgres_search import PostgresSearch  # noqa: E402
-from kb_platform.search import content_order  # noqa: E402
-from kb_platform.rag_testing.contracts import digest  # noqa: E402
-from kb_platform.rag_testing.runner import write_json  # noqa: E402
+from kb_platform.embedded_search import EmbeddedSearch
+from kb_platform.postgres_search import PostgresSearch
+from kb_platform.search import content_order
+from kb_platform.rag_testing.contracts import digest
+from kb_platform.rag_testing.runner import write_json
 
 
 def published_builds(dsn, tenants):
@@ -76,7 +70,7 @@ def import_index(dsn, target, roots, item):
     observed = target.read_units(index)
     if observed != sorted(units, key=content_order):
         raise ValueError('EXACT_INDEX_READBACK_MISMATCH:' + index)
-    # Verify source integrity again: importing must not accept a changed local snapshot.
+
     for source in found:
         if source.verify(index) != manifest:
             raise ValueError('LOCAL_INDEX_CHANGED_DURING_IMPORT:' + index)
@@ -108,7 +102,7 @@ def semantic_inventory(config_path, tenants):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Import immutable local generations into a restored candidate PostgreSQL database.\n\nDoes not change authority pointers or call models. Semantic indexes can be copied,\nbut their old published manifests remain read-only: current dependency-bound\nsemantic manifests must be rebuilt separately from verified original capsules.\n')
     parser.add_argument('--dsn-env', default='KB_RECOVERY_ADMIN_DSN')
     parser.add_argument('--storage-root', type=Path, required=True,
                         help='Originals storage root containing .search-indexes')

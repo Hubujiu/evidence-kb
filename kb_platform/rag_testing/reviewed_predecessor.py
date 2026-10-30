@@ -1,9 +1,3 @@
-"""Link a new budget batch to one explicitly reviewed unresolved predecessor.
-
-The old UNKNOWN remains UNKNOWN and its full reservation remains in reports.
-No old request is retried. All predecessor rows and the review are rechecked
-before every admission; child UNKNOWN/STARTED still blocks further requests.
-"""
 from __future__ import annotations
 
 from hashlib import sha256
@@ -81,7 +75,7 @@ def _validate_reviewed(frozen):
 
 
 class ReviewedPredecessorLedger(LinkedBudgetLedger):
-    """Normal child budget admission with an exact, reviewed old UNKNOWN."""
+
     def _parents(self):
         return [_validate_reviewed(value) if value.get('reviewed_unknown_ids') else _validate_frozen(value)
                 for value in self.predecessors]

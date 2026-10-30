@@ -1,4 +1,3 @@
-"""Lightweight caller identity and errors shared by services and persistence."""
 from dataclasses import dataclass
 
 

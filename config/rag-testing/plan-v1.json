@@ -10,5 +10,7 @@
   "minimum_pass_rate": 1.0,
   "minimum_slice_cases": 1,
   "slice_floors": {},
-  "top_k": 5
+  "top_k": 5,
+  "require_answer_behavior": false,
+  "objective": "full"
 }

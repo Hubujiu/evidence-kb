@@ -1,4 +1,3 @@
-"""Offline behavioral contracts for cache, physical-call budgets and frozen runs."""
 import json
 from pathlib import Path
 import tempfile
@@ -142,6 +141,23 @@ class FrozenRunnerContracts(unittest.TestCase):
             run(self.suite, self.plan, self.output, traces=[])
         self.assertEqual(marker.read_text('utf-8'), 'preserve')
         self.assertEqual(list(self.output.iterdir()), [marker])
+
+    def test_adapter_mutation_cannot_change_frozen_history(self):
+        original = self.suite.cases[0]
+        request = original.input.model_copy(update={'history': ({'content': ['original']},)})
+        case = original.model_copy(update={'input': request})
+        suite = self.suite.model_copy(update={'cases': (case,)})
+
+        class MutatingAdapter:
+            implementation = 'offline-control'
+
+            def run(self, request, sources, corpus):
+                request.history[0]['content'].append('changed')
+                return Trace(case_id=request.case_id, corpus_hash=corpus, implementation=self.implementation,
+                             principal=request.principal, acl_revision=request.acl_revision, status='NOT_RUN')
+
+        run(suite, Plan(suite_hash=digest(suite), mode='live'), self.output, adapter=MutatingAdapter())
+        self.assertEqual(case.input.history, ({'content': ['original']},))
 
     def test_adapter_only_receives_inputs_and_current_authorized_sources(self):
         calls = []

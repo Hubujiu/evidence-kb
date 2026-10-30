@@ -1,46 +1,16 @@
-"""Explicit local parser routing at the real document-ingestion boundary.
-
-Backends execute their official installed implementation in isolated runtimes.
-Selecting a backend is a commitment: errors produce FAILED, never native success.
-"""
 from __future__ import annotations
 
-import base64
 import copy
-import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
-
-from .pdf_layout import pdf_layout_features
 
 ROOT = Path(__file__).resolve().parents[1]
 ROUTE_VERSION = "page-layout-local/3"
 RUNTIMES = {"docling": ".local/rag-quality-cpu/Scripts/python.exe",
             "docling_ocr": ".local/rag-quality-cpu/Scripts/python.exe",
             "rapidocr": ".local/rag-quality-cpu/Scripts/python.exe"}
-
-
-def selected_backend(data: bytes, filename: str, policy: dict):
-    """Document-only routing: never inspect a query, gold, or fixture identity."""
-    route = os.environ.get("EVIDENCE_KB_PARSE_ROUTE", "auto").strip().lower()
-    if route not in {"auto", "native", *RUNTIMES}:
-        raise ValueError("invalid configured document parser route: " + route)
-    if route == "native" or Path(filename).suffix.lower() != ".pdf":
-        return "native", {"route": route}
-    features = pdf_layout_features(data)
-    needs_ocr = any(page["ocr_needed"] for page in features["pages"])
-    if needs_ocr and not policy.get("ocr", False):
-        return "native", {"route": route, "features": features, "ocr_blocked_by_policy": True}
-    if route == "auto":
-        backend = os.environ.get("EVIDENCE_KB_LAYOUT_BACKEND", "docling").strip().lower()
-        if backend not in RUNTIMES:
-            raise ValueError("invalid configured layout backend: " + backend)
-        backend = backend if features["prefer_layout_ocr"] else "native"
-    else:
-        backend = route
-    return backend, {"route": route, "features": features, "ocr_allowed": bool(policy.get("ocr", False))}
 
 
 def external_worker(payload, backend):
@@ -62,16 +32,6 @@ def external_worker(payload, backend):
     return result
 
 
-def external_result(data: bytes, filename: str, backend: str, *, ocr_allowed: bool):
-    result = external_worker({"backend": backend, "filename": filename, "data": base64.b64encode(data).decode(),
-                              "ocr_allowed": ocr_allowed}, backend)
-    if result.get("original_sha256") != hashlib.sha256(data).hexdigest():
-        raise ValueError("external_parser_source_hash_mismatch")
-    if not result.get("records"):
-        raise ValueError("external_parser_empty_result")
-    return result
-
-
 def routed_document(data: bytes, filename: str, policy: dict, native: dict):
     from .page_parsing import assemble_pdf_pages
 
@@ -80,8 +40,10 @@ def routed_document(data: bytes, filename: str, policy: dict, native: dict):
     try:
         if Path(filename).suffix.lower() == ".pdf":
             return assemble_pdf_pages(data, filename, policy, native)
-        backend, route = selected_backend(data, filename, policy)
-        native["quality_report"]["parser_route"] = {"version": ROUTE_VERSION, "selected": backend, **route}
+        route = os.environ.get("EVIDENCE_KB_PARSE_ROUTE", "auto").strip().lower()
+        if route not in {"auto", "native", *RUNTIMES}:
+            raise ValueError("invalid configured document parser route: " + route)
+        native["quality_report"]["parser_route"] = {"version": ROUTE_VERSION, "selected": "native", "route": route}
         return native
     except Exception as exc:
         failed = copy.deepcopy(native)

@@ -1,10 +1,9 @@
-"""Knowledge session lifecycle and composition; execution is injected."""
-
 from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import asdict
 from .agent_context import ContextManager, ContextPolicy
-from .agent_store import AgentStore
+from .knowledge_sessions import KnowledgeSessions
+from .session_store import SessionStore
 from .agent_tools import EvidenceGateway
 from .core import PlatformError
 from .knowledge_policy import VERSION, RECOMMENDED, CONFIGS, _active_evidence_limit, source_policy
@@ -38,7 +37,7 @@ class KnowledgeService:
         runtime=None,
         workflow_factory=None,
     ):
-        self.store = store or AgentStore(root)
+        self.store = store if store is not None else KnowledgeSessions(SessionStore(root))
         self.gateway = gateway or EvidenceGateway(platform, research, provider_id="magpie_luna")
         self.model = model
         self.context_policy = context_policy or ContextPolicy(

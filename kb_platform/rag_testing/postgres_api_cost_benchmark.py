@@ -1,4 +1,3 @@
-"""Paired real search API timing on an isolated restored delivery snapshot."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib

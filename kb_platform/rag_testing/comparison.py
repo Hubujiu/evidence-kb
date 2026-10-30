@@ -1,4 +1,3 @@
-"""Paired complete-denominator comparisons; family-cluster bootstrap is diagnostic."""
 import random
 import statistics
 

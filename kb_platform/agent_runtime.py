@@ -1,4 +1,3 @@
-"""Execution admission shared by provider adapters and delivery composition."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 import time
@@ -22,7 +21,7 @@ def send_deadline(deadline):
 
 
 def serialized_send(send, lock, *args, **kwargs):
-    """Queue before physical admission; expiry never starts an HTTP request."""
+
     deadline = _deadline.get()
     execution = current_execution()
     if execution is not None:

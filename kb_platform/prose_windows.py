@@ -1,4 +1,3 @@
-"""Line-safe context windows over immutable prose; preserve whole tabular blocks."""
 from __future__ import annotations
 
 import math

@@ -1,4 +1,3 @@
-"""Synthetic history contracts over the real context projection and compactor."""
 from copy import deepcopy
 import json
 import unittest

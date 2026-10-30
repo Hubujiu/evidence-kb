@@ -34,7 +34,7 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 关闭先进入 draining；已有请求可以收尾，新请求被拒绝。仍有活动请求时关闭返回忙碌错误，等待请求结束后再关闭，不能靠重试业务调用完成卸载。清理失败保持失败状态和尚未释放的资源，不能报告插件已卸载。现阶段采用新 profile 启动新实例，再排空旧实例，不提供运行中透明热替换。
 
-相关合同至少覆盖服务替换、依赖缺失/循环、启动失败清理、作用域隔离或运行中关闭中的实际变更风险。默认 `harness.sessions.memory` 是单次运行的临时会话插件；需要持久会话时必须提供明确的持久化适配器，不能把它当作知识库 `AgentStore` 或物理请求账本。
+相关合同至少覆盖服务替换、依赖缺失/循环、启动失败清理、作用域隔离或运行中关闭中的实际变更风险。默认 `harness.sessions.memory` 是单次运行的临时会话插件；需要持久会话时必须提供明确的持久化适配器，不能把它当作知识库 `KnowledgeSessions` 或物理请求账本。
 
 ## 新增或删除测试
 
@@ -71,3 +71,11 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 仓库管理员通过 GitHub 设置启用这些规则。工作流配置文件本身不会自动启用分支保护。实际运行结果以仓库 Actions 页面为准。
 
 工作流语义参考 [GitHub 触发事件文档](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow) 和 [uv 的 GitHub Actions 集成文档](https://docs.astral.sh/uv/guides/integration/github/)。
+
+## 代码精简约束
+
+统一检查入口同时执行源码质量检查和 Ruff。Python 源码及脚本不得包含注释或文档字符串；命令行帮助使用显式字符串，接口说明写入文档。禁止恢复 `agent_store`、`search_compat` 模块及其导入。字符串中的 Markdown 标题、URL 和测试夹具不受注释规则影响。
+
+Ruff 拒绝可变默认参数、无效表达式、重复类型条件、可直接返回的布尔分支、可合并的相同分支和隐式 Optional。新增规则必须提供能检出违规、接受合法代码的合同，不用忽略规则或降低门槛消除失败。
+
+项目只支持当前数据和配置格式，不新增历史字段回退、旧格式自动升级或历史 hash 放行表。合法性校验放在输入边界，内部函数复用已验证的合同；权限复核、事务租约和外部响应验证仍按实际边界执行。新增 hash 必须有明确消费者及用途，例如内容完整性、精确缓存或请求幂等；不能只写入诊断输出。审查必须检查这些语义约束，lint 不保证识别跨函数重复校验或判断 hash 是否有业务价值。

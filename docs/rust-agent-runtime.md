@@ -153,7 +153,7 @@ stdin 每行是一条 JSON 请求，stdout 每行是一条 JSON 响应。调用�
 
 ## 保留的执行保护
 
-- `SessionStore` 是 revision、请求指纹和单写者租约的唯一事务实现；知识库通过 `KnowledgeSessions` 适配，旧 `AgentStore` 入口保留。assistant 事件、最终响应和会话状态仍原子提交。
+- `SessionStore` 是 revision、请求指纹和单写者租约的唯一事务实现；知识库通过 `KnowledgeSessions` 适配。assistant 事件、最终响应和会话状态仍原子提交。
 - 提供者唯一拥有实际请求与费用账本。未发送时取消属于准入拒绝；已发送且结果不明保持 UNKNOWN。Rust loop 不自动重试。
 - Python Runtime 在效果执行前后检查取消与截止时间，子运行继承父取消信号和较早截止时间。同步效果执行中不承诺强制中断或撤销副作用。
 - 原文版本、哈希和 Unicode codepoint 偏移仍由既有证据合同处理，未改成 Rust 字节偏移；实际请求采集、最终权限和引用核验保留原边界。

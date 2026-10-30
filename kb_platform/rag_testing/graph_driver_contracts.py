@@ -1,4 +1,3 @@
-"""Offline native graph contracts: domain-free routing and cleanup, no provider calls."""
 from threading import Event
 import unittest
 

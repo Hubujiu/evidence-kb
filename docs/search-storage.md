@@ -27,7 +27,7 @@
 
 本地正式切换使用独立 `metadata_postgres` 卷。旧 `metadata` 卷及本地索引保留。`scripts/migrate_postgres_search.py` 只导入指定租户当前发布版本，校验原文件清单、权威身份、完整单元和原始向量精确回读，不调用 Embedding、不切换发布指针。缺失或损坏明确失败。
 
-语义页使用 `scripts/rebuild_postgres_semantic.py` 从已验证 capsule 重建。仅在审核了提供者传输源码变化时使用兼容桥；所有模型参数、其他实现依赖、原文版本和逐页文本哈希仍须一致，旧 capsule 不修改。常规迁移不应随意启用兼容桥。
+语义页使用 `scripts/rebuild_postgres_semantic.py` 从已验证 capsule 重建。只复用与当前 embedding manifest、原文版本和逐页文本完全一致的 capsule。
 
 这次查询修复变更了 PostgreSQL 后端源码指纹。升级后，旧版 STAGING 构建可通过仅匹配已审查源码哈希的兼容检查续跑；其他检索、分块、模型及权限依赖仍须完全一致。已有语义页 manifest 绑定旧后端源码，升级后需使用经过验证的原有 capsule 显式重建 manifest；该步骤不需要重新请求 Embedding。升级前保留数据库备份和 capsule，禁止直接改写旧 manifest 或跳过依赖校验。
 

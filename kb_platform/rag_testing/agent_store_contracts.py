@@ -1,11 +1,12 @@
-"""Synthetic sessions over real SQLite connections, including concurrent writers."""
 from concurrent.futures import ThreadPoolExecutor
 from tempfile import TemporaryDirectory
 from threading import Barrier
 import unittest
+
+from kb_platform.knowledge_sessions import KnowledgeSessions
+from kb_platform.session_store import SessionStore
 from unittest.mock import patch
 
-from kb_platform.agent_store import AgentStore
 from kb_platform.core import Actor, PlatformError
 
 
@@ -15,8 +16,8 @@ class AgentStoreContracts(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = directory.name
         self.actor = Actor('tenant', 'owner')
-        self.first = AgentStore(self.root)
-        self.second = AgentStore(self.root)
+        self.first = KnowledgeSessions(SessionStore(self.root))
+        self.second = KnowledgeSessions(SessionStore(self.root))
         self.session = self.first.create(self.actor, 'scope', {})['session_id']
 
     def concurrent_begins(self, sessions):
@@ -64,7 +65,7 @@ class AgentStoreContracts(unittest.TestCase):
         state = {**admitted['session']['state'], 'turn_number': 1}
         expected = self.first.finish(self.actor, self.session, admitted['token'], state,
                                      {'answer': 'synthetic answer', 'status': 'answered'})
-        restarted = AgentStore(self.root)
+        restarted = KnowledgeSessions(SessionStore(self.root))
         self.assertEqual(restarted.load(self.actor, self.session)['state'], state)
         self.assertEqual(restarted.begin(self.actor, self.session, 'turn', 0, 'original-fingerprint'),
                          {'cached': expected})
@@ -77,11 +78,11 @@ class AgentStoreContracts(unittest.TestCase):
         self.assertEqual(restarted.load(self.actor, self.session)['revision'], 1)
 
     def test_expired_writer_is_fenced_after_replacement_and_cannot_replay(self):
-        with patch('kb_platform.agent_store.time.time', return_value=1000):
+        with patch('kb_platform.session_store.time.time', return_value=1000):
             old = self.first.begin(self.actor, self.session, 'old', 0, 'old-fingerprint', lease_seconds=10)
             self.first.append(self.actor, self.session, old['token'], 'tool_call',
                               {'call_id': 'old-call', 'name': 'read'}, 'old')
-        with patch('kb_platform.agent_store.time.time', return_value=1011):
+        with patch('kb_platform.session_store.time.time', return_value=1011):
             new = self.second.begin(self.actor, self.session, 'new', 0, 'new-fingerprint')
             with self.assertRaises(PlatformError) as caught:
                 self.first.append(self.actor, self.session, old['token'], 'tool_result',
@@ -93,7 +94,7 @@ class AgentStoreContracts(unittest.TestCase):
             self.assertEqual(caught.exception.code, 'TURN_LEASE_EXPIRED')
             completed = self.second.finish(self.actor, self.session, new['token'], new['session']['state'],
                                            {'answer': 'replacement answer'})
-            restarted = AgentStore(self.root)
+            restarted = KnowledgeSessions(SessionStore(self.root))
             with self.assertRaises(PlatformError) as caught:
                 restarted.begin(self.actor, self.session, 'old', 0, 'old-fingerprint')
             self.assertEqual(caught.exception.code, 'TURN_INTERRUPTED')

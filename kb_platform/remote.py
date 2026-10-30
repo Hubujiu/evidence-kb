@@ -1,4 +1,3 @@
-"""Explicit remote model adapters with content-addressed local response caches."""
 from __future__ import annotations
 
 import base64
@@ -7,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 import hashlib
 import json
 import math
@@ -93,11 +91,9 @@ class _FifoSlots:
             self._cond.notify_all()
 
 
-
-
 def _embedding_error(error):
-    # Keep transport outcome semantics available to the orchestration layer;
-    # a sanitized message alone must not collapse UNKNOWN into an empty result.
+
+
     converted = EmbeddingError(str(error))
     converted.code, converted.status = error.code, error.status
     converted.retry_after_seconds = error.retry_after_seconds
@@ -105,11 +101,11 @@ def _embedding_error(error):
 
 
 class TerminalContractError(ValueError):
-    """A contract failure that must not trigger another model response."""
+    pass
 
 
 def _provider_guard(operation):
-    """Count one logical failure, preserving bounded transport retries within it."""
+
     def guarded(self, *args, **kwargs):
         try:
             probe = self._circuit.acquire()
@@ -186,20 +182,7 @@ class _GoogleRequestPolicy:
             state.wait_seconds += max(0.0, self._clock() - started)
 
     def retry_after(self, response):
-        value = response.headers.get("Retry-After")
-        if value is None:
-            return None
-        try:
-            seconds = float(value)
-        except ValueError:
-            try:
-                parsed = parsedate_to_datetime(value)
-                if parsed.tzinfo is None:
-                    return None
-                seconds = max(0.0, parsed.timestamp() - self._wall_clock())
-            except (ValueError, TypeError, OverflowError):
-                return None
-        return max(0.0, seconds) if math.isfinite(seconds) and seconds >= 0 else None
+        return retry_after_seconds(response.headers.get("Retry-After"), wall_clock=self._wall_clock)
 
     def defer(self, retry_number, retry_after):
         delay = min(self.settings["rate_limit_backoff_max_seconds"],
@@ -296,7 +279,7 @@ class _Transport:
         except RuntimePolicyError as exc:
             raise RemoteModelError(exc.code) from None
         self._receipts = RequestReceipts(self.cache_dir / 'request-receipts')
-        # Google validates this field in its existing request-policy contract.
+
         retry_wait = 120 if provider_id == 'google_gemini' else selected.get('max_retry_wait_seconds', 120)
         if (isinstance(retry_wait, bool) or not isinstance(retry_wait, (int, float))
                 or not math.isfinite(retry_wait) or retry_wait <= 0):
@@ -369,7 +352,7 @@ class _Transport:
             temporary.unlink(missing_ok=True)
 
     def _send_attempt(self, path, payload, headers, key, metadata):
-        """Issue one physical request with a durable pre-send receipt."""
+
         logical_id = metadata['request_id']
         deadline = metadata.get('deadline_monotonic')
         execution = current_execution()
@@ -513,7 +496,6 @@ class LunaClient(_Transport):
     provider_id = "magpie_luna"
     compile_purposes = frozenset({"wiki_compile", "graph_extract", "raptor_summarize"})
     contract_purposes = compile_purposes | {"ocr"}
-    supports_contract_validation = True
 
     def _request_response(self, path, payload, headers, timeout):
         if path != '/chat/completions':
@@ -596,20 +578,6 @@ class LunaClient(_Transport):
                     raise RemoteModelError("PROVIDER_CACHE_CONTRACT_INVALID") from None
             self._record(purpose, key, cached=True, metadata=trace)
             return saved
-        if validator is not None:
-            legacy = self._cache_get(semantic_key)
-            if legacy is not None:
-                try:
-                    validator(legacy)
-                except ValueError as exc:
-                    self._record(purpose, key, error="CACHE_CONTRACT_REJECTED", units=0,
-                                 metadata={**trace, "event": "cache_contract_rejected", "cache_source_hash": semantic_key})
-                    if isinstance(exc, TerminalContractError):
-                        raise RemoteModelError("PROVIDER_CACHE_CONTRACT_INVALID") from None
-                else:
-                    self._cache_put(key, legacy)
-                    self._record(purpose, key, cached=True, metadata={**trace, "cache_source_hash": semantic_key})
-                    return legacy
         format_attempts = 2 if json_output and purpose in self.contract_purposes else 1
         for format_attempt in range(format_attempts):
             trace["format_attempt"] = format_attempt + 1
@@ -904,8 +872,8 @@ class GoogleEmbeddingProvider(_Transport):
                     self._cache_put(key, vector)
                     return index, vector
             with ThreadPoolExecutor(max_workers=self.vertex_workers) as executor:
-                # Each worker gets its own context, including the originating
-                # turn/tool capture identity; a Context cannot run concurrently.
+
+
                 futures = [executor.submit(copy_context().run, embed_one, index) for index in missing]
                 for future in futures:
                     index, vector = future.result()

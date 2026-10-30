@@ -1,4 +1,3 @@
-"""Knowledge application and model-facing capabilities assembled by a profile."""
 from copy import deepcopy
 import json
 
@@ -8,7 +7,7 @@ from .plugin_host import EventName
 
 
 class KnowledgeGraphDriver:
-    """Enter the domain's graph directly, without an outer temporary Agent loop."""
+
 
     def __init__(self, host):
         self.host = host
@@ -23,8 +22,8 @@ class KnowledgeGraphDriver:
                 self.host.emit(EventName.TOOL_BEFORE, metadata)
                 execution.check()
                 result = tools.execute(tool.name, context, arguments).data
-                # Preserve the public JSON value shape formerly enforced by
-                # the outer native loop (notably tuple -> array on first return).
+
+
                 result = json.loads(json.dumps(result, ensure_ascii=False, allow_nan=False))
                 execution.check()
                 self.host.emit(EventName.TOOL_AFTER, metadata)
@@ -36,7 +35,7 @@ class KnowledgeGraphDriver:
 
 
 class KnowledgeTools:
-    """Bind trusted session controls outside model-visible tool arguments."""
+
 
     def __init__(self, knowledge):
         self.knowledge = knowledge
@@ -61,7 +60,7 @@ class KnowledgeTools:
 
 
 class KnowledgeApplication:
-    """Application policy is a replaceable consumer of knowledge and loop services."""
+
 
     def __init__(self, knowledge, tools, loop):
         self.knowledge, self.tools, self.loop = knowledge, tools, loop
@@ -110,7 +109,7 @@ class KnowledgeApplication:
 
 
 class HostedKnowledgeApplication:
-    """HTTP calls hold a host lease; delivery wiring uses explicit provider properties."""
+
 
     def __init__(self, host, application):
         self.host, self._application = host, application

@@ -1,4 +1,3 @@
-"""Luna adapter; its private transport and OpenAI wire format stop here."""
 from .agent_provider import ProviderCompletion
 
 

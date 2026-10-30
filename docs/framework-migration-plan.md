@@ -9,7 +9,7 @@
 | 手写 Schema 引擎 | PR #5 采用 jsonschema；本轮补齐 Pydantic 类型生成 Decision/Answer/Verdict 和工具扩展字段 | 严格类型、重复键、非有限数值、关键字白名单及业务校验 |
 | 单提供者 SDK | PR #6 采用 OpenAI SDK 的 Luna 适配 | SDK 隐式重试关闭；物理发送、预算、错误分类和 UNKNOWN 仍由项目管理 |
 | Agent 编排 | PR #7 曾采用 LangGraph；当前迁移为 Rust 生命周期内核与插件化 loop，移除 LangGraph/LangSmith 依赖 | 权限、证据、步数/时间/费用门禁、单写者及恢复权威保留 |
-| 服务插件化 | Rust 宿主管理依赖、作用域和租约；profile 选择模型、上下文、会话、工具和 loop，RAG 作为 kb_query 接入 | 知识库 AgentStore 与物理请求账本保留唯一权威；通用临时会话不承担业务恢复 |
+| 服务插件化 | Rust 宿主管理依赖、作用域和租约；profile 选择模型、上下文、会话、工具和 loop，RAG 作为 kb_query 接入 | 知识库 KnowledgeSessions 与物理请求账本保留唯一权威；通用临时会话不承担业务恢复 |
 | 类型化工具集中注册 | 本轮完成工具能力开关、参数提取、规划动作与重试资格注册 | 原文授权、引用存在性、表格操作、流程用户事实等业务处理仍在原节点 |
 | Markdown 解析 | PR #8 采用 markdown-it-py | 原文切片、坐标、哈希、证据锚点和历史表格导航 |
 | 专用 reranker 配对试验 | PR #9 采用 CrossEncoder，完成固定候选对照；生产切换未获准入证据 | 证据覆盖判断独立于排序分数；不切换生产默认 |

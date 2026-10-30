@@ -1,5 +1,3 @@
-//! Pure lifecycle transitions. The host owns capabilities, persistence and admission.
-
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 pub const ABI_VERSION: u32 = 1;
@@ -46,7 +44,6 @@ pub mod status {
     pub const PANIC: u32 = 13;
 }
 
-/// Caller-owned snapshot. IDs count dispatches within one run, not physical requests.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct State {
@@ -61,7 +58,6 @@ pub struct State {
     pub last_now_ms: u64,
 }
 
-/// `now_ms` is elapsed time from the host's monotonic run clock.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Event {
@@ -258,11 +254,8 @@ pub extern "C" fn agent_kernel_apply(state: State, event: Event) -> Transition {
         .unwrap_or_else(|_| Transition::new(state, status::PANIC))
 }
 
-/// Returns an owned, NUL-terminated JSON response. Release it with agent_harness_free.
-///
-/// # Safety
-/// A non-null input must point to `length` readable bytes for the duration of this call.
 #[unsafe(no_mangle)]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn agent_harness_call(
     input: *const u8,
     length: usize,
@@ -274,15 +267,13 @@ pub unsafe extern "C" fn agent_harness_call(
         let request = unsafe { std::slice::from_raw_parts(input, length) };
         agent_harness::call(request).to_string().into_bytes()
     })).unwrap_or_else(|_| b"{\"ok\":false,\"error\":{\"code\":\"panic\",\"message\":\"native harness panicked\"}}".to_vec());
-    // JSON escapes all interior NUL characters; both fallback literals are NUL-free.
     std::ffi::CString::new(response)
         .expect("JSON has no interior NUL")
         .into_raw()
 }
 
-/// # Safety
-/// `response` must be null or an unfreed pointer returned by agent_harness_call.
 #[unsafe(no_mangle)]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn agent_harness_free(response: *mut std::ffi::c_char) {
     if !response.is_null() {
         drop(unsafe { std::ffi::CString::from_raw(response) });

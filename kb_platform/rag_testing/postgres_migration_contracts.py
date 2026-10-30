@@ -1,4 +1,3 @@
-"""A transport compatibility bridge cannot relabel old vectors with new text."""
 import hashlib
 import unittest
 

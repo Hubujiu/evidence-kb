@@ -1,9 +1,3 @@
-"""Authorized original evidence and bounded, read-only tools for agent sessions.
-
-The lexical gateway intentionally does not invoke the research reranker or use its
-cached source policies. Source restrictions are applied to the backend query,
-before ranking, and every returned passage is checked against the authority.
-"""
 from __future__ import annotations
 
 import ast
@@ -24,18 +18,13 @@ RETRIEVAL_METHOD = 'authorized_bm25'
 
 
 def evidence_record(record):
-    """Project public original evidence, retaining only proved optional ranges."""
+
     return {key: record[key] for key in EVIDENCE_FIELDS} | {
         key: record[key] for key in SPAN_FIELDS if key in record}
 
 
 def canonical_span_metadata(record, document, element_id):
-    """Derive exact LF parse coordinates from element identity, never text search.
 
-    Repeated paragraphs must keep their own offsets. Older/unknown parse or
-    citation representations remain without range fields and cannot be merged
-    by a containment heuristic.
-    """
     from .delivery_units import indexed_elements
 
     if (not isinstance(document, dict) or not isinstance(document.get('elements'), list)
@@ -98,7 +87,7 @@ def _policy(value):
 
 
 class EvidenceGateway:
-    """All model-visible document reads cross this authorization boundary."""
+
 
     def __init__(self, platform, research=None, provider_id='magpie_luna', *,
                  embedding_provider=None, pipeline_reranker=None):
@@ -132,7 +121,7 @@ class EvidenceGateway:
                                                                state['manifest_id'])).fetchone()
                 if not build:
                     raise PlatformError('INVALID_MANIFEST', 'Published index unavailable', 503)
-                if 'bm25' not in self.platform._build_config(build)['channels']:
+                if 'bm25' not in build['inputs']['channels']:
                     raise PlatformError('CHANNEL_NOT_ADMITTED', 'Lexical retrieval was not published', 409)
         return state, rows, build
 
@@ -184,7 +173,7 @@ class EvidenceGateway:
         return record
 
     def _canonical_metadata(self, actor, scope_id, record, bindings):
-        """Read only the already authorized immutable parse for this citation."""
+
         from .delivery_units import indexed_elements
 
         row = next((item for item in bindings if all(item.get(key) == record[key] for key in
@@ -193,8 +182,8 @@ class EvidenceGateway:
         element_id = record.get('element_id')
         if isinstance(document, dict) and isinstance(document.get('elements'), list):
             if element_id is None and row.get('binding_id'):
-                # Same identity rule as Platform._units. No ambiguous str.find
-                # lookup is permitted, even for a unique-looking passage.
+
+
                 try:
                     candidates = [element['element_id'] for element in indexed_elements(document, include_pages=True)
                         if str(uuid5(NAMESPACE_URL,
@@ -203,10 +192,8 @@ class EvidenceGateway:
                     candidates = []
                 element_id = candidates[0] if len(candidates) == 1 else None
             return canonical_span_metadata(record, document, element_id)
-        # Custom authorities may only expose a citation contract. Unknown ranges
-        # remain independent; the standard Platform can retrieve its immutable
-        # parse by exact citation/source/version/parse identity, including pinned
-        # old citations that no longer equal the active binding's parse.
+
+
         if not isinstance(self.platform, Platform):
             return {}
         with self.platform._tx(actor, scope_id) as conn:
@@ -287,25 +274,20 @@ class EvidenceGateway:
                            exclude_citation_ids=exclude_citation_ids, granularity='page')
 
     def search_pipeline(self, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=()):
-        """Explicit configurable child fusion/rerank/parent pipeline.
 
-        Model stages require an already published matching index and approved
-        injected providers. No dependencies are downloaded and no vectors are
-        silently built by this query API. Existing lexical search is unchanged.
-        """
         from .retrieval_pipeline import execute
 
         return execute(self, actor, scope_id, query, policy, config,
                        exclude_citation_ids=exclude_citation_ids)
 
     def pipeline_capabilities(self, actor, scope_id, policy):
-        """Read-only stage admission, without invoking an encoder or reranker."""
+
         from .retrieval_pipeline import _allowed_bindings
 
         policy = _policy(policy)
         state, bindings, build = self._state(actor, scope_id, with_build=True)
         allowed = _allowed_bindings(self, actor, bindings, policy)
-        config = self.platform._build_config(build)
+        config = build['inputs']
         provider = self.embedding_provider or getattr(self.platform, 'embedding_provider', None)
         dense_count = 0
         if 'dense' not in config['channels']:
@@ -407,12 +389,7 @@ class EvidenceGateway:
 
     def navigate_references(self, actor, scope_id, citation_ids, policy, *, hops=2,
                             document_limit=16, fragment_limit=30):
-        """Navigate written source titles/sections, delivering canonical evidence.
 
-        Document mention edges are source navigation only. They are not trusted
-        workflow next/branch transitions. Inaccessible targets are unresolved;
-        titles and citations are drawn only from the authorized source set.
-        """
         from .cross_document import navigate_source_references
         from .retrieval_pipeline import _allowed_bindings, _catalog
 
@@ -479,7 +456,7 @@ class EvidenceGateway:
                 'evidence': evidence_record(record)}
 
     def workflow_next(self, actor, scope_id, citation_id, policy, *, current_step=None, facts=None):
-        """Follow explicit typed source edges; unknown state requires clarification."""
+
         from .workflow_query import next_step
 
         policy = _policy(policy)
@@ -498,7 +475,7 @@ class EvidenceGateway:
 
     def table_join(self, actor, scope_id, citation_ids, policy, *, left_key, right_key,
                    how='inner', max_rows=100):
-        """Join two authorized original typed tables, retaining both citations."""
+
         from .table_query import join_tables
 
         policy = _policy(policy)
@@ -577,7 +554,7 @@ def _table_query(table, operation, column, filters):
 
 
 def bounded_calculate(expression):
-    """Evaluate decimal arithmetic only; no names, calls, containers or attributes."""
+
     def invalid():
         return PlatformError('INVALID_EXPRESSION', 'Use bounded decimal arithmetic only', 422)
 

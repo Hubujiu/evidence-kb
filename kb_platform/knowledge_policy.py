@@ -1,8 +1,5 @@
-"""Knowledge-source policy, business prompts and projection helpers."""
-
 from copy import deepcopy
 from hashlib import sha256
-from .agent_store import digest
 from .core import PlatformError
 
 
@@ -40,7 +37,7 @@ CONFIGS = {
 
 
 def _active_evidence_limit(config):
-    limit = config.get("max_active_evidence", 8)
+    limit = config["max_active_evidence"]
     if type(limit) is not int or not 1 <= limit <= 50:
         raise PlatformError(
             "INVALID_AGENT_CONFIG", "Invalid active evidence limit; expected integer1..50", 422
@@ -92,8 +89,6 @@ def _verifier_candidate(answer):
             candidate[field] = deepcopy(answer[field])
     return candidate, {
         "protocol": VERIFIER_CANDIDATE_PROTOCOL,
-        "original_candidate_hash": digest(answer),
-        "projected_candidate_hash": digest(candidate),
         "omitted_document_quote_count": sum(len(claim.get("quotes", [])) for claim in answer["claims"]),
     }
 
@@ -147,16 +142,8 @@ def source_policy(value=None):
     return deepcopy(result)
 
 
-def _value(envelope):
-    return envelope.value if hasattr(envelope, "value") else envelope["value"]
-
-
-def _record(envelope):
-    return envelope.to_dict() if hasattr(envelope, "to_dict") else dict(envelope)
-
-
 def _visible_user_statements(projection):
-    """Keep separate verbatim windows; a checkpoint is not a restored user event."""
+
     windows = {}
 
     def add(seq, text):

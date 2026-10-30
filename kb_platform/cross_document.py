@@ -1,17 +1,10 @@
-"""Source-only document links, Unicode-safe packing, and evidence-bound table joins."""
-
 from collections import defaultdict, deque
 from decimal import Decimal, InvalidOperation
 import re
 
 
 def explicit_title_targets(documents, seeds, *, limit=2, exclude_source_ids=()):
-    """Find bounded one-hop title mentions in already-authorized seed evidence.
 
-    CJK titles require explicit title/quote delimiters; unquoted Latin titles
-    require whole-token boundaries. Ambiguous titles are never resolved. A
-    mention is a navigation hint, not a claim or evidence about the target.
-    """
     if type(limit) is not int or not 1 <= limit <= 2:
         raise ValueError("Invalid title target limit")
     titles = defaultdict(list)
@@ -24,7 +17,7 @@ def explicit_title_targets(documents, seeds, *, limit=2, exclude_source_ids=()):
         if len(matches) != 1:
             continue
         title = matches[0]["title"].strip()
-        # Bare CJK names cannot be reliably distinguished from substrings.
+
         if len(title) >= 4 and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._\-]*", title):
             patterns.append(
                 (
@@ -64,7 +57,7 @@ def explicit_title_targets(documents, seeds, *, limit=2, exclude_source_ids=()):
 
 
 def source_links(documents):
-    """Resolve only explicitly written document titles, never model-invented edges."""
+
     titles = defaultdict(list)
     for d in documents:
         titles[d["title"]].append(d["id"])
@@ -141,13 +134,7 @@ class DocumentGraph:
 
 
 def navigate_source_references(documents, seeds, *, hops=3, document_limit=16, fragment_limit=60):
-    """Return exact citation anchors and explicitly named target sections.
 
-    ``documents`` must already be authorized for the current actor and scope.
-    Offsets refer to each input document's text. Missing or ambiguous titles
-    remain unresolved, and traversal never reads an unlisted document. This is
-    deterministic source navigation: no model, answer, qrels or gold input.
-    """
     if (
         not isinstance(documents, (list, tuple))
         or not documents
@@ -183,14 +170,14 @@ def navigate_source_references(documents, seeds, *, hops=3, document_limit=16, f
             )
 
     for edge in edges:
-        # A queued edge can exceed DocumentGraph's reached-document cap.
+
         if edge["source"] not in reached_set or edge["target"] not in reached_set:
             continue
         append(edge["source"], edge["start"], edge["end"])
         target = by_id[edge["target"]]
         after = edge["quote"].split("《" + target["title"] + "》", 1)[-1]
-        # A reference such as “§报价内的编码” contains prose after the
-        # section label. Resolve against actual headings, not a greedy phrase.
+
+
         headings = set(re.findall(r"(?m)^\s*§([^：:\s\n]+)[：:]", target["text"]))
         references = [heading for heading in headings if after.lstrip().startswith("§" + heading)]
         if references:
@@ -216,7 +203,7 @@ def navigate_source_references(documents, seeds, *, hops=3, document_limit=16, f
 
 
 def safe_prefix(text, token_limit, tokenizer):
-    """Choose original Unicode character boundaries, even for a partial byte token."""
+
     lo, hi = 0, len(text)
     while lo < hi:
         mid = (lo + hi + 1) // 2
@@ -265,7 +252,7 @@ def parse_pipe_tables(documents):
 
 
 def evidence_join(plan, tables, visible_ids):
-    """Inner equijoin+optional numeric product; strict one-to-one key cardinality."""
+
 
     def table(which):
         item = plan[which]

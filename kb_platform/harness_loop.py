@@ -1,4 +1,3 @@
-"""Execute native loop effects through injected services, without domain decisions."""
 from copy import deepcopy
 from dataclasses import replace
 

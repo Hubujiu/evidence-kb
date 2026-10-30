@@ -1,4 +1,3 @@
-"""Explicit fixed-provider retrieval runtime; startup never embeds or builds."""
 from __future__ import annotations
 
 import hashlib
@@ -25,7 +24,7 @@ def _path(value):
 
 
 def from_config(platform, gateway, config_path, *, provider_factories=None):
-    """Load an administratively selected, fixed provider and its finite ledger."""
+
     provider = None
     try:
         path = _path(str(config_path))

@@ -1,4 +1,3 @@
-"""Independent synthetic evidence/permission challenges, not business gold."""
 import argparse
 from pathlib import Path
 
@@ -60,7 +59,7 @@ def build_suite():
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Independent synthetic evidence/permission challenges, not business gold.')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     report = execute(build_suite(), args.output)

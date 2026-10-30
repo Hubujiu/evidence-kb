@@ -1,7 +1,3 @@
-"""Scorer-only Hotpot-style answer metrics and literal delivered-citation checks.
-
-These metrics do not claim semantic citation entailment or calibrated judging.
-"""
 from collections import Counter
 import re
 import string
@@ -9,11 +5,7 @@ from decimal import Decimal, InvalidOperation
 
 
 def ordered_numeric_answer_score(prediction, reference):
-    """Scorer-only ordered numeric/date fields; preserve signs and decimal points.
 
-    Unlike Hotpot normalization, 5.5 cannot equal 55, and separators cannot be
-    deleted to merge fields. YYYY-MM fields are compared literally.
-    """
     expected=reference.split('|')
     actual=prediction.strip().split('|') if isinstance(prediction,str) else []
     if len(actual)!=len(expected):

@@ -57,8 +57,8 @@ def _bulk_batches(units):
     for unit in sorted(units, key=content_order):
         indexed = {**unit, 'binding_key': binding_key(unit)}
         if unit.get('kind') == 'Page':
-            # Page navigation has its own BM25 field statistics. Adding a
-            # whole-page object must not change the block field's IDF/avgdl.
+
+
             indexed['page_text'] = indexed.pop('text')
             indexed['original_page_text'] = indexed['page_text']
             indexed['page_heading'] = indexed.pop('heading_text', '')
@@ -78,7 +78,6 @@ def _bulk_batches(units):
 class OpenSearch:
     def __init__(self, url: str):
         self.url = url.rstrip('/')
-        self._binding_key_indices = {}
 
     def read_units(self, index, ids):
         response = self._request('POST', f'/{self._index(index)}/_mget', json={'ids': ids})
@@ -103,7 +102,7 @@ class OpenSearch:
     def dense_pages(self, index, tenant_id, kb_id, build_id, allowed, vector, top_k, excluded):
         if not allowed:
             return []
-        filters = self._filters(tenant_id, kb_id, allowed, compact=True)
+        filters = self._filters(tenant_id, kb_id, allowed)
         filters += [{'term': {'kind': 'Page'}}, {'term': {'build_id': build_id}}]
         restriction = {'filter': filters}
         if excluded:
@@ -173,29 +172,16 @@ class OpenSearch:
         count = self._request('GET', f'/{index}/_count')['count']
         if count != len(units):
             raise SearchUnavailable('Incomplete staged index')
-        self._binding_key_indices[index] = True
-
-    def _uses_binding_key(self, index: str) -> bool:
-        index = self._index(index)
-        if index not in self._binding_key_indices:
-            mapping = self._request('GET', f'/{index}/_mapping')
-            properties = mapping.get(index, {}).get('mappings', {}).get('properties', {})
-            self._binding_key_indices[index] = properties.get('binding_key', {}).get('type') == 'keyword'
-        return self._binding_key_indices[index]
 
     def search(self, index: str, tenant_id: str, kb_id: str, allowed: list[dict], query: str,
                top_k: int, kind: str | None = None, *, exclude_citation_ids=()) -> list[dict]:
-        if (not isinstance(exclude_citation_ids, (list, tuple)) or len(exclude_citation_ids) > 50 or
-                any(not isinstance(value, str) or not value or len(value) > 512 for value in exclude_citation_ids) or
-                len(set(exclude_citation_ids)) != len(exclude_citation_ids)):
-            raise ValueError('INVALID_EXCLUDED_CITATIONS')
         if not allowed:
             return []
-        filters = self._filters(tenant_id, kb_id, allowed, compact=self._uses_binding_key(index))
+        filters = self._filters(tenant_id, kb_id, allowed)
         if kind:
             filters.append({'term': {'kind': kind}})
-        # The Agent gateway may request five final units; both entrypoints use
-        # the same bounded lexical pool before whole-unit query_blocks packing.
+
+
         fields = (['page_text', 'page_text.exact^2', 'page_heading^1.5'] if kind == 'Page'
                   else ['text', 'text.exact^2', 'heading_text^1.5'])
         body = {'size': max(30, top_k), '_source': {'excludes': ['vector']}, 'query': {'bool': {
@@ -216,17 +202,9 @@ class OpenSearch:
         return lexical_results(hits, query, top_k)
 
     @staticmethod
-    def _filters(tenant_id: str, kb_id: str, allowed: list[dict], *, compact=True) -> list[dict]:
+    def _filters(tenant_id: str, kb_id: str, allowed: list[dict]) -> list[dict]:
         scope = [{'term': {'tenant_id': tenant_id}}, {'term': {'kb_id': kb_id}}]
-        if compact:
-            return scope + [{'terms': {'binding_key': sorted({binding_key(item) for item in allowed})}}]
-        return scope + [
-                   {'bool': {'minimum_should_match': 1, 'should': [
-                       {'bool': {'filter': [{'term': {'binding_id': item['binding_id']}},
-                                            {'term': {'source_id': item['source_id']}},
-                                            {'term': {'source_version_id': item['source_version_id']}},
-                                            {'term': {'parse_snapshot_id': item['parse_snapshot_id']}}]}}
-                       for item in allowed]}}]
+        return scope + [{'terms': {'binding_key': sorted({binding_key(item) for item in allowed})}}]
 
     def dense(self, index: str, tenant_id: str, kb_id: str, allowed: list[dict],
               vector: list[float], top_k: int) -> list[dict]:
@@ -235,7 +213,7 @@ class OpenSearch:
         body = {'size': top_k, '_source': {'excludes': ['vector']}, 'sort': score_order(), 'query': {
             'knn': {'vector': {'vector': vector, 'k': top_k,
                                 'filter': {'bool': {'filter': self._filters(
-                                    tenant_id, kb_id, allowed, compact=self._uses_binding_key(index))}}}}}}
+                                    tenant_id, kb_id, allowed)}}}}}}
         result = self._request('POST', f'/{self._index(index)}/_search', json=body)
         return [{**hit['_source'], 'score': hit['_score']} for hit in result['hits']['hits']]
 
@@ -260,9 +238,8 @@ def lexical_results(hits, query, top_k):
         from .evidence_packing import rank_texts
 
         ordered = [hits[i] for i in rank_texts([hit['text'] for hit in hits], query)]
-        # Preserve canonical parent context instead of spending the same
-        # budget again on its typed-table child. The table-only channel
-        # still returns all independently queryable typed table citations.
+
+
         groups = [hit for hit in ordered if hit.get('kind') != 'Table']
         hits = [hit for hit in ordered if hit.get('kind') != 'Table' or not any(
             all(hit.get(key) == parent.get(key) for key in BINDING_FIELDS) and

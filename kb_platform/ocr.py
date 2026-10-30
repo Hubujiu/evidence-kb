@@ -1,4 +1,3 @@
-"""Vision OCR preserves original bytes and labels model-estimated coordinates."""
 from __future__ import annotations
 
 import copy
@@ -132,9 +131,7 @@ def augment_ocr(data: bytes, filename: str, bundle: dict, client) -> dict:
     if any(item.get("decision") == "BLOCKED_BY_POLICY" for item in report.get("ocr_decisions", [])):
         return result
     recognized, failures, attempts = [], [], 0
-    options = ({"validator": _validate_schema, "contract_version": OCR_CONTRACT_VERSION}
-               if getattr(client, "supports_contract_validation", False) else {})
-    before_stats = client.snapshot_stats() if hasattr(client, "snapshot_stats") else None
+    before_calls = client.snapshot_stats()["by_purpose"].get("ocr", {}).get("requests", 0)
     try:
         for index, image, location in _frames(data, result):
             if attempts >= MAX_OCR_PAGES:
@@ -143,7 +140,8 @@ def augment_ocr(data: bytes, filename: str, bundle: dict, client) -> dict:
             attempts += 1
             try:
                 response = client.complete_json(_SYSTEM, "Transcribe the supplied document image.",
-                                                purpose="ocr", images=[image], **options)
+                                                purpose="ocr", images=[image], validator=_validate_schema,
+                                                contract_version=OCR_CONTRACT_VERSION)
                 blocks = _validate(response)
                 recognized.append({"index": index, "location": location, "blocks": blocks})
             except (RemoteModelError, ValueError) as exc:
@@ -152,16 +150,12 @@ def augment_ocr(data: bytes, filename: str, bundle: dict, client) -> dict:
     except (ValueError, OSError):
         failures.append({"code": "ocr_render_failed"})
     report["ocr_invocations"] = attempts
-    if before_stats is not None:
-        before_calls = before_stats.get("by_purpose", {}).get("ocr", {}).get("requests", 0)
-        after_calls = client.snapshot_stats().get("by_purpose", {}).get("ocr", {}).get("requests", 0)
-        report["model_calls"] += after_calls - before_calls
-    else:
-        report["model_calls"] += attempts
+    after_calls = client.snapshot_stats()["by_purpose"].get("ocr", {}).get("requests", 0)
+    report["model_calls"] += after_calls - before_calls
     report["ocr_provider"] = dict(client.manifest)
     report["ocr_protocol"] = {"version": OCR_VERSION, "contract_version": OCR_CONTRACT_VERSION,
-                              "contract_validation_before_cache": bool(options),
-                              "maximum_format_corrections": 1 if options else None,
+                              "contract_validation_before_cache": True,
+                              "maximum_format_corrections": 1,
                               "unreadable_policy": "terminal_partial_without_correction"}
     report["ocr_coordinate_quality"] = "model_estimated"
     report["ocr_quality_verified_by_human"] = False

@@ -1,4 +1,3 @@
-"""Deterministic PDF layout signals and an explicit prose whitespace protocol."""
 import io
 import re
 
@@ -25,11 +24,7 @@ def pdf_layout_features(data):
 
 
 def canonical_pdf_prose(text):
-    """Normalize prose whitespace; retain explicit table row/column delimiters.
 
-    This is a new, named source-normalization protocol, never an implicit change
-    to old gold or raw parser outputs. It does not normalize code/Office/CSV.
-    """
     output,prose=[],[]
     def flush():
         if prose:

@@ -1,4 +1,3 @@
-"""ParadeDB BM25 component with the same frozen lexical tokens and field boosts."""
 import json
 
 from .contracts import digest

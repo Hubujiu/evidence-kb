@@ -1,9 +1,3 @@
-"""Experimental bounded original-source packets from explicit title mentions.
-
-Callers supply an already authorized corpus. Mentions are navigation hints, not
-entity equivalence or proof of a relation. Initials are candidate hints only;
-delivered evidence always consists of original text.
-"""
 from collections import defaultdict
 import re
 
@@ -38,8 +32,8 @@ def title_packet(question, documents, *, hops=2, limit=8):
             for title, rows in by_title.items():
                 if len(title) < 4 or ' ' + title + ' ' not in text:
                     continue
-                # Normalization can collapse distinct film titles. An exact
-                # punctuation-preserving mention can resolve that collision.
+
+
                 literal = [d for d in rows if re.search(r'(?<!\w)' + re.escape(d['title']) + r'(?!\w)', seed['text'], re.I)]
                 resolved = rows if len(rows) == 1 else literal
                 if len(resolved) == 1:
@@ -62,25 +56,21 @@ def title_packet(question, documents, *, hops=2, limit=8):
 
 
 def linked_evidence_packet(question, documents, *, seed_limit=3, hops=2):
-    """Lexical original paragraphs followed by explicit title/section links.
 
-    Tables remain whole paragraphs. Only already authorized originals enter;
-    document references are navigation, never inferred factual relationships.
-    """
     from .evidence_packing import blocks, rank_texts, terms
     from .cross_document import navigate_source_references
 
     if type(seed_limit) is not int or not 1 <= seed_limit <= 10:
         raise ValueError('INVALID_SEED_LIMIT')
     def spans(document):
-        # Published parses join elements with single newlines. Their canonical
-        # boundaries are more precise than reparsing that string as prose.
+
+
         if not document.get('positions'):
             return blocks(document['text'])
         grouped = []
         for start, end in document['positions'].values():
-            # Legacy snapshots split pipe tables into line units. Navigate the
-            # caption and rows together without altering those stored citations.
+
+
             if grouped and document['text'][start:end].lstrip().startswith('|'):
                 grouped[-1] = (grouped[-1][0], end)
             else:

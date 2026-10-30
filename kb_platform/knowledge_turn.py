@@ -1,12 +1,10 @@
-"""A leased knowledge turn owns all mutable RAG state and commits its final result."""
-
 from __future__ import annotations
 from copy import copy, deepcopy
 import math
 import time
 from .agent_protocol import ANSWER_SCHEMA, VERDICT_SCHEMA, object_schema
 from .agent_tool_registry import advanced_tools
-from .agent_store import digest
+from .session_store import digest
 from .agent_builtin_tools import BuiltinTools
 from .agent_call_budget import CallBudget
 from .agent_work_state import begin_work_state, finish_work_state
@@ -75,12 +73,6 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                 raise PlatformError("INVALID_WORKFLOW_STATE", "Supply explicit user workflow state", 422)
         current = self.service.store.load(self.actor, self.session_id)
         self.authority = self.service.gateway.authorize(self.actor, current["scope_id"])
-        if current["state"]["config_name"] not in CONFIGS:
-            raise PlatformError(
-                "RETIRED_AGENT_CONFIG",
-                "This historical session is read-only; create a standard session to continue",
-                409,
-            )
         self.semantic_enabled = bool(
             CONFIGS[current["state"]["config_name"]].get("semantic_pages")
             and self.service._semantic_available(self.actor, current["scope_id"])
@@ -115,13 +107,10 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
         self.token = begin["token"]
         session = begin["session"]
         self.state = deepcopy(session["state"])
-        self.state.setdefault("evidence_catalog", {})
-        self.state.setdefault("evidence_order", list(self.state["evidence"]))
-        self.state.setdefault("evidence_offsets", {})
         self.config = CONFIGS[self.state["config_name"]]
         self.execution_limits = {
-            "max_model_calls": self.config.get("max_model_calls", 8),
-            "max_turn_seconds": self.config.get("max_turn_seconds", 240),
+            "max_model_calls": self.config["max_model_calls"],
+            "max_turn_seconds": self.config["max_turn_seconds"],
             "max_active_evidence": self.max_active_evidence,
         }
         inherited = current_execution()
@@ -387,8 +376,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                 deadline_seconds=self.execution_limits["max_turn_seconds"]
                 - (time.perf_counter() - self.started),
             )
-            # Native completion is admitted before the only durable success write.
-            # A lost/failed native terminal admission cannot leave a successful response.
+
+
             self.check_execution()
             if self.service.gateway.authorize(self.actor, self.scope) != self.authority:
                 raise PlatformError("SCOPE_CHANGED", "Authority changed before answer commit", 409)
@@ -396,7 +385,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                 self.actor, self.scope, response["evidence"], self.state["source_policy"]
             )
             self.check_execution()
-            # Keep the failure state free of a candidate that was never committed.
+
             committed_state = deepcopy(self.state)
             evidence_ids = [item["citation_id"] for item in response["evidence"]]
             committed_state["last_answer"] = {

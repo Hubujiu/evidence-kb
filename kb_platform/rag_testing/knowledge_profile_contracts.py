@@ -1,4 +1,3 @@
-"""Synthetic profile/HTTP contracts; no provider calls or RAG quality claims."""
 from copy import deepcopy
 import os
 from pathlib import Path
@@ -14,7 +13,7 @@ from kb_platform.plugin_host import PluginSpec
 
 class _KnowledgeFixture:
     def __init__(self, platform, model, *, research, root, store, context_policy, context_manager, runtime,
-                 gateway, tool_executor, semantic_pages):
+                 gateway, tool_executor, semantic_pages, workflow_factory):
         self.model, self.store, self.runtime = model, store, runtime
         self.semantic_pages, self.tool_context = None, None
         self.calls = []

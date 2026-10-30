@@ -1,4 +1,3 @@
-"""JSON Schema validation with the agent protocol's stricter JSON boundary."""
 from __future__ import annotations
 
 import json
@@ -33,7 +32,7 @@ _Validator = validators.extend(
 
 
 def _check_subset(schema):
-    # Traverse schema positions only; property names and annotation data are not keywords.
+
     if not isinstance(schema, dict) or set(schema) - _KEYS:
         raise ValueError("UNSUPPORTED_AGENT_SCHEMA")
     if schema.get("enum") == []:
@@ -41,7 +40,7 @@ def _check_subset(schema):
     for key in ("minLength", "maxLength", "minItems", "maxItems"):
         if key in schema and type(schema[key]) is not int:
             raise ValueError("INVALID_AGENT_SCHEMA")
-    # Dialect annotations must not make jsonschema evolve into a non-strict validator.
+
     checked = {key: value for key, value in schema.items() if key != "$schema"}
     if "properties" in schema:
         checked["properties"] = {key: _check_subset(child) for key, child in schema["properties"].items()}
@@ -56,7 +55,7 @@ def _check_subset(schema):
 
 
 def check_schema(schema):
-    """Pin the dialect and reject unsupported keywords instead of ignoring them."""
+
     if not isinstance(schema, dict):
         raise ValueError("UNSUPPORTED_AGENT_SCHEMA")
     try:
@@ -69,7 +68,7 @@ def check_schema(schema):
 
 def validate_output(value, validator):
     try:
-        # Also reject nonfinite numbers in unconstrained properties or annotation-shaped data.
+
         json.dumps(value, allow_nan=False)
         validator.validate(value)
     except (ValidationError, TypeError, ValueError):

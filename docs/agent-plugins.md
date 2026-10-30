@@ -60,7 +60,7 @@ plugin = ToolPlugin('lookup_rule', 'Read authorized original rules.',
 
 `agent_provider.ModelProvider` 归一化模型结果、精确缓存身份与物理尝试记录；`agent_luna.LunaModelProvider` 适配现有 Luna 客户端。`AgentModel` 不导入具体 HTTP/SDK 提供者。新增提供者必须继续接入唯一的实际请求计量与费用账本，不能自建隐藏重试链。
 
-Rust 拥有插件生命周期和临时 loop/graph 状态，消息存储通过会话服务接口完成。`ToolAgent` 的兼容默认仍使用单轮 `harness.sessions.memory`；`create_agent_application()` 的显式 core 组合使用持久会话，支持跨宿主加载持久历史。知识库通过 `KnowledgeSessions` 适配通用 `SessionStore`，旧 `AgentStore` 保留兼容入口；现有范围授权、租约和哈希检查继续执行。恢复持久会话不代表自动重放中断工具或恢复原生句柄。
+Rust 拥有插件生命周期和临时 loop/graph 状态，消息存储通过会话服务接口完成。`ToolAgent` 默认仍使用单轮 `harness.sessions.memory`；`create_agent_application()` 的显式 core 组合使用持久会话，支持跨宿主加载持久历史。知识库通过 `KnowledgeSessions` 适配通用 `SessionStore`；现有范围授权、租约和哈希检查继续执行。恢复持久会话不代表自动重放中断工具或恢复原生句柄。
 
 通用 `harness.context.history` 与 `harness.compaction.recent` 分开装配：前者组装模型输入，后者选择完整轮次后缀，不改写存储历史或调用摘要模型。`harness.model.structured` 适配已有计量的结构化模型，辅助插件可复用其 `complete()`；不必通过主 loop 请求一次辅助调用，但仍必须保留原有准入、实际请求身份和费用记录。
 

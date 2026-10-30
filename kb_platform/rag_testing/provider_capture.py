@@ -1,8 +1,3 @@
-"""Meter actual HTTP attempts with the shared RAG ledger and immutable payloads.
-
-This observer does not score answers, select cases or retry requests. Headers and
-credentials are never stored. Context is supplied by the calling product adapter.
-"""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -79,8 +74,8 @@ class MeteredTransport(httpx.BaseTransport):
         try:
             response = self.inner.handle_request(request)
             if response.status_code == 403:
-                # Permission failure is known from headers, before reading a
-                # possibly broken error body. Never turn it into UNKNOWN.
+
+
                 record['http_status'] = 403
                 if self.admission is not None:
                     try:
@@ -129,8 +124,8 @@ class MeteredTransport(httpx.BaseTransport):
             record.update(status=state, http_status=response.status_code, response=body, usage=actual)
             return response
         except BaseException as exc:
-            # A response already recorded above remains terminal even if local
-            # consumer code later rejects its content.
+
+
             if record['status'] == 'STARTED':
                 received_403 = record.get('http_status') == 403
                 known_not_sent = isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
@@ -154,9 +149,9 @@ class MeteredTransport(httpx.BaseTransport):
 
 
 def observe_client(provider, ledger, root, *, category, inner=None, admission_root=None):
-    """Attach before its first request; existing provider auth/protocol stays owner."""
+
     admission = ProviderAdmission(provider, admission_root or provider.cache_dir / 'provider-admission')
-    admission.seed_from_capture(root, category)
+    admission.seed_from_capture(root)
     provider.client.close()
     provider.admission = admission
     native_attempt = getattr(provider, '_capture_native_attempt', provider._send_attempt)
@@ -167,10 +162,8 @@ def observe_client(provider, ledger, root, *, category, inner=None, admission_ro
         try:
             return native_attempt(path, payload, headers, key, metadata)
         except CaptureAdmissionError:
-            # A sender queued behind another call can encounter a newly closed
-            # gate in the transport. Its native receipt is already known ERROR
-            # with error_type CaptureAdmissionError. Retain that audit identity,
-            # and let the unmodified adapter account zero sent attempts.
+
+
             if 'physical_request_id' in metadata:
                 with provider._stats_lock:
                     provider._issued_requests -= 1

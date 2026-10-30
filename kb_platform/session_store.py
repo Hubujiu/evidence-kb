@@ -1,8 +1,3 @@
-"""Domain-neutral SQLite sessions with one writer and atomic turn completion.
-
-State schemas, model-visible history and business authorization belong to consumers.
-This backend only owns persistence, principal isolation and request fencing.
-"""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -30,11 +25,7 @@ def now():
 
 
 class SessionStore:
-    """SQLite transactions serialize writers across processes, not only HTTP threads.
 
-    Owner checks precede every read, including artifact reads. A request lease makes a
-    timed-out request observable; it never silently repeats a possibly executed tool.
-    """
 
     def __init__(self, root='.local/agent-sessions'):
         self.root = Path(root).resolve()
@@ -94,7 +85,7 @@ class SessionStore:
                 'state': json.loads(row['state']), 'created_at': row['created'], 'updated_at': row['updated']}
 
     def create(self, actor, scope_id, initial_state):
-        """Persist the caller-owned state schema without adding business fields."""
+
         if not isinstance(initial_state, dict):
             raise ValueError('INVALID_SESSION_STATE')
         session_id = uuid4().hex
@@ -111,7 +102,7 @@ class SessionStore:
             return self._decode(self._owner(db, actor, session_id))
 
     def list_sessions(self, actor, *, limit=50, offset=0):
-        """Owner-scoped metadata only; source text and model state never enter the listing."""
+
         if type(limit) is not int or not 1 <= limit <= 100 or type(offset) is not int or offset < 0:
             raise PlatformError('INVALID_SESSION_PAGE', 'Expected limit1..100 and nonnegative offset', 422)
         with self._db() as db:
@@ -198,7 +189,7 @@ class SessionStore:
         return self._finish(actor, session_id, token, state, response, assistant_event=assistant_event)
 
     def fail(self, actor, session_id, token, state, response):
-        """An expired writer may close its failure only until another writer takes over."""
+
         if not isinstance(response, dict) or response.get('status') != 'error':
             raise ValueError('INVALID_FAILURE_RESPONSE')
         return self._finish(actor, session_id, token, state, response, failure=True)

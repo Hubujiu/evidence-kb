@@ -1,9 +1,3 @@
-"""Expand explicitly supplied bundles before the native host validates services.
-
-Bundles contain configuration, never import paths or executable expressions.
-Profile rows override one bundle row by id; their config replaces the whole
-config object. Expansion does not mount plugins or acquire resources.
-"""
 from copy import deepcopy
 import json
 from pathlib import Path

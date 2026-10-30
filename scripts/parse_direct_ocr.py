@@ -1,4 +1,3 @@
-"""Official RapidOCR line output without a document-layout export filter."""
 from __future__ import annotations
 
 import hashlib

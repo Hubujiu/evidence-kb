@@ -1,4 +1,3 @@
-"""Thin adapters for current context selection over frozen original candidates."""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -10,12 +9,7 @@ from .contracts import AdapterInput, Case, Evidence, Fragment, Source, Suite, di
 
 
 class CanonicalRetentionAdapter:
-    """Execute current retention/packing over frozen, ordered canonical batches.
 
-    This is a component intervention with recorded upstream actions. It does not
-    send a model request or attest current live authority. Its replay traces must
-    be scored as replay, separately from fresh Agent executions.
-    """
 
     def __init__(self, snapshots, *, original_inputs, expected_corpus, retention,
                  packing, active_limit=16, input_budget=118784):
@@ -126,7 +120,7 @@ class ContextDecisionAdapter:
             raise ValueError("cached retrieval corpus dependency changed")
         recorded = self.original_inputs[request.case_id]
         actual = request.model_dump(mode="json")
-        # Budget is the intervention; query/history/scope/identity remain exact.
+
         if {k: v for k, v in actual.items() if k != "context_budget"} != {
                 k: v for k, v in recorded.items() if k != "context_budget"}:
             raise ValueError("cached retrieval input dependency changed")
@@ -151,7 +145,7 @@ class ContextDecisionAdapter:
 
 
 def synthetic_context_suite():
-    """Versioned adversarial engineering fixtures, not enterprise human labels."""
+
     sources, evidence, cases, candidates = [], [], [], {}
     facts = [
         ("negation", "设备红杉运行时是否允许开盖？", "设备红杉运行时不得开盖；仅在断电且等待十分钟后允许检修。"),

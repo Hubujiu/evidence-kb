@@ -1,4 +1,3 @@
-"""Allowlisted knowledge plugins and environment-compatible profile composition."""
 import os
 from pathlib import Path
 
@@ -29,30 +28,8 @@ def load_knowledge_profile(profile=None, *, environment=None):
     if profile is None:
         profile = environment.get('KB_AGENT_PROFILE') or DEFAULT_PROFILE
     value = expand_profile(profile, {'knowledge': DEFAULT_PROFILE.parent.parent / 'agent-bundles/knowledge.json'})
-    # Explicit flat profiles from the previous release owned their backend in
-    # knowledge.store. Preserve their path and service while separating ownership.
-    upgraded = []
-    legacy = False
     for entry in value['plugins']:
-        if entry['use'] == 'knowledge.store':
-            legacy = True
-            upgraded.append({**entry, 'use': 'harness.store.sqlite',
-                             'config': {'root': '.local/agentic-v5', **entry.get('config', {})}})
-            upgraded.append({'id': entry['id'] + '-knowledge', 'use': 'knowledge.sessions',
-                             'disabled': entry.get('disabled', False)})
-        else:
-            upgraded.append(entry)
-    if legacy and not any(entry['use'] == 'knowledge.workflow.graph' for entry in upgraded):
-        upgraded.append({'id': 'knowledge-workflow', 'use': 'knowledge.workflow.graph'})
-    value['plugins'] = upgraded
-    if not isinstance(value, dict) or not isinstance(value.get('plugins'), list):
-        raise ValueError('INVALID_KNOWLEDGE_PROFILE')
-    for entry in value['plugins']:
-        if not isinstance(entry, dict):
-            raise ValueError('INVALID_KNOWLEDGE_PROFILE')
         config = entry.setdefault('config', {})
-        if not isinstance(config, dict):
-            raise ValueError('INVALID_KNOWLEDGE_PLUGIN_CONFIG')
         for key, (name, convert) in ENVIRONMENT.get(entry.get('use'), {}).items():
             if environment.get(name):
                 config[key] = convert(environment[name])
@@ -66,7 +43,7 @@ def _config(config, allowed=()):
 
 
 def knowledge_plugins(platform, research, *, service_factory=None):
-    """External resources are borrowed; a plugin closes only clients it creates."""
+
     def resources(ctx, config):
         _config(config)
         ctx.provide('knowledge.platform', platform)
@@ -165,11 +142,8 @@ def knowledge_plugins(platform, research, *, service_factory=None):
             context_policy=ctx.require('knowledge.context.policy'),
             context_manager=ctx.require('knowledge.context'), runtime=ctx.require('runtime'),
             gateway=ctx.require('knowledge.gateway'), tool_executor=ctx.require('knowledge.executor'),
-            semantic_pages=ctx.require('knowledge.semantic'), **config)
-        # Keep the established service_factory call signature. The domain
-        # service's public execution port is bound before it is published.
-        if isinstance(service, KnowledgeService):
-            service.workflow_factory = ctx.require('knowledge.workflow')
+            semantic_pages=ctx.require('knowledge.semantic'),
+            workflow_factory=ctx.require('knowledge.workflow'), **config)
         ctx.provide('knowledge', service)
 
     def tools(ctx, config):

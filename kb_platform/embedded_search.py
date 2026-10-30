@@ -1,4 +1,3 @@
-"""Immutable, per-build local search. PostgreSQL remains the authorization authority."""
 from __future__ import annotations
 
 from contextlib import closing
@@ -14,11 +13,11 @@ from uuid import uuid4
 os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
 os.environ.setdefault('MKL_NUM_THREADS', '1')
 
-import numpy as np  # noqa: E402
-import tantivy as tv  # noqa: E402
+import numpy as np
+import tantivy as tv
 
-from .search import OpenSearch, SearchUnavailable, binding_key, content_order, lexical_results  # noqa: E402
-from .search_tokens import tokens  # noqa: E402
+from .search import OpenSearch, SearchUnavailable, binding_key, content_order, lexical_results
+from .search_tokens import tokens
 
 
 KEYWORDS = ('tenant_id', 'kb_id', 'binding_key', 'kind', 'citation_id', 'build_id')
@@ -78,11 +77,13 @@ class EmbeddedSearch:
         ordered = sorted(units, key=content_order)
         if len({u['unit_id'] for u in ordered}) != len(ordered):
             raise SearchUnavailable('Duplicate unit identity')
-        for unit in ordered:
+        normalized = {}
+        for rowid, unit in enumerate(ordered):
             if 'vector' in unit:
                 value = np.asarray(unit['vector'], dtype=np.float32)
                 if value.shape != (vector_dimension,) or not np.isfinite(value).all() or np.linalg.norm(value) == 0:
                     raise SearchUnavailable('Invalid document vector')
+                normalized[rowid] = value / np.linalg.norm(value)
         self.root.mkdir(parents=True, exist_ok=True)
         path = self.root / ('.staging-' + uuid4().hex)
         path.mkdir()
@@ -117,10 +118,7 @@ class EmbeddedSearch:
                     prefix + 'heading': ' '.join(tokens(unit.get('heading_text', '')))})
                 writers['pages' if prefix else 'lexical'].add_document(tv.Document(rowid=rowid, **values))
                 if 'vector' in unit:
-                    vector = np.asarray(unit['vector'], dtype=np.float32)
-                    if vector.shape != (vector_dimension,) or not np.isfinite(vector).all() or np.linalg.norm(vector) == 0:
-                        raise SearchUnavailable('Invalid document vector')
-                    vectors.append(vector / np.linalg.norm(vector))
+                    vectors.append(normalized[rowid])
                     ids.append(rowid)
             db.execute('CREATE INDEX scope_binding ON units (tenant,kb,binding)')
             db.commit()
@@ -182,10 +180,6 @@ class EmbeddedSearch:
             return False
 
     def search(self, index, tenant_id, kb_id, allowed, query, top_k, kind=None, *, exclude_citation_ids=()):
-        if (not isinstance(exclude_citation_ids, (list, tuple)) or len(exclude_citation_ids) > 50 or
-                any(not isinstance(v, str) or not v or len(v) > 512 for v in exclude_citation_ids) or
-                len(set(exclude_citation_ids)) != len(exclude_citation_ids)):
-            raise ValueError('INVALID_EXCLUDED_CITATIONS')
         if not allowed:
             return []
         try:
@@ -222,8 +216,6 @@ class EmbeddedSearch:
         with closing(self._connection(index)) as db:
             hits = [{**json.loads(db.execute('SELECT data FROM units WHERE rowid=?',
                 (searcher.doc(address)['rowid'][0],)).fetchone()[0]), 'score': score} for score, address in result.hits]
-        for hit in hits:
-            hit.pop('vector', None)
         hits.sort(key=lambda h: (-h['score'], content_order(h)))
         return lexical_results(hits[:size], query, top_k)
 
@@ -245,7 +237,7 @@ class EmbeddedSearch:
                     continue
                 scores = vectors[positions] @ query
                 candidates.extend((float(score), int(ids[i])) for i, score in zip(positions, scores, strict=True))
-            # Exact filtered ranking: restricted ACLs cannot be starved by global ANN TopK.
+
             candidates.sort(key=lambda pair: (-pair[0], pair[1]))
             hits = []
             for score, rowid in candidates:
@@ -253,7 +245,6 @@ class EmbeddedSearch:
                 if ((kind and unit['kind'] != kind) or (build and unit['build_id'] != build)
                         or unit['citation_id'] in excluded):
                     continue
-                unit.pop('vector', None)
                 hits.append({**unit, 'score': (score + 1) / 2})
                 if len(hits) == top_k:
                     break
@@ -274,6 +265,5 @@ class EmbeddedSearch:
             for row in rows:
                 unit = json.loads(row[0])
                 if unit.get('parent_id') == parent or unit['unit_id'] in (parent, hit['unit_id']):
-                    unit.pop('vector', None)
                     result.append({**unit, 'score': hit['score']})
             return sorted(result, key=lambda u: (u['ordinal'], content_order(u)))[:limit]

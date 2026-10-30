@@ -1,11 +1,9 @@
-"""Domain-neutral persistence contracts against real SQLite; no provider calls."""
 from contextlib import closing
 import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from kb_platform.agent_store import AgentStore
 from kb_platform.knowledge_sessions import KnowledgeSessions
 from kb_platform.session_identity import Actor, PlatformError
 from kb_platform.session_store import SessionStore
@@ -40,8 +38,8 @@ class SessionStoreContracts(unittest.TestCase):
         self.store.append(self.actor, sid, lease['token'], 'message',
                           {'role': 'user', 'content': '2 + 2'}, 'request')
         before = self.store.events(self.actor, sid)
-        # Serialization fails after candidate completion events have been written.
-        # The transaction must not expose those events or advance the revision.
+
+
         with self.assertRaises(TypeError):
             self.store.finish(self.actor, sid, lease['token'], {'invalid': object()},
                               {'status': 'complete', 'value': 4},
@@ -59,15 +57,15 @@ class SessionStoreContracts(unittest.TestCase):
         self.assertEqual([event['kind'] for event in reopened.events(self.actor, sid)],
                          ['message', 'assistant', 'turn_completed'])
 
-    def test_generic_backend_opens_legacy_knowledge_data_without_schema_migration(self):
-        legacy = AgentStore(self.root)
-        session = legacy.create(self.actor, 'knowledge-scope', {'mode': 'LOCKED'}, 'fixture')
+    def test_generic_backend_reopens_knowledge_sessions_with_artifacts_and_replay(self):
+        knowledge = KnowledgeSessions(SessionStore(self.root))
+        session = knowledge.create(self.actor, 'knowledge-scope', {'mode': 'LOCKED'}, 'fixture')
         sid = session['session_id']
-        lease = legacy.begin(self.actor, sid, 'request', 0, 'fingerprint')
-        artifact = legacy.artifact(self.actor, sid, lease['token'], {'original': 'unchanged'})
-        committed = legacy.finish(self.actor, sid, lease['token'], session['state'],
+        lease = knowledge.begin(self.actor, sid, 'request', 0, 'fingerprint')
+        artifact = knowledge.artifact(self.actor, sid, lease['token'], {'original': 'unchanged'})
+        committed = knowledge.finish(self.actor, sid, lease['token'], session['state'],
                                   {'status': 'answered', 'answer': 'Existing answer'})
-        with closing(sqlite3.connect(legacy.path)) as db:
+        with closing(sqlite3.connect(knowledge.path)) as db:
             schema = db.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall()
         generic = SessionStore(self.root)
         self.assertEqual(generic.load(self.actor, sid)['state'], session['state'])
@@ -103,7 +101,7 @@ class SessionStoreContracts(unittest.TestCase):
         result = self.store.fail(self.actor, sid, lease['token'], session['state'], response)
         self.assertEqual(result['evidence'], response['evidence'])
         self.assertEqual(self.store.events(self.actor, sid)[0]['payload'], {'code': 'GENERIC_FAILURE'})
-        knowledge = AgentStore(self.root)
+        knowledge = KnowledgeSessions(SessionStore(self.root))
         with self.assertRaisesRegex(ValueError, 'INVALID_FAILURE_RESPONSE'):
             knowledge.fail(self.actor, sid, lease['token'], session['state'], response)
 
@@ -122,7 +120,7 @@ class SessionStoreContracts(unittest.TestCase):
                                {'status': 'complete'})
         self.assertEqual(self.store.load(self.actor, sid)['state'], {'namespace': 'generic/1', 'new': True})
 
-    def test_knowledge_facade_uses_injected_backend_and_preserves_legacy_turn_contract(self):
+    def test_knowledge_facade_uses_injected_backend_and_persists_atomic_turn(self):
         class RecordingBackend:
             def __init__(self, backend):
                 self.backend, self.calls = backend, []
@@ -138,8 +136,8 @@ class SessionStoreContracts(unittest.TestCase):
                 return invoke
 
         backend = RecordingBackend(self.store)
-        # All connections belong to the injected backend; the facade must never
-        # quietly construct a second database or a compatibility AgentStore.
+
+
         with patch.object(SessionStore, '__init__', side_effect=AssertionError('unexpected backend')):
             facade = KnowledgeSessions(backend)
             self.assertIs(facade.store, backend)
@@ -150,12 +148,12 @@ class SessionStoreContracts(unittest.TestCase):
             result = facade.finish(self.actor, sid, admitted['token'], state,
                                    {'status': 'answered', 'answer': 'Preserved answer'},
                                    assistant_event={'text': 'Preserved answer'})
-        legacy = AgentStore(self.root)
-        old = legacy.create(self.actor, 'scope', {'mode': 'AUTO'}, 'fixture')
+        knowledge = KnowledgeSessions(SessionStore(self.root))
+        old = knowledge.create(self.actor, 'scope', {'mode': 'AUTO'}, 'fixture')
         self.assertEqual(session['state'], old['state'])
-        self.assertEqual(legacy.load(self.actor, sid)['state'], state)
-        self.assertEqual(legacy.begin(self.actor, sid, 'turn', 0, 'fingerprint'), {'cached': result})
-        self.assertEqual([event['kind'] for event in legacy.events(self.actor, sid)],
+        self.assertEqual(knowledge.load(self.actor, sid)['state'], state)
+        self.assertEqual(knowledge.begin(self.actor, sid, 'turn', 0, 'fingerprint'), {'cached': result})
+        self.assertEqual([event['kind'] for event in knowledge.events(self.actor, sid)],
                          ['assistant', 'turn_completed'])
         self.assertEqual(backend.calls, ['create', 'begin', 'finish'])
         self.assertEqual(facade.root, self.store.root)

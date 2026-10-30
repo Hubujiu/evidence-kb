@@ -1,4 +1,3 @@
-"""Synthetic native/host integration contracts; real Rust transitions, no provider traffic."""
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event

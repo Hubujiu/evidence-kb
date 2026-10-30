@@ -1,11 +1,10 @@
-"""Generic context assembly over durable messages, with replaceable turn retention."""
 from copy import deepcopy
 
 from .context_budget import ContextBudget, ContextBudgetError, canonical, estimate_messages
 
 
 def estimate_request(messages, tools):
-    """Account for the complete logical request, including tool schemas."""
+
     return estimate_messages([{'role': 'user', 'content': canonical({'messages': messages, 'tools': tools})}])
 
 
@@ -44,7 +43,7 @@ def _turns(messages):
 
 
 class RecentTurns:
-    """Select a contiguous suffix of complete turns; never rewrite or persist history."""
+
 
     def select_start(self, groups, fits):
         if fits(0):
@@ -71,7 +70,7 @@ class HistoryContext:
             raise ContextBudgetError('TOKEN_CAPABILITY_UNVERIFIED')
         if not isinstance(messages, list) or not isinstance(tools, list):
             raise ContextBudgetError('INVALID_CONTEXT_INPUT')
-        # Detached data is the sole input to plugins and output to model adapters.
+
         messages, tools = deepcopy(messages), deepcopy(tools)
         canonical({'messages': messages, 'tools': tools})
         prefix, groups = _turns(messages)
@@ -90,7 +89,7 @@ class HistoryContext:
         def fits(start):
             return measure(start)['tokens'] <= self.policy.effective_input_budget
 
-        # The policy chooses a boundary only: it cannot alter tool results/history.
+
         start = self.compaction.select_start(deepcopy(groups), fits)
         if type(start) is not int or not 0 <= start < len(groups):
             raise ContextBudgetError('INVALID_COMPACTION_BOUNDARY')

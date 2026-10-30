@@ -1,4 +1,3 @@
-"""Versioned JSON adapter to the native plugin host and loop implementations."""
 import ctypes
 from functools import lru_cache
 import json

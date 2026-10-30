@@ -1,4 +1,3 @@
-"""Explicit, per-service tool registration; no ambient imports or global mutation."""
 from collections.abc import Callable, Iterable
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -64,7 +63,7 @@ class ToolPlugins:
         return list(self._plugins)
 
     def bind(self, plugins):
-        """Build an isolated invocation catalog without mutating shared tools."""
+
         return type(self)(plugins)
 
     def manifest(self):

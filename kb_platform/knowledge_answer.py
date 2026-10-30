@@ -1,10 +1,7 @@
-"""Knowledge business behavior; state belongs to the active KnowledgeTurn."""
-
 from __future__ import annotations
 from copy import deepcopy
 import time
 from .agent_context import canonical
-from .agent_store import digest
 from .agent_work_state import record_receipt
 from .core import PlatformError
 from .knowledge_policy import SYSTEM, VERIFIER_CANDIDATE_NOTE, _verifier_candidate
@@ -101,7 +98,6 @@ class KnowledgeAnswer:
             repair = {
                 "reason": reason,
                 "attempts": 1,
-                "candidate_sha256": digest(candidate),
                 "failed_call_id": self.trace["calls"][-1]["call_id"],
             }
             self.trace["citation_repair"] = repair
@@ -206,7 +202,6 @@ class KnowledgeAnswer:
                 ):
                     self.trace["abstention_review"] = {
                         "attempts": 1,
-                        "candidate_sha256": digest(answer),
                         "reason": "completed_refusal_with_visible_evidence",
                     }
                     answer = self.call_answer(
@@ -351,7 +346,6 @@ class KnowledgeAnswer:
                 )
         if self.config.get("answer_contract") and status == "abstained":
             self.trace["answer_contract"] = {
-                "candidate_sha256": digest(answer),
                 "action": "render_unverified_abstention",
                 "discarded_claims": len(answer.get("claims", [])),
             }

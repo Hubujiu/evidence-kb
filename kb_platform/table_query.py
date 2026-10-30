@@ -1,4 +1,3 @@
-"""Exact typed table values and bounded joins with original-row lineage."""
 from __future__ import annotations
 
 import math
@@ -7,12 +6,7 @@ from .core import PlatformError
 
 
 def verified_table(table):
-    """Return effective typed cells while preserving original physical rows.
 
-    Native parsers retain formula source strings in ``rows`` and place verified
-    cached values in the row-major cell metadata. Never compare or calculate a
-    formula string as if it were its evaluated value. No formula is evaluated.
-    """
     if not isinstance(table, dict):
         raise PlatformError('INVALID_TABLE_QUERY', 'An original typed table is required', 422)
     headers, values = table.get('headers'), table.get('rows')
@@ -72,7 +66,7 @@ def _key(value):
         return None
     if type(value) not in (str, bool, int, float) or isinstance(value, float) and not math.isfinite(value):
         raise PlatformError('INVALID_TABLE_JOIN_KEY', 'Join keys must be finite exact typed scalar values', 422)
-    # Python otherwise treats True, 1 and 1.0 as the same dictionary key.
+
     return type(value), value
 
 

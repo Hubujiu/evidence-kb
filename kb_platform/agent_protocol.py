@@ -1,4 +1,3 @@
-"""Typed wire contracts; jsonschema remains the strict output-validation boundary."""
 from typing import Annotated, Literal, NotRequired, TypedDict
 
 from pydantic import ConfigDict, Field, TypeAdapter, WithJsonSchema
@@ -37,8 +36,6 @@ class Quote(WireObject):
     quote: Text
 
 
-# Inline generated child schemas through Pydantic's supported annotation API.
-# No external references or new JSON Schema dialect are admitted at runtime.
 InlineQuote = Annotated[Quote, WithJsonSchema(TypeAdapter(Quote).json_schema())]
 
 
@@ -97,6 +94,6 @@ ADVANCED_PROPERTIES = TypeAdapter(AdvancedDecisionFields).json_schema()['propert
 
 
 def object_schema(properties, required=None):
-    """Runtime-bound citation enums and cardinalities still need dynamic schemas."""
+
     return {'type': 'object', 'properties': properties,
             'required': list(properties) if required is None else required, 'additionalProperties': False}

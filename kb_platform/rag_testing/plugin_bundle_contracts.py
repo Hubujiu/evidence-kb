@@ -1,4 +1,3 @@
-"""Configuration composition and disabled-core acceptance; entirely offline."""
 from copy import deepcopy
 import unittest
 
@@ -65,16 +64,16 @@ class BundleContracts(unittest.TestCase):
             'inner': {'version': 1, 'plugins': [{'id': 'a', 'use': 'service', 'config': {'value': 1}}]}})
         self.assertEqual(selected['plugins'], [{'id': 'a', 'use': 'service', 'config': {'value': 2}}])
 
-    def test_legacy_store_profiles_keep_default_and_configured_paths(self):
-        for config, expected in [({}, '.local/agentic-v5'), ({'root': 'old-path'}, 'old-path')]:
-            original = {'version': 1, 'plugins': [{'id': 'store', 'use': 'knowledge.store', 'config': config}]}
-            before = deepcopy(original)
-            selected = load_knowledge_profile(original, environment={})
-            self.assertEqual(original, before)
-            rows = {row['id']: row for row in selected['plugins']}
-            self.assertEqual(rows['store']['use'], 'harness.store.sqlite')
-            self.assertEqual(rows['store']['config']['root'], expected)
-            self.assertEqual(rows['store-knowledge']['use'], 'knowledge.sessions')
-            self.assertEqual(rows['knowledge-workflow']['use'], 'knowledge.workflow.graph')
-            overridden = load_knowledge_profile(original, environment={'KB_AGENT_ROOT': 'override'})
-            self.assertEqual(overridden['plugins'][0]['config']['root'], 'override')
+    def test_store_profile_applies_explicit_path_and_environment_override(self):
+        original = {'version': 1, 'plugins': [
+            {'id': 'store', 'use': 'harness.store.sqlite', 'config': {'root': 'session-path'}},
+            {'id': 'knowledge-store', 'use': 'knowledge.sessions'},
+            {'id': 'workflow', 'use': 'knowledge.workflow.graph'}]}
+        before = deepcopy(original)
+        selected = load_knowledge_profile(original, environment={})
+        self.assertEqual(original, before)
+        self.assertEqual(selected['plugins'][0]['config']['root'], 'session-path')
+        self.assertEqual([row['use'] for row in selected['plugins']],
+                         ['harness.store.sqlite', 'knowledge.sessions', 'knowledge.workflow.graph'])
+        overridden = load_knowledge_profile(original, environment={'KB_AGENT_ROOT': 'override'})
+        self.assertEqual(overridden['plugins'][0]['config']['root'], 'override')

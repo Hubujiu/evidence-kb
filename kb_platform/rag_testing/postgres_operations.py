@@ -1,4 +1,3 @@
-"""Explicit live build/embedding recovery checks; synthetic provider, zero remote calls."""
 import argparse
 import os
 from pathlib import Path
@@ -103,7 +102,7 @@ def build_suite(dsn, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Explicit live build/embedding recovery checks; synthetic provider, zero remote calls.')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)

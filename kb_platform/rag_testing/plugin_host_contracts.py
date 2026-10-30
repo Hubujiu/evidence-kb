@@ -1,4 +1,3 @@
-"""Synthetic plugin lifecycle contracts against the real native registry; no model calls."""
 from contextvars import Context, copy_context
 from threading import Event, Thread
 import unittest

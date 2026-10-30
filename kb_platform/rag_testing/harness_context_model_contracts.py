@@ -1,4 +1,3 @@
-"""Offline context and shared-model contracts using synthetic provider receipts."""
 from copy import deepcopy
 from dataclasses import asdict
 import json

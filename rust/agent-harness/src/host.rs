@@ -134,8 +134,6 @@ impl HostRegistry {
         }
         self.ancestors_ready(parent)?;
         let order = manifest::order(&plugins, &self.inherited(parent)?)?;
-        // The validated manifests are immutable for a scope's lifetime. Index
-        // service ownership once, without changing activation or inspect order.
         let providers = plugins
             .iter()
             .enumerate()
@@ -174,8 +172,6 @@ impl HostRegistry {
         }
         loop {
             let host = self.host(id)?;
-            // Raw lookup also serves dependency cleanup during disposal. New
-            // work is admitted separately by Acquire, which requires Ready.
             if let Some(index) = host.providers.get(service) {
                 let plugin = &host.plugins[*index];
                 if !host.active_plugins.contains(&plugin.id) {
@@ -282,10 +278,7 @@ impl HostRegistry {
             Command::Abort { host } => self.prepare_dispose(host, true),
             Command::FinishDispose { host: id } => {
                 let host = self.host(id)?;
-                if host.phase != Phase::Disposing
-                    || !host.children.is_empty()
-                    || !host.leases.is_empty()
-                {
+                if host.phase != Phase::Disposing {
                     return Err(Error::new(
                         "invalid_phase",
                         "scope must finish resource disposal first",

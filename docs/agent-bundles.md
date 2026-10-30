@@ -15,7 +15,7 @@
 | 上下文 | `harness.context.history`，按完整轮次保留历史 | 既有知识库历史、证据和 checkpoint 组装 |
 | 模型 | 调用方注入 callable 或结构化模型适配器 | 既有 Luna 提供者、模型服务与费用账本 |
 
-知识库默认路径不再创建外层 `single-tool` loop 和临时会话。可信 `kb_query` 绑定仍保留原始 actor、session、request ID、expected revision、来源策略和用户约束；图驱动直接执行该绑定。没有增加外层模型决策，也不改写已核验答案。旧 `ToolAgent`、`single-tool`、`AgentStore` 入口仍保留。
+知识库默认路径不再创建外层 `single-tool` loop 和临时会话。可信 `kb_query` 绑定仍保留原始 actor、session、request ID、expected revision、来源策略和用户约束；图驱动直接执行该绑定。没有增加外层模型决策，也不改写已核验答案。`ToolAgent` 和 `single-tool` 用于显式选择的单工具调用。
 
 ## 无网络的最小通用 Agent
 
@@ -76,13 +76,13 @@ profile 和组合包使用相同文档结构。例如仅替换存储目录：
 
 当前 profile 的插件条目按 `id` 覆盖组合包条目；省略的条目字段沿用原值，显式提供的 `config` 替换整个配置对象，不做深层合并。`disabled: true` 可以排除条目，但展开后的所有消费者仍须满足依赖。替换 `use` 选择的是已注册 `PluginSpec`；新实现须通过可信 catalog/`extra_plugins` 提供。
 
-知识库 loader 兼容上一版 flat profile 的 `knowledge.store` 插件条目：展开为通用 SQLite 后端和 `knowledge.sessions` 适配器，保留原 `root`，省略时仍用 `.local/agentic-v5`。`KB_AGENT_ROOT` 只覆盖后端目录。新配置应直接使用新插件键；对外服务名仍为 `knowledge.store`。
+知识库使用 `harness.store.sqlite` 后端和 `knowledge.sessions` 适配器。`KB_AGENT_ROOT` 覆盖后端目录；对外服务名为 `knowledge.store`。
 
 同名服务不意味着任意实现可以互换：调用方法、请求/结果合同和状态格式都必须兼容。通用应用调用 `loop.run()`；知识库应用使用可信工具绑定的 `loop.invoke()`。图程序由可信 Python 代码提供节点和路由，当前知识库通过 `knowledge.workflow.graph` 注入；仅写一份 JSON 图不会自动产生业务节点。
 
 ## 会话、状态和上下文的所有权
 
-`session_store.SessionStore` 唯一实现现有 SQLite 表和事务：会话归属、revision、单写者租约、请求指纹、历史事件和制品。最终 assistant 事件、状态与响应在同一事务提交。知识库状态的初始化与失败响应规则属于 `knowledge_state`；`KnowledgeSessions` 只适配这些规则，`agent_store.AgentStore` 保留旧构造和调用接口。
+`session_store.SessionStore` 唯一实现现有 SQLite 表和事务：会话归属、revision、单写者租约、请求指纹、历史事件和制品。最终 assistant 事件、状态与响应在同一事务提交。知识库状态的初始化与失败响应规则属于 `knowledge_state`；`KnowledgeSessions` 适配这些规则。
 
 通用会话使用 `agent.generic/1` 命名空间，拒绝把其他应用的会话当成普通聊天读取。失败轮内已经持久化、配对完整的工具调用和结果仍进入后续模型历史，并附上来源为 runtime 的失败或中断状态，避免模型遗忘已经发生的工具效果。原审计记录保留。
 

@@ -1,8 +1,3 @@
-"""Thin migration of research-v2 recorded ranking to the unified evidence contract.
-
-The original labels are document-level, not semantic answer or span annotations.
-No old experiment runner is imported or reactivated.
-"""
 from __future__ import annotations
 
 import argparse
@@ -117,7 +112,7 @@ def migrate(catalog_dir, query_path, plan_path, result_path, output, profile):
 
 
 if __name__ == '__main__':
-    p = argparse.ArgumentParser(description=__doc__)
+    p = argparse.ArgumentParser(description='Thin migration of research-v2 recorded ranking to the unified evidence contract.\n\nThe original labels are document-level, not semantic answer or span annotations.\nNo old experiment runner is imported or reactivated.\n')
     for name in ('catalog-dir', 'queries', 'legacy-plan', 'results', 'output'):
         p.add_argument('--' + name, type=Path, required=True)
     p.add_argument('--profile', default='tuned_weighted_rrf_rerank')

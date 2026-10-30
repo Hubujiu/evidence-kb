@@ -1,9 +1,3 @@
-"""Durable provider permission latch; immutable control receipts, never a cost ledger.
-
-A received 403 is terminal ERROR, and blocks new requests for this configured
-provider/model. No automatic recovery request is permitted. An operator may
-acknowledge an exact observed checkpoint after external repair, without a probe.
-"""
 from __future__ import annotations
 
 from hashlib import sha256
@@ -33,7 +27,7 @@ def _immutable(path, value):
             json.dump(value, stream, ensure_ascii=False, sort_keys=True)
             stream.flush()
             os.fsync(stream.fileno())
-        # Link a complete file to an exclusive destination; never replace a receipt.
+
         try:
             os.link(temporary, path)
         except FileExistsError:
@@ -89,18 +83,14 @@ class ProviderAdmission:
         else:
             _immutable(path, value)
 
-    def seed_from_capture(self, root, category):
-        """Read prior immutable 403 receipts before admitting any new request."""
+    def seed_from_capture(self, root):
+
         for path in sorted(Path(root).glob('*.json')):
             row = _read(path)
             if row.get('http_status') != 403 or row.get('status') != 'ERROR':
                 continue
             payload = row.get('payload', {})
-            exact_scope = row.get('provider_scope') == self.scope_hash
-            legacy_model = (row.get('provider_scope') is None and row.get('category') == category
-                            and self.identity['provider_id'] == 'magpie_luna'
-                            and payload.get('model') == self.identity['model'] and 'messages' in payload)
-            if not exact_scope and not legacy_model:
+            if row.get('provider_scope') != self.scope_hash:
                 continue
             if row.get('payload_sha256') != digest(payload):
                 raise ValueError('INVALID_PERMISSION_CAPTURE_HASH')

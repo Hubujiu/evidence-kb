@@ -42,9 +42,9 @@ flowchart TD
 
 `knowledge_service.KnowledgeService` 提供独立知识库会话 API；`knowledge_turn` 持有单轮业务状态，`knowledge_model`、`knowledge_planning`、`knowledge_answer` 分别拥有模型调用、规划与答案合同。业务调用者仍可直接使用领域服务，不必额外建立 Agent。`knowledge_tool.query_tool` 保留通用工具接入方式，使用宿主绑定身份和会话，直接交付经过核验的结果。
 
-`session_store.SessionStore` 唯一实现会话归属、请求指纹、revision、单写者租约和完成结果事务；`KnowledgeSessions` 注入该存储并承担知识库状态初始化及失败响应规则，旧 `AgentStore` 保留兼容入口；提供者账本仍独占实际请求身份、预留与 UNKNOWN。原生完成后再次检查授权、证据和取消，再在同一事务保存 assistant 事件、状态与响应。重复完成请求仍经过当前授权复核；中断请求不会自动续跑。
+`session_store.SessionStore` 唯一实现会话归属、请求指纹、revision、单写者租约和完成结果事务；`KnowledgeSessions` 注入该存储并承担知识库状态初始化及失败响应规则；提供者账本仍独占实际请求身份、预留与 UNKNOWN。原生完成后再次检查授权、证据和取消，再在同一事务保存 assistant 事件、状态与响应。重复完成请求仍经过当前授权复核；中断请求不会自动续跑。
 
-旧 `ToolAgent` 入口的 `harness.sessions.memory` 只保存单次 loop 的临时消息；默认知识库组合已不加载它。显式创建的 core 组合使用 `harness.sessions.durable` 以及同一通用存储合同，持久历史可跨宿主恢复，不加载知识库模块。其上下文按完整轮次裁剪，不改写持久历史。core 不随知识库 HTTP 产品启动。插件注册按作用域隔离；child 可显式覆盖父服务，关闭 child 只清理其拥有的子树。关闭流程先停止接收新调用，再检查活动租约与子作用域，最后按相反顺序释放注册效果和资源；忙碌时返回错误，不强制撤销已发送请求。
+`ToolAgent` 入口的 `harness.sessions.memory` 只保存单次 loop 的临时消息；默认知识库组合已不加载它。显式创建的 core 组合使用 `harness.sessions.durable` 以及同一通用存储合同，持久历史可跨宿主恢复，不加载知识库模块。其上下文按完整轮次裁剪，不改写持久历史。core 不随知识库 HTTP 产品启动。插件注册按作用域隔离；child 可显式覆盖父服务，关闭 child 只清理其拥有的子树。关闭流程先停止接收新调用，再检查活动租约与子作用域，最后按相反顺序释放注册效果和资源；忙碌时返回错误，不强制撤销已发送请求。
 
 运行快照不是可重放 checkpoint，内核不自动重试模型或工具。子运行继承父截止时间及取消信号；同步 Python 效果不提供硬中断。原有 `graph_node_started` 和 `trace.graph` 保留为审计格式，协议为 `rust-agent-kernel/1`。
 

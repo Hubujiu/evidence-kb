@@ -1,4 +1,3 @@
-"""Real knowledge profile, native loop and SQLite; synthetic sources/models, zero network."""
 from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
