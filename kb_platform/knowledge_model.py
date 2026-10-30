@@ -9,6 +9,8 @@ from .session_store import digest
 from .agent_tool_view import project_tool_results
 from .core import PlatformError
 from .knowledge_policy import _visible_user_statements
+from .planning_references import (bind_planning_schema, planning_bindings, project_references,
+                                  resolve_planning_decision)
 
 
 class KnowledgeModelCalls:
@@ -63,15 +65,20 @@ class KnowledgeModelCalls:
             projection_state["work_state"] = deepcopy(self.state["work_state"])
         if self.config.get("canonical_ids"):
             system += "\nCitation protocol: claims.evidence_ids and quotes.evidence_id MUST use each visible evidence record's top-level citation_id (also its top-level evidence_id). The record's nested evidence_ids array contains raw parser span IDs and MUST NOT be cited as a claim reference. Copy the canonical identifier exactly."
+        planning = role in {'decision', 'retrieval'}
+        aliases = planning_bindings(set(self.state['evidence']) | set(self.state['evidence_catalog'])) if planning else {}
+        wire_schema = bind_planning_schema(schema, aliases) if planning else schema
+        if planning:
+            system += '\nPlanner references are call-local short handles (E1, E2, ...). Use only the current citation_ids enum; never copy or combine raw source/span identifiers. Handles are resolved by the application before tools execute. They do not carry across calls. answer/clarify need no citation_ids; the later answer role selects its own citations.'
         context = self.service.context
         prepared = context.prepare(
             role,
-            system + "\n" + schema_instruction(schema),
-            projection_state,
-            safe_history,
-            evidence,
+            system + "\n" + schema_instruction(wire_schema),
+            project_references(projection_state, aliases) if planning else projection_state,
+            project_references(safe_history, aliases) if planning else safe_history,
+            project_references(evidence, aliases) if planning else evidence,
             question,
-            self.state["checkpoints"].get(role) if self.config["compact"] else None,
+            self.state["checkpoints"].get(role) if self.config["compact"] and not planning else None,
             selection_query=self.state.get("work_state", {}).get("resolved_query")
             if self.config.get("work_state")
             else None,
@@ -131,7 +138,7 @@ class KnowledgeModelCalls:
             envelope = self.service.model.complete(
                 prepared.messages,
                 role=role,
-                schema=schema,
+                schema=wire_schema,
                 call_context={
                     "run_id": self.session_id,
                     "session_id": self.session_id,
@@ -143,7 +150,7 @@ class KnowledgeModelCalls:
                     - (time.perf_counter() - self.started),
                 },
                 output_limit=self.service.context_policy.output_reserve,
-                validator=validator,
+                validator=(lambda value: validator(resolve_planning_decision(value, aliases))) if planning else validator,
             )
         except Exception as exc:
             failed = {
@@ -199,7 +206,9 @@ class KnowledgeModelCalls:
                         repair["new_call_id"] = self.trace["calls"][-1]["call_id"]
             raise
         record = envelope.to_dict()
+        value = resolve_planning_decision(envelope.value, aliases) if planning else envelope.value
+        record['value'] = value
         record.update(role=role, call_id=call_id, context_estimate=prepared.estimate)
         self.trace["calls"].append({key: value for key, value in record.items() if key != "value"})
         self.event("model_completed", record, agent=role)
-        return envelope.value
+        return value
