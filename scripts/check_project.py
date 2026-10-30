@@ -34,6 +34,7 @@ AGENT_DEPENDENCIES = {
     'agent_plugins': frozenset({'agent_schema'}),
     'plugin_native': frozenset({'agent_native'}),
     'plugin_host': frozenset({'plugin_native'}),
+    'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
     'harness_sessions': frozenset({'agent_engine', 'agent_plugins', 'session_identity', 'session_store'}),
     'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host', 'session_identity'}),
     'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
@@ -55,7 +56,7 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'agent_plugins', 'plugin_native', 'plugin_host', 'harness_sessions',
                            'harness_loop', 'harness_services', 'context_budget', 'session_identity', 'session_store',
                            'plugin_profiles', 'harness_graph', 'harness_context', 'harness_model',
-                           'harness_application', 'harness_profile'})
+                           'harness_application', 'harness_profile', 'plugin_process'})
 NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'}, 'agent-harness': {'plugin-runtime', 'serde', 'serde_json'}, 'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
@@ -462,6 +463,9 @@ def main() -> int:
         results.append(run_check("rust-tests", cargo + ["test", *native_args], output, env, timeout=600))
         if native_library is not None:
             env["KB_AGENT_KERNEL_LIBRARY"] = str(native_library)
+            results.append(run_check('plugin-process-integration',
+                [sys.executable, '-B', '-m', 'kb_platform.rag_testing.plugin_process_integration',
+                 '--output', str(output / 'plugin-process-integration')], output, env))
         results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts"], output, env))
         for kind in ("contracts", "scorer"):
             if kind == "contracts" and native_library is None:
