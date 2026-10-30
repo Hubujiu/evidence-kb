@@ -180,9 +180,11 @@ class EmbeddingJobs:
         delay = retry_delay(error, row['attempt']) if error else None
         status = 'COMPLETE'
         diagnostic = error.code if isinstance(error, EmbeddingPreflightError) else type(error).__name__ if error else None
+        retry_without_attempt = (getattr(error, 'model_sent', None) is False
+            or isinstance(error, EmbeddingPreflightError) and error.code in RECOVERABLE_PREFLIGHT)
         if error:
             status = 'ERROR' if isinstance(error, EmbeddingPreflightError) or getattr(error, 'status', None) is not None else 'UNKNOWN'
-            if isinstance(error, EmbeddingPreflightError) and error.code in RECOVERABLE_PREFLIGHT:
+            if retry_without_attempt:
                 status = 'RETRY'
             if delay is not None and row['attempt'] < self.max_attempts:
                 status = 'RETRY'
@@ -194,7 +196,7 @@ class EmbeddingJobs:
                 "AND request_id=%s AND status=ANY(%s) AND (%s OR lease_until>=clock_timestamp()) RETURNING retry_at",
                 (status, Jsonb(vectors) if vectors is not None else None,
                  digest(vectors) if vectors is not None else None, diagnostic,
-                 isinstance(error, EmbeddingPreflightError) and error.code in RECOVERABLE_PREFLIGHT,
+                 retry_without_attempt,
                  delay, delay, *scope, row['request_id'], ['UNKNOWN'] if recovered else ['RUNNING'], recovered)).fetchone()
             if not updated:
                 raise EmbeddingJobError('EMBEDDING_LEASE_LOST')
@@ -202,7 +204,7 @@ class EmbeddingJobs:
                          'tenant_id=%s AND kb_id=%s AND request_id=%s',
                          ('ERROR' if status == 'RETRY' else status,
                           diagnostic, *scope[:2], row['request_id']))
-            if error and not isinstance(error, EmbeddingPreflightError):
+            if error and not isinstance(error, EmbeddingPreflightError) and not retry_without_attempt:
                 conn.execute('UPDATE embedding_circuits SET failures=failures+1, '
                     'open_until=CASE WHEN failures+1 >= %s THEN clock_timestamp()+%s * '
                     "interval '1 second' ELSE open_until END WHERE tenant_id=%s AND kb_id=%s AND provider_hash=%s",

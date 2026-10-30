@@ -40,6 +40,13 @@ class _Lease:
     parent_operation: int | None = None
 
 
+@dataclass(frozen=True)
+class _ActionFailure:
+    host: int
+    operation: int
+    error: BaseException
+
+
 class EventName(StrEnum):
     RUN_STARTED = 'run.started'
     RUN_COMPLETED = 'run.completed'
@@ -224,7 +231,7 @@ class PluginHost:
             except BaseException:
                 self._root._pump_owner = None
                 raise
-        failures = self._pump(owner=pump_owner)
+        failures = [failure.error for failure in self._pump(owner=pump_owner) if failure.host == self.id]
         if failures:
             failure = failures[0]
             native_call('runtime_drain', host=self.id, remove=True)
@@ -371,7 +378,7 @@ class PluginHost:
                     services = self._execute(action)
                 except BaseException as exc:
                     completion = {'status': 'error', 'error': f'{type(exc).__name__}: {exc}'}
-                    failures.append(exc)
+                    failures.append(_ActionFailure(action['host'], action['operation'], exc))
                 else:
                     completion = {'status': 'ok', 'services': services}
                 finally:
@@ -501,7 +508,11 @@ class PluginHost:
         return _current_call.get()
 
     def cancel(self, operation):
-        result = native_call('runtime_cancel', host=self.id, operation=operation)
+        with self._lock:
+            result = native_call('runtime_cancel', host=self.id, operation=operation)
+            signal = self._cancellations.get(operation)
+            if result['cancelled'] and signal is not None:
+                signal.set()
         self._raise_failures(self._pump(), 'Cancellation effects failed')
         return result
 
@@ -628,6 +639,7 @@ class PluginHost:
         return {**result, 'runtime': self.inspect()}
 
     def _raise_failures(self, failures, message):
+        failures = [failure.error for failure in failures if failure.host == self.id]
         if failures:
             failure = BaseExceptionGroup(message, failures)
             failure.failed_host = self

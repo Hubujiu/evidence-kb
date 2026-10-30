@@ -120,7 +120,11 @@ def validate_request(request):
             raise ValueError('INVALID_MODEL_LIMIT')
     if 'validator' in body and body['validator'] is not None and not callable(body['validator']):
         raise ValueError('INVALID_MODEL_VALIDATOR')
-    return ModelRequest(kind, deepcopy(body), deepcopy(request.call_context))
+    authorize = request.call_context.get('authorize')
+    if authorize is not None and not callable(authorize):
+        raise ValueError('INVALID_MODEL_AUTHORIZER')
+    references = {id(value): value for value in (body.get('validator'), authorize) if callable(value)}
+    return ModelRequest(kind, deepcopy(body, references), deepcopy(request.call_context, references))
 
 
 def validate_result(request, result):

@@ -10,6 +10,7 @@ from kb_platform.application_composition import create_platform
 from kb_platform.settings import Settings
 from kb_platform.remote import RemoteModelError
 from .embedding_jobs_contracts import live_contract_suite
+from .model_review_contracts import live_contract_suite as model_review_suite
 from .runner import write_json
 
 
@@ -64,15 +65,17 @@ def build_suite(dsn, output):
             with self.assertRaises(PlatformError):
                 self.platform.stage(self.actor, self.kb, ['hybrid'])
             build = self.latest()
-            before = len(self.calls)
             with self.platform._tx(self.actor, self.kb) as conn:
+                conn.execute("UPDATE embedding_jobs SET retry_at=clock_timestamp() WHERE status='RETRY'")
                 conn.execute("UPDATE builds SET inputs=jsonb_set(inputs, '{search_dependencies,files,postgres_search.py}', "
-                             "to_jsonb(%s::text)) WHERE build_id=%s", ('0' * 64, build['build_id']))
+                             "to_jsonb(%s::text)) WHERE build_id=%s",
+                             ('0' * 64, build['build_id']))
+            before = list(self.calls)
             self.provider.fail = False
-            with self.assertRaises(PlatformError) as rejected:
+            with self.assertRaises(PlatformError) as raised:
                 self.platform.resume_build(self.actor, self.kb, build['build_id'])
-            self.assertEqual(rejected.exception.code, 'STALE_BUILD')
-            self.assertEqual(len(self.calls), before)
+            self.assertEqual(raised.exception.code, 'STALE_BUILD')
+            self.assertEqual(self.calls, before)
             self.assertEqual(self.latest()['status'], 'STAGING')
 
         def test_crash_after_search_commit_resumes_without_rebuilding(self):
@@ -121,7 +124,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
-    suite = unittest.TestSuite([live_contract_suite(os.environ['KB_DSN']), build_suite(os.environ['KB_DSN'], args.output)])
+    dsn = os.environ['KB_DSN']
+    suite = unittest.TestSuite([live_contract_suite(dsn), model_review_suite(dsn), build_suite(dsn, args.output)])
     with (args.output / 'checks.log').open('w', encoding='utf-8') as stream:
         result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
     report = dict(status='PASS' if result.wasSuccessful() else 'FAIL', tests=result.testsRun,

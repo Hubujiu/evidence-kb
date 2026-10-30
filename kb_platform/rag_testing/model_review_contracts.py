@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 from threading import Event, Thread
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import httpx
@@ -14,13 +15,13 @@ import httpx
 from kb_platform.agent_model import BudgetLedger as AgentBudget
 from kb_platform.context_budget import ContextBudget
 from kb_platform.embedding_jobs import EmbeddingJobs, EmbeddingJobError, recovered_vectors
-from kb_platform.embeddings import EmbeddingCallError
+from kb_platform.embeddings import EmbeddingCallError, EmbeddingError
 from kb_platform.google_semantic_provider import GoogleSemanticProvider
 from kb_platform.model_adapters import EmbeddingAdapter
 from kb_platform.model_configuration import EmbeddingView
 from kb_platform.model_http import OpenAICompatibleAdapter
 from kb_platform.model_plugins import model_plugins
-from kb_platform.model_service import Capability, ModelInfo, ModelRequest, ModelResult, ModelService
+from kb_platform.model_service import Capability, ModelInfo, ModelRequest, ModelResult, ModelService, validate_request
 from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.rag_testing.budget import BudgetLedger, producer_guard
 from kb_platform.remote import GoogleEmbeddingProvider
@@ -83,6 +84,81 @@ class ModelFixtures:
 
 
 class ModelReviewContracts(ModelFixtures, unittest.TestCase):
+    def test_request_data_copy_preserves_authorization_capability_identity(self):
+        class Authorizer:
+            def __call__(self):
+                return True
+        authorize = Authorizer()
+        request = ModelRequest(Capability.EMBEDDING, {'texts': ['source']},
+                               {'authorize': authorize, 'audit_context': {'sources': ['original']}})
+        copied = validate_request(request)
+        request.payload['texts'].append('changed')
+        request.call_context['audit_context']['sources'].append('changed')
+        self.assertIs(copied.call_context['authorize'], authorize)
+        self.assertEqual(copied.payload['texts'], ['source'])
+        self.assertEqual(copied.call_context['audit_context']['sources'], ['original'])
+
+    def test_observed_pre_send_revocation_uses_original_bound_and_callable_authorizers(self):
+        provider = self.observed()
+        view, _ = self.view(EmbeddingAdapter(provider), dimension=768)
+        for binding in ('method', 'callable'):
+            with self.subTest(binding=binding):
+                class Authorizer:
+                    allowed = True
+                    def check(self):
+                        return self.allowed
+                    def __call__(self):
+                        return self.check()
+                authorizer = Authorizer()
+                authorize = authorizer.check if binding == 'method' else authorizer
+                reserve = provider.ledger.reserve
+                def revoke_after_reservation(*args, **kwargs):
+                    result = reserve(*args, **kwargs)
+                    authorizer.allowed = False
+                    return result
+                request_id = 'revoke_' + binding
+                with patch.object(provider.ledger, 'reserve', side_effect=revoke_after_reservation), \
+                        patch.object(provider.remote, '_post', wraps=provider.remote._post) as post:
+                    with self.assertRaisesRegex(EmbeddingError, 'authorization required'):
+                        view.documents(['private source'], request_id=request_id, audit_context=self.audit(),
+                                       authorize=authorize)
+                    self.assertEqual(post.call_count, 0)
+                record = json.loads((provider.audit_dir / (request_id + '.json')).read_text('utf-8'))
+                self.assertEqual(record['status'], 'ERROR')
+                self.assertEqual(record['physical_embedding_attempts'], 0)
+                self.assertEqual(record['usage'], {'remote_embedding_calls': 0, 'input_tokens': 0})
+                self.assertEqual(provider.ledger.summary()['pending_or_unknown'], 0)
+                self.assertEqual(self.sent, [])
+
+    def test_embedding_jobs_known_unsent_transport_retries_without_attempt_or_circuit_failure(self):
+        for transport_error in (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.ReadTimeout):
+            with self.subTest(error=transport_error.__name__):
+                def respond(request):
+                    raise transport_error('synthetic transport failure', request=request)
+                adapter = self.adapter(transport_error.__name__, respond)
+                view, _ = self.view(adapter)
+                jobs = EmbeddingJobs('synthetic', max_attempts=1, circuit_threshold=1)
+                row = dict(tenant_id='t', kb_id='k', build_id='b', batch_no=0, request_id='attempt-1',
+                           provider_hash='p', attempt=1, status='RUNNING', payload={'units': [{'text': 'one'}]})
+                connection = Mock()
+                connection.execute.return_value.fetchone.return_value = {'retry_at': None}
+                @contextmanager
+                def transaction(*args):
+                    yield connection
+                unsent = transport_error is not httpx.ReadTimeout
+                with patch.object(jobs, '_tx', transaction), \
+                        patch.object(jobs, '_prepare', return_value=(view.manifest, 'dependency')), \
+                        patch.object(jobs, '_claim', return_value=row), \
+                        patch.object(jobs, 'status', return_value=[row]):
+                    with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY' if unsent else 'EMBEDDING_UNKNOWN'):
+                        jobs.run('t', 'k', 'b', view, [{'text': 'one'}], lambda: True, {})
+                statements = connection.execute.call_args_list
+                self.assertEqual(statements[0].args[1][0], 'RETRY' if unsent else 'UNKNOWN')
+                self.assertEqual(statements[0].args[1][4], unsent)
+                self.assertEqual(any('UPDATE embedding_circuits' in call.args[0] for call in statements), not unsent)
+                self.assertEqual(adapter.ledger.summary()['pending_or_unknown'], 0 if unsent else 1)
+                self.assertEqual(adapter.ledger.summary()['effective_usage_or_reserved'], {'requests': 0 if unsent else 1})
+
     def test_owner_admission_failure_and_route_change_do_not_leak_domain_use(self):
         for scenario in ('failed', 'replaced', 'adopted'):
             with self.subTest(scenario=scenario):
@@ -300,6 +376,63 @@ def live_contract_suite(dsn):
 
         def audit(self):
             return {**super().audit(), 'tenant_id': self.scope[0], 'kb_id': self.scope[1], 'build_id': self.scope[2]}
+
+        def test_known_unsent_transport_errors_resume_with_new_physical_id_without_circuit_failure(self):
+            for transport_error in (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
+                with self.subTest(error=transport_error.__name__):
+                    self.scope = ('model-review-' + uuid4().hex, 'kb', 'build')
+                    self.jobs = EmbeddingJobs(dsn, max_attempts=1, circuit_threshold=1)
+                    failing = [True]
+                    def respond(request):
+                        if failing[0]:
+                            raise transport_error('synthetic connection failure', request=request)
+                        return httpx.Response(200, json={'data': [{'index': 0, 'embedding': [1., 0.]}]})
+                    adapter = self.adapter(transport_error.__name__, respond)
+                    view, _ = self.view(adapter)
+                    requests = []
+                    for _ in range(2):
+                        with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY'):
+                            self.jobs.run(*self.scope, view, [{'text': 'one'}], lambda: True, self.audit())
+                        row = self.jobs.status(*self.scope)[0]
+                        self.assertEqual((row['status'], row['attempt']), ('RETRY', 0))
+                        requests.append(row['request_id'])
+                        with self.jobs._tx(*self.scope[:2]) as connection:
+                            circuit = connection.execute('SELECT failures,open_until FROM embedding_circuits '
+                                'WHERE tenant_id=%s AND kb_id=%s', self.scope[:2]).fetchone()
+                            attempts = connection.execute('SELECT status FROM embedding_attempts '
+                                'WHERE tenant_id=%s AND kb_id=%s', self.scope[:2]).fetchall()
+                        self.assertEqual(circuit, {'failures': 0, 'open_until': None})
+                        self.assertEqual([attempt['status'] for attempt in attempts], ['ERROR'] * len(requests))
+                        self.assertEqual(adapter.ledger.summary()['pending_or_unknown'], 0)
+                        self.assertEqual(adapter.ledger.summary()['effective_usage_or_reserved'], {'requests': 0})
+                    failing[0] = False
+                    self.assertEqual(len(self.jobs.run(*self.scope, view, [{'text': 'one'}], lambda: True, self.audit())), 1)
+                    row = self.jobs.status(*self.scope)[0]
+                    requests.append(row['request_id'])
+                    self.assertEqual((row['status'], row['attempt']), ('COMPLETE', 1))
+                    self.assertEqual(len(set(requests)), 3)
+                    self.assertEqual(adapter.ledger.summary()['physical_requests'], 3)
+                    self.assertEqual(adapter.ledger.summary()['effective_usage_or_reserved'], {'requests': 1})
+
+        def test_sent_transport_timeout_stays_unknown_and_is_not_automatically_retried(self):
+            def respond(request):
+                raise httpx.ReadTimeout('synthetic outcome unknown', request=request)
+            adapter = self.adapter('unknown', respond)
+            view, _ = self.view(adapter)
+            for _ in range(2):
+                with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_UNKNOWN'):
+                    self.jobs.run(*self.scope, view, [{'text': 'one'}], lambda: True, self.audit())
+            row = self.jobs.status(*self.scope)[0]
+            self.assertEqual((row['status'], row['attempt']), ('UNKNOWN', 1))
+            with self.jobs._tx(*self.scope[:2]) as connection:
+                attempts = connection.execute('SELECT status FROM embedding_attempts WHERE tenant_id=%s AND kb_id=%s',
+                                              self.scope[:2]).fetchall()
+                circuit = connection.execute('SELECT failures FROM embedding_circuits WHERE tenant_id=%s AND kb_id=%s',
+                                             self.scope[:2]).fetchone()
+            self.assertEqual(attempts, [{'status': 'UNKNOWN'}])
+            self.assertEqual(circuit['failures'], 1)
+            self.assertEqual(len(self.sent), 1)
+            self.assertEqual(adapter.ledger.summary()['pending_or_unknown'], 1)
 
         def test_producer_busy_is_retry_without_attempt_or_circuit_failure_and_resumes(self):
             adapter = self.adapter()

@@ -1,12 +1,16 @@
+from concurrent.futures import Future
+from io import BytesIO
 import json
 from pathlib import Path
 import tempfile
+from threading import Event, Thread
+from time import monotonic
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from kb_platform.plugin_host import PluginHost
+from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
-from kb_platform.plugin_process import PROTOCOL, ProcessPackages
+from kb_platform.plugin_process import PROTOCOL, ProcessPackages, ProcessTransport, _Write
 
 
 class ProcessPackageContracts(unittest.TestCase):
@@ -94,3 +98,78 @@ class ProcessPackageContracts(unittest.TestCase):
                 manager.install(source)
             self.assertEqual(failure.exception.code, 'INVALID_PROCESS_ENTRY')
             self.assertEqual(list(manager.root.iterdir()), [])
+
+    def test_idle_process_exit_pumps_cleanup_outside_reader(self):
+        with tempfile.TemporaryDirectory() as root:
+            manager, installed = self.package(root)
+            spec = manager.catalog(installed['package'], journal=Path(root) / 'journal')
+            disposed = Event()
+
+            def mount(ctx, config):
+                ctx.require('echo')
+                ctx.defer(disposed.set)
+
+            dependent = PluginSpec('dependent', (), ('echo',), mount)
+            with patch.object(ProcessTransport, 'start'):
+                host = PluginHost({'version': 1, 'plugins': [
+                    {'id': 'process', 'use': spec.key}, {'id': 'dependent', 'use': dependent.key}]},
+                    [spec, dependent])
+            transport = host.service('echo').transport
+            notified = Event()
+            on_exit = transport.on_exit
+
+            def notify():
+                try:
+                    on_exit()
+                finally:
+                    notified.set()
+
+            transport.on_exit = notify
+            transport._process = Mock(stdin=BytesIO(), stdout=BytesIO())
+            transport._process.poll.return_value = 19
+            transport._reader = Thread(target=transport._read, daemon=True)
+            transport._reader.start()
+            try:
+                self.assertTrue(notified.wait(2), 'Idle process exit must finish lifecycle notification')
+                self.assertTrue(disposed.is_set(), 'Idle process exit must finish dependent cleanup')
+                transport._reader.join(1)
+                self.assertFalse(transport._reader.is_alive())
+                self.assertTrue(transport._closed)
+                self.assertEqual(host.inspect()['counts']['resources'], 0)
+            finally:
+                host.close()
+
+    def test_control_write_deadline_is_supervised_without_pending_business_request(self):
+        with tempfile.TemporaryDirectory() as root:
+            _, installed = self.package(root)
+            transport = ProcessTransport(installed['package'], journal=Path(root) / 'journal',
+                timeout=1, identity={})
+            writing, released, terminated = Event(), Event(), Event()
+
+            def write(payload):
+                writing.set()
+                released.wait(2)
+                raise BrokenPipeError('controlled process stopped')
+
+            def terminate():
+                terminated.set()
+                released.set()
+
+            process = transport._process = Mock()
+            process.poll.side_effect = lambda: 19 if terminated.is_set() else None
+            process.terminate.side_effect = terminate
+            process.stdin.write.side_effect = write
+            request = {'id': 'cancel-control', 'kind': 'cancel'}
+            control = _Write(request, b'cancel\n', monotonic() + 0.05, Future(), status='CANCEL_SENT')
+            try:
+                transport._enqueue(control)
+                self.assertTrue(writing.wait(1))
+                self.assertEqual(transport._pending, {})
+                self.assertTrue(terminated.wait(1), 'Control write must retain independent supervision')
+                transport._writer.join(1)
+                self.assertFalse(transport._writer.is_alive())
+                self.assertTrue(control.future.done())
+                self.assertEqual(transport._writes, {})
+            finally:
+                released.set()
+                transport.close()
