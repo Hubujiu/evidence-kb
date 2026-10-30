@@ -408,6 +408,7 @@ class PluginHostContracts(unittest.TestCase):
                 except PluginError as exc:
                     observed.append(exc.code)
                 observed.append(context.host.call('action', 'invoke'))
+                self.assertEqual(disposed, [])
 
             context.on(EventName.TOOL_AFTER, listener)
 
@@ -415,7 +416,7 @@ class PluginHostContracts(unittest.TestCase):
         try:
             self.assertEqual(host.emit(EventName.TOOL_AFTER, {}), ())
             self.assertEqual(observed, ['scope_busy', 'finished'])
-            self.assertEqual(disposed, [])
+            self.assertEqual(disposed, [True])
         finally:
             host.close()
         self.assertEqual(disposed, [True])
