@@ -261,6 +261,10 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
 
                 def rank(inner, query, candidates):
                     ids = [item["citation_id"] for item in candidates]
+                    if not ids:
+                        return []
+                    if len(set(ids)) != len(ids):
+                        raise ValueError("DUPLICATE_RERANK_CANDIDATE")
                     schema = object_schema(
                         {
                             "scores": {"type": "array", "minItems": len(ids), "maxItems": len(ids),

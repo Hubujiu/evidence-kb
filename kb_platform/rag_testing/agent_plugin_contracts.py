@@ -146,6 +146,8 @@ class RuntimeLifecycleContracts(TestCase):
 
         def search_pipeline(gateway, actor, scope, query, policy, config, **kwargs):
             hits = gateway.search(actor, scope, query, policy)
+            if limit == 6:
+                hits.reverse()
             if config.get('rerank'):
                 ranked = gateway.pipeline_reranker.rank(query, hits)
                 self.assertEqual(ranked, [{'citation_id': item['citation_id'], 'score': index / len(hits)}
@@ -169,6 +171,36 @@ class RuntimeLifecycleContracts(TestCase):
             self.assertEqual(len(case.model.calls), limit)
             self.assertEqual([c['role'] for c in case.model.calls[-2:]], ['answer', 'verifier'])
             self.assertEqual(len(result['trace']['tool_calls']), 2)
+
+    def test_rerank_boundary_scores_and_candidate_identity(self):
+        for score in (0.75, float('nan'), float('inf'), -0.01, 1.01, True, 'NaN', '0.5', None):
+            with self.subTest(score=score):
+                def search_pipeline(gateway, actor, scope, query, policy, config, **kwargs):
+                    hits = gateway.search(actor, scope, query, policy)
+                    ranker = gateway.pipeline_reranker
+                    self.assertEqual(ranker.rank(query, []), [])
+                    with self.assertRaisesRegex(ValueError, 'DUPLICATE_RERANK_CANDIDATE'):
+                        ranker.rank(query, [hits[0], hits[0]])
+                    candidate = hits[-1]
+                    if score == 0.75:
+                        self.assertEqual(ranker.rank(query, [candidate]),
+                                         [{'citation_id': candidate['citation_id'], 'score': 0.75}])
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'AGENT_SCHEMA_MISMATCH'):
+                            ranker.rank(query, [candidate])
+                    return {'hits': hits, 'trace': {'expansion': []}}
+
+                case = self.setup_service([
+                    ('decision', fixtures.decision('search_pipeline', query='original')),
+                    ('rerank', {'scores': [score]}), ('retrieval', fixtures.decision('answer')),
+                    ('answer', fixtures.cited_answer), ('verifier', fixtures.verdict())])
+                case.service.retrieval_config = {'channels': ['bm25'], 'rerank': True}
+                with patch.object(type(case.gateway), 'search_pipeline', search_pipeline), \
+                        patch.object(type(case.gateway), 'pipeline_capabilities', return_value={
+                            'channels': ['bm25'], 'rerank_all_sources_admitted': True}):
+                    result = self.turn(case)
+                self.assertEqual(result['status'], 'answered', result)
+                self.assertEqual(sum(call['role'] == 'rerank' for call in case.model.calls), 1)
 
     def test_exploration_reserves_worst_case_physical_attempts(self):
         policy = CallBudget(10, True, max_attempts=3)

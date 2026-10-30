@@ -48,13 +48,17 @@ def classify_provider_failure(row, provider, error):
 
     if isinstance(error, CapturePreflightError):
         code = {'BUDGET_INSUFFICIENT': 'EMBEDDING_BUDGET_INSUFFICIENT',
-                'UNRESOLVED_PHYSICAL_REQUEST': 'EMBEDDING_LEDGER_BLOCKED'}.get(error.reason)
+                'UNRESOLVED_PHYSICAL_REQUEST': 'EMBEDDING_LEDGER_BLOCKED',
+                'BUDGET_PRODUCER_BUSY': 'EMBEDDING_LEDGER_BLOCKED',
+                'BUDGET_PRODUCER_SEALED': 'EMBEDDING_LEDGER_BLOCKED'}.get(error.reason)
         if code is not None:
             return EmbeddingPreflightError(code)
 
     diagnostics = {
         'Formatted input exceeds conservative native token admission; no truncation': 'EMBEDDING_INPUT_TOO_LARGE',
         'BUDGET_INSUFFICIENT': 'EMBEDDING_BUDGET_INSUFFICIENT',
+        'BUDGET_PRODUCER_BUSY': 'EMBEDDING_LEDGER_BLOCKED',
+        'BUDGET_PRODUCER_SEALED': 'EMBEDDING_LEDGER_BLOCKED',
         'Unresolved physical outcome requires inspection before another embedding request': 'EMBEDDING_LEDGER_BLOCKED',
     }
     code = diagnostics.get(str(error))

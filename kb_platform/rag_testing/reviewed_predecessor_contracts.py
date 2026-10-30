@@ -108,3 +108,70 @@ class ReviewedPredecessorContracts(unittest.TestCase):
         self.review_path.write_text(json.dumps(self.review), 'utf-8')
         with self.assertRaises(DeliveryConfigurationError):
             load_budget_batch(profile, batch)
+
+    def test_active_old_producer_blocks_successor_even_with_quiescent_attestation(self):
+        frozen = self.freeze()
+        with self.old.admission():
+            with self.assertRaisesRegex(ValueError, 'BUDGET_PRODUCER_BUSY'):
+                ReviewedPredecessorLedger(self.root / 'new.sqlite3', self.caps, predecessors=[frozen])
+        self.assertFalse((self.root / 'new.sqlite3').exists())
+        ledger = ReviewedPredecessorLedger(self.root / 'new.sqlite3', self.caps, predecessors=[frozen])
+        self.assertEqual(ledger.summary()['physical_requests'], 0)
+
+    def test_sealed_old_producer_and_reopened_instance_cannot_reserve(self):
+        frozen = self.freeze()
+        ReviewedPredecessorLedger(self.root / 'new.sqlite3', self.caps, predecessors=[frozen])
+        for old in (self.old, BudgetLedger(self.old.path, self.caps)):
+            with self.assertRaisesRegex(ValueError, 'BUDGET_PRODUCER_SEALED'):
+                old.reserve('late', self.reserved)
+        self.assertEqual(self.old.summary()['physical_requests'], 1)
+
+    def test_sibling_batch_rejected_but_descendant_can_continue(self):
+        frozen = self.freeze()
+        first = ReviewedPredecessorLedger(self.root / 'first.sqlite3', self.caps, predecessors=[frozen])
+        with self.assertRaisesRegex(ValueError, 'BUDGET_SUCCESSOR_CONFLICT'):
+            ReviewedPredecessorLedger(self.root / 'sibling.sqlite3', self.caps, predecessors=[frozen])
+        second = ReviewedPredecessorLedger(self.root / 'second.sqlite3', self.caps,
+                                           predecessors=[frozen, freeze_predecessor(first.path)])
+        with self.assertRaisesRegex(ValueError, 'BUDGET_PRODUCER_SEALED'):
+            first.reserve('stale', self.reserved)
+        second.reserve('fresh', self.reserved)
+        second.finish('fresh', status='COMPLETE', usage=self.reserved)
+        self.assertEqual(second.summary()['physical_requests'], 1)
+
+    def test_failed_validation_does_not_seal_parent(self):
+        frozen = self.freeze()
+        self.record.write_text('{}', 'utf-8')
+        with self.assertRaises(ValueError):
+            ReviewedPredecessorLedger(self.root / 'bad.sqlite3', self.caps, predecessors=[frozen])
+        with self.old.admission():
+            pass
+
+    def test_exclusion_spans_actual_send_and_releases_after_response(self):
+        from kb_platform.provider_admission import CapturePreflightError
+        from kb_platform.embedding_jobs import classify_provider_failure, EmbeddingPreflightError
+        old = BudgetLedger(self.root / 'settled.sqlite3', self.caps)
+        frozen = freeze_predecessor(old.path)
+        reopened = BudgetLedger(old.path, self.caps)
+        sent = []
+
+        def respond(request):
+            sent.append(request)
+            with self.assertRaisesRegex(ValueError, 'BUDGET_PRODUCER_BUSY'):
+                reopened.reserve('concurrent', self.reserved)
+            with self.assertRaisesRegex(ValueError, 'BUDGET_PRODUCER_BUSY'):
+                ReviewedPredecessorLedger(self.root / 'racing.sqlite3', self.caps, predecessors=[frozen])
+            return httpx.Response(200, json={'usage': {'prompt_tokens': 3, 'completion_tokens': 4}})
+
+        transport = MeteredTransport(httpx.MockTransport(respond), old, self.root / 'captures', category='model')
+        with httpx.Client(transport=transport) as client:
+            client.post('https://example.test', json={'messages': [], 'max_tokens': 20})
+            ReviewedPredecessorLedger(self.root / 'next.sqlite3', self.caps,
+                                       predecessors=[freeze_predecessor(old.path)])
+            with self.assertRaisesRegex(CapturePreflightError, 'BUDGET_PRODUCER_SEALED') as caught:
+                client.post('https://example.test', json={'messages': [], 'max_tokens': 20})
+        classified = classify_provider_failure({}, None, caught.exception)
+        self.assertIsInstance(classified, EmbeddingPreflightError)
+        self.assertEqual(classified.code, 'EMBEDDING_LEDGER_BLOCKED')
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(old.summary()['physical_requests'], 1)

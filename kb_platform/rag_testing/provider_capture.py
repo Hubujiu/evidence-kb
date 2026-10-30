@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from contextvars import ContextVar
 from copy import deepcopy
 import json
@@ -36,6 +36,16 @@ class MeteredTransport(httpx.BaseTransport):
         self.root.mkdir(parents=True, exist_ok=True)
 
     def handle_request(self, request):
+        with ExitStack() as stack:
+            try:
+                stack.enter_context(self.ledger.admission())
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                if isinstance(exc, ValueError) and str(exc) in {'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
+                    raise CapturePreflightError(str(exc)) from exc
+                raise CaptureAdmissionError(str(exc)) from exc
+            return self._handle_admitted(request)
+
+    def _handle_admitted(self, request):
         if self.admission is not None:
             self.admission.require_available()
         try:

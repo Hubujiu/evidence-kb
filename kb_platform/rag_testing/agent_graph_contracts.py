@@ -102,6 +102,22 @@ class AgentGraphContracts(unittest.TestCase):
         self.assertEqual(result['status'], 'answered', result)
         self.assertEqual({item['source_id'] for item in result['evidence']}, {'s1'})
 
+    def test_source_switch_rejects_cross_turn_quote_before_delivering_new_source(self):
+        case = self.setup_service(normal_script(), policy={'mode': 'LOCKED', 'source_ids': ['s0']})
+        first = self.turn(case)
+        old = first['evidence'][0]
+        stale_answer = {'answer': old['text'], 'abstain': False, 'completion': 'complete', 'unresolved': [],
+                        'claims': [{'text': old['text'], 'evidence_ids': [old['citation_id']],
+                                    'quotes': [{'evidence_id': old['citation_id'], 'quote': old['text']}]}]}
+        case.model.script = [('decision', decision()), ('retrieval', decision('answer')),
+                             ('answer', stale_answer), ('answer', cited_answer), ('verifier', verdict())]
+        result = case.service.turn(case.authority.actor, case.session, message='Use the newly selected rule.',
+            request_id='switch-stale', expected_revision=1, policy={'mode': 'LOCKED', 'source_ids': ['s1']})
+        self.assertEqual(result['status'], 'answered', result)
+        self.assertEqual(result['answer'], 'Other private rule.')
+        self.assertNotIn(old['citation_id'], json.dumps(result['claims']))
+        self.assertEqual(result['trace']['citation_repair']['attempts'], 1)
+
     def test_current_correction_is_visible_to_verifier_before_it_enters_history(self):
         case = self.setup_service()
         self.turn(case, message='你好', request='hello')
