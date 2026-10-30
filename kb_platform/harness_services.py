@@ -10,6 +10,7 @@ from .harness_model import CallableModel, StructuredDecisionModel
 from .context_budget import ContextBudget
 from .session_store import SessionStore
 from .plugin_host import PluginSpec
+from .plugin_configuration import configured_plugins, config_schema, TEXT, POSITIVE
 
 
 class HistoryPrompt:
@@ -17,52 +18,39 @@ class HistoryPrompt:
         return {'messages': deepcopy(messages), 'tools': deepcopy(tools)}
 
 
-def _config(config, allowed=()):
-    if set(config) - set(allowed):
-        raise ValueError('UNKNOWN_HARNESS_PLUGIN_CONFIG')
 
 
 def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
     registered = tuple(tools)
 
     def runtime_plugin(ctx, config):
-        _config(config)
         ctx.provide('runtime', runtime if runtime is not None else Runtime())
 
     def sessions_plugin(ctx, config):
-        _config(config)
         ctx.provide('sessions', MemorySessions())
 
     def prompt_plugin(ctx, config):
-        _config(config)
         ctx.provide('prompt', HistoryPrompt())
 
     def tools_plugin(ctx, config):
-        _config(config)
         ctx.provide('tools', ToolPlugins(registered))
 
     def model_plugin(ctx, config):
-        _config(config)
         ctx.provide('model', model if model is not None else CallableModel(decide))
 
     def store_plugin(ctx, config):
-        _config(config, ('root',))
         ctx.provide('session.store', SessionStore(**config))
 
     def durable_sessions(ctx, config):
-        _config(config)
         ctx.provide('sessions', DurableSessions(ctx.require('session.store')))
 
     def context_policy(ctx, config):
-        _config(config, ('input_budget', 'output_reserve', 'model_window', 'safety_reserve', 'strict_tokens'))
         ctx.provide('context.policy', ContextBudget(**config))
 
     def compaction_plugin(ctx, config):
-        _config(config)
         ctx.provide('compaction', RecentTurns())
 
     def context_plugin(ctx, config):
-        _config(config, ('system',))
         selected_model = ctx.require('model')
         policy = ctx.require('context.policy')
         model_policy = getattr(selected_model, 'policy', None)
@@ -77,32 +65,43 @@ def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
             **config))
 
     def structured_model(ctx, config):
-        _config(config, ('output_limit',))
         if model is None:
             raise ValueError('MODEL_ADAPTER_REQUIRED')
         ctx.provide('model', StructuredDecisionModel(model, **config))
 
     def application_plugin(ctx, config):
-        _config(config)
         ctx.provide('application', AgentApplication(ctx.require('sessions'), ctx.require('loop')))
+
+    def service_model(ctx, config):
+        ctx.provide('model', StructuredDecisionModel(ctx.require('llm'), **config))
 
     def mount_loop(mode):
         def mount(ctx, config):
-            _config(config, ('mode',))
-            if config.get('mode', mode) != mode:
-                raise ValueError('LOOP_PLUGIN_MODE_MISMATCH')
             ctx.provide('loop', NativeLoop(ctx.host, ctx.require('runtime'), ctx.require('sessions'),
                 ctx.require('prompt') if mode == 'model-tools' else None, ctx.require('tools'), mode=mode,
                 model=ctx.require('model') if mode == 'model-tools' else None))
         return mount
 
     dependencies = ('runtime', 'sessions', 'tools')
-    return (
+    from .plugin_configuration import CONTEXT_PROPERTIES, check_context
+
+    schemas = {
+        'harness.store.sqlite': config_schema({'root': TEXT}),
+        'harness.context.policy': config_schema(CONTEXT_PROPERTIES),
+        'harness.context.history': config_schema({'system': {'type': 'string'}}),
+        'harness.model.service': config_schema({'output_limit': POSITIVE}),
+        'harness.model.structured': config_schema({'output_limit': POSITIVE}),
+        'harness.loop': config_schema({'mode': {'const': 'single-tool'}}),
+        'harness.loop.model-tools': config_schema({'mode': {'const': 'model-tools'}}),
+    }
+    checks = {'harness.context.policy': check_context}
+    return configured_plugins((
         PluginSpec('harness.store.sqlite', ('session.store',), (), store_plugin),
         PluginSpec('harness.sessions.durable', ('sessions',), ('session.store',), durable_sessions),
         PluginSpec('harness.context.policy', ('context.policy',), (), context_policy),
         PluginSpec('harness.compaction.recent', ('compaction',), (), compaction_plugin),
         PluginSpec('harness.context.history', ('prompt',), ('context.policy', 'compaction', 'model'), context_plugin),
+        PluginSpec('harness.model.service', ('model',), ('llm',), service_model),
         PluginSpec('harness.model.structured', ('model',), (), structured_model),
         PluginSpec('harness.application', ('application',), ('sessions', 'loop'), application_plugin),
         PluginSpec('harness.runtime', ('runtime',), (), runtime_plugin),
@@ -112,7 +111,7 @@ def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
         PluginSpec('harness.model.callable', ('model',), (), model_plugin),
         PluginSpec('harness.loop', ('loop',), dependencies, mount_loop('single-tool')),
         PluginSpec('harness.loop.model-tools', ('loop',), (*dependencies, 'prompt', 'model'), mount_loop('model-tools')),
-    )
+    ), schemas, checks)
 
 
 def model_tools_profile():

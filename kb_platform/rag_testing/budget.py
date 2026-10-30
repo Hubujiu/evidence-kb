@@ -27,10 +27,32 @@ def producer_guard(path, *, allow_sealed=False):
             raise
 
 
+def validate_caps(caps):
+    if not isinstance(caps, dict) or not caps or any(type(value) is not int or value < 0 for value in caps.values()):
+        raise ValueError('caps must be nonnegative integer resources')
+
+
+def validate_resources(caps, resources, *, complete):
+    if not isinstance(resources, dict) or not set(resources) <= caps.keys() or (complete and set(resources) != caps.keys()):
+        raise ValueError('resource dimensions do not match frozen budget')
+    if any(type(value) is not int or value < 0 for value in resources.values()):
+        raise ValueError('resource values must be nonnegative integers')
+def validate_ledger_configuration(path, caps):
+    validate_caps(caps)
+    path = Path(path)
+    if not path.exists():
+        return
+    with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)) as database:
+        row = database.execute('SELECT caps FROM config WHERE id=1').fetchone()
+        if row and json.loads(row[0]) != caps:
+            raise ValueError('cannot silently change frozen budget caps')
+
+
+
+
 class BudgetLedger:
     def __init__(self, path: Path, caps: dict[str, int]):
-        if not caps or any(type(v) is not int or v < 0 for v in caps.values()):
-            raise ValueError("caps must be nonnegative integer resources")
+        validate_caps(caps)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path, self.caps = path, caps
         self._producer = local()
@@ -56,10 +78,7 @@ class BudgetLedger:
                 self._producer.owner = None
 
     def _valid(self, resources, *, complete):
-        if not set(resources) <= self.caps.keys() or (complete and set(resources) != self.caps.keys()):
-            raise ValueError("resource dimensions do not match frozen budget")
-        if any(type(v) is not int or v < 0 for v in resources.values()):
-            raise ValueError("resource values must be nonnegative integers")
+        validate_resources(self.caps, resources, complete=complete)
 
     @staticmethod
     def _totals(db, caps):

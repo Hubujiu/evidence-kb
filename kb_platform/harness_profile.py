@@ -23,9 +23,12 @@ def load_agent_profile(profile=None, *, environment=None, bundles=None):
 
 
 def create_agent_application(*, decide=None, model=None, tools=(), profile=None,
-                             extra_plugins=(), bundles=None, environment=None):
+                             extra_plugins=(), bundles=None, environment=None, models=None):
+    from .model_plugins import model_plugins
+
     selected = load_agent_profile(profile, environment=environment, bundles=bundles)
-    host = PluginHost(selected, (*builtin_plugins(decide=decide, model=model, tools=tools), *extra_plugins))
+    host = PluginHost(selected, (*model_plugins(models),
+                                *builtin_plugins(decide=decide, model=model, tools=tools), *extra_plugins))
     try:
         application = host.service('application')
         return HostedAgentApplication(host, application), host

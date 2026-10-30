@@ -34,12 +34,12 @@ AGENT_DEPENDENCIES = {
     'agent_plugins': frozenset({'agent_schema'}),
     'plugin_native': frozenset({'agent_native'}),
     'plugin_host': frozenset({'plugin_native'}),
-    'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
     'harness_sessions': frozenset({'agent_engine', 'agent_plugins', 'session_identity', 'session_store'}),
     'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host', 'session_identity'}),
     'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
                                   'harness_loop', 'plugin_host', 'harness_application', 'harness_context',
-                                  'harness_model', 'context_budget', 'session_store'}),
+                                  'harness_model', 'context_budget', 'session_store', 'plugin_configuration'}),
+    'plugin_configuration': frozenset({'context_budget'}),
     'context_budget': frozenset(),
     'session_identity': frozenset(),
     'session_store': frozenset({'session_identity'}),
@@ -48,7 +48,10 @@ AGENT_DEPENDENCIES = {
     'harness_context': frozenset({'context_budget'}),
     'harness_model': frozenset({'agent_decisions', 'agent_engine', 'agent_model', 'agent_schema', 'context_budget'}),
     'harness_application': frozenset({'harness_sessions'}),
-    'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles'}),
+    'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles',
+                                  'model_plugins'}),
+    'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
+    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
     'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),
 }
@@ -56,8 +59,11 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'agent_plugins', 'plugin_native', 'plugin_host', 'harness_sessions',
                            'harness_loop', 'harness_services', 'context_budget', 'session_identity', 'session_store',
                            'plugin_profiles', 'harness_graph', 'harness_context', 'harness_model',
-                           'harness_application', 'harness_profile', 'plugin_process'})
-NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'}, 'agent-harness': {'plugin-runtime', 'serde', 'serde_json'}, 'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
+                           'harness_application', 'harness_profile', 'model_service', 'plugin_process',
+                           'plugin_configuration'})
+NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
+                       'agent-harness': {'plugin-runtime', 'serde', 'serde_json'},
+                       'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
 @dataclass(frozen=True)

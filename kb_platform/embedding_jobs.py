@@ -12,7 +12,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from .embeddings import EmbeddingError
+from .embeddings import EmbeddingCallError, EmbeddingError
 from .provider_admission import CapturePreflightError
 
 
@@ -35,11 +35,6 @@ RECOVERABLE_PREFLIGHT = frozenset({'EMBEDDING_BUDGET_INSUFFICIENT', 'EMBEDDING_L
 
 
 def batch_size(provider):
-    from .remote import GoogleEmbeddingProvider
-
-    if isinstance(provider, GoogleEmbeddingProvider):
-
-        return 16 if provider.platform == 'gemini_api' else 1
     return getattr(provider, 'max_batch_size', 1)
 
 
@@ -51,6 +46,14 @@ def classify_provider_failure(row, provider, error):
                 'UNRESOLVED_PHYSICAL_REQUEST': 'EMBEDDING_LEDGER_BLOCKED',
                 'BUDGET_PRODUCER_BUSY': 'EMBEDDING_LEDGER_BLOCKED',
                 'BUDGET_PRODUCER_SEALED': 'EMBEDDING_LEDGER_BLOCKED'}.get(error.reason)
+        if code is not None:
+            return EmbeddingPreflightError(code)
+
+    if isinstance(error, EmbeddingCallError):
+        code = {'BUDGET_INSUFFICIENT': 'EMBEDDING_BUDGET_INSUFFICIENT',
+                'UNRESOLVED_PHYSICAL_REQUEST': 'EMBEDDING_LEDGER_BLOCKED',
+                'BUDGET_PRODUCER_BUSY': 'EMBEDDING_LEDGER_BLOCKED',
+                'BUDGET_PRODUCER_SEALED': 'EMBEDDING_LEDGER_BLOCKED'}.get(error.preflight_code)
         if code is not None:
             return EmbeddingPreflightError(code)
 
