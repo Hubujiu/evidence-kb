@@ -8,12 +8,12 @@ from queue import Queue
 import shutil
 import subprocess
 import sys
-from threading import RLock, Thread, current_thread
+from threading import Condition, RLock, Thread, current_thread
 from time import monotonic
 from uuid import uuid4
 
 from .plugin_host import PluginSpec
-from .plugin_native import PluginError, native_call
+from .plugin_native import PluginError
 
 
 PROTOCOL = 'evidence-plugin-process/1'
@@ -119,8 +119,7 @@ class ProcessPackages:
             _verify_package(path, record['contents'])
             transport = ProcessTransport(path, journal=journal, timeout=config.get('timeout', timeout),
                 identity=dict(ctx.identity))
-            transport.on_exit = lambda: native_call('runtime_update', host=ctx.host.id,
-                plugin=ctx.plugin_id, enabled=False)
+            transport.on_exit = lambda: ctx.host.update(ctx.plugin_id, enabled=False)
             ctx.defer(transport.close)
             transport.start()
             for service, methods in manifest['services'].items():
@@ -175,6 +174,8 @@ class ProcessTransport:
         self.journal = Path(journal).resolve()
         self.journal.mkdir(parents=True, exist_ok=True)
         self._lock, self._terminate_lock = RLock(), RLock()
+        self._write_condition = Condition(self._lock)
+        self._writes, self._supervisor = {}, None
         self._pending, self._process, self._reader = {}, None, None
         self._outgoing, self._writer, self._writer_stopped = Queue(), None, False
         self._received = {}
@@ -206,13 +207,49 @@ class ProcessTransport:
         self.runtime_info = response['runtime']
 
     def _enqueue(self, write):
-        with self._lock:
+        with self._write_condition:
             if self._writer_stopped:
                 raise PluginError('PROCESS_UNAVAILABLE')
+            self._writes[write.request['id']] = write
+            write.future.add_done_callback(lambda _: self._write_finished(write.request['id']))
+            if self._supervisor is None:
+                self._supervisor = Thread(target=self._watch_writes,
+                    name=f'plugin-write-deadlines-{self.session}', daemon=True)
+                self._supervisor.start()
             if self._writer is None:
                 self._writer = Thread(target=self._write, name=f'plugin-writer-{self.session}', daemon=True)
                 self._writer.start()
             self._outgoing.put(write)
+            self._write_condition.notify_all()
+
+    def _write_finished(self, request_id):
+        with self._write_condition:
+            self._writes.pop(request_id, None)
+            self._write_condition.notify_all()
+
+    def _watch_writes(self):
+        while True:
+            with self._write_condition:
+                if self._writer_stopped:
+                    return
+                writes = [write for write in self._writes.values() if not write.future.done()]
+                if not writes:
+                    self._write_condition.wait()
+                    continue
+                remaining = min(write.expires for write in writes) - monotonic()
+                if remaining > 0:
+                    self._write_condition.wait(remaining)
+                    continue
+                expired = [write for write in writes if monotonic() >= write.expires and not write.future.done()]
+                blocked = any(write.sent for write in expired)
+                for write in expired:
+                    write.cancelled = True
+                    if not write.sent and not write.future.done():
+                        write.future.set_exception(PluginError('PROCESS_DEADLINE_BEFORE_SEND'))
+                if not blocked:
+                    continue
+            self._terminate()
+            return
 
     def _write(self):
         while True:
@@ -236,15 +273,17 @@ class ProcessTransport:
                     payload = payload[count:]
                 self._process.stdin.flush()
             except BaseException as error:
-                write.future.set_exception(error)
+                if not write.future.done():
+                    write.future.set_exception(error)
             else:
                 write.future.set_result(None)
 
     def _stop_writer(self):
-        with self._lock:
+        with self._write_condition:
             if not self._writer_stopped:
                 self._writer_stopped = True
                 self._outgoing.put(None)
+                self._write_condition.notify_all()
             writer = self._writer
         if writer is not None and writer is not current_thread():
             writer.join(IO_STOP_SECONDS)
@@ -283,10 +322,14 @@ class ProcessTransport:
                 if not future.done():
                     future.set_exception(exc)
             if not self._draining and self.on_exit is not None:
-                try:
-                    self.on_exit()
-                except BaseException as failure:
-                    exc.add_note(f'Runtime exit notification failed: {failure}')
+                Thread(target=self._notify_exit, args=(exc,),
+                    name=f'plugin-exit-{self.session}', daemon=True).start()
+
+    def _notify_exit(self, error):
+        try:
+            self.on_exit()
+        except BaseException as failure:
+            error.add_note(f'Runtime exit notification failed: {failure}')
 
     def request(self, kind, *, _cleanup=False, execution=None, cancel_signal=None, **fields):
         expires = monotonic() + self.timeout
@@ -388,6 +431,11 @@ class ProcessTransport:
             except PluginError:
                 self._terminate()
         self._terminate()
+        self._stop_writer()
+        if self._supervisor is not None and self._supervisor is not current_thread():
+            self._supervisor.join(timeout=IO_STOP_SECONDS)
+            if self._supervisor.is_alive():
+                raise PluginError('PROCESS_WRITE_SUPERVISOR_BUSY')
         if self._reader is not None:
             self._reader.join(timeout=IO_STOP_SECONDS)
             if self._reader.is_alive():
