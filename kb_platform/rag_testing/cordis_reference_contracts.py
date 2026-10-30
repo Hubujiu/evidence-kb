@@ -119,14 +119,16 @@ class CordisReferenceContracts(unittest.TestCase):
         self.assertEqual(events, self.scenarios['emit_order_and_listener_ownership']['events'])
 
     def test_parallel_partial_order_matches_reference(self):
-        events, gate = [], Event()
+        events, gate, first_started = [], Event(), Event()
 
         def first(value):
             events.append('a.start')
+            first_started.set()
             self.assertTrue(gate.wait(3), 'parallel dispatch did not start the second callback')
             events.append('a.done')
 
         def second(value):
+            self.assertTrue(first_started.wait(3), 'parallel dispatch did not start the first callback')
             events.extend(['b.start', 'b.done'])
             gate.set()
 
