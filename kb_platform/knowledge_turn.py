@@ -154,6 +154,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
             elif self.state["turn_number"] and old_policy["lifetime"] == "turn":
                 self.state["source_policy"] = source_policy()
             policy_changed = old_policy != self.state["source_policy"]
+            self.source_policy_updated = policy_changed and validated_policy is not None
             auth_changed = self.state["authority"] is not None and self.state["authority"] != self.authority
             if policy_changed or auth_changed:
                 self.state.pop("workflow_state", None)

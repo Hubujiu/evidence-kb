@@ -90,6 +90,9 @@ class AgentGraphContracts(unittest.TestCase):
         def plan_new_scope(messages):
             for identity in old_ids:
                 self.assertNotIn(identity, json.dumps(messages))
+            state = json.loads(messages[-1]['content'])['state']
+            self.assertEqual(state['source_policy_update']['origin'], 'validated_request_control')
+            self.assertTrue(state['source_policy_update']['applied'])
             return decision()
 
         case.model.script = [('decision', plan_new_scope), *normal_script()[1:]]
@@ -97,6 +100,32 @@ class AgentGraphContracts(unittest.TestCase):
             request_id='switch', expected_revision=1, policy={'mode': 'LOCKED', 'source_ids': ['s1']})
         self.assertEqual(result['status'], 'answered', result)
         self.assertEqual({item['source_id'] for item in result['evidence']}, {'s1'})
+
+    def test_current_correction_is_visible_to_verifier_before_it_enters_history(self):
+        case = self.setup_service()
+        self.turn(case, message='你好', request='hello')
+        message = '更正：我的预算最终是520元。'
+
+        def answer(messages):
+            current = json.loads(messages[-1]['content'])['state']['current_user_event']
+            return {'answer': '你最后确认的预算是520元。', 'claims': [], 'abstain': False,
+                    'completion': 'complete', 'unresolved': [],
+                    'user_statements': [{'event_seq': current['event_seq'], 'quote': message}]}
+
+        def verify(messages):
+            from kb_platform.knowledge_policy import _visible_user_statements
+            projection = json.loads(messages[-1]['content'])
+            current = projection['state']['current_user_event']
+            self.assertEqual(current['text'], message)
+            self.assertNotIn(current['event_seq'], [row['seq'] for row in projection['history']])
+            self.assertIn(message, _visible_user_statements(projection)[current['event_seq']])
+            self.assertNotIn('source_policy_update', projection['state'])
+            return verdict()
+
+        case.model.script = [('decision', decision('answer', intent='correction')),
+                             ('answer', answer), ('verifier', verify)]
+        result = self.turn(case, message=message, request='correction', revision=1)
+        self.assertEqual(result['status'], 'answered', result)
 
     def test_format_repair_receives_specific_constraint_and_remains_bounded(self):
         from kb_platform.model_errors import RemoteModelError

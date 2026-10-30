@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 import importlib.util
 import json
@@ -261,12 +262,59 @@ def write_json(path: Path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def run_worker(kind: str, output: Path) -> int:
+def contract_modules():
+    return [f"kb_platform.rag_testing.{p.stem}"
+            for p in sorted((ROOT / "kb_platform/rag_testing").glob("*_contracts.py"))]
+
+
+def combine_contract_reports(reports, expected):
+    modules = [(name, count) for report in reports for name, count in report.get('modules', {}).items()]
+    counts = {key: sum(report.get(key, 0) for report in reports)
+              for key in ('total', 'failures', 'errors', 'skipped', 'expected_failures')}
+    complete = (bool(expected) and len(modules) == len(expected) and
+                {name for name, _ in modules} == set(expected) and
+                all(type(count) is int and count > 0 for _, count in modules) and
+                all(report.get('total') == sum(report.get('modules', {}).values()) for report in reports))
+    passed = complete and all(report.get('decision') == 'PASS' for report in reports) and not any(
+        counts[key] for key in ('failures', 'errors', 'skipped', 'expected_failures'))
+    return {'decision': 'PASS' if passed else 'FAIL', 'modules': dict(modules), **counts,
+            'discovery_complete': complete, 'scope': 'offline component contracts; no production RAG quality claim'}
+
+
+def run_contract_workers(output):
+    def execute(index):
+        directory = output / f'contracts-{index}'
+        directory.mkdir()
+        with tempfile.TemporaryDirectory(prefix=f'evidence-kb-contracts-{index}-') as scratch:
+            env = dict(os.environ)
+            env.update(KB_STORAGE_ROOT=scratch, KB_AGENT_ROOT=scratch, KB_RESEARCH_ROOT=scratch,
+                       KB_IDENTITIES_FILE=str(Path(scratch) / 'missing-identities.json'))
+            result = run_check('contracts', [sys.executable, '-B', str(Path(__file__).resolve()),
+                '--worker', 'contracts', '--contract-shard', str(index), '--output', str(directory)],
+                directory, env, timeout=170)
+        try:
+            report = json.loads((directory / 'contracts.json').read_text('utf-8'))
+        except (OSError, ValueError):
+            report = {'decision': 'FAIL', 'modules': {}, 'total': 0, 'errors': 1}
+        if result.exit_code:
+            report['decision'] = 'FAIL'
+        return report
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        reports = list(pool.map(execute, range(4)))
+    combined = combine_contract_reports(reports, contract_modules())
+    write_json(output / 'contracts.json', combined)
+    print(json.dumps(combined))
+    return 0 if combined['decision'] == 'PASS' else 1
+
+
+def run_worker(kind: str, output: Path, shard=None) -> int:
+    if kind == 'contracts' and shard is None:
+        return run_contract_workers(output)
     sys.path.insert(0, str(ROOT))
     sys.addaudithook(deny_external_io)
     if kind == "contracts":
-        modules = [f"kb_platform.rag_testing.{p.stem}"
-                   for p in sorted((ROOT / "kb_platform/rag_testing").glob("*_contracts.py"))]
+        modules = contract_modules()[shard::4]
         if not modules:
             raise RuntimeError("No contract modules discovered")
         suite = unittest.TestSuite()
@@ -352,10 +400,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='Run local and CI quality gates without provider credentials or live services.')
     parser.add_argument("--output", type=Path, default=ROOT / ".local/checks" / uuid4().hex)
     parser.add_argument("--worker", choices=("contracts", "scorer"), help=argparse.SUPPRESS)
+    parser.add_argument('--contract-shard', type=int, choices=range(4), help=argparse.SUPPRESS)
     args = parser.parse_args()
     output = args.output.resolve()
     if args.worker:
-        return run_worker(args.worker, output)
+        return run_worker(args.worker, output, args.contract_shard)
     try:
         output.mkdir(parents=True, exist_ok=False)
     except FileExistsError:

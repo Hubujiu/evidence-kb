@@ -26,6 +26,8 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 检查过程将运行目录指向临时目录，禁用默认 API 初始化、远程模型和 Embedding。合同和控制回放在独立 Python 工作进程中执行，导入前安装审计钩子，阻断 socket 连接、DNS 查询、UDP 发送和子进程启动。依赖安装需要联网，但检查不调用提供者。这个约束防止误执行，不是恶意代码沙箱。
 
+合同协调进程按排序后的模块列表分配四个隔离工作进程，各自使用独立临时运行目录、日志及审计钩子。协调进程不加载产品模块；统一入口仍限制整个合同阶段为 180 秒，子进程限制为 170 秒以留出收尾时间。聚合器要求全部发现模块恰好执行一次、每个模块用例数非零且与报告总数一致。缺失分片、重复模块、子进程非零退出以及失败、错误、跳过、预期失败均不能通过；不通过放宽时间门槛消除 Windows 落盘等待导致的超时。
+
 ## 修改或新增插件
 
 先声明 `PluginSpec` 的 `provides`、`requires` 和版本，再把实现加入可信 catalog。profile 的 `use` 只能引用已登记的键，不能写 Python 导入路径或任意代码。默认知识库 profile 在 `config/agent-profiles/knowledge.json`；`KB_AGENT_PROFILE` 允许启动时选择另一个配置。
