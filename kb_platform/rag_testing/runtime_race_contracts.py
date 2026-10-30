@@ -6,6 +6,125 @@ from kb_platform.plugin_native import PluginError
 
 
 class RuntimeRaceContracts(unittest.TestCase):
+    def test_manual_cancel_notifies_running_call_while_sibling_cleanup_blocks(self):
+        entered, cleanup_entered, release, release_cleanup = Event(), Event(), Event(), Event()
+        operations, results, failures, disposed = [], [], [], []
+
+        def worker_plugin(context, config):
+            class Service:
+                def work(self):
+                    operations.append(context.host.current_call)
+                    entered.set()
+                    if not release.wait(5):
+                        raise AssertionError('test did not release the running call')
+                    return 'finished'
+
+            context.provide('worker', Service())
+            context.defer(lambda: disposed.append('worker'))
+
+        def blocker_plugin(context, config):
+            def cleanup():
+                cleanup_entered.set()
+                if not release_cleanup.wait(5):
+                    raise AssertionError('test did not release sibling cleanup')
+                disposed.append('blocker')
+
+            context.defer(cleanup)
+
+        root = PluginHost({'version': 1, 'plugins': []}, [])
+        worker_host = root.scope({'version': 1, 'plugins': [{'id': 'worker', 'use': 'worker'}]},
+            [PluginSpec('worker', ('worker',), (), worker_plugin)])
+        blocker_host = root.scope({'version': 1, 'plugins': [{'id': 'blocker', 'use': 'blocker'}]},
+            [PluginSpec('blocker', (), (), blocker_plugin)])
+
+        def invoke():
+            try:
+                results.append(worker_host.call('worker', 'work'))
+            except BaseException as error:
+                failures.append(error)
+
+        def disable():
+            try:
+                blocker_host.update('blocker', enabled=False)
+            except BaseException as error:
+                failures.append(error)
+
+        worker, cleaner = Thread(target=invoke), Thread(target=disable)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(5))
+            cleaner.start()
+            self.assertTrue(cleanup_entered.wait(5))
+            result = worker_host.cancel(operations[0]['operation'])
+            self.assertTrue(result['cancelled'])
+            self.assertFalse(result['complete'])
+            self.assertTrue(operations[0]['cancel_signal'].is_set(),
+                            'manual cancellation must notify before unrelated cleanup returns')
+            self.assertTrue(cleaner.is_alive())
+            self.assertEqual(worker_host.inspect()['leases'], 1)
+            self.assertEqual(disposed, [])
+        finally:
+            release.set()
+            release_cleanup.set()
+            worker.join(5)
+            if cleaner.ident is not None:
+                cleaner.join(5)
+            root.close()
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(cleaner.is_alive())
+        self.assertEqual(failures, [])
+        self.assertEqual(results, ['finished'])
+        self.assertCountEqual(disposed, ['blocker', 'worker'])
+
+    def test_sibling_update_failure_does_not_dispose_successfully_mounted_scope(self):
+        entered, release = Event(), Event()
+        hosts, failures, disposed = [], [], []
+
+        def unstable(context, config):
+            if config.get('fail'):
+                raise ValueError('sibling reconfiguration failed')
+            context.provide('unstable', 'initial')
+
+        def stable(context, config):
+            context.defer(lambda: disposed.append('stable'))
+            entered.set()
+            if not release.wait(5):
+                raise AssertionError('test did not release stable mount')
+            context.provide('stable', 'ready')
+
+        root = PluginHost({'version': 1, 'plugins': []}, [])
+        sibling = root.scope({'version': 1, 'plugins': [{'id': 'unstable', 'use': 'unstable'}]},
+            [PluginSpec('unstable', ('unstable',), (), unstable)])
+
+        def create():
+            try:
+                hosts.append(root.scope({'version': 1, 'plugins': [{'id': 'stable', 'use': 'stable'}]},
+                    [PluginSpec('stable', ('stable',), (), stable)]))
+            except BaseException as error:
+                failures.append(error)
+
+        worker = Thread(target=create)
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(5))
+            sibling.update('unstable', config={'fail': True})
+            release.set()
+            worker.join(5)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(failures, [], 'failure from sibling update escaped through stable constructor')
+            self.assertEqual(len(hosts), 1)
+            self.assertEqual(hosts[0].service('stable'), 'ready')
+            self.assertEqual(hosts[0].inspect()['state'], 'ready')
+            self.assertEqual(disposed, [])
+            failed = sibling.inspect()
+            self.assertEqual(failed['state'], 'failed')
+            self.assertEqual(failed['instances'][0]['failure'], 'ValueError: sibling reconfiguration failed')
+        finally:
+            release.set()
+            worker.join(5)
+            root.close()
+        self.assertEqual(disposed, ['stable'])
+
     def test_nested_python_call_receives_its_inherited_deadline_notification(self):
         observations = []
 
