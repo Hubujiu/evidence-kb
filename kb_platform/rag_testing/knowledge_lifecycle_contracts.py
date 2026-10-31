@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -27,7 +28,7 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
             return KnowledgeService(platform, case.model if model is None else model,
                 **{**settings, 'gateway': case.gateway, 'retrieval_config': {'channels': ['bm25'], 'rerank': False}})
 
-        application, host = create_knowledge_application(case.authority, SimpleNamespace(luna=object()),
+        application, host = create_knowledge_application(case.authority, SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={})),
             profile=case.profile, service_factory=factory, extra_plugins=extra_plugins, environment={})
         self.addCleanup(host.close)
         return application, host
@@ -123,10 +124,13 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
 
     def test_profile_closes_owned_provider_after_later_mount_failure_but_not_borrowed_provider(self):
         with TemporaryDirectory() as directory:
+            config_path = Path(directory) / 'providers.json'
+            config_path.write_text(json.dumps({'luna': {'base_url': 'https://fixture.invalid/v1',
+                'model': 'fixture', 'api_key': 'synthetic'}}), 'utf-8')
             profile = load_knowledge_profile(environment={})
             next(row for row in profile['plugins'] if row['id'] == 'store')['config']['root'] = str(Path(directory))
             provider = next(row for row in profile['plugins'] if row['id'] == 'provider')
-            provider['config'] = {'providers_config': 'synthetic-provider.json'}
+            provider['config'] = {'providers_config': str(config_path)}
             borrowed, owned = Mock(), Mock()
 
             def fail_after_mount(*args, **kwargs):
@@ -136,7 +140,7 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'synthetic knowledge mount failure'):
                     create_knowledge_application(object(), SimpleNamespace(luna=borrowed), profile=profile,
                         service_factory=fail_after_mount, environment={})
-            constructor.assert_called_once_with('synthetic-provider.json')
+            constructor.assert_called_once_with(str(config_path))
             owned.close.assert_called_once_with()
             borrowed.close.assert_not_called()
             provider['config'] = {}

@@ -4,7 +4,7 @@
 
 项目参考 Codex 的任务生命周期和 DSH 的服务、作用域与插件组合方式，自行实现 Rust 内核，没有依赖这两个项目的运行时。
 
-Rust 负责两类机制：`agent-kernel` 负责操作准入、结果关联、取消、截止时间与终态；`agent-harness` 负责插件依赖排序、服务所有权、作用域、停用准入，以及通用 Agent loop 和图节点推进。图的业务路由选择由 Python 策略提供，Rust 检查已声明边与效果关联。Python 实现模型、工具、会话和上下文服务，并执行原生 loop 发出的效果。
+`plugin-runtime` 独占插件生命周期、代次、依赖、租约、配置应用和资源清理。`agent-kernel` 负责单次运行的操作准入、结果关联、取消、截止时间与终态；`agent-harness` 保留通用 Agent loop 和图节点推进，并转发生命周期协议。图的业务路由选择由 Python 策略提供，Rust 检查已声明边与效果关联。Python 实现模型、工具、会话和上下文服务，并执行原生动作。公开状态和 SDK 见 [插件运行时](plugin-runtime.md)。
 
 通用层不导入知识库代码。默认 HTTP 应用由 profile 的 knowledge 组合装配，由 `knowledge.driver.graph` 直接进入 `kb_query` 所绑定的知识库图流程，不再套外层 single-tool loop；知识库服务内部保留检索、生成、核验、修复和现有费用账本。通用 `model-tools` loop 支持模型选择工具，不需要安装知识库插件。
 
@@ -41,7 +41,7 @@ flowchart TB
 | 观察事件 | `EventName` 定义运行、模型、工具事件；观察者收到不可变元数据，不能篡改工具参数或预算决定 |
 | loop 与图策略 | Rust `LoopProgram` 支持通用循环；`GraphProgram` 把可信节点和路由接到 Rust 图协议，profile 选择驱动及领域策略 |
 
-事件是观察接口，策略拦截通过服务实现和既有准入守卫完成。scope 是同进程资源归属边界，不是恶意代码安全沙箱。卸载需要先停止新调用、等待持有者释放，再完成清理；没有在途热替换或任意 Rust 动态 ABI 插件加载。
+事件同时提供观察通知和显式 waterfall 中间件，分发顺序及错误合同见 [插件运行时](plugin-runtime.md)。scope 表达服务可见性和资源归属，不是恶意代码安全沙箱。更新先排空受影响子图、等待实际终结，再清理并激活新代次。原生代码仍为静态构建，外部插件使用独立进程 transport；不提供原生动态库热卸载。
 
 ## 最小 loop 与服务所有权
 

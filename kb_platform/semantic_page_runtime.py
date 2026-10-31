@@ -23,41 +23,50 @@ def _path(value):
     return path.resolve() if path.is_absolute() else (ROOT / path).resolve()
 
 
-def from_config(platform, gateway, config_path, *, provider_factories=None):
+def read_semantic_config(config_path):
+    from .remote import read_provider_config, google_embedding_manifest
+    from .google_semantic_provider import semantic_provider_manifest
+    from .rag_testing.budget import validate_ledger_configuration
 
+    path = _path(str(config_path))
+    raw = path.read_bytes()
+    config = json.loads(raw)
+    required = {'schema', 'provider_id', 'storage_root', 'ledger_path', 'audit_dir', 'caps',
+                'expected_provider_manifest_sha256', 'provider_config'}
+    if (not isinstance(config, dict) or set(config) != required
+            or config['schema'] != 'semantic-page-runtime/2' or config['provider_id'] != 'google_gemini'):
+        raise ValueError('Invalid semantic runtime configuration')
+    for key in ('storage_root', 'ledger_path', 'audit_dir', 'provider_config'):
+        _path(config[key])
+    caps = config['caps']
+    if (not isinstance(caps, dict) or set(caps) != {'remote_embedding_calls', 'input_tokens'}
+            or any(type(value) is not int or value < 1 for value in caps.values())):
+        raise ValueError('Finite physical query call and input reservations are required')
+    validate_ledger_configuration(_path(config['ledger_path']), caps)
+    _, selected = read_provider_config(_path(config['provider_config']), 'google', credentials=True)
+    remote = google_embedding_manifest(selected)
+    manifest = semantic_provider_manifest(remote, remote['dimension'])
+    if digest(manifest) != config['expected_provider_manifest_sha256']:
+        raise ValueError('Configured provider differs from its admitted manifest')
+    return path, raw, config
+
+
+def from_config(platform, gateway, config_path, *, provider_factories=None):
     provider = None
     try:
-        path = _path(str(config_path))
-        raw = path.read_bytes()
-        config = json.loads(raw)
-        common = {'schema', 'provider_id', 'storage_root', 'ledger_path', 'audit_dir', 'caps',
-                  'expected_provider_manifest_sha256'}
-        if not isinstance(config, dict):
-            raise ValueError('Invalid semantic runtime configuration')
-        remote = True
-        required = common | {'provider_config'}
-        if (set(config) != required or config['schema'] != 'semantic-page-runtime/2'
-                or config['provider_id'] != 'google_gemini'):
-            raise ValueError('Invalid semantic runtime configuration')
-        caps = config['caps']
-        call_resource = 'remote_embedding_calls'
-        if (not isinstance(caps, dict) or set(caps) != {call_resource, 'input_tokens'} or
-                any(type(v) is not int or v < 1 for v in caps.values())):
-            raise ValueError('Finite physical query call and input reservations are required')
-        ledger = BudgetLedger(_path(config['ledger_path']), caps)
+        path, raw, config = read_semantic_config(config_path)
+        ledger = BudgetLedger(_path(config['ledger_path']), config['caps'])
         factories = {'google_gemini': GoogleSemanticProvider} if provider_factories is None else provider_factories
         factory = factories.get(config['provider_id'])
         if factory is None:
             raise ValueError('The explicitly selected provider adapter is not configured')
         provider = factory(_path(config['provider_config']), ledger=ledger, audit_dir=_path(config['audit_dir']))
-        if provider.provider_id != config['provider_id']:
-            raise ValueError('Provider adapter identity differs from its admission')
-        if digest(provider.manifest) != config['expected_provider_manifest_sha256']:
+        if provider.provider_id != config['provider_id'] or digest(provider.manifest) != config['expected_provider_manifest_sha256']:
             raise ValueError('Configured provider differs from its admitted manifest')
         service = SemanticPageService(platform, provider, _path(config['storage_root']), gateway=gateway)
         service.runtime_identity = {'config_path': str(path), 'config_sha256': hashlib.sha256(raw).hexdigest(),
-            'provider_manifest_sha256': digest(provider.manifest), 'query_caps': caps,
-            'new_document_embeddings': 0, 'remote_embeddings': remote}
+            'provider_manifest_sha256': digest(provider.manifest), 'query_caps': config['caps'],
+            'new_document_embeddings': 0, 'remote_embeddings': True}
         return service
     except (OSError, ValueError, TypeError, KeyError, EmbeddingError, RemoteModelError) as exc:
         if provider is not None and callable(getattr(provider, 'close', None)):

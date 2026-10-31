@@ -61,6 +61,9 @@ class LunaCandidateReranker:
         self.provider_id = luna.provider_id
         self.manifest = luna.manifest
 
+    def bind_turn(self, completion):
+        return type(self)(self.luna.bind_turn(completion))
+
     def rank(self, query, candidates):
         from .reranking import rerank_documents
 
@@ -225,9 +228,7 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
             raise PlatformError('PROCESSING_NOT_ALLOWED', 'No authorized source admits this dense provider', 409)
     reranker = gateway.pipeline_reranker
     if config.rerank and reranker is None:
-        if gateway.research is None or getattr(gateway.research, 'luna', None) is None:
-            raise PlatformError('RERANKER_NOT_CONFIGURED', 'Configure an approved same-candidate reranker', 409)
-        reranker = LunaCandidateReranker(gateway.research.luna)
+        raise PlatformError('RERANKER_NOT_CONFIGURED', 'Configure an approved same-candidate reranker', 409)
     rankings, by_id = {}, {}
     preferred = set(policy['source_ids']) if policy['mode'] == 'PREFER' else set()
     try:

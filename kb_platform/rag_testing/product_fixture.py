@@ -5,6 +5,26 @@ from kb_platform.agent_tools import EvidenceGateway
 from kb_platform.core import Actor, Platform, PlatformError
 from kb_platform.documents import parse_native_document
 
+
+def knowledge_service(platform, model, *, root, gateway, context_policy=None,
+                      retrieval_config=None, **options):
+    from kb_platform.agent_context import ContextManager, ContextPolicy
+    from kb_platform.agent_engine import Runtime
+    from kb_platform.knowledge_service import KnowledgeService
+    from kb_platform.knowledge_sessions import KnowledgeSessions
+    from kb_platform.knowledge_workflow import KnowledgeWorkflow
+    from kb_platform.provider_runtime import ToolExecutor
+    from kb_platform.session_store import SessionStore
+
+    policy = context_policy if context_policy is not None else ContextPolicy(
+        input_budget=24000, evidence_strategy='query_blocks')
+    return KnowledgeService(platform, model, store=KnowledgeSessions(SessionStore(root)),
+        gateway=gateway, context_policy=policy, context_manager=ContextManager(policy), runtime=Runtime(),
+        workflow_factory=KnowledgeWorkflow, tool_executor=ToolExecutor(max_attempts=2), semantic_pages=None,
+        retrieval_config=retrieval_config if retrieval_config is not None else {
+            'channels': ['bm25', 'dense'], 'rerank': True, 'parent': 'paragraph', 'top_k': 5}, **options)
+
+
 class Encoder:
     provider_id = 'google_gemini'
     dimension = 3

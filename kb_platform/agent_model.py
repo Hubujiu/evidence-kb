@@ -27,6 +27,7 @@ class BudgetLedger:
         self.max_calls, self.max_tokens = max_calls, max_tokens
         self._lock = Lock()
         self._pending = {}
+        self._turn_budgets = {}
         self._calls = self._tokens = self._accounted = self._unknown = 0
 
     def reserve(self, calls, tokens_per_call):
@@ -62,6 +63,21 @@ class BudgetLedger:
                     "unknown_usage_calls": self._unknown,
                     "reserved_calls": sum(row[0] for row in self._pending.values()),
                     "reserved_tokens": sum(a * b for a, b in self._pending.values())}
+
+    def turn_budget(self, session_id, turn_id, limit):
+        with self._lock:
+            ledger = self._turn_budgets.get((session_id, turn_id))
+            if ledger is None:
+                ledger = BudgetLedger(max_calls=limit, max_tokens=self.max_tokens)
+                self._turn_budgets[(session_id, turn_id)] = ledger
+            elif ledger.max_calls != limit:
+                raise RemoteModelError('AGENT_TURN_BUDGET_CHANGED')
+            return ledger
+
+    def turn_budget_snapshot(self, session_id, turn_id):
+        with self._lock:
+            ledger = self._turn_budgets.get((session_id, turn_id))
+        return ledger.snapshot() if ledger is not None else None
 
 
 @dataclass(frozen=True)
@@ -126,8 +142,6 @@ class AgentModel:
         self.capabilities = {"output_parameter": "max_tokens", "output_limit_verified": False,
                              "tokenizer_verified": False, "native_tools_verified": False,
                              "structured_output": "prompt_and_local_validation"}
-        self._turn_budget_lock = Lock()
-        self._turn_budgets = {}
 
     def complete(self, messages, *, role, schema, call_context, output_limit=1500, validator=None):
         if self.policy.strict_tokens:
@@ -222,13 +236,7 @@ class AgentModel:
             physical_limit = call_context.get('max_physical_calls', 20)
             if not _integer(physical_limit, 1):
                 raise RemoteModelError('INVALID_AGENT_PHYSICAL_CALL_LIMIT')
-            with self._turn_budget_lock:
-                turn_ledger = self._turn_budgets.get((session_id, turn_id))
-                if turn_ledger is None:
-                    turn_ledger = BudgetLedger(max_calls=physical_limit, max_tokens=physical_limit * self.policy.model_window)
-                    self._turn_budgets[(session_id, turn_id)] = turn_ledger
-                elif turn_ledger.max_calls != physical_limit:
-                    raise RemoteModelError('AGENT_TURN_BUDGET_CHANGED')
+            turn_ledger = self.ledger.turn_budget(session_id, turn_id, physical_limit)
             turn_reservation = turn_ledger.reserve(self.provider.max_attempts, estimate['tokens'] + output_limit)
         try:
             reservation = self.ledger.reserve(self.provider.max_attempts, estimate["tokens"] + output_limit)
@@ -292,7 +300,4 @@ class AgentModel:
                 turn_ledger.settle(turn_reservation, trace['attempt'], usage)
 
     def turn_budget_snapshot(self, session_id, turn_id):
-
-        with self._turn_budget_lock:
-            ledger = self._turn_budgets.get((session_id, turn_id))
-            return ledger.snapshot() if ledger is not None else None
+        return self.ledger.turn_budget_snapshot(session_id, turn_id)

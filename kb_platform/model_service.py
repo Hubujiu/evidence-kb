@@ -5,6 +5,7 @@ from enum import StrEnum
 import math
 from threading import RLock
 from typing import Protocol
+from uuid import uuid4
 
 from .agent_engine import current_execution, execution_scope
 from .agent_model import AgentModel
@@ -156,83 +157,166 @@ def validate_result(request, result):
         request.payload['validator'](data)
 
 
+class RoutePhase(StrEnum):
+    ACTIVE = 'active'
+    DRAINING = 'draining'
+    CLEANING = 'cleaning'
+    CLEANUP_FAILED = 'cleanup_failed'
+
+
+@dataclass(eq=False)
+class _Route:
+    registration_id: object
+    owner_identity: object
+    adapter: ModelAdapter
+    info: ModelInfo
+    owned: bool
+    owner_lease: object
+    phase: RoutePhase = RoutePhase.ACTIVE
+    active: int = 0
+    cleanup_error: str | None = None
+
+
 class ModelService:
-    def __init__(self):
-        self._entries, self._active = {}, {}
-        self._lock, self._closed = RLock(), False
+    def __init__(self, *, owner_identity=None):
+        self.owner_identity = self._freeze_owner(owner_identity)
+        self._entries = {}
+        self._issued_ids = set()
+        self._lock, self._state = RLock(), 'active'
 
-    def register(self, name, adapter, *, owned=False):
-        if not isinstance(name, str) or not name or not isinstance(adapter.info, ModelInfo):
+    @staticmethod
+    def _freeze_owner(identity):
+        return tuple(sorted(dict(identity).items())) if identity is not None else None
+
+    def register(self, name, adapter, *, owned=False, registration_id=None,
+                 owner_identity=None, owner_lease=None):
+        info = adapter.info
+        if not isinstance(name, str) or not name or not isinstance(info, ModelInfo):
             raise ValueError('INVALID_MODEL_REGISTRATION')
+        raw_identity = registration_id if registration_id is not None else uuid4().hex
+        if not (isinstance(raw_identity, str) and raw_identity or
+                type(raw_identity) is int and raw_identity > 0):
+            raise ValueError('INVALID_MODEL_REGISTRATION_ID')
+        owner = self._freeze_owner(owner_identity)
+        identity = (owner, raw_identity) if owner is not None else raw_identity
+        entry = _Route(identity, owner, adapter, info, owned, owner_lease)
         with self._lock:
-            if self._closed or name in self._entries:
+            if self._state != 'active' or name in self._entries:
                 raise ValueError('MODEL_REGISTRATION_UNAVAILABLE')
-            entry = (adapter, owned)
+            if identity in self._issued_ids:
+                raise ValueError('MODEL_REGISTRATION_ID_REUSED')
             self._entries[name] = entry
-            self._active[name] = 0
+            self._issued_ids.add(identity)
+        return lambda: self._dispose(name, entry)
 
-        def dispose():
+    def adopt(self, owner):
+        with self._lock:
+            if self._state != 'active' or any(row.active for row in self._entries.values()):
+                raise ValueError('MODEL_BUSY')
+            rows = list(self._entries.values())
+        identity = self._freeze_owner(owner.identity)
+        identities = [(identity, owner.registration_id(kind='model_route')) for _ in rows]
+        with self._lock:
+            if list(self._entries.values()) != rows or any(row.active for row in rows):
+                raise ValueError('MODEL_REGISTRATION_CHANGED')
+            if len(set(identities)) != len(identities) or self._issued_ids.intersection(identities):
+                raise ValueError('MODEL_REGISTRATION_ID_REUSED')
+            self.owner_identity = identity
+            for row, registration in zip(rows, identities):
+                row.registration_id, row.owner_identity, row.owner_lease = registration, identity, owner.lease
+            self._issued_ids.update(identities)
+
+    def _dispose(self, name, entry):
+        with self._lock:
+            if self._entries.get(name) is not entry:
+                return
+            if entry.phase == RoutePhase.CLEANING:
+                raise ValueError('MODEL_CLEANUP_BUSY')
+            entry.phase = RoutePhase.DRAINING
+            if entry.active:
+                raise ValueError('MODEL_BUSY')
+            entry.phase = RoutePhase.CLEANING
+        try:
+            if entry.owned:
+                entry.adapter.close()
+        except BaseException as error:
             with self._lock:
-                if self._entries.get(name) is not entry:
-                    return
-                if self._active[name]:
-                    raise ValueError('MODEL_BUSY')
-                if owned:
-                    adapter.close()
-                del self._entries[name]
-                del self._active[name]
-        return dispose
+                entry.phase, entry.cleanup_error = RoutePhase.CLEANUP_FAILED, type(error).__name__
+            raise
+        with self._lock:
+            del self._entries[name]
 
     def catalog(self):
         with self._lock:
-            return {key: adapter.info for key, (adapter, _) in self._entries.items()}
+            return {key: entry.info for key, entry in self._entries.items()
+                    if entry.phase == RoutePhase.ACTIVE}
+
+    def inspect(self):
+        with self._lock:
+            return {name: {'registration_id': row.registration_id,
+                           'owner_identity': deepcopy(row.owner_identity), 'phase': row.phase,
+                           'active_calls': row.active, 'cleanup_error': row.cleanup_error}
+                    for name, row in self._entries.items()}
+
+    def _entry(self, name, capability, expected=None):
+        entry = self._entries.get(name)
+        if self._state != 'active' or entry is None or entry.phase != RoutePhase.ACTIVE:
+            raise RemoteModelError('MODEL_ROUTE_UNAVAILABLE')
+        if expected is not None and entry.registration_id != expected:
+            raise RemoteModelError('MODEL_BINDING_CHANGED')
+        if capability not in entry.info.capabilities:
+            raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
+        return entry
 
     @contextmanager
     def lease(self, name, capability, *, expected=None):
         with self._lock:
-            if self._closed or name not in self._entries:
-                raise RemoteModelError('MODEL_ROUTE_UNAVAILABLE')
-            if expected is not None and self._entries[name] is not expected:
-                raise RemoteModelError('MODEL_BINDING_CHANGED')
-            adapter = self._entries[name][0]
-            if capability not in adapter.info.capabilities:
-                raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
-            self._active[name] += 1
-        try:
-            execution = current_execution()
-            if execution is not None:
-                execution.check()
-            yield adapter
-            if execution is not None:
-                execution.check()
-        finally:
+            entry = self._entry(name, capability, expected)
+            identity, owner_lease = entry.registration_id, entry.owner_lease
+        ownership = owner_lease() if owner_lease is not None else nullcontext()
+        with ownership:
             with self._lock:
-                self._active[name] -= 1
+                entry = self._entry(name, capability, expected=identity)
+                entry.active += 1
+            try:
+                execution = current_execution()
+                if execution is not None:
+                    execution.check()
+                yield entry.adapter
+                if execution is not None:
+                    execution.check()
+            finally:
+                with self._lock:
+                    entry.active -= 1
 
     def invoke(self, name, request):
         return self._invoke(name, request)
 
     def bind(self, name, capability):
-
         capability = Capability(capability)
-        with self._lock, self.lease(name, capability) as adapter:
-            return BoundModel(self, name, capability, self._entries[name], adapter.info)
+        with self._lock:
+            entry = self._entry(name, capability)
+            return BoundModel(self, name, capability, entry.registration_id, entry.info)
 
     def _invoke(self, name, request, *, expected=None):
         request = validate_request(request)
+        with self._lock:
+            entry = self._entry(name, request.capability, expected)
+            identity, info = entry.registration_id, entry.info
         remaining = request.call_context.get('remaining_seconds')
         scope = execution_scope(deadline_seconds=remaining) if remaining is not None else nullcontext()
-        with scope, self.lease(name, request.capability, expected=expected) as adapter:
+        with scope, self.lease(name, request.capability, expected=identity) as adapter:
             result = adapter.invoke(request)
-            if (not isinstance(result, ModelResult) or result.provider != adapter.info.provider
-                    or result.model != adapter.info.model or result.capability != request.capability):
+            if (not isinstance(result, ModelResult) or result.provider != info.provider
+                    or result.model != info.model or result.capability != request.capability):
                 raise RemoteModelError('INVALID_MODEL_RESULT_IDENTITY')
             validate_result(request, result)
             return result
 
     def structured(self, name, *, policy=None, ledger=None):
-
-        with self._lock, self.lease(name, Capability.CHAT) as adapter:
+        with self._lock:
+            entry = self._entry(name, Capability.CHAT)
+        with self.lease(name, Capability.CHAT, expected=entry.registration_id) as adapter:
             if not callable(getattr(adapter, 'completion_port', None)):
                 raise RemoteModelError('STRUCTURED_MODEL_UNAVAILABLE')
             model = AgentModel(adapter.completion_port(), policy=policy, ledger=ledger)
@@ -240,15 +324,14 @@ class ModelService:
 
     def close(self):
         with self._lock:
-            if any(self._active.values()):
+            if any(entry.active for entry in self._entries.values()):
                 raise ValueError('MODEL_BUSY')
-            for name in reversed(list(self._entries)):
-                adapter, owned = self._entries[name]
-                if owned:
-                    adapter.close()
-                del self._entries[name]
-                del self._active[name]
-            self._closed = True
+            self._state = 'draining'
+            pending = list(reversed(list(self._entries.items())))
+        for name, entry in pending:
+            self._dispose(name, entry)
+        with self._lock:
+            self._state = 'closed'
 
 
 class BoundModel:
@@ -269,12 +352,19 @@ class BoundModel:
 
 class StructuredModel:
     def __init__(self, service, name, entry, model):
-        self._service, self._name, self._entry, self._model = service, name, entry, model
-        adapter = entry[0]
+        self._service, self._name, self._entry, self._model = service, name, entry.registration_id, model
         self.policy, self.ledger, self.capabilities = model.policy, model.ledger, model.capabilities
-        self.provider_id = adapter.info.provider
-        self.manifest = {'provider': adapter.info.provider, 'model': adapter.info.model,
-                         'revision': adapter.info.revision, 'protocol': 'model-service/1'}
+        self.provider_id = entry.info.provider
+        self.manifest = {'provider': entry.info.provider, 'model': entry.info.model,
+                         'revision': entry.info.revision, 'protocol': 'model-service/1'}
+
+    @property
+    def provider(self):
+        return self._model.provider
+
+    @property
+    def registration_id(self):
+        return self._entry
 
     @property
     def max_attempts(self):

@@ -76,8 +76,8 @@ uv run uvicorn kb_platform.api:app --host 127.0.0.1 --port 58080
 `dimension`。提供商 ID 仍必须符合文档的处理授权策略；更换向量模型或端点修订会改变
 新配置的索引身份，已有索引需要显式重建，不能继续冒用旧向量。
 
-不设置 `KB_MODELS_CONFIG` 时，原 `.local/providers.json` 配置继续工作：应用先构造原有
-客户端，再注册公共服务，文档 Embedding/OCR 和知识库生成通过公共服务访问。原有
+不设置 `KB_MODELS_CONFIG` 时，原 `.local/providers.json` 配置继续工作：根组合创建原有
+客户端并注册公共服务，Rust 管理模型路由的生命周期。文档 Embedding/OCR 和知识库生成通过公共服务访问。原有
 Embedding manifest 保留，避免仅包装接口就使旧索引失效。
 
 固定交付工厂仍要求冻结的旧提供商配置；它现在在应用创建时注入已选客户端，再安装现有
