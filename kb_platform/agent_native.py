@@ -41,6 +41,8 @@ def library_path():
         return path
     filename = ('agent_kernel.dll' if sys.platform == 'win32' else
                 'libagent_kernel.dylib' if sys.platform == 'darwin' else 'libagent_kernel.so')
+    if os.environ.get('PLUGIN_HOST_EXECUTABLE'):
+        return Path(os.environ['PLUGIN_HOST_EXECUTABLE']).parent / filename
     return Path(__file__).resolve().parents[1] / 'target' / 'debug' / filename
 
 

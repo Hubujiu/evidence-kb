@@ -2,6 +2,8 @@ from concurrent.futures import Future
 from io import BytesIO
 import json
 from pathlib import Path
+from queue import Queue
+import sys
 import tempfile
 from threading import Event, Thread
 from time import monotonic
@@ -23,6 +25,161 @@ class ProcessPackageContracts(unittest.TestCase):
             'version': '1', 'entry': 'plugin.py', 'services': {'echo': ['invoke']}}), 'utf-8')
         manager = ProcessPackages(Path(root) / 'installed')
         return manager, manager.install(source)
+
+    def test_dependency_manifest_rejects_invalid_or_duplicate_service_names(self):
+        for requires in ('shared.model', [None], [''], ['shared.model', 'shared.model']):
+            with self.subTest(requires=requires), tempfile.TemporaryDirectory() as root:
+                source = Path(root) / 'source'
+                source.mkdir()
+                (source / 'plugin.json').write_text(json.dumps({'protocol': PROTOCOL, 'name': 'fixture',
+                    'version': '1', 'command': ['worker'], 'services': {'echo': ['invoke']},
+                    'requires': requires}), 'utf-8')
+                manager = ProcessPackages(Path(root) / 'installed')
+                with self.assertRaises(PluginError) as failure:
+                    manager.install(source)
+                self.assertEqual(failure.exception.code, 'INVALID_PROCESS_DEPENDENCY')
+
+    def test_callbacks_queue_without_execution_and_reject_duplicate_unknown_or_completed_parent(self):
+        with tempfile.TemporaryDirectory() as root:
+            _, installed = self.package(root)
+            transport = ProcessTransport(installed['package'], journal=Path(root) / 'journal', timeout=1, identity={})
+            transport.invoke_dependency = Mock()
+            transport._pending['parent'] = Future()
+            callbacks = Queue()
+            transport._callbacks['parent'] = callbacks, set()
+            frame = {'protocol': PROTOCOL, 'id': 'call', 'kind': 'call', 'parent': 'parent',
+                'service': 'shared.model', 'method': 'generate', 'args': ['hello'], 'kwargs': {}}
+            transport._queue_callback(frame)
+            self.assertEqual(callbacks.get_nowait(), frame)
+            transport.invoke_dependency.assert_not_called()
+            for value, code in ((frame, 'PROCESS_CALLBACK_DUPLICATE_OR_LIMIT'),
+                    ({**frame, 'id': 'other', 'parent': 'missing'}, 'PROCESS_CALLBACK_PARENT_UNAVAILABLE')):
+                with self.assertRaises(PluginError) as failure:
+                    transport._queue_callback(value)
+                self.assertEqual(failure.exception.code, code)
+            transport._pending['parent'].set_result({})
+            with self.assertRaises(PluginError) as failure:
+                transport._queue_callback({**frame, 'id': 'late'})
+            self.assertEqual(failure.exception.code, 'PROCESS_CALLBACK_PARENT_UNAVAILABLE')
+            transport.invoke_dependency.assert_not_called()
+
+    def test_undeclared_callback_returns_error_without_invoking_dependency(self):
+        with tempfile.TemporaryDirectory() as root:
+            _, installed = self.package(root)
+            transport = ProcessTransport(installed['package'], journal=Path(root) / 'journal', timeout=1, identity={})
+            transport.invoke_dependency = Mock()
+            sent = []
+
+            def send(write):
+                sent.append(json.loads(write.payload))
+                write.future.set_result(None)
+
+            call = {'id': 'call', 'parent': 'parent', 'service': 'undeclared', 'method': 'generate',
+                'args': [], 'kwargs': {}}
+            with patch.object(transport, '_enqueue', send):
+                transport._invoke_callback(call, monotonic() + 1, None)
+            transport.invoke_dependency.assert_not_called()
+            self.assertFalse(sent[0]['ok'])
+            self.assertEqual(sent[0]['error']['code'], 'UNDECLARED_SERVICE_DEPENDENCY')
+
+    def test_failed_callback_response_send_retains_unknown_without_reinvoking_dependency(self):
+        with tempfile.TemporaryDirectory() as root:
+            _, installed = self.package(root)
+            journal = Path(root) / 'journal'
+            transport = ProcessTransport(installed['package'], journal=journal, timeout=1, identity={})
+            transport.manifest['requires'] = ['shared.model']
+            transport.invoke_dependency = Mock(return_value={'answer': 'completed'})
+
+            def fail(write):
+                write.sent = True
+                transport._record(write.request, write.status)
+                write.future.set_exception(BrokenPipeError('Response transport closed'))
+
+            call = {'id': 'call', 'parent': 'parent', 'service': 'shared.model', 'method': 'generate',
+                'args': [], 'kwargs': {}}
+            with patch.object(transport, '_enqueue', fail):
+                with self.assertRaises(BrokenPipeError):
+                    transport._invoke_callback(call, monotonic() + 1, None)
+            transport.invoke_dependency.assert_called_once()
+            rows = [json.loads(path.read_text('utf-8')) for path in journal.glob('*.json')]
+            self.assertEqual(sorted(row['status'] for row in rows), ['PREPARED', 'SENT', 'UNKNOWN'])
+            self.assertEqual(len({row['request']['id'] for row in rows}), 1)
+
+    def test_cancelled_callback_does_not_invoke_dependency(self):
+        with tempfile.TemporaryDirectory() as root:
+            _, installed = self.package(root)
+            transport = ProcessTransport(installed['package'], journal=Path(root) / 'journal', timeout=1, identity={})
+            transport.manifest['requires'] = ['shared.model']
+            transport.invoke_dependency = Mock()
+            cancelled, sent = Event(), []
+            cancelled.set()
+
+            def send(write):
+                sent.append(json.loads(write.payload))
+                write.future.set_result(None)
+
+            call = {'id': 'call', 'parent': 'parent', 'service': 'shared.model', 'method': 'generate',
+                'args': [], 'kwargs': {}}
+            with patch.object(transport, '_enqueue', send):
+                transport._invoke_callback(call, monotonic() + 1, cancelled)
+            transport.invoke_dependency.assert_not_called()
+            self.assertEqual(sent[0]['error']['code'], 'PROCESS_CALLBACK_CANCELLED')
+
+    def test_command_launch_passes_literal_argv_without_inserting_python_options(self):
+        with tempfile.TemporaryDirectory() as root:
+            source = Path(root) / 'source'
+            source.mkdir()
+            command = ['worker', '', 'two words', 'literal&value', '$unchanged']
+            (source / 'plugin.json').write_text(json.dumps({'protocol': PROTOCOL, 'name': 'fixture',
+                'version': '1', 'command': command, 'services': {'echo': ['invoke']}}), 'utf-8')
+            transport = ProcessTransport(source, journal=Path(root) / 'journal', timeout=1, identity={})
+            response = {'protocol': PROTOCOL, 'services': {'echo': ['invoke']},
+                'runtime': {'language': 'rust', 'version': '1', 'executable': 'worker'}}
+            process = Mock(stdout=BytesIO(), stdin=BytesIO())
+            with patch('kb_platform.plugin_process.subprocess.Popen', return_value=process) as popen, \
+                    patch('kb_platform.plugin_process.Thread'), patch.object(transport, 'request', return_value=response):
+                transport.start()
+            self.assertEqual(popen.call_args.args, (command,))
+            self.assertEqual(popen.call_args.kwargs['cwd'], source.resolve())
+            self.assertNotIn('shell', popen.call_args.kwargs)
+            self.assertEqual(transport.runtime_info['language'], 'rust')
+
+    def test_command_manifest_rejects_ambiguous_or_invalid_launch_before_install(self):
+        cases = [
+            {'command': []}, {'command': 'python plugin.py'}, {'command': [4]},
+            {'command': ['']}, {'command': ['  ']}, {'command': ['worker', None]},
+            {'command': ['worker', 'bad\0argument']},
+            {'command': ['worker'], 'entry': 'plugin.py'},
+            {'command': ['worker'], 'python': sys.executable},
+        ]
+        for launch in cases:
+            with self.subTest(launch=launch), tempfile.TemporaryDirectory() as root:
+                source = Path(root) / 'source'
+                source.mkdir()
+                (source / 'plugin.json').write_text(json.dumps({'protocol': PROTOCOL, 'name': 'fixture',
+                    'version': '1', 'services': {'echo': ['invoke']}, **launch}), 'utf-8')
+                manager = ProcessPackages(Path(root) / 'installed')
+                with self.assertRaises(PluginError) as failure:
+                    manager.install(source)
+                self.assertEqual(failure.exception.code, 'INVALID_PROCESS_COMMAND')
+                self.assertEqual(list(manager.root.iterdir()), [])
+
+    def test_handshake_rejects_missing_or_empty_language_neutral_runtime_fields(self):
+        for runtime in ({'python_version': '3.12', 'executable': 'python'},
+                {'language': 'rust', 'version': '', 'executable': 'worker'},
+                {'language': 7, 'version': '1', 'executable': 'worker'},
+                {'language': 'rust', 'version': '1', 'executable': '   '}):
+            with self.subTest(runtime=runtime), tempfile.TemporaryDirectory() as root:
+                _, installed = self.package(root)
+                transport = ProcessTransport(installed['package'], journal=Path(root) / 'journal',
+                    timeout=1, identity={})
+                response = {'protocol': PROTOCOL, 'services': {'echo': ['invoke']}, 'runtime': runtime}
+                process = Mock(stdout=BytesIO(), stdin=BytesIO())
+                with patch('kb_platform.plugin_process.subprocess.Popen', return_value=process), \
+                        patch('kb_platform.plugin_process.Thread'), patch.object(transport, 'request', return_value=response):
+                    with self.assertRaises(PluginError) as failure:
+                        transport.start()
+                    self.assertEqual(failure.exception.code, 'PROCESS_HANDSHAKE_MISMATCH')
 
     def test_added_package_can_not_shadow_pinned_helper_module(self):
         with tempfile.TemporaryDirectory() as root:

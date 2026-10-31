@@ -2,7 +2,7 @@ import argparse
 from contextlib import contextmanager
 import json
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Thread, current_thread
 from time import monotonic
 from unittest.mock import patch
 import sys
@@ -12,7 +12,7 @@ import tempfile
 
 from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
-from kb_platform.plugin_process import PROCESS_LAUNCHER, ProcessPackages, ProcessTransport
+from kb_platform.plugin_process import PROTOCOL, PROCESS_LAUNCHER, ProcessPackages, ProcessTransport
 
 
 def wait_until(predicate, seconds):
@@ -256,26 +256,132 @@ def blocked_pipe_cases(manager, installed, root):
     return observations
 
 
-def run(output, plugin_python=None, *, blocked_only=False, supervision_only=False):
+def generic_command_case(root):
+    source = root / 'command-source'
+    source.mkdir()
+    (source / 'worker.py').write_text(
+        'import json, os, sys\n'
+        'for line in sys.stdin:\n'
+        '    request = json.loads(line)\n'
+        '    result = {"argv": sys.argv[1:], "cwd": os.getcwd(), "input": request.get("args")}\n'
+        '    if request["kind"] == "handshake":\n'
+        '        result = {"protocol": request["protocol"], "services": request["capabilities"],\n'
+        '            "runtime": {"language": "python", "version": sys.version, "executable": sys.executable}}\n'
+        '    print(json.dumps({"protocol": request["protocol"], "id": request["id"],\n'
+        '        "ok": True, "result": result}), flush=True)\n'
+        '    if request["kind"] == "shutdown":\n'
+        '        break\n', 'utf-8')
+    arguments = ['', 'two words', 'literal&value', '$unchanged']
+    (source / 'plugin.json').write_text(json.dumps({'protocol': PROTOCOL, 'name': 'fixture',
+        'version': '1', 'command': [sys.executable, '-B', '-u', 'worker.py', *arguments],
+        'services': {'echo': ['invoke']}}), 'utf-8')
+    manager = ProcessPackages(Path(root) / 'installed')
+    installed = manager.install(source)
+    transport = ProcessTransport(installed['package'], journal=Path(root) / 'journal',
+        timeout=3, identity={})
+    try:
+        transport.start()
+        result = transport.request('invoke', service='echo', method='invoke', args=['hello'], kwargs={})
+    finally:
+        transport.close()
+    rows = [json.loads(path.read_text('utf-8')) for path in (Path(root) / 'journal').glob('*.json')]
+    accepted = (result == {'argv': arguments, 'cwd': installed['package'], 'input': ['hello']}
+        and transport.runtime_info['language'] == 'python' and transport._process.poll() is not None
+        and not transport._reader.is_alive() and not transport._writer.is_alive()
+        and sum(row['status'] == 'COMPLETE' for row in rows) == 3
+        and not any(row['status'] == 'UNKNOWN' for row in rows))
+    return {'decision': 'PASS' if accepted else 'FAIL', 'runtime': transport.runtime_info,
+        'result': result, 'child_stopped': transport._process.poll() is not None}
+
+
+def dependency_calls_case(manager, installed, root):
+    observations, calls = [], []
+    journal = root / 'dependency-journal'
+    spec = manager.catalog(installed['package'], journal=journal)
+    caller_thread = current_thread()
+
+    class SharedModel:
+        def generate(self, prompt):
+            calls.append({'prompt': prompt, 'same_thread': current_thread() is caller_thread,
+                'operation': host.current_call['operation'], 'deadline': host.current_call['deadline']})
+            return {'answer': prompt, 'model': 'deterministic-fixture'}
+
+    def mount(ctx, config):
+        ctx.provide('shared.model', SharedModel())
+
+    model = PluginSpec('fixture.shared-model', ('shared.model',), (), mount)
+    profile = {'version': 1, 'plugins': [
+        {'id': 'model', 'use': model.key}, {'id': 'consumer', 'use': spec.key}]}
+    with process_host(profile, [model, spec]) as host:
+        transport = host.service('external.consumer').transport
+        dependency = transport.invoke_dependency
+
+        def observe(call, timeout):
+            observations.append({'parent_operation': host.current_call['operation'],
+                'parent_deadline': host.current_call['deadline'], 'same_thread': current_thread() is caller_thread})
+            return dependency(call, timeout)
+
+        transport.invoke_dependency = observe
+        result = host.bind('external.consumer').invoke('invoke', args=('hello',), timeout=3)
+        denied = host.call('external.consumer', 'denied', 'denied')
+        runtime = transport.runtime_info
+        leases = host.inspect()['leases']
+    rows = [json.loads(path.read_text('utf-8')) for path in journal.glob('*.json')]
+    parent = next(row['request']['identity'] for row in rows if row['status'] == 'PREPARED'
+        and row['request'].get('method') == 'invoke')
+    accepted = (result['ok'] and result['result'] == {'answer': 'hello:continued', 'model': 'deterministic-fixture'}
+        and not denied['ok'] and denied['error']['code'] == 'UNDECLARED_SERVICE_DEPENDENCY'
+        and len(calls) == len(observations) == 2 and not leases
+        and all(row['same_thread'] and row['parent_operation'] == parent['operation']
+            and row['parent_deadline'] == parent['deadline'] for row in observations)
+        and all(row['same_thread'] and row['operation'] != parent['operation']
+            and row['deadline'] <= parent['deadline'] for row in calls))
+    malformed = []
+    for method in ('unknown_parent', 'duplicate'):
+        before = len(calls)
+        with process_host(profile, [model, spec]) as host:
+            try:
+                host.call('external.consumer', method, method)
+            except PluginError as error:
+                failure = error.code
+            else:
+                failure = 'UNEXPECTED_SUCCESS'
+        count = len(calls) - before
+        malformed.append({'method': method, 'error': failure, 'dependency_calls': count})
+        accepted = accepted and failure == 'PROCESS_RESULT_UNKNOWN' and count <= (method == 'duplicate')
+    return {'decision': 'PASS' if accepted else 'FAIL', 'runtime': runtime,
+        'result': result, 'undeclared_dependency': denied, 'callbacks': observations, 'provider_calls': calls[:2],
+        'remaining_leases': leases, 'malformed_callbacks': malformed}
+
+
+def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, supervision_only=False):
     examples = Path(__file__).resolve().parents[2] / 'examples'
     with tempfile.TemporaryDirectory(prefix='kb-process-integration-') as temporary:
         root = Path(temporary)
+        command_case = generic_command_case(root)
+        if command_case['decision'] != 'PASS':
+            raise RuntimeError('PROCESS_COMMAND_LAUNCH_CONTRACT_FAILED')
         manager = ProcessPackages(root / 'installed')
         packages = {}
-        for name in ('process-echo', 'process-blocked-pipe', 'process-supervision'):
+        for name in ('process-echo', 'process-blocked-pipe', 'process-supervision', 'process-dependency'):
             source = examples / name
-            if plugin_python is not None:
+            if plugin_python is not None or plugin_node is not None and name in {'process-echo', 'process-dependency'}:
                 copied = root / name
                 shutil.copytree(source, copied)
                 manifest = json.loads((copied / 'plugin.json').read_text('utf-8'))
-                manifest['python'] = str(plugin_python.resolve())
+                if plugin_node is not None and name in {'process-echo', 'process-dependency'}:
+                    manifest.pop('entry')
+                    manifest['command'] = [str(plugin_node.resolve()), 'plugin.mjs']
+                else:
+                    manifest['python'] = str(plugin_python.resolve())
                 (copied / 'plugin.json').write_text(json.dumps(manifest), 'utf-8')
                 source = copied
             packages[name] = manager.install(source)
         installed = packages['process-echo']
-        commands = [[str(plugin_python.resolve()) if plugin_python is not None else sys.executable,
-            *flags, '-I', '-u', '-c', PROCESS_LAUNCHER,
-            package['package'], str(Path(package['package']) / 'plugin.py')]
+        commands = [package['manifest']['command'] if 'command' in package['manifest'] else
+            [str(plugin_python.resolve()) if plugin_python is not None else sys.executable,
+                *flags, '-I', '-u', '-c', PROCESS_LAUNCHER,
+                package['package'], str(Path(package['package']) / 'plugin.py')]
             for package in packages.values() for flags in ([], ['-B'])]
         def audit(event, args):
             if event in {'socket.connect', 'socket.getaddrinfo', 'socket.sendto', 'socket.sendmsg',
@@ -285,6 +391,10 @@ def run(output, plugin_python=None, *, blocked_only=False, supervision_only=Fals
                     args[1] in (command, subprocess.list2cmdline(command)) for command in commands):
                 raise RuntimeError('PROCESS_FIXTURE_REJECTS_OTHER_COMMAND')
         sys.addaudithook(audit)
+        dependencies = None if blocked_only or supervision_only else dependency_calls_case(
+            manager, packages['process-dependency'], root)
+        if dependencies is not None and dependencies['decision'] != 'PASS':
+            raise RuntimeError('PROCESS_DEPENDENCY_CALL_CONTRACT_FAILED')
         blocked = [] if supervision_only else blocked_pipe_cases(manager, packages['process-blocked-pipe'], root)
         supervision = [] if blocked_only else [
             idle_exit_case(manager, packages['process-supervision'], root),
@@ -433,10 +543,12 @@ def run(output, plugin_python=None, *, blocked_only=False, supervision_only=Fals
             raise RuntimeError('PROCESS_CANCEL_MESSAGE_CONTAINS_BUSINESS_ARGUMENTS')
         output.mkdir(parents=True, exist_ok=False)
         (output / 'result.json').write_text(json.dumps({'decision': 'PASS',
-            'scope': 'controlled local external Python process; no provider or production quality claim',
+            'scope': 'controlled local external process; no provider or production quality claim',
             'installed_digest': installed['digest'], 'echo': value, 'crash_sends': len(crash_sends),
             'large_echo_bytes': len(large_payload),
             'plugin_runtime': runtime_info,
+            'dependency_calls': dependencies,
+            'command_launch': command_case,
             'unknown': unknown, 'cancel_and_deadline': 'completion or process termination observed before lease release',
             'deadline_outcome': deadline_outcome,
             'deadline_sends': len(deadline_sends), 'pre_send_deadline_outcome': pre_send_outcome,
@@ -450,10 +562,11 @@ def main():
     parser = argparse.ArgumentParser(description='Verify controlled local process plugin transport.')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--plugin-python', type=Path)
+    parser.add_argument('--plugin-node', type=Path)
     parser.add_argument('--blocked-pipe-only', action='store_true')
     parser.add_argument('--supervision-only', action='store_true')
     args = parser.parse_args()
-    run(args.output, args.plugin_python, blocked_only=args.blocked_pipe_only,
+    run(args.output, args.plugin_python, plugin_node=args.plugin_node, blocked_only=args.blocked_pipe_only,
         supervision_only=args.supervision_only)
     return 0
 

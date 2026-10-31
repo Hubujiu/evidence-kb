@@ -24,19 +24,21 @@ uv sync --locked --group dev
 uv run --no-sync python scripts/check_project.py
 ```
 
-输出默认保存在新的 `.local/checks/` 子目录。该命令检查架构边界、Ruff、Rust 格式与测试、Python 组件合同和 24 条合成评分器控制；合同工作进程阻断 Python 网络发送和子进程启动。它不访问真实模型或生产数据。
+输出默认保存在新的 `.local/checks/` 子目录。该命令检查架构边界、Ruff、Rust 格式与测试、Python 组件合同、独立进程插件、Rust 主宿主和 24 条合成评分器控制；合同工作进程阻断 Python 网络发送和子进程启动，进程及本地 HTTP 检查单独执行。它不访问真实模型或生产数据。
 
-默认服务需要当前源码构建的原生库，运行前先完成上述构建。更新 Rust 源码后重新执行 `cargo build --workspace --locked --offline`。默认加载 `target/debug` 的平台动态库；部署其他构建产物时用绝对路径 `KB_AGENT_KERNEL_LIBRARY` 指定，详见 [Rust 运行时](docs/rust-agent-runtime.md)。
+默认服务由 Rust 主宿主启动，运行前先完成上述构建。更新 Rust 源码后重新执行 `cargo build --workspace --locked --offline`。宿主同目录的原生库提供单次 Agent 运行的值状态；插件生命周期由主进程维护。部署与跨语言接入见 [Rust 主宿主](docs/rust-main-host.md)。
 
 ## 启动本地文档工作台
 
 ```powershell
 uv run python scripts/bootstrap.py
 docker compose up -d --wait
-uv run uvicorn kb_platform.api:app --host 127.0.0.1 --port 58080
+uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
 打开 [文档工作台](http://127.0.0.1:58080/)，使用 `.local/identities.json` 中生成的本地令牌。该文件包含私有令牌，不要提交。
+
+正常停止时，在另一终端执行 `New-Item .local/api.stop -ItemType File`；下次启动前移除该标记。宿主等待在途工作与资源清理，异常退出返回非零状态。Linux 可用 `touch .local/api.stop`。HTTP 路由和页面仍由现有 Python 应用提供。
 
 Compose 默认只启动 PostgreSQL，镜像包含固定版本的 BM25 和向量扩展。正文、向量、索引和发布状态由数据库持久化，原件文件仅供备份下载。Compose 数据库仅绑定回环地址，包含公开开发密码；生产部署需要单独配置认证、网络、数据库凭据和备份。事务与恢复边界见 [检索存储](docs/search-storage.md)。
 
@@ -59,7 +61,7 @@ PowerShell 中显式启用后重启服务。
 ```powershell
 $env:KB_REMOTE_MODELS = '1'
 $env:KB_PROVIDERS_CONFIG = '.local/providers.json'
-uv run uvicorn kb_platform.api:app --host 127.0.0.1 --port 58080
+uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
 上传、索引和问答可能产生付费请求。执行真实验收前冻结输入、明确预算，并核对已有账本。固定交付工厂 `kb_platform.delivery:create_delivery_app` 还要求匹配的交付配置和私有运行目录。Windows 的 `scripts/start_delivery.ps1` 属于该高级交付流程，需要显式提供配置参数；本机交付配置不随仓库发布。
@@ -71,6 +73,7 @@ GitHub Actions 在 PR、main/master 推送、合并队列及手动触发时运�
 - [开发与合并检查](docs/development.md) 说明命令、测试取舍及分支保护。
 - [模块架构](docs/architecture.md) 说明交付、产品和评测模块边界。
 - [插件宿主](docs/plugin-harness.md) 说明 Rust loop、服务注入、profile 和插件生命周期。
+- [Rust 主宿主](docs/rust-main-host.md) 说明进程入口、执行环境协议和跨语言插件。
 - [统一 RAG 评测](docs/rag-testing-framework.md) 说明证据、缓存、费用和观测要求。
 - [协作约定](AGENTS.md) 适用于源码修改与评测。
 

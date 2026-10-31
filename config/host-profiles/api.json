@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "worker": ["python", "-B", "-u", "-m", "kb_platform.host_worker"],
+  "cwd": "../..",
+  "application": {
+    "factory": "kb_platform.host_applications:api",
+    "config": {"host": "127.0.0.1", "port": 58080}
+  }
+}

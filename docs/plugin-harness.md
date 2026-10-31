@@ -4,14 +4,17 @@
 
 `rust/plugin-runtime` 是根应用的唯一生命周期权威。来源基线、运行状态和行为差异见 [Rust 插件运行时](plugin-runtime.md)。Python 保存业务对象并执行 Rust 派发的动作，既有算法和物理请求账本继续复用。
 
+默认入口现为 [Rust 主宿主](rust-main-host.md) `evidence-host`，由 `config/host-profiles/` 选择语言执行环境与应用工厂。下述应用/Agent profile 决定业务插件组合。
+
 ## 当前边界
 
 | 实现 | 拥有的职责 |
 | --- | --- |
 | `rust/plugin-runtime` | 实例、代次、服务注册、依赖、作用域、配置应用、运行租约、资源与清理结果 |
+| `rust/plugin-host` | 执行环境进程监督、协议传输、启动与关停期限 |
 | `rust/agent-harness` | 通用 loop、图节点推进与效果序号 |
 | `rust/agent-kernel` | 每次运行的操作准入、结果关联、截止时间、取消、终态；导出内嵌 C ABI 与 JSON 协议 |
-| `plugin_native.py` | JSON 编解码、原生调用、返回内存释放 |
+| `plugin_native.py` | 主宿主管道调用，或直接嵌入模式的 C ABI 编解码与内存释放 |
 | `plugin_host.py` | Python 服务实现、装配上下文、事件监听、资源释放回调 |
 | `harness_services.py` / `harness_profile.py` | 通用服务 catalog，以及显式启用的持久 Agent 组合 |
 | `plugin_profiles.py` | 显式组合包展开与条目覆盖，不挂载服务 |

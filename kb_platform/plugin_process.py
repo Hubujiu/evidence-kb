@@ -5,7 +5,7 @@ from io import BufferedReader
 import json
 import os
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 import shutil
 import subprocess
 import sys
@@ -28,25 +28,38 @@ PROCESS_LAUNCHER = ('import importlib.util,sys; '
 
 def _document(path):
     value = json.loads(path.read_text('utf-8'))
-    if (not isinstance(value, dict) or set(value) - {'protocol', 'name', 'version', 'entry', 'services', 'python'}
-            or not {'protocol', 'name', 'version', 'entry', 'services'} <= set(value)
+    if (not isinstance(value, dict) or set(value) - {'protocol', 'name', 'version', 'entry', 'services', 'python', 'command', 'requires'}
+            or not {'protocol', 'name', 'version', 'services'} <= set(value)
             or value['protocol'] != PROTOCOL or not isinstance(value['name'], str)
             or not value['name'] or any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789._-' for c in value['name'])
             or not isinstance(value['version'], str) or not value['version']
-            or not isinstance(value['entry'], str) or not isinstance(value['services'], dict)
+            or not isinstance(value['services'], dict)
             or not value['services']):
         raise PluginError('INVALID_PROCESS_MANIFEST')
-    if 'python' in value and (not isinstance(value['python'], str)
-            or not Path(value['python']).is_absolute() or not Path(value['python']).is_file()):
-        raise PluginError('INVALID_PROCESS_PYTHON')
-    entry = (path.parent / value['entry']).resolve()
-    if not entry.is_relative_to(path.parent.resolve()) or not entry.is_file():
-        raise PluginError('INVALID_PROCESS_ENTRY')
+    if 'command' in value:
+        command = value['command']
+        if ('entry' in value or 'python' in value or not isinstance(command, list) or not command
+                or any(not isinstance(argument, str) or '\0' in argument for argument in command)
+                or not command[0].strip()):
+            raise PluginError('INVALID_PROCESS_COMMAND')
+    else:
+        if not isinstance(value.get('entry'), str) or not value['entry'] or '\0' in value['entry']:
+            raise PluginError('INVALID_PROCESS_ENTRY')
+        if 'python' in value and (not isinstance(value['python'], str) or '\0' in value['python']
+                or not Path(value['python']).is_absolute() or not Path(value['python']).is_file()):
+            raise PluginError('INVALID_PROCESS_PYTHON')
+        entry = (path.parent / value['entry']).resolve()
+        if not entry.is_relative_to(path.parent.resolve()) or not entry.is_file():
+            raise PluginError('INVALID_PROCESS_ENTRY')
     for service, methods in value['services'].items():
         if (not isinstance(service, str) or not service or not isinstance(methods, list) or not methods
                 or any(not isinstance(method, str) or not method.isidentifier() or method.startswith('_')
                     for method in methods)):
             raise PluginError('INVALID_PROCESS_CAPABILITY')
+    requires = value.get('requires', [])
+    if (not isinstance(requires, list) or any(not isinstance(service, str) or not service for service in requires)
+            or len(set(requires)) != len(requires)):
+        raise PluginError('INVALID_PROCESS_DEPENDENCY')
     return value
 
 
@@ -163,11 +176,13 @@ class ProcessPackages:
                 identity=dict(ctx.identity))
             transport.on_exit = lambda: ctx.host._instance_exited(ctx.plugin_id,
                 ctx.identity['instance'], ctx.identity['generation'])
+            transport.invoke_dependency = lambda call, timeout: ctx.host._invoke(dict(ctx.binding(call['service'])),
+                call['method'], call['args'], call['kwargs'], timeout=timeout)
             ctx.defer(transport.close)
             transport.start()
             for service, methods in manifest['services'].items():
                 ctx.provide(service, ProcessService(transport, service, tuple(methods), ctx))
-        return PluginSpec(f'process.{manifest["name"]}', tuple(manifest['services']), (), mount,
+        return PluginSpec(f'process.{manifest["name"]}', tuple(manifest['services']), tuple(manifest.get('requires', ())), mount,
             version=manifest['version'], concurrency='concurrent', config_schema={
                 'type': 'object', 'properties': {'timeout': {'type': 'number', 'exclusiveMinimum': 0,
                     'maximum': 300}}, 'additionalProperties': False})
@@ -222,8 +237,10 @@ class ProcessTransport:
         self._pending, self._process, self._reader = {}, None, None
         self._outgoing, self._writer, self._writer_stopped = Queue(), None, False
         self._received = {}
+        self._callbacks = {}
         self._closed, self._draining, self._failure = False, False, None
         self.on_exit = None
+        self.invoke_dependency = None
 
     def _record(self, request, status, **fields):
         with (self.journal / f'{request["id"]}-{status}.json').open('x', encoding='utf-8') as stream:
@@ -234,8 +251,15 @@ class ProcessTransport:
         with self._lock:
             if self._process is not None:
                 raise PluginError('PROCESS_ALREADY_STARTED')
-            self._process = subprocess.Popen([self.manifest.get('python', sys.executable), '-B', '-I', '-u',
-                '-c', PROCESS_LAUNCHER, str(self.package), str(self.package / self.manifest['entry'])], cwd=self.package,
+            if 'command' in self.manifest:
+                command = list(self.manifest['command'])
+                executable = Path(command[0])
+                if not executable.is_absolute() and ('/' in command[0] or '\\' in command[0]):
+                    command[0] = str((self.package / executable).resolve())
+            else:
+                command = [self.manifest.get('python', sys.executable), '-B', '-I', '-u',
+                    '-c', PROCESS_LAUNCHER, str(self.package), str(self.package / self.manifest['entry'])]
+            self._process = subprocess.Popen(command, cwd=self.package,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
             self._process.stdout = BufferedReader(self._process.stdout)
             self._reader = Thread(target=self._read, daemon=True)
@@ -244,8 +268,8 @@ class ProcessTransport:
         if (not isinstance(response, dict) or response.get('protocol') != PROTOCOL
                 or response.get('services') != self.manifest['services']
                 or not isinstance(response.get('runtime'), dict)
-                or not isinstance(response['runtime'].get('python_version'), str)
-                or not isinstance(response['runtime'].get('executable'), str)):
+                or any(not isinstance(response['runtime'].get(field), str)
+                    or not response['runtime'][field].strip() for field in ('language', 'version', 'executable'))):
             raise PluginError('PROCESS_HANDSHAKE_MISMATCH')
         self.runtime_info = response['runtime']
 
@@ -342,6 +366,9 @@ class ProcessTransport:
                 if len(line) > MAX_MESSAGE or not line.endswith(b'\n'):
                     raise PluginError('PROCESS_MESSAGE_LIMIT')
                 value = json.loads(line)
+                if isinstance(value, dict) and value.get('kind') == 'call':
+                    self._queue_callback(value)
+                    continue
                 if (not isinstance(value, dict) or value.get('protocol') != PROTOCOL
                         or not isinstance(value.get('id'), str) or type(value.get('ok')) is not bool):
                     raise PluginError('PROCESS_INVALID_RESPONSE')
@@ -367,6 +394,63 @@ class ProcessTransport:
             if not self._draining and self.on_exit is not None:
                 Thread(target=self._notify_exit, args=(exc,),
                     name=f'plugin-exit-{self.session}', daemon=True).start()
+
+    def _queue_callback(self, value):
+        if (set(value) != {'protocol', 'id', 'kind', 'parent', 'service', 'method', 'args', 'kwargs'}
+                or value['protocol'] != PROTOCOL or not isinstance(value['id'], str) or not value['id']
+                or not isinstance(value['parent'], str) or not isinstance(value['service'], str)
+                or not isinstance(value['method'], str) or not value['method'].isidentifier()
+                or value['method'].startswith('_') or not isinstance(value['args'], list)
+                or not isinstance(value['kwargs'], dict)):
+            raise PluginError('PROCESS_INVALID_CALLBACK')
+        with self._lock:
+            callbacks = self._callbacks.get(value['parent'])
+            future = self._pending.get(value['parent'])
+            if callbacks is None or future is None or future.done() or self.invoke_dependency is None:
+                raise PluginError('PROCESS_CALLBACK_PARENT_UNAVAILABLE')
+            queue, seen = callbacks
+            if value['id'] in seen or len(seen) >= 1024:
+                raise PluginError('PROCESS_CALLBACK_DUPLICATE_OR_LIMIT')
+            seen.add(value['id'])
+            queue.put(value)
+
+    def _invoke_callback(self, call, expires, cancel_signal):
+        response = {'protocol': PROTOCOL, 'id': call['id'], 'ok': False}
+        try:
+            remaining = expires - monotonic()
+            if remaining <= 0 or cancel_signal is not None and cancel_signal.is_set():
+                raise PluginError('PROCESS_CALLBACK_CANCELLED')
+            if call['service'] not in self.manifest.get('requires', ()):
+                raise PluginError('UNDECLARED_SERVICE_DEPENDENCY')
+            response['result'] = self.invoke_dependency(call, remaining)
+            response['ok'] = True
+            payload = json.dumps(response, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode() + b'\n'
+            if len(payload) > MAX_MESSAGE:
+                raise PluginError('PROCESS_MESSAGE_LIMIT')
+        except Exception as error:
+            response = {'protocol': PROTOCOL, 'id': call['id'], 'ok': False,
+                'error': {'code': getattr(error, 'code', type(error).__name__), 'message': str(error)}}
+            payload = json.dumps(response, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode() + b'\n'
+        if len(payload) > MAX_MESSAGE:
+            raise PluginError('PROCESS_MESSAGE_LIMIT')
+        record = {'id': uuid4().hex, 'kind': 'dependency_response', 'parent': call['parent'],
+            'callback': call['id'], 'service': call['service'], 'method': call['method']}
+        self._record(record, 'PREPARED')
+        write = _Write(record, payload, expires, Future())
+        try:
+            self._enqueue(write)
+            write.future.result(max(0, expires - monotonic()))
+        except BaseException as error:
+            with self._lock:
+                write.cancelled = True
+                sent = write.sent
+            if sent:
+                try:
+                    self._record(record, 'UNKNOWN', reason=type(error).__name__)
+                except OSError as failure:
+                    error.add_note(f'UNKNOWN journal write failed; SENT remains unresolved: {failure}')
+            raise
+        self._record(record, 'COMPLETE' if response['ok'] else 'ERROR')
 
     def _notify_exit(self, error):
         try:
@@ -394,6 +478,9 @@ class ProcessTransport:
                     or self._process is None or self._process.poll() is not None):
                 raise PluginError('PROCESS_UNAVAILABLE')
             self._pending[request['id']] = future
+            callbacks = Queue()
+            if kind == 'invoke':
+                self._callbacks[request['id']] = callbacks, set()
         try:
             self._record(request, 'PREPARED')
             if cancel_signal is not None and cancel_signal.is_set():
@@ -406,6 +493,12 @@ class ProcessTransport:
                     if future.done():
                         response = future.result()
                         break
+                    try:
+                        callback = callbacks.get_nowait()
+                    except Empty:
+                        pass
+                    else:
+                        self._invoke_callback(callback, expires, cancel_signal)
                 now = monotonic()
                 if now >= expires or cancel_expires is not None and now >= cancel_expires:
                     raise TimeoutError('Process request absolute deadline elapsed')
@@ -443,6 +536,7 @@ class ProcessTransport:
         finally:
             with self._lock:
                 self._pending.pop(request['id'], None)
+                self._callbacks.pop(request['id'], None)
         if not response['ok']:
             self._record(request, 'ERROR', error=response.get('error'))
             raise PluginError('PROCESS_CALL_ERROR', str(response.get('error')))

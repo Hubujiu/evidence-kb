@@ -32,7 +32,7 @@ for line in sys.stdin.buffer:
     request = json.loads(line)
     if request['kind'] == 'handshake':
         respond(request, {'protocol': PROTOCOL, 'services': SERVICES,
-            'runtime': {'executable': sys.executable, 'python_version': sys.version}})
+            'runtime': {'executable': sys.executable, 'language': 'python', 'version': sys.version}})
     elif request['kind'] == 'shutdown':
         for signal in pending.values():
             signal.set()

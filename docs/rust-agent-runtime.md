@@ -170,24 +170,24 @@ uv sync --locked --group dev
 uv run --no-sync python scripts/check_project.py
 ```
 
-Python 宿主读取 `target/debug` 的平台动态库，也可用绝对路径 `KB_AGENT_KERNEL_LIBRARY` 指定构建产物。库缺失或协议不兼容直接报错，不自动编译、不回退旧 Python loop。修改 Rust 后需要重新构建部署产物。
+直接 Python 嵌入入口读取 `target/debug` 的平台动态库，也可用绝对路径 `KB_AGENT_KERNEL_LIBRARY` 指定构建产物。默认部署已使用 [Rust 主宿主](rust-main-host.md)：插件生命周期、loop 和 graph 位于主进程，Python worker 仅为单次运行值状态加载宿主同目录的动态库。库缺失或协议不兼容直接报错，不自动编译、不回退旧 Python loop。修改 Rust 后需要重新构建部署产物。
 
 性能部署显式构建 release 库，并在启动服务的同一环境中选择它。例如 Linux：
 
 ```bash
 cargo build --workspace --release --locked --offline
 export KB_AGENT_KERNEL_LIBRARY="$(pwd)/target/release/libagent_kernel.so"
-uv run --no-sync uvicorn kb_platform.api:app --host 127.0.0.1 --port 58080
+uv run --no-sync target/release/evidence-host --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
-PowerShell 使用 `$env:KB_AGENT_KERNEL_LIBRARY = (Resolve-Path target/release/agent_kernel.dll).Path`；macOS 使用 `target/release/libagent_kernel.dylib` 的绝对路径。未设置该变量时仍按上文加载 debug 库，不会静默选择其他产物。
+PowerShell 使用 `$env:KB_AGENT_KERNEL_LIBRARY = (Resolve-Path target/release/agent_kernel.dll).Path`；macOS 使用 `target/release/libagent_kernel.dylib` 的绝对路径。主宿主未显式指定库时加载其同目录制品，直接 Python 嵌入模式默认加载 debug 库。
 
 统一入口执行 Rust 格式、Clippy、整个 workspace 的独立 release 构建和测试，再把本轮库副本的准确路径传给 Python 离线合同。构建失败时阻断合同，不能用旧库得到通过结果。原有禁止 socket 和子进程的 Python 审计钩子未放宽。CLI 帧边界和状态协议由 Rust 内存流测试验证，不从 Python 合同偷偷启动程序。
 
-架构门禁限制通用 Python 模块只能依赖声明的通用接口，同时限制两个 Rust crate 的依赖和源码包含路径。知识库、远端适配和评分执行器不能反向进入内核。组件合同覆盖依赖、作用域、卸载、替代 loop、历史所有权、直接交付、迟到结果、取消和既有 RAG 保护；这些离线合成检查不代表生产 RAG 质量或性能提升。
+架构门禁限制通用 Python 模块只能依赖声明的通用接口，同时限制 workspace 四个 Rust crate 的依赖和源码包含路径。知识库、远端适配和评分执行器不能反向进入内核。组件合同覆盖依赖、作用域、卸载、替代 loop、历史所有权、直接交付、迟到结果、取消和既有 RAG 保护；这些离线合成检查不代表生产 RAG 质量或性能提升。
 
 ## 方案取舍
 
 通用 loop 发出会话、上下文、模型和工具服务效果，使历史只有一个所有者，存储与上下文策略可独立替换，也能在会话命中已完成请求时避免新增模型或工具执行。领域图节点及辅助插件可以调用注入的服务；例如共享结构化模型的 `complete()` 不要求绕经主 loop，但仍复用已有请求准入与费用账本。这是本项目的协议选择，不把它描述为 DSH 对所有插件调用的强制规则。
 
-默认部署继续通过 C ABI 使用同一实现；JSON-lines CLI 为其他语言宿主提供协议入口。进程重启会丢失原生句柄，恢复和重发决定必须交给持久业务记录，不能根据句柄失效自动重做远端请求。
+默认部署通过 `plugin-host/1` JSON Lines 将生命周期调用发给 Rust 主进程；C ABI 保留单次运行值状态与直接嵌入用法。进程重启会丢失原生句柄，恢复和重发决定必须交给持久业务记录，不能根据句柄失效自动重做远端请求。

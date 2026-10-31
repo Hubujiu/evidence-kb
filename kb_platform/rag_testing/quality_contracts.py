@@ -48,6 +48,17 @@ class ArchitectureContracts(unittest.TestCase):
             with self.subTest(module=module):
                 self.assertEqual([], self.check_source(source, f'kb_platform/{module}.py'))
 
+    def test_profile_factory_is_only_dynamic_host_import_boundary(self):
+        source = 'import importlib\ndef _boot(module):\n    return importlib.import_module(module)'
+        self.assertEqual([], self.check_source(source, 'kb_platform/host_worker.py'))
+        for changed, path in (
+            (source.replace('_boot', 'run'), 'kb_platform/host_worker.py'),
+            (source, 'kb_platform/plugin_host.py'),
+            (source.replace('import_module(module)', 'import_module(other)'), 'kb_platform/host_worker.py'),
+        ):
+            with self.subTest(source=changed, path=path):
+                self.assertTrue(self.check_source(changed, path))
+
     def check_native(self, manifest, *, crate='agent-harness', source='pub fn run() {}'):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -218,7 +229,7 @@ class OfflinePolicyContracts(unittest.TestCase):
 class NativeBuildGateContracts(unittest.TestCase):
 
 
-    def run_gate(self, root, output, *, build_code=0, publish=True):
+    def run_gate(self, root, output, *, build_code=0, publish=True, publish_host=True):
         calls = []
         source = None
 
@@ -231,6 +242,13 @@ class NativeBuildGateContracts(unittest.TestCase):
                 if build_code == 0 and publish:
                     source.parent.mkdir(parents=True, exist_ok=True)
                     source.write_bytes(b'current release library')
+                if build_code == 0 and publish_host:
+                    binary = check_project.host_binary_path(target)
+                    binary.parent.mkdir(parents=True, exist_ok=True)
+                    binary.write_bytes(b'current release host')
+                    worker = check_project.native_worker_path(target)
+                    worker.parent.mkdir(parents=True, exist_ok=True)
+                    worker.write_bytes(b'current release worker')
                 return check_project.CheckResult(name, build_code, name + '.log')
             if name == 'rust-tests' and source is not None and source.exists():
 
@@ -260,6 +278,7 @@ class NativeBuildGateContracts(unittest.TestCase):
             self.assertEqual('FAIL', summary['decision'])
             self.assertIsNone(summary['native_library'])
             self.assertNotIn('contracts', [name for name, _, _ in calls])
+            self.assertNotIn('host-integration', [name for name, _, _ in calls])
             self.assertIn('scorer', [name for name, _, _ in calls])
             contracts = json.loads((output / 'contracts.json').read_text('utf-8'))
             self.assertEqual('BLOCKED', contracts['decision'])
@@ -274,6 +293,19 @@ class NativeBuildGateContracts(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIsNone(summary['native_library'])
             self.assertNotIn('contracts', [name for name, _, _ in calls])
+            self.assertNotIn('host-integration', [name for name, _, _ in calls])
+
+    def test_missing_host_binary_cannot_reuse_an_earlier_host(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, prior, _ = self.run_gate(root, root / 'previous')
+            with patch.dict(check_project.os.environ, {'KB_PLUGIN_HOST_BINARY': prior['host_binary']}):
+                code, summary, calls = self.run_gate(root, root / 'missing-host', publish_host=False)
+            self.assertEqual(1, code)
+            self.assertIsNone(summary['host_binary'])
+            self.assertNotIn('host-integration', [name for name, _, _ in calls])
+            self.assertTrue(any(row['name'] == 'host-integration' and row['exit_code'] != 0
+                                for row in summary['checks']))
 
     def test_independent_builds_preserve_each_runs_release_library(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -291,6 +323,9 @@ class NativeBuildGateContracts(unittest.TestCase):
                 libraries.append(library)
                 self.assertEqual(b'current release library', library.read_bytes())
                 self.assertTrue(library.resolve().is_relative_to(output.resolve()))
+                binary = Path(summary['host_binary'])
+                self.assertEqual(b'current release host', binary.read_bytes())
+                self.assertTrue(binary.resolve().is_relative_to(output.resolve()))
                 for name, command, env in calls:
                     if name == 'rust-build':
                         self.assertIn('--release', command)
@@ -299,6 +334,8 @@ class NativeBuildGateContracts(unittest.TestCase):
                         targets.append(command[command.index('--target-dir') + 1])
                     if name == 'contracts':
                         self.assertEqual(str(library), env['KB_AGENT_KERNEL_LIBRARY'])
+                    if name == 'host-integration':
+                        self.assertEqual(str(binary), env['KB_PLUGIN_HOST_BINARY'])
                 self.assertIn('rust-clippy', [name for name, _, _ in calls])
             self.assertNotEqual(targets[0], targets[1])
             self.assertNotEqual(libraries[0], libraries[1])

@@ -35,6 +35,8 @@ AGENT_DEPENDENCIES = {
     'agent_tool_loop': frozenset({'agent_decisions', 'agent_plugins', 'harness_services', 'plugin_host'}),
     'agent_plugins': frozenset({'agent_schema'}),
     'plugin_native': frozenset({'agent_native'}),
+    'host_protocol': frozenset(),
+    'host_worker': frozenset({'host_protocol', 'plugin_native'}),
     'plugin_host': frozenset({'plugin_native'}),
     'harness_sessions': frozenset({'agent_engine', 'agent_plugins', 'session_identity', 'session_store'}),
     'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host', 'session_identity'}),
@@ -62,9 +64,10 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'harness_loop', 'harness_services', 'context_budget', 'session_identity', 'session_store',
                            'plugin_profiles', 'harness_graph', 'harness_context', 'harness_model',
                            'harness_application', 'harness_profile', 'model_service', 'plugin_process',
-                           'plugin_configuration'})
+                           'plugin_configuration', 'host_protocol', 'host_worker'})
 NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
-                       'agent-harness': {'plugin-runtime', 'serde', 'serde_json'},
+                       'agent-harness': {'plugin-runtime', 'plugin-host', 'serde', 'serde_json'},
+                       'plugin-host': {'serde', 'serde_json'},
                        'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
@@ -130,6 +133,15 @@ def path_mutations(tree: ast.AST):
                 yield node.lineno
 
 
+def profile_factory_imports(tree: ast.AST, module: str) -> set[int]:
+    if module != 'kb_platform.host_worker':
+        return set()
+    return {node.lineno for definition in ast.walk(tree)
+            if isinstance(definition, ast.FunctionDef) and definition.name == '_boot'
+            for node in ast.walk(definition)
+            if isinstance(node, ast.Call) and ast.unparse(node) == 'importlib.import_module(module)'}
+
+
 def native_architecture_violations(root: Path) -> list[str]:
     errors = []
     workspace = root / 'Cargo.toml'
@@ -164,7 +176,7 @@ def native_architecture_violations(root: Path) -> list[str]:
             spec = spec if isinstance(spec, dict) else {'version': spec}
             if name not in allowed or spec.get('package', name) != name:
                 errors.append(f'{relative}: {name}: native harness cannot depend on business implementations')
-            elif name in {'agent-harness', 'plugin-runtime'}:
+            elif name in {'agent-harness', 'plugin-runtime', 'plugin-host'}:
                 expected = (root / 'rust' / name).resolve()
                 if not spec.get('path') or (directory / spec['path']).resolve() != expected:
                     errors.append(f'{relative}: {name} must resolve to the reviewed workspace crate')
@@ -247,7 +259,8 @@ def architecture_violations(root: Path) -> list[str]:
                     continue
                 if target != "kb_platform.rag_testing":
                     reason = "RAG foundations cannot depend on product execution or evaluation"
-            if target == "<dynamic-import>" and (not evaluation or shared):
+            if (target == "<dynamic-import>" and (not evaluation or shared)
+                    and line not in profile_factory_imports(tree, module)):
                 reason = "dynamic runtime imports need a statically reviewable module name"
             if reason:
                 errors.append(f"{relative.as_posix()}:{line}: {target}: {reason}")
@@ -444,6 +457,34 @@ def snapshot_native_library(build: CheckResult, target: Path, output: Path) -> P
     return destination
 
 
+def host_binary_path(target: Path) -> Path:
+    return target / 'release' / ('evidence-host.exe' if sys.platform == 'win32' else 'evidence-host')
+
+
+def snapshot_host_binary(build: CheckResult, target: Path, output: Path) -> Path | None:
+    if build.exit_code:
+        return None
+    source = host_binary_path(target)
+    destination = output / 'native' / source.name
+    destination.parent.mkdir(exist_ok=True)
+    shutil.copy2(source, destination)
+    return destination
+
+
+def native_worker_path(target: Path) -> Path:
+    return target / 'release/examples' / ('native_worker.exe' if sys.platform == 'win32' else 'native_worker')
+
+
+def snapshot_native_worker(build: CheckResult, target: Path, output: Path) -> Path | None:
+    if build.exit_code:
+        return None
+    source = native_worker_path(target)
+    destination = output / 'native' / source.name
+    destination.parent.mkdir(exist_ok=True)
+    shutil.copy2(source, destination)
+    return destination
+
+
 def blocked_contracts(output: Path, reason: str) -> CheckResult:
     log = output / "contracts.log"
     log.write_text(f"BLOCKED: {reason}\n", encoding="utf-8")
@@ -501,21 +542,39 @@ def main() -> int:
         native_args = ["--workspace", "--locked", "--offline", "--target-dir", str(target)]
         results.append(run_check("rust-clippy", cargo + ["clippy", *native_args, "--all-targets",
                                                         "--", "-D", "warnings"], output, env, timeout=600))
-        build = run_check("rust-build", cargo + ["build", "--release", *native_args],
+        build = run_check("rust-build", cargo + ["build", "--release", "--examples", "--bins", "--lib", *native_args],
                           output, env, timeout=600)
         results.append(build)
         native_library = None
+        host_binary = None
+        native_worker = None
         block_reason = "the current Rust release build failed"
         try:
             native_library = snapshot_native_library(build, target, output)
         except OSError as exc:
             block_reason = f"the current Rust release library could not be copied: {exc}"
+        try:
+            host_binary = snapshot_host_binary(build, target, output)
+            native_worker = snapshot_native_worker(build, target, output)
+        except OSError as exc:
+            (output / 'host-integration.log').write_text(f'BLOCKED: current host binary unavailable: {exc}\n',
+                                                       encoding='utf-8')
+        if host_binary is None or native_worker is None or native_library is None:
+            results.append(CheckResult('host-integration', 2, 'host-integration.log'))
+            if not (output / 'host-integration.log').exists():
+                (output / 'host-integration.log').write_text(f'BLOCKED: {block_reason}\n', encoding='utf-8')
         results.append(run_check("rust-tests", cargo + ["test", *native_args], output, env, timeout=600))
         if native_library is not None:
             env["KB_AGENT_KERNEL_LIBRARY"] = str(native_library)
             results.append(run_check('plugin-process-integration',
                 [sys.executable, '-B', '-m', 'kb_platform.rag_testing.plugin_process_integration',
                  '--output', str(output / 'plugin-process-integration')], output, env))
+        if host_binary is not None and native_worker is not None and native_library is not None:
+            env['KB_PLUGIN_HOST_BINARY'] = str(host_binary)
+            env['KB_PLUGIN_HOST_NATIVE_WORKER'] = str(native_worker)
+            results.append(run_check('host-integration',
+                [sys.executable, '-B', '-m', 'kb_platform.rag_testing.host_integration',
+                 '--output', str(output / 'host-integration')], output, env))
         if args.local_integration:
             if native_library is None:
                 results.append(run_check('runtime-integration', [sys.executable, '-c',
@@ -537,10 +596,12 @@ def main() -> int:
         "checks": [asdict(result) for result in results], "new_model_calls": 0,
         "new_embedding_calls": 0, "new_judge_calls": 0,
         "native_library": str(native_library) if native_library is not None else None,
+        "host_binary": str(host_binary) if host_binary is not None else None,
+        "native_worker": str(native_worker) if native_worker is not None else None,
         "controlled_local_integration": args.local_integration,
         "scope": ("offline gates plus controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
                   if args.local_integration else
-                  "offline gates; component checks and scorer controls reported separately")})
+                  "offline contracts plus controlled localhost host smoke; component checks and scorer controls reported separately")})
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1
 

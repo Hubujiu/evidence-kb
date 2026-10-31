@@ -373,3 +373,6 @@ class StructuredModel:
     def complete(self, messages, **options):
         with self._service.lease(self._name, Capability.CHAT, expected=self._entry):
             return self._model.complete(messages, **options)
+
+    def complete_json(self, messages, **options):
+        return self.complete(messages, **options).to_dict()

@@ -158,6 +158,12 @@ class ProductAdapter(PacketEvidenceAdapter):
             'request_evidence_bindings': tuple(bindings), 'request_messages': tuple(messages)})
 
 
+def service_wire_suite(suite):
+    return suite.model_copy(update={'id': suite.id + '/service-wire-24000', 'cases': tuple(
+        case.model_copy(update={'input': case.input.model_copy(update={'context_budget': 24000})})
+        for case in suite.cases)})
+
+
 def main():
     parser = argparse.ArgumentParser(description='Current product gateway + pipeline + context over frozen originals.\n\nOnly search/storage transport is an in-memory lexical fixture. Gold is passed\nexclusively to the unified runner. No model or embedding calls are made.\n')
     parser.add_argument('--suite', type=Path, required=True)
@@ -169,8 +175,7 @@ def main():
     if args.service:
 
 
-        suite = suite.model_copy(update={'id': suite.id + '/service-wire-24000', 'cases': tuple(
-            c.model_copy(update={'input': c.input.model_copy(update={'context_budget': 24000})}) for c in suite.cases)})
+        suite = service_wire_suite(suite)
     args.output.mkdir(parents=True, exist_ok=False)
     summary = {}
     for enabled in ((True,) if args.service else (False, True)):
