@@ -44,10 +44,11 @@ def process_running(pid):
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
-    state = Path(f'/proc/{pid}/stat')
+    if sys.platform != 'linux':
+        return True
     try:
-        return not state.exists() or state.read_text().split(') ', 1)[1][0] != 'Z'
-    except FileNotFoundError:
+        return Path(f'/proc/{pid}/stat').read_text().split(') ', 1)[1][0] != 'Z'
+    except (FileNotFoundError, ProcessLookupError):
         return False
 
 
