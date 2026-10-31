@@ -20,6 +20,16 @@ import uvicorn
 from .runner import write_json
 
 
+def acceptance_dsn(dsn):
+    selected = conninfo_to_dict(dsn)
+    if (not selected.get('dbname', '').startswith('rust_plugin_acceptance_')
+            or selected.get('host') != '127.0.0.1' or selected.get('port') != '55432'
+            or selected.get('hostaddr', '127.0.0.1') != '127.0.0.1'
+            or selected.get('user') != 'kb_app'):
+        raise ValueError('Acceptance requires kb_app on a dedicated loopback acceptance database')
+    return selected['dbname']
+
+
 def build_suite(dsn, output, observations):
     class RuntimeIntegration(unittest.TestCase):
         def setUp(self):
@@ -176,10 +186,11 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     dsn = os.environ['KB_DSN']
-    selected = conninfo_to_dict(dsn)
-    if (not selected.get('dbname', '').startswith('rust_plugin_acceptance_')
-            or selected.get('host') != '127.0.0.1' or selected.get('port') != '55432'):
-        parser.error('KB_DSN must select a dedicated rust_plugin_acceptance_* database on 127.0.0.1:55432')
+    try:
+        acceptance_dsn(dsn)
+    except ValueError as error:
+        parser.error(str(error))
+    os.environ['PGHOSTADDR'] = '127.0.0.1'
     if os.environ.get('KB_REMOTE_MODELS') != '0' or os.environ.get('KB_DEFER_DEFAULT_APP') != '1':
         parser.error('Set KB_REMOTE_MODELS=0 and KB_DEFER_DEFAULT_APP=1')
     args.output.mkdir(parents=True, exist_ok=False)
