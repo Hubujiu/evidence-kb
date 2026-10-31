@@ -1,0 +1,7 @@
+{
+  "name": "evidence-kb-browser-acceptance",
+  "private": true,
+  "type": "module",
+  "engines": {"node": "22.23.1"},
+  "devDependencies": {"e2e": "0.22.0", "@e2e-dev/web": "0.15.4"}
+}
