@@ -1,6 +1,13 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    let _signals = match plugin_host::ShutdownSignals::install() {
+        Ok(signals) => signals,
+        Err(error) => {
+            eprintln!("failed to install shutdown signals: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
     let mut args = std::env::args().skip(1);
     let mut profile = None;
     let mut worker = None;
