@@ -116,13 +116,16 @@ class LunaSDKContracts(unittest.TestCase):
             with self.subTest(explicit_deadline=explicit_deadline):
                 state = self.setup_provider([completion()], timeout_seconds=180)
                 trace = {'request_id': uuid4().hex, 'attempt': 0}
-                if explicit_deadline:
-                    trace['deadline_monotonic'] = time.monotonic() + 60
-                with execution_scope(deadline_seconds=10):
-                    self.call(state, trace=trace)
+                clock = [100.0]
+                with patch('kb_platform.remote.time.monotonic', side_effect=lambda: clock[0]):
+                    if explicit_deadline:
+                        trace['deadline_monotonic'] = clock[0] + 60
+                    with execution_scope(deadline_seconds=10):
+                        clock[0] += 1
+                        self.call(state, trace=trace)
                 for timeout in state.requests[0].extensions['timeout'].values():
                     self.assertGreater(timeout, 0)
-                    self.assertLessEqual(timeout, 10)
+                    self.assertEqual(timeout, 9)
 
     def test_direct_provider_expired_parent_deadline_is_zero_send(self):
         state = self.setup_provider([])
