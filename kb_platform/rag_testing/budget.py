@@ -9,8 +9,10 @@ class BudgetLedger:
         if not caps or any(type(v) is not int or v < 0 for v in caps.values()):
             raise ValueError("caps must be nonnegative integer resources")
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.path, self.caps = path, caps
+        caps = dict(caps)
+        self.path = path
         with closing(sqlite3.connect(path)) as db, db:
+            db.execute('BEGIN IMMEDIATE')
             db.execute("CREATE TABLE IF NOT EXISTS config (id INTEGER PRIMARY KEY, caps TEXT)")
             db.execute("CREATE TABLE IF NOT EXISTS calls (id TEXT PRIMARY KEY, status TEXT, reserved TEXT, "
                        "usage TEXT, category TEXT, diagnostic TEXT)")
@@ -18,6 +20,7 @@ class BudgetLedger:
             if current and json.loads(current[0]) != caps:
                 raise ValueError("cannot silently change frozen budget caps")
             db.execute("INSERT OR IGNORE INTO config VALUES (1, ?)", (json.dumps(caps),))
+            self.caps = json.loads(current[0]) if current else caps
 
     def _valid(self, resources, *, complete):
         if not set(resources) <= self.caps.keys() or (complete and set(resources) != self.caps.keys()):
