@@ -433,6 +433,7 @@ reranker = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -467,7 +468,10 @@ requires-dist = [
 provides-extras = ["acceptance", "reranker"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "ruff", specifier = ">=0.11,<1" }]
+dev = [
+    { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "ruff", specifier = ">=0.11,<1" },
+]
 
 [[package]]
 name = "fastapi"

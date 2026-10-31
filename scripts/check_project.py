@@ -221,8 +221,45 @@ def source_quality_violations(root: Path) -> list[str]:
     return errors
 
 
-def architecture_violations(root: Path) -> list[str]:
+def workflow_violations(workflow):
+    jobs = workflow.get('jobs', {})
+    integration = jobs.get('integration', {})
+    required = jobs.get('required', {})
     errors = []
+    dependencies = {'quality': 'QUALITY_RESULT', 'secrets': 'SECRETS_RESULT',
+                    'integration': 'INTEGRATION_RESULT'}
+    if not dependencies.keys() <= set(required.get('needs', [])):
+        errors.append('required must depend on quality, secrets and integration')
+    if required.get('if') != 'always()' or required.get('continue-on-error', False):
+        errors.append('required must always evaluate every job result')
+    if not integration or 'if' in integration or integration.get('continue-on-error', False):
+        errors.append('integration must run as a mandatory job')
+    commands = [step.get('run', '') for step in integration.get('steps', [])
+                if 'if' not in step and not step.get('continue-on-error', False)]
+    for command in (
+            'uv run --no-sync python scripts/check_project.py --local-integration --output reports/ci/integration-check',
+            'uv run --no-sync python -m kb_platform.rag_testing.browser_integration --checker-summary reports/ci/integration-check/summary.json --output reports/ci/browser'):
+        if command not in commands:
+            errors.append('integration must run required command: ' + command)
+    checks = [step for step in required.get('steps', [])
+              if 'if' not in step and not step.get('continue-on-error', False)]
+    aggregate = 'test "$QUALITY_RESULT" = success && test "$SECRETS_RESULT" = success && test "$INTEGRATION_RESULT" = success'
+    if not any(all(step.get('env', {}).get(variable) == '${{ needs.' + job + '.result }}'
+                   for job, variable in dependencies.items())
+               and step.get('run', '') == aggregate for step in checks):
+        errors.append('required must reject every failed or skipped gate')
+    return errors
+
+
+
+def architecture_violations(root: Path) -> list[str]:
+
+    import yaml
+
+    errors = []
+    workflow_path = root / '.github/workflows/ci.yml'
+    if workflow_path.is_file():
+        errors.extend(workflow_violations(yaml.safe_load(workflow_path.read_text('utf-8'))))
     sources = sorted((root / "kb_platform").rglob("*.py"))
     if not sources:
         return ["No active product sources found"]
