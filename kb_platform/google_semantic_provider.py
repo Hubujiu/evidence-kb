@@ -168,7 +168,7 @@ class GoogleSemanticProvider:
                   "manifest_sha256": digest(self.manifest), "audit_context": deepcopy(audit_context),
                   "reserved": reserved, "status": "STARTED", "automatic_retries": 0}
         try:
-            self.ledger.reserve(request_id, reserved, "google_canonical_" + task)
+            self.ledger.reserve(request_id, reserved, "google_canonical_" + task, require_settled=True)
         except ValueError as exc:
             if str(exc) in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
                             'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:

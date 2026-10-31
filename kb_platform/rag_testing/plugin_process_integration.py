@@ -1,4 +1,5 @@
 import argparse
+from contextlib import contextmanager
 import json
 from pathlib import Path
 from threading import Event, Thread
@@ -11,7 +12,7 @@ import tempfile
 
 from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
-from kb_platform.plugin_process import PROCESS_LAUNCHER, ProcessPackages
+from kb_platform.plugin_process import PROCESS_LAUNCHER, ProcessPackages, ProcessTransport
 
 
 def wait_until(predicate, seconds):
@@ -21,6 +22,27 @@ def wait_until(predicate, seconds):
             return True
         Event().wait(0.005)
     return bool(predicate())
+
+
+def close_when_quiescent(host):
+    expires = monotonic() + 3
+    while True:
+        try:
+            host.close()
+            return
+        except PluginError as error:
+            if error.code not in {'scope_busy', 'PLUGIN_LIFECYCLE_BUSY'} or monotonic() >= expires:
+                raise
+            Event().wait(0.005)
+
+
+@contextmanager
+def process_host(profile, catalog):
+    host = PluginHost(profile, catalog)
+    try:
+        yield host
+    finally:
+        close_when_quiescent(host)
 
 
 def idle_exit_case(manager, installed, root):
@@ -51,8 +73,57 @@ def idle_exit_case(manager, installed, root):
     observation['decision'] = 'PASS' if (value == 'armed' and not leases_before_exit and completed
         and not any(observation[key] for key in ('runtime_leases', 'queued_actions', 'resources',
             'writer_alive', 'reader_alive', 'child_alive')) and disposed.is_set()) else 'FAIL'
-    host.close()
+    close_when_quiescent(host)
     return observation
+
+
+def stale_exit_case(manager, installed, root):
+    spec = manager.catalog(installed['package'], journal=root / 'stale-exit-journal')
+    host = PluginHost({'version': 1, 'plugins': [{'id': 'process', 'use': spec.key}]}, [spec])
+    old = host.service('external.supervision').transport
+    entered, release, done = Event(), Event(), Event()
+    notify = ProcessTransport._notify_exit
+
+    def delayed(transport, error):
+        if transport is old:
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError('STALE_EXIT_NOTIFICATION_BARRIER_EXPIRED')
+        try:
+            notify(transport, error)
+        finally:
+            if transport is old:
+                done.set()
+
+    try:
+        with patch.object(ProcessTransport, '_notify_exit', delayed):
+            marker = root / 'old-generation-exit'
+            host.call('external.supervision', 'idle_exit', str(marker))
+            marker.touch()
+            if not entered.wait(3):
+                raise RuntimeError('STALE_EXIT_NOTIFICATION_NOT_SCHEDULED')
+            old._process.wait(timeout=3)
+            host.update('process', config={'timeout': 3})
+            current = host.service('external.supervision').transport
+            before = host.call('external.supervision', 'idle_exit', str(root / 'new-generation-exit'))
+            release.set()
+            if not done.wait(3):
+                raise RuntimeError('STALE_EXIT_NOTIFICATION_DID_NOT_FINISH')
+            after = host.call('external.supervision', 'idle_exit', str(root / 'new-generation-exit'))
+            snapshot = host.inspect()
+            observation = {'mode': 'stale_exit', 'old_pid': old._process.pid,
+                'current_pid': current._process.pid, 'old_generation': old.identity['generation'],
+                'current_generation': current.identity['generation'], 'call_before_notice': before,
+                'call_after_notice': after, 'current_alive': current._process.poll() is None,
+                'runtime_state': snapshot['state'], 'desired': snapshot['instances'][0]['desired']}
+            observation['decision'] = 'PASS' if (before == after == 'armed'
+                and observation['current_alive'] and observation['desired'] == 'enabled'
+                and observation['runtime_state'] == 'ready'
+                and observation['current_generation'] != observation['old_generation']) else 'FAIL'
+            return observation
+    finally:
+        release.set()
+        close_when_quiescent(host)
 
 
 def completed_cancel_writes_case(manager, installed, root):
@@ -98,7 +169,7 @@ def completed_cancel_writes_case(manager, installed, root):
     observation['decision'] = 'PASS' if (controls_ready and calls_completed and len(completed) == count
         and not failures and not pending_after_completion and stopped) else 'FAIL'
     transport._terminate()
-    host.close()
+    close_when_quiescent(host)
     return observation
 
 
@@ -134,7 +205,7 @@ def blocked_pipe_cases(manager, installed, root):
         if not started.wait(3):
             transport._terminate()
             worker.join(3)
-            host.close()
+            close_when_quiescent(host)
             raise RuntimeError('BLOCKED_PIPE_REQUEST_DID_NOT_START')
         queued_errors, queued_elapsed, first_still_running = [], None, None
         if mode == 'queued_deadline':
@@ -155,7 +226,7 @@ def blocked_pipe_cases(manager, installed, root):
         if not bounded:
             transport._terminate()
         worker.join(3)
-        host.close()
+        close_when_quiescent(host)
         rows = [json.loads(path.read_text('utf-8')) for path in journal.glob('*.json')]
         unknown = [row for row in rows if row['status'] == 'UNKNOWN' and row['request'].get('method') == 'accept']
         sent = [row for row in rows if row['status'] == 'SENT' and row['request'].get('method') == 'accept']
@@ -217,6 +288,7 @@ def run(output, plugin_python=None, *, blocked_only=False, supervision_only=Fals
         blocked = [] if supervision_only else blocked_pipe_cases(manager, packages['process-blocked-pipe'], root)
         supervision = [] if blocked_only else [
             idle_exit_case(manager, packages['process-supervision'], root),
+            stale_exit_case(manager, packages['process-supervision'], root),
             completed_cancel_writes_case(manager, packages['process-supervision'], root)]
         if supervision_only or any(row['decision'] != 'PASS' for row in supervision):
             output.mkdir(parents=True, exist_ok=False)
@@ -253,8 +325,8 @@ def run(output, plugin_python=None, *, blocked_only=False, supervision_only=Fals
             pass
         else:
             raise RuntimeError('PROCESS_FIXTURE_ADMITTED_AFTER_DRAIN')
-        host.close()
-        with PluginHost(profile, [spec]) as cancelled:
+        close_when_quiescent(host)
+        with process_host(profile, [spec]) as cancelled:
             waiting, completed, failures = Event(), Event(), []
             transport = cancelled.service('external.echo').transport
             original_input = transport._process.stdin
@@ -293,15 +365,55 @@ def run(output, plugin_python=None, *, blocked_only=False, supervision_only=Fals
             worker.join(5)
             if worker.is_alive() or failures != ['PROCESS_CALL_ERROR']:
                 raise RuntimeError('PROCESS_FIXTURE_CANCEL_DID_NOT_FINISH')
+            prior_requests = {path.name for path in (root / 'journal').glob('*-PREPARED.json')}
             try:
                 cancelled.bind('external.echo').invoke('wait', timeout=0.02)
             except PluginError as exc:
-                if exc.code not in {'PROCESS_CALL_ERROR', 'PROCESS_RESULT_UNKNOWN'}:
+                if exc.code not in {'PROCESS_CALL_ERROR', 'PROCESS_RESULT_UNKNOWN',
+                        'PROCESS_CANCELLED_BEFORE_SEND', 'PROCESS_DEADLINE_BEFORE_SEND'}:
                     raise
                 deadline_outcome = exc.code
             else:
                 raise RuntimeError('PROCESS_FIXTURE_DEADLINE_NOT_OBSERVED')
-        with PluginHost(profile, [spec]) as crashed:
+            deadline_requests = {json.loads(path.read_text('utf-8'))['request']['id']
+                for path in (root / 'journal').glob('*-PREPARED.json') if path.name not in prior_requests}
+            deadline_sends = [path for path in (root / 'journal').glob('*-SENT.json')
+                if json.loads(path.read_text('utf-8'))['request']['id'] in deadline_requests]
+            if deadline_outcome.endswith('_BEFORE_SEND') and deadline_sends:
+                raise RuntimeError('PROCESS_FIXTURE_PRE_SEND_DEADLINE_WAS_SENT')
+            if not deadline_outcome.endswith('_BEFORE_SEND') and len(deadline_sends) != 1:
+                raise RuntimeError('PROCESS_FIXTURE_POST_SEND_DEADLINE_MISSING_SEND')
+        pre_send_journal = root / 'pre-send-journal'
+        pre_send_spec = manager.catalog(installed['package'], journal=pre_send_journal)
+        with process_host(profile, [pre_send_spec]) as pre_send:
+            transport = pre_send.service('external.echo').transport
+            record = transport._record
+
+            def wait_for_deadline(request, status, **fields):
+                record(request, status, **fields)
+                if status == 'PREPARED' and request.get('method') == 'wait':
+                    signal = pre_send._cancellations[request['identity']['operation']]
+                    if not signal.wait(2):
+                        raise RuntimeError('PROCESS_FIXTURE_PRE_SEND_DEADLINE_NOT_SIGNALLED')
+
+            transport._record = wait_for_deadline
+            try:
+                pre_send.bind('external.echo').invoke('wait', timeout=0.02)
+            except PluginError as exc:
+                if exc.code not in {'PROCESS_CANCELLED_BEFORE_SEND', 'PROCESS_DEADLINE_BEFORE_SEND'}:
+                    raise
+                pre_send_outcome = exc.code
+            else:
+                raise RuntimeError('PROCESS_FIXTURE_PRE_SEND_DEADLINE_NOT_REJECTED')
+            pre_send_rows = [json.loads(path.read_text('utf-8'))
+                for path in pre_send_journal.glob('*.json')]
+            pre_send_sends = [row for row in pre_send_rows if row['status'] == 'SENT'
+                and row['request'].get('method') == 'wait']
+            if pre_send_sends or pre_send.inspect()['leases']:
+                raise RuntimeError('PROCESS_FIXTURE_PRE_SEND_DEADLINE_LEAKED_SEND_OR_LEASE')
+            if pre_send.call('external.echo', 'echo', 'healthy')['args'] != ['healthy']:
+                raise RuntimeError('PROCESS_FIXTURE_PRE_SEND_DEADLINE_BROKE_TRANSPORT')
+        with process_host(profile, [spec]) as crashed:
             try:
                 crashed.call('external.echo', 'crash')
             except PluginError as exc:
@@ -327,6 +439,8 @@ def run(output, plugin_python=None, *, blocked_only=False, supervision_only=Fals
             'plugin_runtime': runtime_info,
             'unknown': unknown, 'cancel_and_deadline': 'completion or process termination observed before lease release',
             'deadline_outcome': deadline_outcome,
+            'deadline_sends': len(deadline_sends), 'pre_send_deadline_outcome': pre_send_outcome,
+            'pre_send_deadline_sends': len(pre_send_sends),
             'blocked_pipe': blocked,
             'supervision': supervision,
             'new_model_calls': 0, 'new_embedding_calls': 0}), 'utf-8')
