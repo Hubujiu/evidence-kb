@@ -48,6 +48,10 @@ Compose 默认只启动 PostgreSQL，镜像包含固定版本的 BM25 和向量�
 
 ## 配置远程提供者
 
+多提供商及 OCR、Embedding、语音、生图接入使用新的 [公共模型服务](docs/model-services.md)，
+配置示例为 `config/models.example.json`。设置 `KB_MODELS_CONFIG` 后，知识库和辅助插件
+共享模型注册表；下述旧配置仍可继续使用。
+
 将 `config/remote-providers.example.json` 或 `config/vertex-providers.example.json` 复制到 `.local/providers.json`，替换端点、模型和凭据。示例中的模型名称需要你的提供者实际支持，仓库不提供模型账户或额度。
 
 PowerShell 中显式启用后重启服务。

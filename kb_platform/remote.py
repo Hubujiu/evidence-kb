@@ -20,7 +20,7 @@ import httpx
 
 from .agent_engine import current_execution
 from .embeddings import EmbeddingError
-from .model_errors import RemoteModelError
+from .model_errors import RemoteModelError, TerminalContractError
 from .luna_sdk import TRANSPORT_MANIFEST, chat_response
 from .provider_runtime import (ProviderCircuit, RequestReceipts, RuntimePolicyError,
                                classify_failure, retry_after_seconds)
@@ -100,10 +100,6 @@ def _embedding_error(error):
     return converted
 
 
-class TerminalContractError(ValueError):
-    pass
-
-
 def _provider_guard(operation):
 
     def guarded(self, *args, **kwargs):
@@ -144,23 +140,30 @@ class _GoogleRequest:
                 "retry_of": self.retry_of, "retry_reason": self.retry_reason}
 
 
+def _google_request_settings(selected):
+    defaults = {"requests_per_second": 0.0, "rate_limit_backoff_seconds": 1.0,
+                "rate_limit_backoff_max_seconds": 120.0, "max_retry_wait_seconds": 120.0}
+    settings = {}
+    for name, default in defaults.items():
+        value = selected.get(name, default)
+        if (isinstance(value, bool) or not isinstance(value, (float, int)) or
+                not math.isfinite(value) or value < 0 or name != "requests_per_second" and value == 0):
+            raise RemoteModelError("INVALID_GOOGLE_REQUEST_POLICY")
+        settings[name] = float(value)
+    if settings["rate_limit_backoff_max_seconds"] < settings["rate_limit_backoff_seconds"]:
+        raise RemoteModelError("INVALID_GOOGLE_REQUEST_POLICY")
+    rate = settings["requests_per_second"]
+    interval = 1.0 / rate if rate else 0.0
+    if not math.isfinite(interval):
+        raise RemoteModelError('INVALID_GOOGLE_REQUEST_POLICY')
+    return settings
+
+
 class _GoogleRequestPolicy:
     def __init__(self, selected):
-        defaults = {"requests_per_second": 0.0, "rate_limit_backoff_seconds": 1.0,
-                    "rate_limit_backoff_max_seconds": 120.0, "max_retry_wait_seconds": 120.0}
-        self.settings = {}
-        for name, default in defaults.items():
-            value = selected.get(name, default)
-            if (isinstance(value, bool) or not isinstance(value, (float, int)) or
-                    not math.isfinite(value) or value < 0 or name != "requests_per_second" and value == 0):
-                raise RemoteModelError("INVALID_GOOGLE_REQUEST_POLICY")
-            self.settings[name] = float(value)
-        if self.settings["rate_limit_backoff_max_seconds"] < self.settings["rate_limit_backoff_seconds"]:
-            raise RemoteModelError("INVALID_GOOGLE_REQUEST_POLICY")
-        rate = self.settings["requests_per_second"]
+        self.settings = _google_request_settings(selected)
+        rate = self.settings['requests_per_second']
         self._interval = 1.0 / rate if rate else 0.0
-        if not math.isfinite(self._interval):
-            raise RemoteModelError("INVALID_GOOGLE_REQUEST_POLICY")
         self._lock = threading.Lock()
         self._next_send = self._cooldown_until = 0.0
         self._clock, self._sleep, self._wall_clock = time.monotonic, time.sleep, time.time
@@ -244,15 +247,73 @@ def _digest(value) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
-def _read_config(path, section):
-    config = json.loads(Path(path).read_text(encoding="utf-8"))
+def read_vertex_credentials(path, project_id):
+    from google.oauth2 import service_account
+
+    info = json.loads(Path(path).read_text(encoding='utf-8-sig'))
+    if (info.get('type') != 'service_account' or info.get('project_id') != project_id
+            or info.get('token_uri') != 'https://oauth2.googleapis.com/token'
+            or info.get('universe_domain', 'googleapis.com') != 'googleapis.com'):
+        raise ValueError('INVALID_GOOGLE_SERVICE_ACCOUNT')
+    return service_account.Credentials.from_service_account_info(
+        info, scopes=['https://www.googleapis.com/auth/cloud-platform'])
+
+
+def read_provider_config(path, section, *, credentials=False):
+    from jsonschema import Draft202012Validator
+    from .model_http import validate_model_endpoint
+    from .plugin_configuration import config_schema, TEXT, POSITIVE
+
+    config = json.loads(Path(path).read_text(encoding='utf-8'))
+    if not isinstance(config, dict) or set(config) - {'luna', 'google', 'cache_dir', 'log_path'}:
+        raise RemoteModelError('INVALID_PROVIDER_CONFIGURATION')
+    for key in ('cache_dir', 'log_path'):
+        if key in config and (not isinstance(config[key], str) or not config[key].strip()):
+            raise RemoteModelError('INVALID_PROVIDER_CONFIGURATION')
     selected = config.get(section, {})
-    required = ("base_url", "model", "api_key")
-    if section == "google" and selected.get("platform") == "vertex_ai":
-        required = ("model", "project_id", "location", "service_account_file")
-    if not all(isinstance(selected.get(key), str) and selected[key] for key in required):
-        raise RemoteModelError("PROVIDER_CONFIGURATION_MISSING")
+    common = {'base_url': TEXT, 'model': TEXT, 'api_key': TEXT,
+        'timeout_seconds': {'type': 'number', 'minimum': 1, 'maximum': 300},
+        'retries': {'type': 'integer', 'minimum': 0, 'maximum': 2}, 'max_requests': POSITIVE,
+        'cache_mode': {'enum': ['read_write', 'disabled']},
+        'circuit_failure_threshold': POSITIVE,
+        'circuit_cooldown_seconds': {'type': 'number', 'exclusiveMinimum': 0},
+        'max_retry_wait_seconds': {'type': 'number', 'exclusiveMinimum': 0}}
+    if section == 'google':
+        properties = {**common, 'platform': {'enum': ['gemini_api', 'vertex_ai']},
+            'dimension': {'enum': [768, 1536, 3072]}, 'workers': {'type': 'integer', 'minimum': 1, 'maximum': 32},
+            'trust_env': {'type': 'boolean'}, 'project_id': TEXT, 'location': {'enum': ['us', 'eu']},
+            'service_account_file': TEXT, 'requests_per_second': {'type': 'number', 'minimum': 0},
+            'rate_limit_backoff_seconds': {'type': 'number', 'exclusiveMinimum': 0},
+            'rate_limit_backoff_max_seconds': {'type': 'number', 'exclusiveMinimum': 0}}
+        vertex = isinstance(selected, dict) and selected.get('platform') == 'vertex_ai'
+        required = ('model', 'project_id', 'location', 'service_account_file') if vertex else ('base_url', 'model', 'api_key')
+    elif section == 'luna':
+        properties, required = {**common, 'failed_response_dir': TEXT}, ('base_url', 'model', 'api_key')
+        vertex = False
+    else:
+        raise RemoteModelError('UNKNOWN_PROVIDER_SECTION')
+    if any(Draft202012Validator(config_schema(properties, required=required)).iter_errors(selected)):
+        raise RemoteModelError('INVALID_PROVIDER_CONFIGURATION')
+    for key in ('timeout_seconds', 'circuit_cooldown_seconds', 'max_retry_wait_seconds'):
+        if key in selected and not math.isfinite(selected[key]):
+            raise RemoteModelError('INVALID_PROVIDER_CONFIGURATION')
+    if vertex:
+        if (selected['model'] != 'gemini-embedding-2'
+                or not re.fullmatch(r'[a-z][a-z0-9-]{4,28}[a-z0-9]', selected['project_id'])):
+            raise EmbeddingError('Invalid Vertex embedding model, project or location')
+        if credentials:
+            read_vertex_credentials(selected['service_account_file'], selected['project_id'])
+    else:
+        validate_model_endpoint(selected['base_url'])
+    if section == 'google':
+        if selected['model'] not in ('gemini-embedding-2', 'gemini-embedding-001'):
+            raise EmbeddingError('Unsupported fixed Google embedding model')
+        _google_request_settings(selected)
     return config, selected
+
+
+def _read_config(path, section):
+    return read_provider_config(path, section)
 
 
 class _Transport:
@@ -507,8 +568,6 @@ class LunaClient(_Transport):
         super().__init__(config, selected, self.provider_id, trust_env=False)
         self._headers = {"Authorization": "Bearer " + selected["api_key"]}
         diagnostic_directory = selected.get("failed_response_dir")
-        if diagnostic_directory is not None and (not isinstance(diagnostic_directory, str) or not diagnostic_directory.strip()):
-            raise RemoteModelError("INVALID_FAILED_RESPONSE_DIRECTORY")
         self.failed_response_dir = Path(diagnostic_directory) if diagnostic_directory is not None else None
         self.manifest = {"provider": self.provider_id, "model": self.model, "base_url": self.base_url,
                          "protocol": "chat_completions", "adapter": "remote-models/0.1",
@@ -648,46 +707,48 @@ class LunaClient(_Transport):
         return self._complete(system, user, purpose)
 
 
+def google_embedding_manifest(selected):
+    model = selected['model']
+    platform = selected.get('platform', 'gemini_api')
+    base = (f"https://aiplatform.{selected['location']}.rep.googleapis.com/v1" if platform == 'vertex_ai'
+            else selected['base_url'].rstrip('/'))
+    manifest = {'provider': 'google_gemini', 'model': model, 'dimension': int(selected.get('dimension', 768)),
+        'base_url': base, 'normalization': 'l2', 'adapter': 'remote-embedding/0.1',
+        'document_format': 'title: none | text: {text}' if model.endswith('-2') else 'RETRIEVAL_DOCUMENT',
+        'query_format': 'task: search result | query: {text}' if model.endswith('-2') else 'RETRIEVAL_QUERY',
+        'max_input_characters': 12000, 'execution': 'google_api'}
+    if platform == 'vertex_ai':
+        manifest.update(platform='vertex_ai', project_id=selected['project_id'], location=selected['location'],
+                        protocol='embedContent', adapter='vertex-embedding/0.1')
+        manifest['endpoint'] = base + (f"/projects/{selected['project_id']}/locations/{selected['location']}/"
+                                      f"publishers/google/models/{model}:embedContent")
+    return manifest
+
+
 class GoogleEmbeddingProvider(_Transport):
     provider_id = "google_gemini"
+
+    @property
+    def max_batch_size(self):
+        return 16 if self.platform == 'gemini_api' else 1
 
     def __init__(self, config_path=".local/providers.json"):
         config, selected = _read_config(config_path, "google")
         self.platform = selected.get("platform", "gemini_api")
-        if self.platform not in {"gemini_api", "vertex_ai"}:
-            raise EmbeddingError("Unsupported Google API platform")
         self._auth_session = None
         if self.platform == "vertex_ai":
-            if (selected["model"] != "gemini-embedding-2" or
-                    not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", selected["project_id"]) or
-                    selected["location"] not in {"us", "eu"}):
-                raise EmbeddingError("Invalid Vertex embedding model, project or location")
             self.project_id, self.location = selected["project_id"], selected["location"]
             selected = {**selected, "base_url": f"https://aiplatform.{self.location}.rep.googleapis.com/v1"}
             self._init_vertex_auth(selected["service_account_file"])
             self.vertex_workers = int(selected.get("workers", 2))
-            if not 1 <= self.vertex_workers <= 32:
-                raise EmbeddingError("Vertex workers must be between 1 and 32")
             self._vertex_slots = _FifoSlots(self.vertex_workers)
         super().__init__(config, selected, self.provider_id, trust_env=bool(selected.get("trust_env", True)))
         self._request_policy = _GoogleRequestPolicy(selected)
-        if self.model not in ("gemini-embedding-2", "gemini-embedding-001"):
-            raise EmbeddingError("Unsupported fixed Google embedding model")
-        self.dimension = int(selected.get("dimension", 768))
-        if self.dimension not in (768, 1536, 3072):
-            raise EmbeddingError("Unsupported Google embedding dimension")
-        self._headers = {"x-goog-api-key": selected["api_key"]} if self.platform == "gemini_api" else {}
-        self.manifest = {"provider": self.provider_id, "model": self.model, "dimension": self.dimension,
-                         "base_url": self.base_url, "normalization": "l2", "adapter": "remote-embedding/0.1",
-                         "document_format": "title: none | text: {text}" if self.model.endswith("-2") else "RETRIEVAL_DOCUMENT",
-                         "query_format": "task: search result | query: {text}" if self.model.endswith("-2") else "RETRIEVAL_QUERY",
-                         "max_input_characters": 12000, "execution": "google_api"}
-        if self.platform == "vertex_ai":
-            self.manifest.update(platform="vertex_ai", project_id=self.project_id, location=self.location,
-                                 protocol="embedContent", adapter="vertex-embedding/0.1")
-            self._vertex_path = (f"/projects/{self.project_id}/locations/{self.location}/publishers/google/models/"
-                                 + self.model + ":embedContent")
-            self.manifest["endpoint"] = self.base_url + self._vertex_path
+        self.dimension = int(selected.get('dimension', 768))
+        self._headers = {'x-goog-api-key': selected['api_key']} if self.platform == 'gemini_api' else {}
+        self.manifest = google_embedding_manifest(selected)
+        if self.platform == 'vertex_ai':
+            self._vertex_path = self.manifest['endpoint'].removeprefix(self.base_url)
         self.document_count = 0
         self.query_count = 0
 
@@ -775,15 +836,8 @@ class GoogleEmbeddingProvider(_Transport):
         try:
             import requests
             from google.auth.transport.requests import Request
-            from google.oauth2 import service_account
 
-            info = json.loads(Path(credential_path).read_text(encoding="utf-8-sig"))
-            if (info.get("type") != "service_account" or info.get("project_id") != self.project_id or
-                    info.get("token_uri") != "https://oauth2.googleapis.com/token" or
-                    info.get("universe_domain", "googleapis.com") != "googleapis.com"):
-                raise ValueError()
-            self._credentials = service_account.Credentials.from_service_account_info(
-                info, scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            self._credentials = read_vertex_credentials(credential_path, self.project_id)
             self._auth_session = requests.Session()
             self._auth_session.trust_env = False
             self._auth_request = Request(session=self._auth_session)

@@ -1,16 +1,64 @@
-from contextlib import closing
+from contextlib import closing, contextmanager
 import json
 import sqlite3
+from os import getpid
 from pathlib import Path
+from threading import local
+
+
+@contextmanager
+def producer_guard(path, *, allow_sealed=False):
+    target = Path(str(Path(path).resolve()) + '.producer.sqlite3')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(target, timeout=0)) as db:
+        try:
+            db.execute('CREATE TABLE IF NOT EXISTS producer (id INTEGER PRIMARY KEY, successor TEXT)')
+            db.execute('BEGIN IMMEDIATE')
+        except sqlite3.OperationalError as exc:
+            raise ValueError('BUDGET_PRODUCER_BUSY') from exc
+        try:
+            row = db.execute('SELECT successor FROM producer WHERE id=1').fetchone()
+            if row and not allow_sealed:
+                raise ValueError('BUDGET_PRODUCER_SEALED')
+            yield db
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+
+
+def validate_caps(caps):
+    if not isinstance(caps, dict) or not caps or any(type(value) is not int or value < 0 for value in caps.values()):
+        raise ValueError('caps must be nonnegative integer resources')
+
+
+def validate_resources(caps, resources, *, complete):
+    if not isinstance(resources, dict) or not set(resources) <= caps.keys() or (complete and set(resources) != caps.keys()):
+        raise ValueError('resource dimensions do not match frozen budget')
+    if any(type(value) is not int or value < 0 for value in resources.values()):
+        raise ValueError('resource values must be nonnegative integers')
+def validate_ledger_configuration(path, caps):
+    validate_caps(caps)
+    path = Path(path)
+    if not path.exists():
+        return
+    with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)) as database:
+        row = database.execute('SELECT caps FROM config WHERE id=1').fetchone()
+        if row and json.loads(row[0]) != caps:
+            raise ValueError('cannot silently change frozen budget caps')
+
+
 
 
 class BudgetLedger:
     def __init__(self, path: Path, caps: dict[str, int]):
-        if not caps or any(type(v) is not int or v < 0 for v in caps.values()):
-            raise ValueError("caps must be nonnegative integer resources")
+        validate_caps(caps)
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.path, self.caps = path, caps
+        caps = dict(caps)
+        self.path = path
+        self._producer = local()
         with closing(sqlite3.connect(path)) as db, db:
+            db.execute('BEGIN IMMEDIATE')
             db.execute("CREATE TABLE IF NOT EXISTS config (id INTEGER PRIMARY KEY, caps TEXT)")
             db.execute("CREATE TABLE IF NOT EXISTS calls (id TEXT PRIMARY KEY, status TEXT, reserved TEXT, "
                        "usage TEXT, category TEXT, diagnostic TEXT)")
@@ -18,12 +66,22 @@ class BudgetLedger:
             if current and json.loads(current[0]) != caps:
                 raise ValueError("cannot silently change frozen budget caps")
             db.execute("INSERT OR IGNORE INTO config VALUES (1, ?)", (json.dumps(caps),))
+            self.caps = json.loads(current[0]) if current else caps
+
+    @contextmanager
+    def admission(self):
+        if getattr(self._producer, 'owner', None) == getpid():
+            yield
+            return
+        with producer_guard(self.path):
+            self._producer.owner = getpid()
+            try:
+                yield
+            finally:
+                self._producer.owner = None
 
     def _valid(self, resources, *, complete):
-        if not set(resources) <= self.caps.keys() or (complete and set(resources) != self.caps.keys()):
-            raise ValueError("resource dimensions do not match frozen budget")
-        if any(type(v) is not int or v < 0 for v in resources.values()):
-            raise ValueError("resource values must be nonnegative integers")
+        validate_resources(self.caps, resources, complete=complete)
 
     @staticmethod
     def _totals(db, caps):
@@ -36,6 +94,10 @@ class BudgetLedger:
         return total
 
     def reserve(self, request_id, resources, category="runtime", *, require_settled=False):
+        with self.admission():
+            return self._reserve(request_id, resources, category, require_settled=require_settled)
+
+    def _reserve(self, request_id, resources, category, *, require_settled):
         self._valid(resources, complete=True)
         with closing(sqlite3.connect(self.path, timeout=30)) as db, db:
             db.execute("BEGIN IMMEDIATE")

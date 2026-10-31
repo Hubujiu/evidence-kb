@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from contextlib import closing
 from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
 import re
+import sqlite3
 from threading import Lock
 from uuid import uuid4
 
-from .embeddings import EmbeddingError
+from .embeddings import EmbeddingCallError, EmbeddingError, read_embedding_capture
+from .model_errors import ModelPreflightError
 from .rag_testing.budget import BudgetLedger
 from .rag_testing.contracts import digest
 from .remote import GoogleEmbeddingProvider, RemoteModelError
@@ -62,6 +65,26 @@ def write_google_page_capsule(path, *, source_identity, pages, source_text, vect
             "new_embedding_calls": 0}
 
 
+def semantic_provider_manifest(remote, dimension):
+    if (remote.get("provider") != "google_gemini" or remote.get("normalization") != "l2"
+            or remote.get("model") not in {"gemini-embedding-2", "gemini-embedding-001"}
+            or remote.get("dimension") != dimension):
+        raise EmbeddingError("Explicit fixed Google model/dimension/task protocol required")
+    from . import remote as remote_module, semantic_units
+    return {"provider": "google_gemini", "model": remote["model"], "dimension": dimension,
+            "max_tokens": 8192 if remote["model"] == "gemini-embedding-2" else 2048,
+            "max_input_characters": remote["max_input_characters"],
+            "normalization": "l2", "document_format": remote["document_format"],
+            "query_format": remote["query_format"], "remote": deepcopy(remote),
+            "adapter": "observed-google-semantic/1", "execution": "google_api",
+            "input_admission": "formatted-text-utf8-byte-upper-bound/no-truncation",
+            "usage_source": "provider-usageMetadata.promptTokenCount",
+            "automatic_retries": 0, "embedding_cache": "disabled",
+            "physical_batch_size": 1,
+            "implementation_sha256": {Path(p).name: _sha(p) for p in
+                (__file__, remote_module.__file__, semantic_units.__file__)}}
+
+
 class GoogleSemanticProvider:
     provider_id = "google_gemini"
     call_resource = "remote_embedding_calls"
@@ -90,24 +113,7 @@ class GoogleSemanticProvider:
         self.last_observation = None
 
     def _current_manifest(self):
-        remote = self.remote.manifest
-        if (remote.get("provider") != self.provider_id or remote.get("normalization") != "l2"
-                or remote.get("model") not in {"gemini-embedding-2", "gemini-embedding-001"}
-                or remote.get("dimension") != self.dimension):
-            raise EmbeddingError("Explicit fixed Google model/dimension/task protocol required")
-        from . import remote as remote_module, semantic_units
-        return {"provider": self.provider_id, "model": remote["model"], "dimension": self.dimension,
-                "max_tokens": 8192 if remote["model"] == "gemini-embedding-2" else 2048,
-                "max_input_characters": remote["max_input_characters"],
-                "normalization": "l2", "document_format": remote["document_format"],
-                "query_format": remote["query_format"], "remote": deepcopy(remote),
-                "adapter": "observed-google-semantic/1", "execution": "google_api",
-                "input_admission": "formatted-text-utf8-byte-upper-bound/no-truncation",
-                "usage_source": "provider-usageMetadata.promptTokenCount",
-                "automatic_retries": 0, "embedding_cache": "disabled",
-                "physical_batch_size": 1,
-                "implementation_sha256": {Path(p).name: _sha(p) for p in
-                    (__file__, remote_module.__file__, semantic_units.__file__)}}
+        return semantic_provider_manifest(self.remote.manifest, self.dimension)
 
     def _unchanged(self):
         if (self.remote.manifest != self._remote_manifest or self._current_manifest() != self.manifest
@@ -140,7 +146,7 @@ class GoogleSemanticProvider:
         authorize_current(authorize)
         self._unchanged()
         if self.ledger.summary()["pending_or_unknown"]:
-            raise EmbeddingError("Unresolved physical outcome requires inspection before another embedding request")
+            raise EmbeddingCallError(ModelPreflightError('UNRESOLVED_PHYSICAL_REQUEST'))
         sources = audit_context.get("sources") if isinstance(audit_context, dict) else None
         if (not isinstance(audit_context, dict)
                 or any(not audit_context.get(k) for k in ("tenant_id", "kb_id", "build_id", "principal", "acl_revision"))
@@ -153,7 +159,7 @@ class GoogleSemanticProvider:
         payload = self.remote._request_item(texts[0], task)
         formatted = payload["content"]["parts"][0]["text"]
         if len(formatted.encode("utf-8")) > self.manifest["max_tokens"]:
-            raise EmbeddingError("Formatted input exceeds conservative native token admission; no truncation")
+            raise EmbeddingCallError(ModelPreflightError('EMBEDDING_INPUT_TOO_LARGE'))
         self.audit_dir.mkdir(parents=True, exist_ok=True)
         target = self.audit_dir / (request_id + ".json")
         if target.exists():
@@ -164,7 +170,14 @@ class GoogleSemanticProvider:
                   "request_payload_sha256": digest(payload), "provider_manifest": deepcopy(self.manifest),
                   "manifest_sha256": digest(self.manifest), "audit_context": deepcopy(audit_context),
                   "reserved": reserved, "status": "STARTED", "automatic_retries": 0}
-        self.ledger.reserve(request_id, reserved, "google_canonical_" + task)
+        try:
+            self.ledger.reserve(request_id, reserved, "google_canonical_" + task, require_settled=True)
+        except ValueError as exc:
+            reason = self.embedding_preflight(request_id, exc)
+            if reason in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
+                          'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
+                raise EmbeddingCallError(ModelPreflightError(reason)) from exc
+            raise
         usage, response_received, started, issued_before = None, False, False, None
         try:
             with target.open("x", encoding="utf-8") as handle:
@@ -243,6 +256,43 @@ class GoogleSemanticProvider:
     def documents(self, texts, *, request_id=None, audit_context=None, authorize=None):
         return self.documents_observed(texts, request_id=request_id or uuid4().hex,
             audit_context=audit_context, authorize=authorize)["vectors"]
+
+    def embedding_port(self):
+        return self
+
+    def embedding_preflight(self, request_id, error):
+        diagnostics = {
+            'Formatted input exceeds conservative native token admission; no truncation': 'EMBEDDING_INPUT_TOO_LARGE',
+            'Unresolved physical outcome requires inspection before another embedding request': 'UNRESOLVED_PHYSICAL_REQUEST',
+            'UNRESOLVED_PHYSICAL_REQUEST': 'UNRESOLVED_PHYSICAL_REQUEST',
+            'BUDGET_INSUFFICIENT': 'BUDGET_INSUFFICIENT',
+            'BUDGET_PRODUCER_BUSY': 'BUDGET_PRODUCER_BUSY',
+            'BUDGET_PRODUCER_SEALED': 'BUDGET_PRODUCER_SEALED',
+        }
+        reason = error.preflight_code if isinstance(error, EmbeddingCallError) else diagnostics.get(str(error))
+        if reason is None or not isinstance(request_id, str):
+            return None
+        try:
+            if (self.audit_dir / (request_id + '.json')).exists():
+                return None
+            with closing(sqlite3.connect(self.ledger.path.resolve().as_uri() + '?mode=ro', uri=True)) as ledger:
+                registered = ledger.execute('SELECT 1 FROM calls WHERE id=?', (request_id,)).fetchone()
+            return reason if registered is None else None
+        except (OSError, ValueError, sqlite3.Error):
+            return None
+
+    def recover_embedding(self, request_id):
+        self._unchanged()
+        observation = read_embedding_capture(self.audit_dir, self.ledger.path, request_id)
+        if observation is None:
+            return None
+        record = observation['record']
+        texts, task = record.get('texts'), record.get('task')
+        if (not isinstance(texts, list) or len(texts) != 1 or not isinstance(texts[0], str)
+                or task not in ('document', 'query')
+                or record.get('request_payload_sha256') != digest(self.remote._request_item(texts[0], task))):
+            return None
+        return observation
 
     def close(self):
         self.remote.close()

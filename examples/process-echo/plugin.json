@@ -1,0 +1,1 @@
+{"protocol":"evidence-plugin-process/1","name":"echo","version":"1","entry":"plugin.py","services":{"external.echo":["echo","wait","crash"]}}

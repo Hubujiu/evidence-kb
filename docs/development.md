@@ -26,13 +26,19 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 检查过程将运行目录指向临时目录，禁用默认 API 初始化、远程模型和 Embedding。合同和控制回放在独立 Python 工作进程中执行，导入前安装审计钩子，阻断 socket 连接、DNS 查询、UDP 发送和子进程启动。依赖安装需要联网，但检查不调用提供者。这个约束防止误执行，不是恶意代码沙箱。
 
+合同协调进程按排序后的测试用例列表分配四个隔离工作进程，各自使用独立临时运行目录、日志及审计钩子。协调进程不加载产品模块；统一入口仍限制整个合同阶段为 180 秒，子进程限制为 170 秒以留出收尾时间。每个工作进程在安装离线审计钩子后独立发现完整用例集合；聚合器要求各进程发现集合相同、每个模块非零、全部用例恰好执行一次且与报告总数一致。缺失分片、重复模块、子进程非零退出以及失败、错误、跳过、预期失败均不能通过；不通过放宽时间门槛消除 Windows 落盘等待导致的超时。
+
 ## 修改或新增插件
+
+生命周期、配置 schema、进程插件和显式恢复接口以 [插件运行时](plugin-runtime.md) 为准。`plugin-runtime` 仅依赖固定的 Serde、serde_json 和 Tokio；harness 通过 workspace 路径依赖它。通用运行时不得反向依赖 Agent 或知识库，精确边界由 checker 和架构合同检查。
+
+普通合同仍禁止联网和启动子进程。正式 checker 另外编排受控本地进程插件 fixture。需要真实 HTTP、解析子进程和 PostgreSQL 时使用 `--local-integration` 并设置 `KB_INTEGRATION_DSN`，数据库名须以 `rust_plugin_acceptance_` 开头，且连接 loopback。这个入口保留相同的所有离线检查，不会自动调用真实模型。
 
 先声明 `PluginSpec` 的 `provides`、`requires` 和版本，再把实现加入可信 catalog。profile 的 `use` 只能引用已登记的键，不能写 Python 导入路径或任意代码。默认知识库 profile 在 `config/agent-profiles/knowledge.json`；`KB_AGENT_PROFILE` 允许启动时选择另一个配置。
 
 业务请求通过 `host.call(service, method, ...)` 取得运行租约。`host.service()` 用于装配，不应保存原始服务并绕过生命周期直接处理请求。插件创建的资源用 `ctx.defer()` 注册释放；借用父作用域或外部调用者的资源不能重复取得关闭所有权。child 覆盖父服务时必须在该条配置的 `overrides` 中声明服务名。
 
-关闭先进入 draining；已有请求可以收尾，新请求被拒绝。仍有活动请求时关闭返回忙碌错误，等待请求结束后再关闭，不能靠重试业务调用完成卸载。清理失败保持失败状态和尚未释放的资源，不能报告插件已卸载。现阶段采用新 profile 启动新实例，再排空旧实例，不提供运行中透明热替换。
+关闭先进入 draining；已有请求可以收尾，新请求被拒绝。仍有活动请求时关闭返回忙碌错误，等待请求结束后再关闭，不能靠重试业务调用完成卸载。清理失败保持失败状态和尚未释放的资源，不能报告插件已卸载。配置通过显式 apply/update 排空受影响子图，再激活新代次；切换不透明复用旧绑定，清理失败时保留受阻状态。
 
 相关合同至少覆盖服务替换、依赖缺失/循环、启动失败清理、作用域隔离或运行中关闭中的实际变更风险。默认 `harness.sessions.memory` 是单次运行的临时会话插件；需要持久会话时必须提供明确的持久化适配器，不能把它当作知识库 `KnowledgeSessions` 或物理请求账本。
 

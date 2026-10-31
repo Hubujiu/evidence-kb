@@ -1,40 +1,13 @@
 pub mod agent_loop;
 pub mod graph;
-mod host;
-mod manifest;
 
-use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::{Mutex, OnceLock};
 
-pub use host::HostRegistry;
-pub use manifest::Manifest;
+pub use plugin_runtime::{Error, Manifest};
 
 pub const PROTOCOL_VERSION: u64 = 1;
 pub const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
-
-#[derive(Debug, Serialize)]
-pub struct Error {
-    pub code: String,
-    pub message: String,
-}
-
-impl Error {
-    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            code: code.into(),
-            message: message.into(),
-        }
-    }
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}: {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for Error {}
 
 fn dispatch(request: Value) -> Result<Value, Error> {
     let Value::Object(mut object) = request else {
@@ -59,9 +32,15 @@ fn dispatch(request: Value) -> Result<Value, Error> {
         object.remove("command");
         return graph::dispatch(&command, object);
     }
-    static HOSTS: OnceLock<Mutex<HostRegistry>> = OnceLock::new();
+    if !command.starts_with("runtime_") {
+        return Err(Error::new(
+            "unknown_command",
+            "lifecycle commands use runtime_* action protocol",
+        ));
+    }
+    static HOSTS: OnceLock<Mutex<plugin_runtime::Coordinator>> = OnceLock::new();
     HOSTS
-        .get_or_init(|| Mutex::new(HostRegistry::default()))
+        .get_or_init(|| Mutex::new(plugin_runtime::Coordinator::default()))
         .lock()
         .map_err(|_| Error::new("host_poisoned", "native host lock is poisoned"))?
         .request(Value::Object(object))
@@ -85,4 +64,24 @@ pub fn call(bytes: &[u8]) -> Value {
 }
 
 #[cfg(test)]
-mod host_tests;
+mod protocol_tests {
+    use super::*;
+
+    #[test]
+    fn abi_rejects_invalid_json_version_fields_and_oversized_requests() {
+        assert_eq!(call(b"{")["error"]["code"], "invalid_json");
+        assert_eq!(call(b"[]")["error"]["code"], "invalid_request");
+        assert_eq!(
+            call(br#"{"version":2,"command":"runtime_inspect","host":1}"#)["error"]["code"],
+            "protocol_version"
+        );
+        assert_eq!(
+            call(br#"{"version":1,"command":"runtime_create","protocol":"plugin-runtime/1","plugins":[],"extra":true}"#)["error"]["code"],
+            "invalid_request"
+        );
+        assert_eq!(
+            call(&vec![b' '; MAX_REQUEST_BYTES + 1])["error"]["code"],
+            "request_too_large"
+        );
+    }
+}

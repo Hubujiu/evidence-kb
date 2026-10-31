@@ -3,6 +3,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
+from threading import Event, Thread, current_thread
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -11,6 +12,45 @@ from kb_platform.embedding_jobs import (EmbeddingJobError, EmbeddingJobs, digest
                                         recovered_vectors, retry_delay, validate_vectors,
                                         EmbeddingPreflightError, classify_provider_failure)
 from kb_platform.rag_testing.contracts import digest as semantic_digest
+
+
+@contextmanager
+def captured_google_fixture(platform):
+    import httpx
+    from kb_platform.remote import GoogleEmbeddingProvider
+    from kb_platform.rag_testing.budget import BudgetLedger
+    from kb_platform.rag_testing.provider_capture import observe_client
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        config = {'google': {'platform': platform, 'model': 'gemini-embedding-2',
+            'base_url': 'https://fixture.invalid/v1', 'api_key': 'synthetic', 'dimension': 768,
+            'project_id': 'fixture-project', 'location': 'us', 'service_account_file': 'unused',
+            'cache_mode': 'disabled', 'retries': 0, 'workers': 1},
+            'cache_dir': str(root / 'cache'), 'log_path': str(root / 'calls.jsonl')}
+        path = root / 'providers.json'
+        path.write_text(json.dumps(config), 'utf-8')
+        sent = []
+
+        def respond(request):
+            payload = json.loads(request.content)
+            sent.append(payload)
+            vector = [1.] + [0.] * 767
+            body = ({'embeddings': [{'values': vector} for _ in payload['requests']]}
+                    if 'requests' in payload else {'embedding': {'values': vector}})
+            return httpx.Response(200, json={**body, 'usageMetadata': {'promptTokenCount': 1}})
+
+        with patch.object(GoogleEmbeddingProvider, '_init_vertex_auth'), \
+                patch.object(GoogleEmbeddingProvider, '_vertex_headers', return_value={}):
+            provider = GoogleEmbeddingProvider(path)
+            caps = dict(model=0, input_tokens=0, output_tokens=0,
+                        remote_embedding_calls=1, embedding_input_tokens=50000)
+            ledger = BudgetLedger(root / 'physical.sqlite', caps)
+            observe_client(provider, ledger, root / 'capture', category='synthetic', inner=httpx.MockTransport(respond))
+            try:
+                yield SimpleNamespace(provider=provider, ledger=ledger, root=root, sent=sent, respond=respond)
+            finally:
+                provider.close()
 
 
 @contextmanager
@@ -51,7 +91,94 @@ def google_audit():
                 sources=[dict(source_id='s', source_version_id='v', parse_snapshot_id='p', source_text_sha256='h')])
 
 
+def google_admission_race(provider, first_call):
+    from .budget import BudgetLedger
+
+    checked, admitted, release_first, complete_second = Event(), Event(), Event(), Event()
+    outcomes, sent = {}, []
+    provider.ledger = BudgetLedger(provider.ledger.path.with_name('concurrent.sqlite'),
+        {'remote_embedding_calls': 2, 'input_tokens': 16384})
+    provider.remote.platform, provider.remote._headers, provider.remote._issued_requests = 'gemini_api', {}, 0
+    provider.remote._validated_vector = lambda values: values
+    summary = provider.ledger.summary
+
+    def gated_summary():
+        snapshot = summary()
+        if current_thread().name == 'request-A':
+            checked.set()
+            if not release_first.wait(5):
+                raise RuntimeError('request A was not released')
+        return snapshot
+
+    def respond(path, payload, headers, purpose, key):
+        sent.append(payload['content']['parts'][0]['text'])
+        provider.remote.calls += 1
+        provider.remote._issued_requests += 1
+        admitted.set()
+        if not complete_second.wait(5):
+            raise RuntimeError('request B was not released')
+        return {'embedding': {'values': [1., 0.]}, 'usageMetadata': {'promptTokenCount': 1}}
+
+    def invoke(request_id):
+        try:
+            outcomes[request_id] = first_call() if request_id == 'A' else provider.documents(['B'],
+                request_id='B', audit_context=google_audit(), authorize=lambda: True)
+        except Exception as error:
+            outcomes[request_id] = error
+
+    provider.remote._post = respond
+    first = Thread(target=invoke, args=('A',), name='request-A')
+    second = Thread(target=invoke, args=('B',), name='request-B')
+    with patch.object(provider.ledger, 'summary', side_effect=gated_summary):
+        first.start()
+        try:
+            if not checked.wait(3):
+                raise RuntimeError('request A did not read the idle ledger')
+            second.start()
+            if not admitted.wait(3) or summary()['pending_or_unknown'] != 1:
+                raise RuntimeError('request B did not enter STARTED')
+            release_first.set()
+            first.join(3)
+            if first.is_alive():
+                raise RuntimeError('request A did not finish while request B remained STARTED')
+        finally:
+            release_first.set()
+            complete_second.set()
+            first.join(3)
+            if second.ident is not None:
+                second.join(3)
+    if first.is_alive() or second.is_alive():
+        raise RuntimeError('admission contract workers did not terminate')
+    return outcomes, sent
+
+
 class EmbeddingJobsContracts(unittest.TestCase):
+    def test_captured_google_refusal_preserves_zero_send_classification(self):
+        for platform in ('gemini_api', 'vertex_ai'):
+            for scenario, expected in [('budget', 'EMBEDDING_BUDGET_INSUFFICIENT'),
+                                       ('pending', 'EMBEDDING_LEDGER_BLOCKED')]:
+                with self.subTest(platform=platform, scenario=scenario), captured_google_fixture(platform) as f:
+                    resources = dict.fromkeys(f.ledger.caps, 0)
+                    resources['remote_embedding_calls'] = 1
+                    f.ledger.reserve('prior', resources)
+                    if scenario == 'budget':
+                        f.ledger.finish('prior', status='COMPLETE', usage=resources)
+                    before = f.ledger.summary()
+                    with self.assertRaises(Exception) as raised:
+                        f.provider.documents(['synthetic source'])
+                    error = classify_provider_failure({}, f.provider, raised.exception)
+                    self.assertIsInstance(error, EmbeddingPreflightError)
+                    self.assertEqual(error.code, expected)
+                    self.assertEqual(f.sent, [])
+                    self.assertEqual(f.ledger.summary(), before)
+
+    def test_error_text_and_general_admission_failure_do_not_prove_zero_send(self):
+        from kb_platform.provider_admission import CaptureAdmissionError
+
+        for error in (RuntimeError('BUDGET_INSUFFICIENT'), CaptureAdmissionError('BUDGET_INSUFFICIENT'),
+                      TimeoutError('UNRESOLVED_PHYSICAL_REQUEST')):
+            self.assertIs(classify_provider_failure({}, object(), error), error)
+
     def test_real_google_preflight_errors_are_known_without_network(self):
         for scenario, expected in [('input', 'EMBEDDING_INPUT_TOO_LARGE'),
                                    ('budget', 'EMBEDDING_BUDGET_INSUFFICIENT'),
@@ -78,6 +205,15 @@ class EmbeddingJobsContracts(unittest.TestCase):
                 if scenario == 'input':
                     provider.ledger.reserve('fresh', {'remote_embedding_calls': 1, 'input_tokens': 8192})
                     self.assertIs(classify_provider_failure({'request_id': 'fresh'}, provider, original), original)
+
+    def test_untyped_budget_diagnostic_does_not_prove_request_was_unsent(self):
+        from kb_platform.embeddings import EmbeddingCallError
+        from kb_platform.model_errors import RemoteModelError
+
+        for original in (ValueError('BUDGET_INSUFFICIENT'), ValueError('UNRESOLVED_PHYSICAL_REQUEST'),
+                         RemoteModelError('PROVIDER_OUTCOME_UNKNOWN')):
+            error = EmbeddingCallError(original)
+            self.assertIs(classify_provider_failure({'request_id': 'fresh'}, object(), error), error)
 
     def test_ambiguous_transport_never_retries(self):
         for error in (TimeoutError(), ConnectionError(), RuntimeError()):
@@ -164,6 +300,144 @@ def live_contract_suite(dsn):
         def run_jobs(self, *, units=None, build=None):
             return self.jobs.run(*self.scope[:2], build or self.scope[2], self.provider,
                                  units if units is not None else self.units, lambda: True, self.audit)
+
+        def test_captured_google_budget_resume_reuses_completed_batches(self):
+            import httpx
+            from kb_platform.rag_testing.budget_batches import LinkedBudgetLedger, freeze_predecessor
+            from kb_platform.rag_testing.provider_capture import observe_client
+
+            for platform in ('gemini_api', 'vertex_ai'):
+                with self.subTest(platform=platform), captured_google_fixture(platform) as f:
+                    scope = (*self.scope[:2], platform)
+                    units = [{'text': f'synthetic {i}'} for i in range(17 if platform == 'gemini_api' else 2)]
+                    for _ in range(2):
+                        with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_BUDGET_INSUFFICIENT'):
+                            self.jobs.run(*scope, f.provider, units, lambda: True, self.audit)
+                    rows = self.jobs.status(*scope)
+                    self.assertEqual([(r['status'], r['attempt']) for r in rows], [('COMPLETE', 1), ('RETRY', 0)])
+                    self.assertEqual(len(f.sent), 1)
+                    with self.jobs._tx(*scope[:2]) as conn:
+                        self.assertEqual(conn.execute('SELECT max(failures) n FROM embedding_circuits').fetchone()['n'], 0)
+                    before = freeze_predecessor(f.ledger.path)
+                    next_ledger = LinkedBudgetLedger(f.root / 'next.sqlite', f.ledger.caps, predecessors=[before])
+                    observe_client(f.provider, next_ledger, f.root / 'next-capture', category='synthetic-resume',
+                                   inner=httpx.MockTransport(f.respond))
+                    restarted = EmbeddingJobs(dsn)
+                    result = restarted.run(*scope, f.provider, units, lambda: True, self.audit)
+                    self.assertEqual(len(result), len(units))
+                    self.assertEqual(len(f.sent), 2)
+                    self.assertEqual([r['status'] for r in restarted.status(*scope)], ['COMPLETE', 'COMPLETE'])
+                    self.assertNotEqual(rows[-1]['request_id'], restarted.status(*scope)[-1]['request_id'])
+                    self.assertEqual(freeze_predecessor(f.ledger.path)['snapshot_sha256'], before['snapshot_sha256'])
+                    self.assertEqual(next_ledger.cumulative_summary()['cumulative']['pending_or_unknown'], 0)
+
+        def test_google_concurrent_admission_retries_unsent_job_after_competitor_completes(self):
+            with google_preflight_fixture() as provider:
+                outcomes, sent = google_admission_race(provider, lambda: self.jobs.run(*self.scope,
+                    provider, [{'text': 'A'}], lambda: True, google_audit()))
+                self.assertIsInstance(outcomes['A'], EmbeddingJobError)
+                self.assertEqual(outcomes['A'].code, 'EMBEDDING_LEDGER_BLOCKED')
+                self.assertEqual(outcomes['B'], [[1., 0.]])
+                self.assertEqual(sent, ['B'])
+                self.assertEqual(provider.remote.calls, 1)
+                self.assertEqual(provider.ledger.summary()['pending_or_unknown'], 0)
+                row = self.jobs.status(*self.scope)[0]
+                self.assertEqual((row['status'], row['attempt'], row['error']),
+                                 ('RETRY', 0, 'EMBEDDING_LEDGER_BLOCKED'))
+                self.assertFalse((provider.audit_dir / (row['request_id'] + '.json')).exists())
+                with closing(sqlite3.connect(provider.ledger.path)) as database:
+                    self.assertEqual(database.execute('SELECT id,status FROM calls').fetchall(), [('B', 'COMPLETE')])
+                with self.jobs._tx(*self.scope[:2]) as conn:
+                    self.assertEqual(conn.execute('SELECT failures FROM embedding_circuits').fetchone()['failures'], 0)
+                    attempt = conn.execute('SELECT status,diagnostic FROM embedding_attempts').fetchone()
+                    self.assertEqual((attempt['status'], attempt['diagnostic']), ('ERROR', 'EMBEDDING_LEDGER_BLOCKED'))
+                self.assertEqual(self.jobs.reconcile(*self.scope, provider, lambda: True)[0]['status'], 'RETRY')
+                self.assertEqual(len(self.jobs.run(*self.scope, provider, [{'text': 'A'}], lambda: True, google_audit())), 1)
+                retried = self.jobs.status(*self.scope)[0]
+                self.assertEqual((retried['status'], retried['attempt']), ('COMPLETE', 1))
+                self.assertNotEqual(retried['request_id'], row['request_id'])
+                self.assertEqual(sent, ['B', 'A'])
+
+        def test_late_unsent_outcome_recovers_same_request_before_and_after_reconcile(self):
+            for reconcile_first in (False, True):
+                with self.subTest(reconcile_first=reconcile_first):
+                    self.scope = ('late-unsent-' + uuid4().hex, 'kb', 'build')
+                    self.jobs = EmbeddingJobs(dsn, lease_seconds=1, max_attempts=1)
+                    original = self.provider.documents
+
+                    def unsent(texts):
+                        with self.jobs._tx(*self.scope[:2]) as conn:
+                            conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
+                        if reconcile_first:
+                            self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'],
+                                             'UNKNOWN')
+                        error = RuntimeError('known unsent after lease expiration')
+                        error.model_sent = False
+                        raise error
+
+                    self.provider.documents = unsent
+                    with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY'):
+                        self.run_jobs(units=[self.units[0]])
+                    row = self.jobs.status(*self.scope)[0]
+                    self.assertEqual((row['status'], row['attempt']), ('RETRY', 0))
+                    with self.jobs._tx(*self.scope[:2]) as conn:
+                        self.assertEqual(conn.execute('SELECT failures FROM embedding_circuits').fetchone()['failures'], 0)
+                        self.assertEqual(conn.execute('SELECT status FROM embedding_attempts').fetchone()['status'], 'ERROR')
+                    self.provider.documents = original
+                    self.assertEqual(len(self.run_jobs(units=[self.units[0]])), 1)
+                    final = self.jobs.status(*self.scope)[0]
+                    self.assertEqual((final['status'], final['attempt']), ('COMPLETE', 1))
+                    self.assertNotEqual(row['request_id'], final['request_id'])
+
+        def test_late_old_request_cannot_rewrite_new_claim_or_ambiguous_outcome(self):
+            _, dependency = self.jobs._prepare(*self.scope, self.provider, [self.units[0]], self.audit)
+            old = self.jobs._claim(*self.scope, 0, dependency)
+            with self.jobs._tx(*self.scope[:2]) as conn:
+                conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
+            with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_LEASE_LOST'):
+                self.jobs._finish(old, error=TimeoutError('sent outcome unknown'))
+            self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'], 'UNKNOWN')
+            error = RuntimeError('known unsent')
+            error.model_sent = False
+            with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY'):
+                self.jobs._finish(old, error=error)
+            current = self.jobs._claim(*self.scope, 0, dependency)
+            with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_LEASE_LOST'):
+                self.jobs._finish(old, error=error)
+            final = self.jobs.status(*self.scope)[0]
+            self.assertEqual((final['request_id'], final['status'], final['attempt']),
+                             (current['request_id'], 'RUNNING', 1))
+
+        def test_reconcile_known_unsent_capture_requires_matching_settled_zero_usage(self):
+            with TemporaryDirectory() as directory:
+                self.provider.audit_dir = Path(directory)
+                ledger = Path(directory) / 'physical.sqlite'
+                self.provider.ledger = SimpleNamespace(path=ledger)
+                _, dependency = self.jobs._prepare(*self.scope, self.provider, [self.units[0]], self.audit)
+                row = self.jobs._claim(*self.scope, 0, dependency)
+                record = {'status': 'ERROR', 'request_id': row['request_id'],
+                    'physical_request_id': row['request_id'], 'task': 'document', 'texts': ['one'],
+                    'provider_manifest': self.provider.manifest, 'audit_context': self.audit,
+                    'reserved': {'calls': 1}, 'usage': {'calls': 0}, 'physical_embedding_attempts': 0}
+                target = Path(directory) / (row['request_id'] + '.json')
+                with closing(sqlite3.connect(ledger)) as conn, conn:
+                    conn.execute('CREATE TABLE calls(id TEXT,status TEXT,usage TEXT)')
+                    conn.execute('INSERT INTO calls VALUES (?,?,?)',
+                                 (row['request_id'], 'UNKNOWN', json.dumps({'calls': 0})))
+                with self.jobs._tx(*self.scope[:2]) as conn:
+                    conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
+                target.write_text(json.dumps(record), 'utf-8')
+                self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'], 'UNKNOWN')
+                with closing(sqlite3.connect(ledger)) as conn, conn:
+                    conn.execute("UPDATE calls SET status='ERROR'")
+                for change in ({'request_id': 'other'}, {'audit_context': {}}, {'texts': ['other']},
+                               {'physical_embedding_attempts': 1}, {'usage': {'calls': 1}}):
+                    target.write_text(json.dumps({**record, **change}), 'utf-8')
+                    self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'], 'UNKNOWN')
+                target.write_text(json.dumps(record), 'utf-8')
+                final = self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]
+                self.assertEqual((final['status'], final['attempt']), ('RETRY', 0))
+                self.assertEqual(len(self.run_jobs(units=[self.units[0]])), 1)
 
         def test_partial_restart_reuses_only_completed_batches(self):
             self.provider.error_on = 'two'

@@ -59,24 +59,30 @@ class TableRequest(RequestModel):
     filters: list | None = None
 
 
-def create_app(settings: Settings | None = None, platform: Platform | None = None, *, agent_factory=None):
-    settings = settings or Settings.from_environment()
+def create_app(settings: Settings | None = None, platform: Platform | None = None, *,
+               agent_factory=None, model_clients=None, profile=None, extra_plugins=()):
+    from .application_composition import create_root_application
+
+    settings = settings if settings is not None else Settings.from_environment()
     identities = settings.identities()
-    provider, luna, research = None, None, None
-    if platform is None and os.getenv('KB_REMOTE_MODELS') == '1':
-        from .remote import GoogleEmbeddingProvider, LunaClient
-
-        config_path = os.getenv('KB_PROVIDERS_CONFIG', '.local/providers.json')
-        provider, luna = GoogleEmbeddingProvider(config_path), LunaClient(config_path)
-    service = platform or Platform(settings.dsn, settings.search_url, settings.storage_root, provider, luna,
-                                   search_backend=settings.search_backend)
-    if luna is not None:
-        from .research import ResearchService
-
-        research = ResearchService(service, luna, provider, root=os.getenv('KB_RESEARCH_ROOT', '.local/research-v4e-pruned'))
+    composition = create_root_application(settings, platform=platform, profile=profile,
+        model_clients=model_clients, service_factory=agent_factory, extra_plugins=extra_plugins,
+        remote=False if platform is not None else None)
+    service, research, models = composition.platform, composition.research, composition.models
+    provider = service.embedding_provider if service is not None else None
+    luna = service.ocr_client if service is not None else None
     app = FastAPI(title="文档证据与单库检索", version="0.2.0")
-    app.state.platform = service
-    app.state.research = research
+    app.state.platform, app.state.research, app.state.models = service, research, models
+    app.state.model_clients = model_clients
+    app.state.root_plugins = composition.host
+    app.router.add_event_handler('shutdown', composition.close)
+    if service is None:
+        @app.get('/health')
+        def native_health():
+            return {'status': 'running', 'profile': 'native', 'capabilities': []}
+
+        app.state.agent, app.state.agent_plugins = None, composition.host
+        return app
     bearer = HTTPBearer(auto_error=False)
 
     def identity(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
@@ -104,7 +110,7 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     async def authority_unavailable(request, exc):
         return JSONResponse(status_code=503, content={"error": "AUTHORITY_UNAVAILABLE"})
 
-    if research is not None:
+    if models is not None:
         from .remote import RemoteModelError
         from .embeddings import EmbeddingError
 
@@ -134,9 +140,11 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
         return {
             "available": ["native_parse", "bm25", "structure", "table", "citations"],
             "experimental_available": ["dense", "hybrid"] if service.embedding_provider and not research else [],
-            "remote_configured": {'luna': luna.manifest, 'embedding': provider.manifest} if research else None,
+            "remote_configured": {'luna': luna.manifest if luna else None,
+                                  'embedding': provider.manifest if provider else None} if models else None,
             "scope_only": False,
-            "configured_requires_verification": ["ocr_model", "dense", "hybrid", "rerank"] if research else [],
+            "configured_requires_verification": (["ocr_model"] if luna else []) +
+                (["dense", "hybrid"] if provider else []) + (["rerank"] if research else []),
             "not_run": None if research else ["ocr_model", "rerank", "visual"],
             "not_implemented": ["visual"],
             "availability_note": 'Provider configuration does not prove a successful call; each scope needs its own build.',
@@ -264,7 +272,8 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
 
     from .agent_api import install_agent_routes
 
-    install_agent_routes(app, service, research, identity, service_factory=agent_factory)
+    install_agent_routes(app, service, research, identity, service_factory=agent_factory,
+                         application=composition.application, host=composition.host)
     return app
 
 

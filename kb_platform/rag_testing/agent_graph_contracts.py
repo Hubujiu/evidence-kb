@@ -13,7 +13,7 @@ import httpx
 from kb_platform.agent_luna import LunaModelProvider
 from kb_platform.agent_model import AgentModel, CompletionEnvelope
 from kb_platform.agent_schema import compile_schema, validate_output
-from kb_platform.knowledge_service import KnowledgeService as AgentService
+from .product_fixture import knowledge_service as AgentService
 from kb_platform.knowledge_policy import CONFIGS, RECOMMENDED
 from kb_platform.core import Actor, PlatformError
 from .budget import BudgetLedger
@@ -65,6 +65,146 @@ class ScenarioModel:
 
 
 class AgentGraphContracts(unittest.TestCase):
+    def test_planner_expansion_is_not_final_answer_or_verifier_task_authority(self):
+        for requested_extra in (False, True):
+            with self.subTest(requested_extra=requested_extra):
+                message = 'What is the new rule?' + (' Also give its expiry date.' if requested_extra else '')
+
+                def answer(messages):
+                    projection = json.loads(messages[-1]['content'])
+                    self.assertNotIn('work_state', projection['state'])
+                    self.assertEqual(projection['question'], message)
+                    value = cited_answer(messages)
+                    if requested_extra:
+                        value.update(completion='partial', unresolved=['expiry date'])
+                    return value
+
+                def verify(messages):
+                    projection = json.loads(messages[-1]['content'])
+                    self.assertNotIn('work_state', projection['state'])
+                    candidate = json.loads(projection['question'].split('Candidate answer (not evidence): ', 1)[1])
+                    self.assertNotIn('completion', candidate)
+                    self.assertNotIn('unresolved', candidate)
+                    return verdict(complete=not requested_extra)
+
+                case = self.setup_service(normal_script(), policy={'mode': 'LOCKED', 'source_ids': ['s0']})
+                self.turn(case)
+                case.model.script = [
+                    ('decision', decision(subquestions=['new rule', 'expiry date'], sufficiency='unknown')),
+                    ('retrieval', decision('answer', subquestions=['new rule', 'expiry date'],
+                                           missing_information=['expiry date'], sufficiency='insufficient')),
+                    ('answer', answer), ('verifier', verify)]
+                result = case.service.turn(case.authority.actor, case.session, message=message,
+                    request_id='switch-scope', expected_revision=1, policy={'mode': 'LOCKED', 'source_ids': ['s1']})
+                self.assertEqual(result['status'], 'partial' if requested_extra else 'answered', result)
+                self.assertEqual({item['source_id'] for item in result['evidence']}, {'s1'})
+                self.assertEqual(bool(result['unresolved']), requested_extra)
+
+    def test_fresh_evidence_resets_old_read_window_but_explicit_read_keeps_it(self):
+        for refresh in (False, True):
+            with self.subTest(refresh=refresh):
+                def read_window(messages):
+                    item = json.loads(messages[-1]['content'])['evidence'][0]
+                    return decision('read', citation_ids=[item['citation_id']], offset=10)
+
+                script = [('decision', decision()), ('retrieval', read_window)]
+                if refresh:
+                    script += [('retrieval', decision('search', query='refresh original'))]
+                script += [('retrieval', decision('answer')), ('answer', cited_answer), ('verifier', verdict())]
+                case = self.setup_service(script, policy={'mode': 'LOCKED', 'source_ids': ['s0']},
+                                          config={'novelty_search': False})
+                result = self.turn(case)
+                self.assertEqual(result['status'], 'answered', result)
+                self.assertEqual(result['answer'], 'Original rule: value 42.'[0 if refresh else 10:])
+
+    def test_source_switch_does_not_expose_old_catalog_in_planning_schema(self):
+        case = self.setup_service(normal_script(), policy={'mode': 'LOCKED', 'source_ids': ['s0']})
+        first = self.turn(case)
+        old_ids = {item['citation_id'] for item in first['evidence']}
+
+        def plan_new_scope(messages):
+            for identity in old_ids:
+                self.assertNotIn(identity, json.dumps(messages))
+            state = json.loads(messages[-1]['content'])['state']
+            self.assertEqual(state['source_policy_update']['origin'], 'validated_request_control')
+            self.assertTrue(state['source_policy_update']['applied'])
+            self.assertEqual([row['source_id'] for row in state['source_policy_update']['selected_sources']], ['s1'])
+            return decision()
+
+        case.model.script = [('decision', plan_new_scope), *normal_script()[1:]]
+        result = case.service.turn(case.authority.actor, case.session, message='What is the new rule?',
+            request_id='switch', expected_revision=1, policy={'mode': 'LOCKED', 'source_ids': ['s1']})
+        self.assertEqual(result['status'], 'answered', result)
+        self.assertEqual({item['source_id'] for item in result['evidence']}, {'s1'})
+
+    def test_source_switch_rejects_cross_turn_quote_before_delivering_new_source(self):
+        case = self.setup_service(normal_script(), policy={'mode': 'LOCKED', 'source_ids': ['s0']})
+        first = self.turn(case)
+        old = first['evidence'][0]
+        stale_answer = {'answer': old['text'], 'abstain': False, 'completion': 'complete', 'unresolved': [],
+                        'claims': [{'text': old['text'], 'evidence_ids': [old['citation_id']],
+                                    'quotes': [{'evidence_id': old['citation_id'], 'quote': old['text']}]}]}
+        case.model.script = [('decision', decision()), ('retrieval', decision('answer')),
+                             ('answer', stale_answer), ('answer', cited_answer), ('verifier', verdict())]
+        result = case.service.turn(case.authority.actor, case.session, message='Use the newly selected rule.',
+            request_id='switch-stale', expected_revision=1, policy={'mode': 'LOCKED', 'source_ids': ['s1']})
+        self.assertEqual(result['status'], 'answered', result)
+        self.assertEqual(result['answer'], 'Other private rule.')
+        self.assertNotIn(old['citation_id'], json.dumps(result['claims']))
+        self.assertEqual(result['trace']['citation_repair']['attempts'], 1)
+
+    def test_current_correction_is_visible_to_verifier_before_it_enters_history(self):
+        case = self.setup_service()
+        self.turn(case, message='你好', request='hello')
+        message = '更正：我的预算最终是520元。'
+
+        def answer(messages):
+            current = json.loads(messages[-1]['content'])['state']['current_user_event']
+            return {'answer': '你最后确认的预算是520元。', 'claims': [], 'abstain': False,
+                    'completion': 'complete', 'unresolved': [],
+                    'user_statements': [{'event_seq': current['event_seq'], 'quote': message}]}
+
+        def verify(messages):
+            from kb_platform.knowledge_policy import _visible_user_statements
+            projection = json.loads(messages[-1]['content'])
+            current = projection['state']['current_user_event']
+            self.assertEqual(current['text'], message)
+            self.assertNotIn(current['event_seq'], [row['seq'] for row in projection['history']])
+            self.assertIn(message, _visible_user_statements(projection)[current['event_seq']])
+            self.assertNotIn('source_policy_update', projection['state'])
+            return verdict()
+
+        case.model.script = [('decision', decision('answer', intent='correction')),
+                             ('answer', answer), ('verifier', verify)]
+        result = self.turn(case, message=message, request='correction', revision=1)
+        self.assertEqual(result['status'], 'answered', result)
+
+    def test_format_repair_receives_specific_constraint_and_remains_bounded(self):
+        from kb_platform.model_errors import RemoteModelError
+
+        for repaired in (True, False):
+            with self.subTest(repaired=repaired):
+                error = RemoteModelError('INVALID_AGENT_OUTPUT')
+                error.call_record = {'finish_reason': 'stop', 'validator_reason': 'AGENT_SCHEMA_MISMATCH',
+                    'validator_issue': {'path': ['subquestions'], 'rule': 'maxItems', 'limit': 6}}
+
+                def corrected(messages):
+                    instruction = messages[0]['content']
+                    self.assertIn('"path":["subquestions"]', instruction)
+                    self.assertIn('"limit":6', instruction)
+                    return decision('answer', subquestions=['List all nine required items'])
+
+                script = [('decision', decision()), ('retrieval', error),
+                          ('retrieval', corrected if repaired else error)]
+                if repaired:
+                    script += [('answer', cited_answer), ('verifier', verdict())]
+                case = self.setup_service(script)
+                result = self.turn(case)
+                self.assertEqual(result['status'], 'answered' if repaired else 'error', result)
+                self.assertEqual(len(result['trace']['format_repairs']), 1)
+                self.assertEqual(len(case.model.calls), 5 if repaired else 3)
+                self.assertEqual(result['trace']['calls'][1]['validator_issue']['limit'], 6)
+
     def setup_service(self, script=(), *, after=None, policy=None, config=None):
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

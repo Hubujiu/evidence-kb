@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "bundles": ["core"],
+  "plugins": [
+    {"id": "models", "use": "models.service", "config": {"config_path": ".local/models.json"}},
+    {"id": "llm", "use": "models.structured", "config": {"route": "generation"}},
+    {"id": "model", "use": "harness.model.service"}
+  ]
+}

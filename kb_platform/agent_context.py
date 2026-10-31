@@ -38,6 +38,47 @@ class ContextManager:
     def __init__(self, policy=None):
         self.policy = policy or ContextPolicy()
 
+    def prepare_rerank(self, system, evidence, payload):
+        policy = self.policy
+        if policy.strict_tokens:
+            raise ContextBudgetError('TOKEN_CAPABILITY_UNVERIFIED')
+        documents = payload.get('documents')
+        if (set(payload) != {'query', 'documents'} or not isinstance(payload['query'], str)
+                or not isinstance(documents, list) or len(documents) != len(evidence)
+                or not documents or any(row != {'ref': f'R{index:03}', 'text': item['text']}
+                    for index, (row, item) in enumerate(zip(documents, evidence, strict=True), 1))):
+            raise ContextBudgetError('INVALID_RERANK_PAYLOAD')
+        starts = [len(item['text']) - len(item['text'].lstrip()) for item in evidence]
+        limit = policy.effective_input_budget
+
+        def messages(length):
+            rows = [{'ref': row['ref'], 'text': item['text'][start:start + length],
+                     'text_truncated': start != 0 or start + length < len(item['text'])}
+                    for row, item, start in zip(documents, evidence, starts, strict=True)]
+            return [{'role': 'system', 'content': system}, {'role': 'user', 'content': canonical({
+                'query': payload['query'], 'documents': rows})}]
+
+        if estimate_messages(messages(1))['tokens'] > limit:
+            raise ContextBudgetError('CONTEXT_REQUIRED_STATE_TOO_LARGE')
+        low, high = 1, max(len(item['text']) for item in evidence)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if estimate_messages(messages(middle))['tokens'] <= limit:
+                low = middle
+            else:
+                high = middle - 1
+        output = messages(low)
+        windows = [{**self._evidence_reference(item), 'ref': row['ref'],
+                    'text': item['text'][start:start + low], 'text_start': start,
+                    'text_truncated': start != 0 or start + low < len(item['text'])}
+                   for row, item, start in zip(documents, evidence, starts, strict=True)]
+        projection = {'role': 'rerank', 'question': payload['query'], 'evidence': windows,
+                      'state': {}, 'history': [], 'omitted_event_refs': []}
+        return PreparedContext(output, {'input_limit': limit, 'output_reserve': policy.output_reserve,
+            'model_window': policy.model_window, 'safety_reserve': policy.safety_reserve,
+            'strict_tokens': False, 'window_capability_verified': False}, estimate_messages(output),
+            any(item['text_truncated'] for item in windows), projection)
+
     @staticmethod
     def _groups(history, role):
         groups, positions = [], {}

@@ -10,7 +10,7 @@ from kb_platform.agent_luna import LunaModelProvider
 from kb_platform.agent_model import AgentModel
 from kb_platform.agent_protocol import ANSWER_SCHEMA, DECISION_SCHEMA, VERDICT_SCHEMA
 from kb_platform.agent_schema import compile_schema, validate_output
-from kb_platform.agent_tool_registry import TOOLS, advanced_tools, decision_schema, tool_arguments
+from kb_platform.agent_tool_registry import TOOLS, advanced_tools, bind_decision_evidence, decision_schema, tool_arguments
 from kb_platform.provider_runtime import ToolExecutor, RuntimePolicyError
 
 
@@ -23,6 +23,23 @@ def status_error(status, retry_after=None):
 class TypedProtocolContracts(unittest.TestCase):
     def validate(self, value, schema):
         validate_output(value, compile_schema(schema))
+
+    def test_source_dependent_actions_require_discovered_evidence(self):
+        original = decision_schema({'explicit_completion': True}, {'workflow_next', 'table_join'}, False)
+        empty = bind_decision_evidence(original, [])
+        available = bind_decision_evidence(original, ['known'])
+        for action in ('read', 'workflow_next', 'table_join'):
+            value = {'intent': 'knowledge', 'action': action}
+            for schema, references in ((empty, []), (empty, ['invented']),
+                                       (available, []), (available, ['invented'])):
+                with self.subTest(action=action, references=references), self.assertRaises(ValueError):
+                    self.validate({**value, 'citation_ids': references}, schema)
+        self.validate({'intent': 'knowledge', 'action': 'workflow_next', 'citation_ids': ['known']}, available)
+        self.validate({'intent': 'knowledge', 'action': 'search', 'query': 'workflow'}, empty)
+        self.assertIn('workflow_next', original['properties']['action']['enum'])
+        revoked = bind_decision_evidence(original, [])
+        with self.assertRaises(ValueError):
+            self.validate({'intent': 'knowledge', 'action': 'workflow_next', 'citation_ids': ['known']}, revoked)
 
     def test_optional_fields_are_absent_not_defaulted_or_nullable(self):
         value = {'intent': 'knowledge', 'action': 'answer'}

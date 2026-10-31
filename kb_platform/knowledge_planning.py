@@ -1,7 +1,7 @@
 from __future__ import annotations
 from copy import deepcopy
 import time
-from .agent_tool_registry import TOOLS, decision_schema as planning_schema, tool_arguments
+from .agent_tool_registry import TOOLS, bind_decision_evidence, decision_schema as planning_schema, tool_arguments
 from .session_store import digest
 from .agent_work_state import record_decision, record_receipt
 from .core import PlatformError
@@ -91,6 +91,9 @@ class KnowledgePlanning:
             decision_schema = self.service.plugins.schema(
                 planning_schema(self.config, self.advanced, self.semantic_enabled)
             )
+            decision_schema = bind_decision_evidence(
+                decision_schema, set(self.state['evidence']) | set(self.state['evidence_catalog']))
+            planning_system += '\nOnly actions admitted by the current schema are executable. Before using a source-dependent tool, retrieve its evidence first. Omit optional fields unrelated to the chosen action; a read needs citation_ids, not empty table, join or calculator arguments.'
             if self.advanced or self.config.get("explicit_completion"):
                 planning_system += (
                     "\nThis is a selected-knowledge-base assistant. Use out_of_domain+answer for a clearly unrelated request; use clarify for missing essential user parameters, not for a temporary tool error. Never infer that a fact does not exist from TopK misses. For all/count/none requests, distinguish complete scope enumeration from partial search. When sources disagree preserve the conflict and effective dates, never select authority by similarity. Available additional actions: "

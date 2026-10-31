@@ -7,7 +7,7 @@
     },
     {
       "id": "provider",
-      "use": "knowledge.provider.luna"
+      "use": "models.service"
     },
     {
       "id": "policy",
@@ -48,6 +48,10 @@
       "use": "knowledge.sessions"
     },
     {
+      "id": "reranker",
+      "use": "knowledge.reranker"
+    },
+    {
       "id": "gateway",
       "use": "knowledge.gateway"
     },
@@ -75,8 +79,23 @@
       "use": "knowledge.driver.graph"
     },
     {
+      "id": "tool-catalog",
+      "use": "knowledge.tools.catalog"
+    },
+    {
       "id": "knowledge",
-      "use": "knowledge.service"
+      "use": "knowledge.service",
+      "config": {
+        "retrieval_config": {
+          "channels": [
+            "bm25",
+            "dense"
+          ],
+          "rerank": true,
+          "parent": "paragraph",
+          "top_k": 5
+        }
+      }
     },
     {
       "id": "knowledge-tools",
