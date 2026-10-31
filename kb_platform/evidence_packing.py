@@ -46,6 +46,9 @@ def rank_texts(texts, question):
 
 def select_window(text, question, offset, fits, max_characters=2000):
 
+    if len(text) - offset <= max_characters and fits(offset, len(text)):
+        return offset, len(text)
+
     ranked = ranked_blocks(text, question, offset)
     if not ranked:
         return None
