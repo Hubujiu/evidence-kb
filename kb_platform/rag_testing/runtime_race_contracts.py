@@ -1,11 +1,300 @@
-from threading import Event, Thread
+from hashlib import sha256
+from threading import Event, RLock, Thread, Timer, current_thread
 import unittest
+from unittest.mock import patch
 
+from kb_platform import plugin_host
 from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
 
 
 class RuntimeRaceContracts(unittest.TestCase):
+    def test_concurrent_updates_keep_native_configuration_and_python_inputs_consistent(self):
+        committed, second_lock_attempt = Event(), Event()
+        failures = []
+        lock = RLock()
+
+        class OrderedLock:
+            def __enter__(self):
+                if current_thread().name == 'second-update':
+                    second_lock_attempt.set()
+                lock.acquire()
+
+            def __exit__(self, *args):
+                lock.release()
+
+        def mount(context, config):
+            class Service:
+                def value(self):
+                    return config['value']
+            context.provide('service', Service())
+
+        def inputs(config):
+            return {'value': sha256(str(config['value']).encode()).hexdigest()}
+
+        profile = {'version': 1, 'plugins': [{'id': 'p', 'use': 'p', 'config': {'value': 0}}]}
+        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount, config_inputs=inputs)])
+        host._lock = OrderedLock()
+        native = plugin_host.native_call
+
+        def interleave(command, **fields):
+            result = native(command, **fields)
+            if command == 'runtime_update' and current_thread().name == 'first-update':
+                committed.set()
+                if not second_lock_attempt.wait(5):
+                    raise AssertionError('second update did not reach the metadata lock')
+            return result
+
+        def update(value):
+            try:
+                host.update('p', config={'value': value})
+            except BaseException as error:
+                failures.append(error)
+
+        first = Thread(target=update, args=(1,), name='first-update')
+        second = Thread(target=update, args=(2,), name='second-update')
+        try:
+            with patch.object(plugin_host, 'native_call', interleave):
+                first.start()
+                self.assertTrue(committed.wait(5))
+                second.start()
+                first.join(5)
+                second.join(5)
+            self.assertFalse(first.is_alive())
+            self.assertFalse(second.is_alive())
+            self.assertEqual(failures, [])
+            self.assertEqual(host.inspect()['plugins'][0]['config'], {'value': 2})
+            self.assertEqual(host._entries['p'][1], {'value': 2})
+            self.assertEqual(host.call('service', 'value'), 2)
+            host.update('p', enabled=False)
+            host.update('p', enabled=True)
+            self.assertEqual(host.call('service', 'value'), 2)
+        finally:
+            second_lock_attempt.set()
+            first.join(5)
+            if second.ident is not None:
+                second.join(5)
+            host.close()
+
+    def test_update_cancellation_cannot_be_consumed_before_signal_registration(self):
+        admitted, register, update_finished = Event(), Event(), Event()
+        results, failures, polled = [], [], []
+        lock = RLock()
+
+        class AdmissionLock:
+            def __enter__(self):
+                if current_thread().name == 'configuration-update':
+                    if lock.acquire(blocking=False):
+                        return
+                    register.set()
+                lock.acquire()
+
+            def __exit__(self, *args):
+                lock.release()
+
+        def mount(context, config):
+            class Service:
+                def work(self):
+                    if not update_finished.wait(5):
+                        raise AssertionError('update did not complete cancellation delivery')
+                    return context.host.current_call['cancel_signal'].is_set()
+            context.provide('service', Service())
+
+        profile = {'version': 1, 'plugins': [{'id': 'p', 'use': 'p'}]}
+        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount)])
+        host._lock = AdmissionLock()
+        native = plugin_host.native_call
+
+        def interleave(command, **fields):
+            result = native(command, **fields)
+            if command == 'runtime_invoke':
+                admitted.set()
+                if not register.wait(5):
+                    raise AssertionError('admission was not released')
+            elif command == 'runtime_poll':
+                cancellations = [action for action in result['actions'] if action['kind'] == 'cancel']
+                if polled and not cancellations:
+                    register.set()
+                polled.extend(cancellations)
+            return result
+
+        def invoke():
+            try:
+                results.append(host.call('service', 'work'))
+            except BaseException as error:
+                failures.append(error)
+
+        def update():
+            try:
+                host.update('p', config={'revision': 2})
+            except BaseException as error:
+                failures.append(error)
+            finally:
+                update_finished.set()
+
+        worker = Thread(target=invoke)
+        updater = Thread(target=update, name='configuration-update')
+        try:
+            with patch.object(plugin_host, 'native_call', interleave):
+                worker.start()
+                self.assertTrue(admitted.wait(5))
+                updater.start()
+                worker.join(5)
+                updater.join(5)
+            self.assertFalse(worker.is_alive())
+            self.assertFalse(updater.is_alive())
+            self.assertEqual(failures, [])
+            self.assertEqual(len(polled), 1)
+            self.assertEqual(results, [True])
+            self.assertEqual(host.inspect()['leases'], 0)
+            self.assertEqual(host.inspect()['state'], 'ready')
+        finally:
+            register.set()
+            update_finished.set()
+            worker.join(5)
+            if updater.ident is not None:
+                updater.join(5)
+            host.close()
+
+    def test_configuration_callbacks_release_metadata_lock_and_revalidate_stale_inputs(self):
+        validating, release, updated = Event(), Event(), Event()
+        failures = []
+        observed = []
+
+        def inputs(config):
+            if current_thread().name == 'enable-with-prior-config':
+                observed.append(config['value'])
+                if len(observed) == 1:
+                    validating.set()
+                    if not release.wait(5):
+                        raise AssertionError('configuration validation did not resume')
+            return {'value': sha256(str(config['value']).encode()).hexdigest()}
+
+        def mount(context, config):
+            context.provide('service', config['value'])
+
+        profile = {'version': 1, 'plugins': [{'id': 'p', 'use': 'p', 'config': {'value': 0}}]}
+        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount, config_inputs=inputs)])
+
+        def enable():
+            try:
+                host.update('p', enabled=True)
+            except BaseException as error:
+                failures.append(error)
+
+        def update():
+            try:
+                host.update('p', config={'value': 2})
+            except BaseException as error:
+                failures.append(error)
+            finally:
+                updated.set()
+
+        enabler = Thread(target=enable, name='enable-with-prior-config')
+        updater = Thread(target=update)
+        try:
+            enabler.start()
+            self.assertTrue(validating.wait(5))
+            updater.start()
+            self.assertTrue(updated.wait(5), 'user configuration callback held the metadata lock')
+            release.set()
+            enabler.join(5)
+            updater.join(5)
+            self.assertFalse(enabler.is_alive())
+            self.assertFalse(updater.is_alive())
+            self.assertEqual(failures, [])
+            self.assertEqual(observed, [0, 2])
+            self.assertEqual(host.service('service'), 2)
+            self.assertEqual(host.inspect()['state'], 'ready')
+        finally:
+            release.set()
+            enabler.join(5)
+            if updater.ident is not None:
+                updater.join(5)
+            host.close()
+
+    def test_call_initialization_failures_release_admission_and_cancellation_state(self):
+        timers = []
+
+        class RecordingTimer(Timer):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                timers.append(self)
+
+        class CannotStartTimer(RecordingTimer):
+            def start(self):
+                raise RuntimeError("can't start new thread")
+
+        class CannotSetContext:
+            def __init__(self, context):
+                self.context = context
+
+            def get(self):
+                return self.context.get()
+
+            def set(self, value):
+                raise RuntimeError('context initialization failed')
+
+            def reset(self, token):
+                self.context.reset(token)
+
+        def cannot_create_event():
+            raise RuntimeError('event initialization failed')
+
+        cases = [('Event', cannot_create_event),
+                 ('Timer', CannotStartTimer),
+                 ('_current_call', CannotSetContext(plugin_host._current_call)),
+                 ('_leases', CannotSetContext(plugin_host._leases))]
+        for attribute, replacement in cases:
+            with self.subTest(initialization=attribute):
+                called = []
+
+                def mount(context, config):
+                    class Service:
+                        def work(self):
+                            called.append(True)
+                    context.provide('service', Service())
+
+                profile = {'version': 1, 'plugins': [{'id': 'p', 'use': 'p'}]}
+                host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount)])
+                admitted = []
+                native = plugin_host.native_call
+
+                def record(command, **fields):
+                    result = native(command, **fields)
+                    if command == 'runtime_invoke':
+                        admitted.append(result['operation'])
+                    return result
+
+                call_token = plugin_host._current_call.set(None)
+                leases_token = plugin_host._leases.set(())
+                try:
+                    with patch.object(plugin_host, 'native_call', record), \
+                            patch.object(plugin_host, 'Timer', RecordingTimer):
+                        with patch.object(plugin_host, attribute, replacement):
+                            with self.assertRaises(RuntimeError):
+                                host.bind('service').invoke('work', timeout=10)
+                    self.assertEqual(called, [])
+                    self.assertEqual(host.inspect()['counts']['leases'], 0)
+                    self.assertEqual(host.inspect()['counts']['pending_operations'], 0)
+                    self.assertEqual(host._cancellations, {})
+                    self.assertIsNone(host.current_call)
+                    self.assertEqual(plugin_host._leases.get(), ())
+                finally:
+                    if host.inspect()['counts']['pending_operations']:
+                        for operation in admitted:
+                            native('runtime_complete', host=host.id, operation=operation,
+                                   status='error', error='fixture cleanup')
+                            native('runtime_ack', host=host.id, operations=[operation])
+                    for timer in timers:
+                        timer.cancel()
+                        if timer.ident is not None:
+                            timer.join(5)
+                    plugin_host._current_call.reset(call_token)
+                    plugin_host._leases.reset(leases_token)
+                    host._cancellations.clear()
+                    host.close()
+
     def test_manual_cancel_notifies_running_call_while_sibling_cleanup_blocks(self):
         entered, cleanup_entered, release, release_cleanup = Event(), Event(), Event(), Event()
         operations, results, failures, disposed = [], [], [], []
