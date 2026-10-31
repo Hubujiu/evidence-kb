@@ -651,6 +651,13 @@ class PluginHost:
         self._raise_failures(self._pump(), 'Plugin update did not finish')
         return {**result, 'runtime': self.inspect()}
 
+    def _instance_exited(self, plugin, instance, generation):
+        result = native_call('runtime_instance_exited', host=self.id, plugin=plugin,
+            instance=instance, generation=generation)
+        if result['accepted']:
+            self._raise_failures(self._pump(), 'Plugin exit cleanup did not finish')
+        return result
+
     def retry(self, plugin=None):
         self._lifecycle_allowed()
         result = native_call('runtime_retry', host=self.id, plugin=plugin)

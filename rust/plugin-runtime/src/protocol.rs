@@ -167,6 +167,12 @@ pub enum Command {
         #[serde(default)]
         configuration_inputs: Option<BTreeMap<String, String>>,
     },
+    RuntimeInstanceExited {
+        host: u64,
+        plugin: String,
+        instance: u64,
+        generation: u64,
+    },
     RuntimeRetry {
         host: u64,
         #[serde(default)]
