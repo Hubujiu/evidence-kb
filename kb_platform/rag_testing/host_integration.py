@@ -334,6 +334,78 @@ class HostIntegration(unittest.TestCase):
                 process.kill()
                 process.communicate(timeout=5)
 
+    if os.name == 'posix':
+        def check_shutdown_signal(self, signum, *, hang_close=False, stop_file=False):
+            profile = self.profile('signal_application', hang_close=hang_close)
+            document = json.loads(profile.read_text('utf-8'))
+            document['shutdown_timeout_ms'] = 500 if hang_close else 5000
+            if stop_file:
+                document['stop_file'] = str(self.directory / 'unused-stop')
+            profile.write_text(json.dumps(document), 'utf-8')
+            unrelated = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+            process = subprocess.Popen([os.environ['KB_PLUGIN_HOST_BINARY'], '--profile', str(profile)],
+                cwd=ROOT, text=True, encoding='utf-8', stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                start_new_session=True)
+            owned = {}
+            try:
+                expires = monotonic() + 15
+                while monotonic() < expires and process.poll() is None:
+                    running = [row for row in self.records() if row['event'] == 'running']
+                    if running:
+                        owned = {name: running[-1][name] for name in ('worker', 'descendant')}
+                        break
+                    Event().wait(0.02)
+                self.assertTrue(owned, 'Application did not start')
+                self.assertEqual(owned['worker'], os.getpgid(owned['descendant']))
+                self.assertNotEqual(process.pid, os.getpgid(owned['worker']))
+                self.assertTrue(all(process_running(pid) for pid in owned.values()))
+                if signum == signal.SIGINT:
+                    os.killpg(process.pid, signum)
+                else:
+                    process.send_signal(signum)
+                stdout, stderr = process.communicate(timeout=10)
+                self.capture(process.returncode, stdout, stderr)
+                expires = monotonic() + 2
+                while monotonic() < expires and any(process_running(pid) for pid in owned.values()):
+                    Event().wait(0.02)
+                observed = {name: process_running(pid) for name, pid in owned.items()}
+                (self.directory / 'liveness.json').write_text(json.dumps(observed), 'utf-8')
+                self.assertEqual({'worker': False, 'descendant': False}, observed)
+                self.assertIsNone(unrelated.poll())
+                events = [row['event'] for row in self.records()]
+                if hang_close:
+                    self.assertNotEqual(0, process.returncode)
+                    self.assertEqual('timeout', json.loads(stderr.splitlines()[-1])['code'])
+                    self.assertEqual(['created', 'running', 'stop', 'closing'], events)
+                else:
+                    self.successful(subprocess.CompletedProcess([], process.returncode, stdout, stderr))
+                    self.assertEqual(['created', 'running', 'stop', 'closing', 'closed'], events)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate(timeout=5)
+                if not owned:
+                    running = [row for row in self.records() if row['event'] == 'running']
+                    if running:
+                        owned = {name: running[-1][name] for name in ('worker', 'descendant')}
+                for pid in owned.values():
+                    if process_running(pid):
+                        os.kill(pid, signal.SIGKILL)
+                unrelated.kill()
+                unrelated.wait(timeout=5)
+
+        def test_sigint_closes_application_and_reaps_descendants(self):
+            self.check_shutdown_signal(signal.SIGINT)
+
+        def test_sigterm_closes_application_and_reaps_descendants(self):
+            self.check_shutdown_signal(signal.SIGTERM, stop_file=True)
+
+        def test_sigint_reaps_descendants_when_close_times_out(self):
+            self.check_shutdown_signal(signal.SIGINT, hang_close=True, stop_file=True)
+
+        def test_sigterm_reaps_descendants_when_close_times_out(self):
+            self.check_shutdown_signal(signal.SIGTERM, hang_close=True)
+
 
 def main():
     parser = argparse.ArgumentParser()
