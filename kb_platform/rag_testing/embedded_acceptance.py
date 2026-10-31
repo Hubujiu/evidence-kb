@@ -1,4 +1,3 @@
-"""Paired real backend execution through current HTTP service and shared evidence scorer."""
 import argparse
 import os
 from pathlib import Path
@@ -12,7 +11,7 @@ from .runner import run, write_json
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Paired real backend execution through current HTTP service and shared evidence scorer.')
     parser.add_argument('--suite', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--catalog', type=Path)

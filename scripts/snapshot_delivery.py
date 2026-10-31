@@ -1,10 +1,3 @@
-"""Private local recovery pack and non-destructive restore verification.
-
-Creates PostgreSQL's exported-snapshot dump, exact published-index documents,
-and consistent SQLite/application files. Verification uses a new database, new
-search indexes and an empty directory. It never overwrites a live database,
-index or directory, and never calls any model.
-"""
 from __future__ import annotations
 
 import argparse
@@ -23,10 +16,11 @@ import httpx
 import psycopg
 from psycopg import sql
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from kb_platform.rag_testing.contracts import digest
+from kb_platform.rag_testing.runner import write_json
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from kb_platform.rag_testing.contracts import digest  # noqa: E402
-from kb_platform.rag_testing.runner import write_json  # noqa: E402
 
 
 def checksum(path):
@@ -92,9 +86,8 @@ def snapshot_sqlite(source, target):
             if restored.execute('PRAGMA quick_check').fetchone()[0] != 'ok' or sqlite_fingerprints(restored) != before:
                 raise ValueError('SQLITE_SNAPSHOT_CONTENT_MISMATCH')
         if journal != 'wal':
-            # A rollback-journal read transaction holds the shared lock. Keep
-            # immutable budget file identities as well as logical contents:
-            # SQLite.backup itself can change the target header's counters.
+
+
             shutil.copyfile(source, target)
             if checksum(source) != checksum(target):
                 raise ValueError('SQLITE_EXACT_COPY_CHANGED')
@@ -105,7 +98,7 @@ def snapshot_sqlite(source, target):
 
 
 def verify_linked_budgets(application, source_roots):
-    """Check restored parent identities and cumulative admission, without a send."""
+
     from kb_platform.rag_testing.budget_batches import LinkedBudgetLedger, freeze_predecessor
 
     results = []
@@ -157,7 +150,7 @@ def read_index(client, name):
 
 
 def snapshot_application(run_root, output, include_roots=()):
-    """Include explicit linked-budget directories without merging their identities."""
+
     roots = [(Path('.'), private_path(run_root))]
     roots.extend((Path('_linked_budgets') / str(number), private_path(path))
                  for number, path in enumerate(include_roots))
@@ -359,7 +352,7 @@ def verify(backup, output, admin_dsn, search_url):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Private local recovery pack and non-destructive restore verification.\n\nCreates PostgreSQL's exported-snapshot dump, exact published-index documents,\nand consistent SQLite/application files. Verification uses a new database, new\nsearch indexes and an empty directory. It never overwrites a live database,\nindex or directory, and never calls any model.\n")
     parser.add_argument('command', choices=('create', 'verify'))
     parser.add_argument('--run-root', type=Path, default=ROOT / '.local/delivery-20261026-01')
     parser.add_argument('--prepared', type=Path, default=ROOT / '.local/delivery-20261026-01/prepared-02/prepared.json')

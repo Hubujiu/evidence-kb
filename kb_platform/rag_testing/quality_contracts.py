@@ -1,4 +1,3 @@
-"""Offline architecture and I/O policy contracts for the project check command."""
 import json
 from pathlib import Path
 import tempfile
@@ -24,6 +23,9 @@ class ArchitectureContracts(unittest.TestCase):
             ('harness_loop', 'from .agent_workflow import KnowledgeWorkflow'),
             ('harness_services', 'from .agent_luna import LunaModelProvider'),
             ('harness_sessions', 'from .agent_store import AgentStore'),
+            ('harness_profile', 'from .knowledge_profile import knowledge_plugins'),
+            ('session_store', 'from .core import PlatformError'),
+            ('harness_graph', 'from .knowledge_workflow import KnowledgeWorkflow'),
             ('harness_loop', 'import openai'),
             ('plugin_host', 'import httpx'),
             ('harness_sessions', 'import psycopg'),
@@ -214,7 +216,7 @@ class OfflinePolicyContracts(unittest.TestCase):
 
 
 class NativeBuildGateContracts(unittest.TestCase):
-    """Synthetic build outcomes verify gate admission, never native correctness."""
+
 
     def run_gate(self, root, output, *, build_code=0, publish=True):
         calls = []
@@ -231,7 +233,7 @@ class NativeBuildGateContracts(unittest.TestCase):
                     source.write_bytes(b'current release library')
                 return check_project.CheckResult(name, build_code, name + '.log')
             if name == 'rust-tests' and source is not None and source.exists():
-                # A later Cargo invocation must not change this run's ABI input.
+
                 source.write_bytes(b'later build artifact')
             return check_project.CheckResult(name, 0, name + '.log')
 
@@ -280,8 +282,8 @@ class NativeBuildGateContracts(unittest.TestCase):
             targets = []
             libraries = []
             for label in ('first', 'second'):
-                # The CLI canonicalizes paths, including Windows 8.3 temp paths.
-                # Exercise an alias on every platform and compare actual locations.
+
+
                 output = root / 'alias' / '..' / label
                 code, summary, calls = self.run_gate(root, output)
                 self.assertEqual(0, code)
@@ -301,3 +303,30 @@ class NativeBuildGateContracts(unittest.TestCase):
             self.assertNotEqual(targets[0], targets[1])
             self.assertNotEqual(libraries[0], libraries[1])
             self.assertEqual(b'current release library', libraries[0].read_bytes())
+
+
+class SourceQualityContracts(unittest.TestCase):
+    def check_source(self, source, name='sample.py'):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / 'kb_platform' / name
+            path.parent.mkdir()
+            path.write_text(source, encoding='utf-8')
+            return check_project.source_quality_violations(root)
+
+    def test_rejects_comments_and_docstrings(self):
+        for source in ('x = 1 # note', '# noqa: F401\nimport os',
+                       '"""module docs"""', 'def f():\n    """function docs"""',
+                       'class C:\n    """class docs"""'):
+            with self.subTest(source=source):
+                self.assertTrue(self.check_source(source))
+
+    def test_accepts_comment_characters_in_runtime_strings(self):
+        self.assertEqual([], self.check_source('text = "# heading"\nquery = "https://example.com"'))
+
+    def test_rejects_retired_modules_and_imports(self):
+        self.assertTrue(self.check_source('', 'agent_store.py'))
+        for source in ('from .search_compat import resume', 'import kb_platform.agent_store',
+                       'from kb_platform import search_compat'):
+            with self.subTest(source=source):
+                self.assertTrue(self.check_source(source))

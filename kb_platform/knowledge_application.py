@@ -1,11 +1,41 @@
-"""Knowledge application and model-facing capabilities assembled by a profile."""
 from copy import deepcopy
+import json
 
-from .agent_plugins import ToolContext, ToolPlugin, ToolResult
+from .agent_plugins import ToolContext, ToolPlugin, ToolPlugins, ToolResult
+from .agent_engine import execution_scope
+from .plugin_host import EventName
+
+
+class KnowledgeGraphDriver:
+
+
+    def __init__(self, host):
+        self.host = host
+
+    def invoke(self, tool, context, arguments):
+        identity = {'session_id': context.session_id, 'turn_id': context.turn_id}
+        metadata = {**identity, 'name': tool.name, 'effect_id': 1}
+        tools = ToolPlugins((tool,))
+        with self.host.lease(), execution_scope(deadline_seconds=900) as execution:
+            self.host.emit(EventName.RUN_STARTED, identity)
+            try:
+                self.host.emit(EventName.TOOL_BEFORE, metadata)
+                execution.check()
+                result = tools.execute(tool.name, context, arguments).data
+
+
+                result = json.loads(json.dumps(result, ensure_ascii=False, allow_nan=False))
+                execution.check()
+                self.host.emit(EventName.TOOL_AFTER, metadata)
+                self.host.emit(EventName.RUN_COMPLETED, identity)
+                return result
+            except BaseException as error:
+                self.host.emit(EventName.RUN_FAILED, {**identity, 'error': type(error).__name__})
+                raise
 
 
 class KnowledgeTools:
-    """Bind trusted session controls outside model-visible tool arguments."""
+
 
     def __init__(self, knowledge):
         self.knowledge = knowledge
@@ -30,7 +60,7 @@ class KnowledgeTools:
 
 
 class KnowledgeApplication:
-    """Application policy is a replaceable consumer of knowledge and loop services."""
+
 
     def __init__(self, knowledge, tools, loop):
         self.knowledge, self.tools, self.loop = knowledge, tools, loop
@@ -79,7 +109,7 @@ class KnowledgeApplication:
 
 
 class HostedKnowledgeApplication:
-    """HTTP calls hold a host lease; delivery wiring uses explicit provider properties."""
+
 
     def __init__(self, host, application):
         self.host, self._application = host, application

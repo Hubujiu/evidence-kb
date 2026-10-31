@@ -1,5 +1,3 @@
-"""Freeze author-written public-PDF development challenges before inference."""
-
 import json
 from pathlib import Path
 from .contracts import Source, Evidence, Case, AdapterInput, Suite, text_hash, digest
@@ -19,7 +17,7 @@ def main():
         for i, text in enumerate(rows)
     )
     evidence = []
-    # Broad original passages preserve table headers, units and time qualifiers.
+
     ranges = {
         "h-fin": ("huawei", 7, 0, pages["huawei"][6].index("注：")),
         "h-business": ("huawei", 17, 0, pages["huawei"][16].index("区域视角")),

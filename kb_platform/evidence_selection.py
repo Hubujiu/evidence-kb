@@ -1,4 +1,3 @@
-"""Bounded, source-preserving evidence selection. Lexical coverage is not entailment."""
 from __future__ import annotations
 
 from collections import Counter
@@ -20,11 +19,7 @@ def _range(item):
 
 
 def deduplicate_evidence(items):
-    """Collapse only identical anchors or provably contained canonical spans.
 
-    Unknown offsets, different versions and typed table objects remain separate.
-    The caller keeps the complete catalog for explicit reads and table operations.
-    """
     rows = list({item['citation_id']: item for item in items}.values())
     kept = []
     for index, item in enumerate(rows):
@@ -49,11 +44,7 @@ def deduplicate_evidence(items):
 
 
 def select_evidence(items, limit, question, *, subquestions=(), preferred_ids=()):
-    """Greedy distinct-term coverage, then relevance and recency, without gold.
 
-    This only selects which original records stay active. It never declares a
-    question answered and never turns generated notes into documentary evidence.
-    """
     if type(limit) is not int or limit < 1:
         raise ValueError('INVALID_ACTIVE_EVIDENCE_LIMIT')
     rows = deduplicate_evidence(items)
@@ -85,12 +76,7 @@ def select_evidence(items, limit, question, *, subquestions=(), preferred_ids=()
 
 
 def prioritize_cited_sources(fragments, response):
-    """Return cited source identities, then the original stable source order.
 
-Accept plain immutable-source fragment dictionaries, never gold/qrels. Fail
-closed on ambiguous or unsupported cited identities instead of inventing a
-source mapping. Uncited candidate order is preserved.
-"""
     baseline = list(dict.fromkeys(fragment['source_id'] for fragment in fragments))
     if not response.get('claims'):
         return baseline

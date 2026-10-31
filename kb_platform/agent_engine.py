@@ -1,4 +1,3 @@
-"""Generic native lifecycle with host-owned effects and explicit cooperative cancellation."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -67,7 +66,7 @@ def execution_scope(*, deadline_seconds, cancellation=None):
     if parent is not None:
         parent.check()
         deadline = min(deadline, parent.deadline)
-        # A child cannot detach itself from its parent's cancellation authority.
+
         cancellation = parent.cancellation
     execution = Execution(deadline, cancellation if cancellation is not None else Event())
     token = _execution.set(execution)
@@ -83,7 +82,8 @@ class Runtime:
 
     def run(self, program: Program, *, before_operation=None, max_operations=128,
             deadline_seconds=900, cancellation=None):
-        with execution_scope(deadline_seconds=deadline_seconds, cancellation=cancellation) as execution:
+        with _program_lifecycle(program), execution_scope(
+                deadline_seconds=deadline_seconds, cancellation=cancellation) as execution:
             started = time.monotonic()
             kernel = Kernel(max_operations, max(1, math.ceil(execution.remaining_seconds * 1000)))
 
@@ -112,9 +112,27 @@ class Runtime:
                     program.accept(instruction, result)
             except BaseException:
                 if kernel.phase in {'ready', 'waiting'}:
-                    # Cleanup never retries an effect and cannot replace the original error.
+
                     try:
                         apply('cancel' if execution.cancellation.is_set() else 'fail')
                     except KernelError:
                         pass
                 raise
+
+
+@contextmanager
+def _program_lifecycle(program):
+
+    close = getattr(program, 'close', None)
+    try:
+        yield
+    except BaseException as error:
+        if close is not None:
+            try:
+                close()
+            except BaseException as cleanup:
+                error.add_note(f'Program cleanup failed: {cleanup}')
+        raise
+    else:
+        if close is not None:
+            close()

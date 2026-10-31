@@ -1,4 +1,3 @@
-"""Offline contracts for exact evidence leaves across tool messages."""
 import json
 import unittest
 

@@ -1,4 +1,3 @@
-"""Real SDK over synthetic HTTP transport; no remote provider calls."""
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -29,6 +28,63 @@ def completion(text='{"count":1}'):
 
 
 class LunaSDKContracts(unittest.TestCase):
+    def test_contract_version_has_an_independent_response_cache(self):
+        state = self.setup_provider([completion('{"count":1}'), completion('{"count":2}')],
+                                    cache_mode='read_write')
+        first = state.provider.complete_json('system', 'input', purpose='ocr')
+        second = state.provider.complete_json('system', 'input', purpose='ocr',
+                                              validator=lambda value: value['count'], contract_version='ocr/1')
+        self.assertEqual(first, {'count': 1})
+        self.assertEqual(second, {'count': 2})
+        self.assertEqual(state.provider.complete_json('system', 'input', purpose='ocr',
+                         validator=lambda value: value['count'], contract_version='ocr/1'), second)
+        self.assertEqual(len(state.requests), 2)
+        self.assertEqual(state.ledger.summary()['physical_requests'], 2)
+
+    def test_ocr_counts_format_correction_and_cached_calls_from_provider(self):
+        from io import BytesIO
+        from PIL import Image
+        from kb_platform.documents import parse_native_document
+        from kb_platform.ocr import augment_ocr
+
+        result = {'blocks': [{'text': 'approved text', 'bbox': [0, 0, 1, 1]}],
+                  'complete': True, 'unreadable': []}
+        state = self.setup_provider([completion('{"invalid":true}'), completion(json.dumps(result))],
+                                    cache_mode='read_write')
+        source = b'original'
+        bundle = parse_native_document(source, 'original.txt')
+        image = BytesIO()
+        Image.new('RGB', (1, 1), 'white').save(image, format='PNG')
+        frame = (0, image.getvalue(), {'selector_type': 'image_region', 'frame_index': 0,
+                 'raster_bbox': [0, 0, 100, 100], 'object_path': 'image/0/ocr'})
+        with patch('kb_platform.ocr._frames', return_value=[frame]):
+            first = augment_ocr(source, 'original.txt', bundle, state.provider)
+            cached = augment_ocr(source, 'original.txt', bundle, state.provider)
+        self.assertEqual(first['quality_report']['ocr_invocations'], 1)
+        self.assertEqual(first['quality_report']['model_calls'], 2)
+        self.assertEqual(cached['quality_report']['model_calls'], 0)
+        self.assertEqual(len(state.requests), 2)
+        self.assertEqual(first['status'], 'READY')
+        self.assertTrue(any(item['raw_text'] == 'approved text' for item in first['elements']))
+
+    def test_permission_capture_requires_matching_provider_scope(self):
+        state = self.setup_provider([])
+        admission = state.provider.admission
+        payload = {'model': 'synthetic-luna', 'messages': []}
+        directory = state.root / 'saved-capture'
+        directory.mkdir()
+        target = directory / 'receipt.json'
+        row = {'physical_request_id': uuid4().hex, 'http_status': 403, 'status': 'ERROR',
+               'category': 'sdk-contract', 'payload': payload, 'payload_sha256': digest(payload)}
+        for scope in (None, 'different-provider'):
+            target.write_text(json.dumps({**row, 'provider_scope': scope}), 'utf-8')
+            admission.seed_from_capture(directory)
+            self.assertEqual(admission.snapshot()['state'], 'AVAILABLE')
+        target.write_text(json.dumps({**row, 'provider_scope': admission.scope_hash}), 'utf-8')
+        admission.seed_from_capture(directory)
+        self.assertEqual(admission.snapshot()['state'], 'BLOCKED')
+        self.assertEqual(state.requests, [])
+
     def test_cancellation_before_transport_is_zero_send_without_unknown_receipt(self):
         for cancel_while_queued in (False, True):
             with self.subTest(cancel_while_queued=cancel_while_queued):

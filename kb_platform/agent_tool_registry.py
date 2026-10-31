@@ -1,4 +1,3 @@
-"""Single registry of planner actions, argument projection and retry eligibility."""
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Literal

@@ -1,4 +1,4 @@
-"""Read-through exact stage reuse without opening historical caches for writing."""
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -21,7 +21,7 @@ class ReadThroughStageCache:
         if result is not None or mode == 'cold' or (mode == 'live' and under_test):
             return result
         for root in self.parents:
-            with sqlite3.connect((root/'cache.sqlite3').as_uri()+'?mode=ro',uri=True) as db:
+            with closing(sqlite3.connect((root/'cache.sqlite3').as_uri()+'?mode=ro', uri=True)) as db:
                 row = db.execute('SELECT hash FROM entries WHERE key=?',(digest(key),)).fetchone()
             if row is None:
                 continue

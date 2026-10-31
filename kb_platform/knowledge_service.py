@@ -1,10 +1,9 @@
-"""Knowledge session lifecycle and composition; execution is injected."""
-
 from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import asdict
 from .agent_context import ContextManager, ContextPolicy
-from .agent_store import AgentStore
+from .knowledge_sessions import KnowledgeSessions
+from .session_store import SessionStore
 from .agent_tools import EvidenceGateway
 from .core import PlatformError
 from .knowledge_policy import VERSION, RECOMMENDED, CONFIGS, _active_evidence_limit, source_policy
@@ -12,6 +11,7 @@ from .knowledge_plugin_tools import KnowledgeToolPlugins
 from .agent_engine import Runtime
 
 from .knowledge_turn import KnowledgeTurn
+from .knowledge_workflow import KnowledgeWorkflow
 
 _AUTO_SEMANTIC = object()
 
@@ -35,8 +35,9 @@ class KnowledgeService:
         tool_executor=None,
         context_manager=None,
         runtime=None,
+        workflow_factory=None,
     ):
-        self.store = store or AgentStore(root)
+        self.store = store if store is not None else KnowledgeSessions(SessionStore(root))
         self.gateway = gateway or EvidenceGateway(platform, research, provider_id="magpie_luna")
         self.model = model
         self.context_policy = context_policy or ContextPolicy(
@@ -45,6 +46,7 @@ class KnowledgeService:
         self.context = context_manager if context_manager is not None else ContextManager(self.context_policy)
         self.plugins = KnowledgeToolPlugins(tool_plugins)
         self.runtime = runtime if runtime is not None else Runtime()
+        self.workflow_factory = workflow_factory if workflow_factory is not None else KnowledgeWorkflow
         self.retrieval_config = retrieval_config or {
             "channels": ["bm25", "dense"],
             "rerank": True,

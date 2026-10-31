@@ -1,4 +1,3 @@
-"""Synthetic effects through the real Rust loop; no network or model credentials."""
 from copy import deepcopy
 from threading import Event
 from types import SimpleNamespace

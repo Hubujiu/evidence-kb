@@ -1,4 +1,3 @@
-"""Fail-closed original-span scoring. No LLM or remote dependencies."""
 from __future__ import annotations
 
 import math
@@ -11,7 +10,7 @@ def corpus_hash(suite: Suite):
 
 
 def covered(evidence, fragments):
-    """Union adjacent/overlapping verified extracts; never combine different sources."""
+
     intervals = sorted((f.start, f.end) for f in fragments
                        if f.kind == "extract" and f.source_id == evidence.source_id)
     cursor = evidence.start
@@ -48,7 +47,7 @@ def score_case(suite: Suite, case: Case, trace: Trace | None, plan: Plan):
         reasons.append("final_request_not_observed")
     if not trace.request_messages:
         reasons.append("missing_final_request")
-    # JSON fields, including quotes/escapes, must not create false text mismatch.
+
     def strings(value):
         if isinstance(value, str):
             yield value
@@ -71,8 +70,8 @@ def score_case(suite: Suite, case: Case, trace: Trace | None, plan: Plan):
     context_strings = list(strings(trace.final_context or ""))
     if any(not any(f.text in text for text in context_strings) for f in trace.final):
         reasons.append("fragment_absent_from_final_request")
-    # Every visible evidence text must have a source mapping. Do not accept an
-    # authorized fragment beside untracked/unauthorized extra evidence.
+
+
     context = trace.final_context or ""
     tracked = context in ("".join(f.text for f in trace.final), "\n\n".join(f.text for f in trace.final))
     if not tracked:
@@ -105,7 +104,7 @@ def score_case(suite: Suite, case: Case, trace: Trace | None, plan: Plan):
                 reasons.append('fragment_absent_from_final_request:invalid_wire_binding')
         if bound != set(range(len(trace.final))):
             reasons.append('fragment_absent_from_final_request:incomplete_wire_bindings')
-    # Budget is deliberately named codepoints, not a pretend tokenizer estimate.
+
     context_size = (len(json.dumps(trace.request_messages, ensure_ascii=False))
                     if trace.request_evidence_bindings else len(trace.final_context or ""))
     if context_size > case.input.context_budget:

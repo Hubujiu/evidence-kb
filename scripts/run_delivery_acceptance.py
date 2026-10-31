@@ -1,4 +1,3 @@
-"""Prepare original-file HTTP fixtures or execute the existing unified RAG runner."""
 import argparse
 import json
 import os
@@ -38,7 +37,7 @@ def estimate(fixtures):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Prepare original-file HTTP fixtures or execute the existing unified RAG runner.')
     sub = parser.add_subparsers(dest='command', required=True)
     fixture_parser = sub.add_parser('fixtures', help='Generate new deterministic originals and frozen case annotations')
     fixture_parser.add_argument('--output', type=Path, required=True)

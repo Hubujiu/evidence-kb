@@ -1,9 +1,3 @@
-"""Thin HTTP/source/capture adapter for the existing unified runner.
-
-No answer labels enter this adapter. No provider budget, retry policy, semantic
-scorer or replacement controller is implemented here. The product's metered
-transport remains the authority for physical calls and unknown reservations.
-"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -23,7 +17,6 @@ from .runner import run, write_json
 
 
 VERSION = 'delivery-real-http-actual-payload/2'
-LEGACY_VERSION = 'delivery-real-http-actual-payload/1'
 POLICY = {'llm_context': True, 'embedding': True, 'rerank': True, 'ocr': False,
           'compile': False, 'allowed_providers': ['google_gemini', 'magpie_luna']}
 
@@ -86,7 +79,7 @@ def _assert_authority(actual, expected):
 
 
 def _bind_prepared_http(client, fixtures, root, *, platform, identity, data_scopes, context_budget, state, state_path):
-    """Bind only after all tenant mutations; every bind observes one stable epoch."""
+
     actor = Actor(**identity)
     before = {split: read_authority(client, value['scope_id']) for split, value in data_scopes.items()}
     if len({value['authority_revision'] for value in before.values()}) != 1:
@@ -134,13 +127,7 @@ def _bind_prepared_http(client, fixtures, root, *, platform, identity, data_scop
 
 def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, physical_directory,
                  context_budget=118784, channels=('bm25', 'dense', 'hybrid'), policy=None):
-    """Upload/build once through HTTP, then bind immutable originals read-only.
 
-    Identity is configured by the serving process. A client cannot create or
-    impersonate a tenant. The expected fresh tenant must be supplied explicitly.
-    Existing operation receipts may be read; a STARTED/UNKNOWN or failed build
-    is never automatically resubmitted. Publishing a completed build is safe.
-    """
     fixtures = load_delivery_fixtures(fixtures['root'] if isinstance(fixtures, dict) else fixtures)
     root = Path(output).resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -218,10 +205,10 @@ def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, phys
         data_scopes=data_scopes, context_budget=context_budget, state=state, state_path=path)
 
 
-def load_prepared(root, *, allow_legacy=False):
+def load_prepared(root):
     root = Path(root).resolve()
     prepared = json.loads((root / 'prepared.json').read_text('utf-8'))
-    if prepared.get('protocol') != VERSION and not (allow_legacy and prepared.get('protocol') == LEGACY_VERSION):
+    if prepared.get('protocol') != VERSION:
         raise ValueError('UNKNOWN_PREPARED_PROTOCOL')
     for name, checksum in prepared['file_sha256'].items():
         path = (root / name).resolve()
@@ -231,13 +218,9 @@ def load_prepared(root, *, allow_legacy=False):
 
 
 def rebind_http(client, prepared_directory, output, *, platform, expected_tenant_id, physical_directory):
-    """Reuse completed upload/build receipts into a new authority-bound directory.
 
-    This function issues only GET requests. It never uploads, builds, publishes,
-    replays a model response, or modifies the prior prepared directory.
-    """
     previous = Path(prepared_directory).resolve()
-    old = load_prepared(previous, allow_legacy=True)
+    old = load_prepared(previous)
     old_state_path = previous / 'prepare-state.json'
     old_state = json.loads(old_state_path.read_text('utf-8'))
     if old_state.get('status') != 'COMPLETE' or any(
@@ -287,7 +270,7 @@ def _fragment(binding, source, relative_start=0, text=None):
 
 
 def capture_final(response, records, bindings, sources):
-    """Select a logical answer call and bind only its actual transport payload."""
+
     models = [record for record in records if isinstance(record['payload'].get('messages'), list)]
     calls = response.get('trace', {}).get('calls', [])
     answers = [call for call in calls if call.get('role') == 'answer']
@@ -305,7 +288,7 @@ def capture_final(response, records, bindings, sources):
     if any(record['context'].get('request_hash') != call['request_hash'] or
            record['context'].get('agent_role') != call['role'] for record in selected):
         raise ValueError('FINAL_PHYSICAL_REQUEST_IDENTITY_MISMATCH')
-    record = selected[0]  # Repeated identical transport attempts have identical inputs.
+    record = selected[0]
     messages = record['payload']['messages']
     content = messages[-1].get('content')
     if not isinstance(content, str):
@@ -337,7 +320,7 @@ def capture_final(response, records, bindings, sources):
 
 
 def capture_stages(response, bindings, sources):
-    """Keep only stages actually observed; no copied/fabricated rerank stage."""
+
     stages, boundaries = {}, []
 
     def append(stage, citation, *, start=None, end=None):
@@ -489,7 +472,7 @@ class DeliveryHTTPAdapter:
             final_records = [record for record in records if record['context'].get('turn_id') == turn_id]
             final, context, messages, capture = capture_final(response, final_records, self.bindings, source_map)
             stages, boundaries = capture_stages(response, self.bindings, source_map)
-            stages['assembly'] = final  # Observed post-assembly payload, not a prepared callback.
+            stages['assembly'] = final
             status = response.get('status')
             behavior = {'answered': 'answer', 'abstained': 'abstain', 'clarification': 'clarify', 'denied': 'deny'}.get(status)
             trace = Trace(**base, status='ERROR' if status == 'error' else 'OK',
@@ -540,7 +523,7 @@ def _physical_summary(records):
 
 def execute_prepared(client, prepared_directory, output, *, config_name, physical_directory,
                      split=None, required_stages=(), plan=None, case_ids=None):
-    """Execute exactly the frozen Suite through runner.run; no alternate scoring."""
+
     root = Path(prepared_directory).resolve()
     prepared = load_prepared(root)
     splits = [split] if split in ('dev', 'holdout') else ['dev', 'holdout'] if split is None else None

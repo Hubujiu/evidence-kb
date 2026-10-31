@@ -1,14 +1,9 @@
-"""Capture the existing product ContextManager output immediately before provider send."""
 from .contracts import Fragment, Trace
 from kb_platform.agent_context import canonical
 
 
 def prepared_trace(*, request, corpus_hash, implementation, prepared, sources, stages, origin_offsets=None):
-    """sources are original Source models keyed by source_id.
 
-    Call at the send boundary after all application transformations. Capturing only
-    an earlier PreparedContext cannot attest to later provider-side truncation.
-    """
     fragments = []
     if origin_offsets is not None and len(origin_offsets) != len(prepared.projection["evidence"]):
         raise ValueError("origin offsets must match all prepared evidence slots")

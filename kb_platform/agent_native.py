@@ -1,4 +1,3 @@
-"""Narrow value-only ABI for the pure Rust lifecycle kernel; no business payloads cross it."""
 import ctypes
 from functools import lru_cache
 import os

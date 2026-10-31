@@ -1,4 +1,3 @@
-"""Synthetic offline plugin substitution and lifecycle contracts; no provider calls."""
 from copy import deepcopy
 from dataclasses import replace
 import json
@@ -111,7 +110,7 @@ class ToolPluginContracts(TestCase):
         registry = ToolPlugins([plugin])
         plugin.parameters['required'] = []
         with self.assertRaises(ValueError):
-            registry.arguments({'action': plugin.name, 'plugin_args': {}})
+            registry.validate_arguments(plugin.name, {})
         self.assertNotIn(plugin.name, ToolPlugins())
         for plugins in ([plugin, plugin], [replace(plugin, name='search')],
                         [replace(plugin, retry_safe=True, incurs_cost=True)],
@@ -216,15 +215,15 @@ class RuntimeLifecycleContracts(TestCase):
         case = self.setup_service()
         store, actor = case.service.store, case.authority.actor
         response = {'status': 'error', 'answer': '', 'claims': [], 'evidence': [], 'stop_reason': 'TIMEOUT'}
-        with patch('kb_platform.agent_store.time.time', return_value=1):
+        with patch('kb_platform.session_store.time.time', return_value=1):
             first = store.begin(actor, case.session, 'first', 0, 'fingerprint', lease_seconds=1)
-        with patch('kb_platform.agent_store.time.time', return_value=3):
+        with patch('kb_platform.session_store.time.time', return_value=3):
             closed = store.fail(actor, case.session, first['token'], first['session']['state'], response)
             self.assertEqual(closed['revision'], 1)
             cached = store.begin(actor, case.session, 'first', 0, 'fingerprint')
             self.assertEqual(cached['cached'], closed)
             second = store.begin(actor, case.session, 'second', 1, 'two', lease_seconds=1)
-        with patch('kb_platform.agent_store.time.time', return_value=5):
+        with patch('kb_platform.session_store.time.time', return_value=5):
             store.begin(actor, case.session, 'third', 1, 'three')
             with self.assertRaises(PlatformError):
                 store.fail(actor, case.session, second['token'], second['session']['state'], response)
@@ -237,7 +236,7 @@ class RuntimeLifecycleContracts(TestCase):
             clock.update(wall=1000, elapsed=1000)
 
         case = self.setup_service([('decision', fixtures.decision())], after=after)
-        with patch('kb_platform.agent_store.time.time', side_effect=lambda: clock['wall']), \
+        with patch('kb_platform.session_store.time.time', side_effect=lambda: clock['wall']), \
                 patch('kb_platform.knowledge_turn.time.perf_counter', side_effect=lambda: clock['elapsed']):
             result = self.turn(case)
             self.assertEqual(result['status'], 'error', result)

@@ -1,4 +1,3 @@
-"""Import selected published OpenSearch snapshots without changing authority or embedding vectors."""
 import argparse
 import json
 import os
@@ -9,11 +8,11 @@ import httpx
 import psycopg
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from kb_platform.embedded_search import EmbeddedSearch  # noqa: E402
-from kb_platform.search import content_order  # noqa: E402
-from kb_platform.rag_testing.contracts import digest  # noqa: E402
-from kb_platform.rag_testing.runner import write_json  # noqa: E402
-from scripts.snapshot_delivery import read_index, require_quiescent  # noqa: E402
+from kb_platform.embedded_search import EmbeddedSearch
+from kb_platform.search import content_order
+from kb_platform.rag_testing.contracts import digest
+from kb_platform.rag_testing.runner import write_json
+from scripts.snapshot_delivery import read_index, require_quiescent
 
 
 def import_index(client, backend, index, output):
@@ -43,7 +42,7 @@ def import_index(client, backend, index, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Import selected published OpenSearch snapshots without changing authority or embedding vectors.')
     parser.add_argument('--tenant', action='append', required=True)
     parser.add_argument('--dsn-env', default='KB_RECOVERY_ADMIN_DSN')
     parser.add_argument('--search-url', default='http://127.0.0.1:59200')

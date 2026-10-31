@@ -1,4 +1,3 @@
-"""Synthetic arithmetic grammar and resource boundaries; no executable tool is exposed."""
 from unittest import TestCase
 
 from kb_platform.agent_tools import bounded_calculate

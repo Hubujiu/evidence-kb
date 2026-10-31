@@ -1,4 +1,3 @@
-"""Offline PageIndex adapter boundary contracts; no provider calls."""
 import unittest
 
 from .contracts import Source, text_hash

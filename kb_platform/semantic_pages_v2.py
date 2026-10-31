@@ -1,8 +1,3 @@
-"""Explicitly built, sealed canonical Page vectors and authorized dense queries.
-
-No constructor builds an index or embeds text. Capsules are imported only by an
-explicit managing build; queries use the formal index, never an experiment DB.
-"""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -25,7 +20,7 @@ QUERY_PROTOCOL = 'filtered-native-cosine-page-knn/1'
 
 
 class SemanticPageResults(list):
-    """Canonical records plus the independently auditable zero-hit receipt."""
+
     def __init__(self, records, receipt):
         super().__init__(records)
         self.receipt = receipt
@@ -60,7 +55,7 @@ def _page_identity(page):
 
 
 class SemanticPageAuthority:
-    """Hold the normal tenant authority lock throughout permitted processing."""
+
     def __init__(self, platform):
         self.platform = platform
 
@@ -74,7 +69,7 @@ class SemanticPageAuthority:
                 raise PlatformError('NO_PUBLISHED_MANIFEST', 'Publish canonical Pages first', 409)
             build = conn.execute('SELECT * FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s '
                 "AND status='PUBLISHED'", (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
-            if not build or self.platform._build_config(build).get('page_navigation_protocol') != PAGE_PROTOCOL:
+            if not build or build['inputs'].get('page_navigation_protocol') != PAGE_PROTOCOL:
                 raise PlatformError('SEMANTIC_PAGE_BUILD_REQUIRED', 'The current build has no canonical Page channel', 409)
             rows = self.platform._allowed(self.platform._bindings(conn, actor, kb_id), actor, 'human_search')
             state = {'scope_id': kb_id, 'manifest_id': kb['manifest_id'], 'authority_revision': revision}
@@ -84,7 +79,7 @@ class SemanticPageAuthority:
             yield {'state': state, 'rows': rows, 'build': build, 'conn': conn, 'authorize': authorize}
 
     def catalog(self, actor, kb_id, snapshot, rows):
-        """Derive current Page ids/ranges and verify original bytes + citation DB."""
+
         platform, conn = self.platform, snapshot['conn']
         build_id = snapshot['state']['manifest_id']
         units, _ = platform._units(actor, kb_id, build_id, rows)
@@ -197,7 +192,7 @@ class SemanticPageService:
             raise PlatformError('SEMANTIC_PAGE_INDEX_INVALID', 'Semantic index is unsealed or has a different manifest', 503)
 
     def build(self, actor, kb_id, capsules, *, expected_state=None):
-        """Explicit mutation: root/admin calls only after processing approval."""
+
         if not isinstance(capsules, dict) or not capsules or any(not isinstance(k, str) or not isinstance(v, dict) or set(v) != {'path', 'sha256'} for k,v in capsules.items()):
             raise PlatformError('INVALID_PAGE_CAPSULES', 'Provide source-keyed capsules with trusted external SHA256', 422)
         with self.authority.locked(actor, kb_id, manage=True) as snapshot:

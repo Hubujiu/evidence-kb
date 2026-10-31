@@ -1,4 +1,3 @@
-"""Native search behavior: persistence, authorization, exact vectors and publication."""
 from pathlib import Path
 import tempfile
 import unittest

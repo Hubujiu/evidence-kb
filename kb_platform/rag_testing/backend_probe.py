@@ -1,8 +1,3 @@
-"""Quality-first component experiment, using the shared runner/scorer and exact inputs.
-
-Retrieval stages are live. Final model request, answer and production ACL are unobserved.
-Performance is diagnostic until paired quality gates and representative scale are satisfied.
-"""
 from __future__ import annotations
 
 import argparse
@@ -189,7 +184,7 @@ def execute(inputs, output, name):
     performance = dict(build_ms=build_ms, client_memory_before=before, client_memory_after=after,
                        server_memory='measured separately; client RSS is not total stack memory', rounds=[])
     if not summary['errors']:
-        # Diagnostic repeatability only; no winner is declared by this worker.
+
         for repeat in range(5):
             samples = []
             for case in suite.cases:
@@ -208,7 +203,7 @@ def execute(inputs, output, name):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Quality-first component experiment, using the shared runner/scorer and exact inputs.\n\nRetrieval stages are live. Final model request, answer and production ACL are unobserved.\nPerformance is diagnostic until paired quality gates and representative scale are satisfied.\n')
     parser.add_argument('--inputs', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--history', type=Path)

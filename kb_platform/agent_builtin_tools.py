@@ -1,5 +1,3 @@
-"""Built-in tool adapters. The service owns evidence persistence and turn transitions."""
-
 from copy import deepcopy
 from dataclasses import dataclass
 from collections.abc import Callable

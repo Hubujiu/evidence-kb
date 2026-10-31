@@ -1,4 +1,3 @@
-"""Real knowledge profile, native loop and SQLite; synthetic sources/models, zero network."""
 from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -11,6 +10,7 @@ from kb_platform.knowledge_policy import CONFIGS, RECOMMENDED
 from kb_platform.knowledge_profile import create_knowledge_application, load_knowledge_profile
 from kb_platform.knowledge_service import KnowledgeService
 from kb_platform.plugin_native import PluginError
+from kb_platform.plugin_host import PluginSpec
 from . import agent_graph_contracts as graph
 
 
@@ -22,13 +22,13 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
         case.profile = profile
         return case
 
-    def application(self, case, model=None):
+    def application(self, case, model=None, extra_plugins=()):
         def factory(platform, configured_model, **settings):
             return KnowledgeService(platform, case.model if model is None else model,
                 **{**settings, 'gateway': case.gateway, 'retrieval_config': {'channels': ['bm25'], 'rerank': False}})
 
         application, host = create_knowledge_application(case.authority, SimpleNamespace(luna=object()),
-            profile=case.profile, service_factory=factory, environment={})
+            profile=case.profile, service_factory=factory, extra_plugins=extra_plugins, environment={})
         self.addCleanup(host.close)
         return application, host
 
@@ -52,6 +52,31 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
         self.assertEqual(restarted_model.calls, [])
         self.assertEqual(restarted.history(case.authority.actor, case.session), stored)
         self.assertEqual(restarted.get(case.authority.actor, case.session)['revision'], 1)
+
+    def test_product_selects_graph_factory_without_outer_model_loop(self):
+        from kb_platform.harness_graph import native_call
+        from kb_platform.knowledge_workflow import KnowledgeWorkflow
+
+        created = []
+
+        def factory(**options):
+            created.append(options['step_limit'])
+            return KnowledgeWorkflow(**options)
+
+        case = self.fixture()
+        row = next(row for row in case.profile['plugins'] if row['id'] == 'workflow')
+        row['use'] = 'fixture.workflow'
+        plugin = PluginSpec('fixture.workflow', ('knowledge.workflow',), (),
+                            lambda ctx, config: ctx.provide('knowledge.workflow', factory))
+        application, _ = self.application(case, extra_plugins=(plugin,))
+        with patch('kb_platform.harness_graph.native_call', wraps=native_call) as graph_calls, \
+                patch('kb_platform.harness_loop.native_call', side_effect=AssertionError('outer loop used')):
+            result = self.turn(application, case)
+        self.assertEqual(result['status'], 'answered')
+        self.assertEqual(len(created), 1)
+        self.assertEqual(len(case.model.calls), 4)
+        self.assertIn('graph_create', [call.args[0] for call in graph_calls.call_args_list])
+        self.assertEqual(graph_calls.call_args_list[-1].args[0], 'graph_close')
 
     def test_hosted_cached_response_rechecks_owner_and_current_source_permission(self):
         case = self.fixture()

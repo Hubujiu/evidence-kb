@@ -1,10 +1,3 @@
-"""Authorized child retrieval, same-pool reranking and original-parent delivery.
-
-This is a product execution component, not an evaluator. It accepts no gold,
-does not build vectors at query time, and never substitutes lexical scores for
-an unavailable dense encoder or reranker. Returned evidence always uses the
-existing published citation authority.
-"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -61,7 +54,7 @@ class PipelineConfig:
 
 
 class LunaCandidateReranker:
-    """Reuse the configured Luna source-grounded reranking contract."""
+
 
     def __init__(self, luna):
         self.luna = luna
@@ -87,7 +80,7 @@ def _allowed_bindings(gateway, actor, bindings, policy):
 
 
 def _catalog(gateway, actor, scope_id, state, allowed, *, mapping=None):
-    """Reconstruct only published identifiers from immutable authorized parses."""
+
     allowed_rows = {tuple(row[key] for key in BINDING_FIELDS): row for row in allowed}
     allowed_keys = set(allowed_rows)
     with gateway.platform._tx(actor, scope_id) as conn:
@@ -186,9 +179,8 @@ def _parents(seed, units, mode):
         selected = [unit for unit in siblings if unit['element']['kind'] != 'Page' and
                     unit['start'] < right and unit['end'] > left]
     else:
-        # A split PDF paragraph may require several canonical child citations.
-        # Return all of them, never manufacture a paragraph citation or silently
-        # label one incomplete child as its complete parent.
+
+
         originals = [element for element in source['document']['elements']
                      if source['positions'][element['element_id']][0] < item['end'] and
                      source['positions'][element['element_id']][1] > item['start']]
@@ -196,8 +188,8 @@ def _parents(seed, units, mode):
         right = max(source['positions'][element['element_id']][1] for element in originals)
         selected = [unit for unit in siblings if unit['element']['kind'] != 'Page' and
                     unit['start'] < right and unit['end'] > left]
-    # Typed tables can overlap their indivisible paragraph/page context. Prefer
-    # the canonical enclosing unit while retaining a standalone table if needed.
+
+
     selected = [unit for unit in selected if unit['element']['kind'] != 'Table' or not any(
         other['citation_id'] != unit['citation_id'] and other['element']['kind'] != 'Table' and
         other['start'] <= unit['start'] and other['end'] >= unit['end'] for other in selected)]
@@ -218,7 +210,7 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
         raise PlatformError('INVALID_CITATIONS', 'Invalid excluded citations', 422)
     state, bindings, build = gateway._state(actor, scope_id, with_build=True)
     allowed = _allowed_bindings(gateway, actor, bindings, policy)
-    build_config = gateway.platform._build_config(build)
+    build_config = build['inputs']
     provider = gateway.embedding_provider or getattr(gateway.platform, 'embedding_provider', None)
     vector_allowed = []
     if 'dense' in config.channels:
@@ -293,8 +285,8 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
     fused_trace = [{'citation_id': item['citation_id'], 'score': item['score']} for item in ranked]
     if config.rerank and ranked:
         gateway._unchanged(actor, scope_id, state)
-        # Recheck processing permission for the exact candidate pool, including
-        # a provider distinct from the final reading model.
+
+
         for item in ranked:
             canonical = gateway._read_one(actor, scope_id, item['citation_id'], policy, state, bindings)
             if (not canonical['policy'].get('rerank', False) or
@@ -322,8 +314,8 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
         parent_ids = [key for key in original_parent_ids if key not in excluded]
         additional = [key for key in parent_ids if key not in selected]
         if len(selected) + len(additional) > config.max_expanded_units:
-            # Preserve the ranked canonical child when its complete parent does
-            # not fit. Never mislabel that fallback as a complete parent.
+
+
             child = item['citation_id']
             kept = child in selected or (child not in excluded and len(selected) < config.max_expanded_units)
             if kept and child not in selected:
@@ -350,8 +342,8 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
         linked_spans = None
         if not packet and documents:
             linked_spans, links = linked_evidence_packet(query, documents)
-            # Without an explicit link, ordinary lexical retrieval already owns
-            # selection. Do not append broad, overlapping document paragraphs.
+
+
             if not links.get('navigation_span_count'):
                 linked_spans = []
             source_ids = list(dict.fromkeys(span['source_id'] for span in linked_spans))
@@ -362,8 +354,8 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
                             'relations_verified': False, 'fallback_to_ranked': not bool(packet),
                             'requested_original_spans': linked_spans}
         for document in packet:
-            # Deliver complete canonical source units. If the unit budget cannot
-            # admit a source, report it; never silently label a partial as whole.
+
+
             source_units = sorted((unit for unit in units.values()
                 if unit['source']['source_id'] == document['source_id'] and unit['element']['kind'] != 'Page'
                 and (linked_spans is None or any(span['source_id'] == document['source_id'] and

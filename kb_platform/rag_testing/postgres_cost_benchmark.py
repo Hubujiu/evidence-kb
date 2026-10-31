@@ -1,8 +1,3 @@
-"""Paired storage cost measurements over the frozen unified RAG input corpus.
-
-This measures the backend only. Quality is assessed by the shared scorer, not here.
-Workers run in separate processes; the parent records process and container costs.
-"""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing as mp

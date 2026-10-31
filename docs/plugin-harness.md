@@ -6,11 +6,13 @@
 
 | 实现 | 拥有的职责 |
 | --- | --- |
-| `rust/agent-harness` | manifest 校验、依赖排序、服务归属、父子作用域、启动/排空/销毁、运行租约；通用 loop 状态与效果序号 |
+| `rust/agent-harness` | manifest 校验、依赖排序、服务归属、父子作用域、启动/排空/销毁、运行租约；通用 loop、图节点推进与效果序号 |
 | `rust/agent-kernel` | 每次运行的操作准入、结果关联、截止时间、取消、终态；导出内嵌 C ABI 与 JSON 协议 |
 | `plugin_native.py` | JSON 编解码、原生调用、返回内存释放 |
 | `plugin_host.py` | Python 服务实现、装配上下文、事件监听、资源释放回调 |
-| `harness_services.py` | 可替换运行时、临时会话、提示词、工具目录与 loop 服务 |
+| `harness_services.py` / `harness_profile.py` | 通用服务 catalog，以及显式启用的持久 Agent 组合 |
+| `plugin_profiles.py` | 显式组合包展开与条目覆盖，不挂载服务 |
+| `session_store.py` / `knowledge_sessions.py` | 通用 SQLite 事务 / 知识库状态适配 |
 | `knowledge_profile.py` | 知识库插件 catalog、配置读取与环境变量适配 |
 | `knowledge_application.py` | 知识库应用 API 和绑定身份/请求控制的 `kb_query` |
 
@@ -20,7 +22,7 @@ Rust loop 请求执行效果，Python 适配器提供模型调用、工具执行
 
 ## 默认知识库组合
 
-`KB_AGENT_PROFILE` 默认指向 `config/agent-profiles/knowledge.json`。配置的每个条目包含 `id`、catalog 键 `use` 和可选 `config`；`disabled: true` 排除该条目，但其消费者仍需满足依赖。系统先验证完整依赖图，再按依赖顺序启动。重复服务、缺失依赖、循环依赖和隐式覆盖都会失败。
+`KB_AGENT_PROFILE` 默认指向 `config/agent-profiles/knowledge.json`，由它选择 `config/agent-bundles/knowledge.json`。组合包先展开，再检查依赖；覆盖语义及独立通用 Agent 示例见 [Agent 组合包](agent-bundles.md)。展开后配置的每个条目包含 `id`、catalog 键 `use` 和可选 `config`；`disabled: true` 排除该条目，但其消费者仍需满足依赖。系统先验证完整依赖图，再按依赖顺序启动。重复服务、缺失依赖、循环依赖和隐式覆盖都会失败。
 
 默认组合如下：
 
@@ -30,13 +32,13 @@ Rust loop 请求执行效果，Python 适配器提供模型调用、工具执行
 | `knowledge.provider.luna` | `knowledge.provider` |
 | `knowledge.context.policy` / `knowledge.context` | `knowledge.context.policy` / `knowledge.context` |
 | `knowledge.budget` / `knowledge.model` | `knowledge.budget` / `knowledge.model` |
-| `knowledge.store` | `knowledge.store`，现有 AgentStore |
+| `harness.store.sqlite` | `session.store`，通用 SQLite 会话事务 |
+| `knowledge.sessions` | `knowledge.store`，注入上述事务服务的 KnowledgeSessions |
 | `knowledge.gateway` / `knowledge.executor` | `knowledge.gateway` / `knowledge.executor` |
 | `knowledge.semantic` | `knowledge.semantic`，未配置时显式为 None |
 | `harness.runtime` | `runtime` |
-| `harness.sessions.memory` | `sessions` |
-| `harness.tools` | `tools` |
-| `harness.loop` | `loop`，默认配置 `{"mode": "single-tool"}` |
+| `knowledge.workflow.graph` | `knowledge.workflow`，知识库图策略工厂 |
+| `knowledge.driver.graph` | `loop`，直接进入知识库图流程 |
 | `knowledge.service` / `knowledge.tools` | `knowledge` / `knowledge.tools` |
 | `knowledge.application` | `application` |
 
@@ -45,17 +47,17 @@ Rust loop 请求执行效果，Python 适配器提供模型调用、工具执行
 ```mermaid
 flowchart LR
     HTTP[HTTP 请求] --> App[application 插件]
-    App --> Loop[single-tool 原生 loop]
-    Loop --> Tool[绑定的 kb_query]
+    App --> Driver[knowledge.driver.graph]
+    Driver --> Tool[可信 kb_query 绑定]
     Tool --> KB[knowledge 服务]
-    KB --> Workflow[知识库领域流程]
+    KB --> Workflow[知识库图策略 / Rust 图推进]
     Workflow --> Model[模型插件与既有计量]
     Workflow --> RAG[检索与证据插件]
 ```
 
-该路径保留原始 actor、session、request ID、expected revision、来源策略和用户约束；工具参数只有问题。它不增加外层模型规划请求，不改写已经核验的答案，原响应和 trace 原样返回。`harness.loop.model-tools` 则适用于需要模型反复选择工具的普通 Agent，并显式依赖 `model` 和 `prompt` 服务；内置 `harness.model.callable`、`harness.prompt.history` 分别提供其适配器。single-tool 不需要额外 prompt 插件。
+默认图驱动不再创建外层 single-tool loop 和临时会话。该路径保留原始 actor、session、request ID、expected revision、来源策略和用户约束；工具参数只有问题。它不增加外层模型规划请求，不改写已经核验的答案，原响应和 trace 原样返回。`harness.loop.model-tools` 则适用于需要模型反复选择工具的普通 Agent，并显式依赖 `model` 和 `prompt` 服务；内置 `harness.model.callable`、`harness.prompt.history` 分别提供其适配器。single-tool 不需要额外 prompt 插件。
 
-默认 `harness.sessions.memory` 为每次 loop 保存临时消息，运行结束后释放。它不会自动恢复知识库历史，也不是持久会话、checkpoint 或幂等账本。知识库 `AgentStore` 继续唯一负责会话归属、revision、单写者租约、请求指纹和原子提交。提供者账本继续唯一负责物理请求、费用预留与 UNKNOWN。
+`harness.sessions.memory` 用于轻量单工具入口，每次 loop 结束后释放；它不是默认知识库的会话服务。显式启用的 `core` 组合使用 `harness.sessions.durable`，支持历史恢复与请求幂等。两类应用都复用 `session_store.SessionStore` 的 SQLite 事务，知识库状态规则由 `KnowledgeSessions` 适配。提供者账本继续唯一负责物理请求、费用预留与 UNKNOWN。
 
 ## 增加一个服务插件
 
@@ -124,4 +126,4 @@ uv run --no-sync python scripts/check_project.py
 
 此次生命周期加固、兼容性回归及同负载性能记录见 [插件工程验收](plugin-engineering-acceptance.md)。它只覆盖当前产品使用的插件组合，没有增加多 Agent 或沙箱插件。
 
-`default_path_replay.py --service` 使用真实 profile/native loop、已注册路由函数与请求模型，保留现有冻结原文、问题、上下文预算和最终消息绑定；仅模型及存储/检索传输使用合成夹具。它不启动 HTTP 服务或执行身份认证中间件，继续交给统一 runner/scorer，不新增远端调用。这些结果证明组件行为，不能作为线上模型质量或延迟成绩。
+`default_path_replay.py --service` 使用真实 profile/原生图流程、已注册路由函数与请求模型，保留现有冻结原文、问题、上下文预算和最终消息绑定；仅模型及存储/检索传输使用合成夹具。它不启动 HTTP 服务或执行身份认证中间件，继续交给统一 runner/scorer，不新增远端调用。这些结果证明组件行为，不能作为线上模型质量或延迟成绩。

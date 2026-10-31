@@ -1,5 +1,3 @@
-//! Loop policies emit service effects; the session service is the sole history owner.
-
 use std::collections::BTreeMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -282,8 +280,7 @@ impl ServiceLoop {
                 }
             }
             Phase::Context => {
-                if !result.is_object()
-                    || !result.get("messages").is_some_and(Value::is_array)
+                if !result.get("messages").is_some_and(Value::is_array)
                     || !result.get("tools").is_some_and(Value::is_array)
                 {
                     return Err(Error::new(
@@ -429,13 +426,12 @@ struct AcceptRequest {
     result: Value,
 }
 
-pub fn dispatch(command: &str, mut request: Value) -> Result<Value, Error> {
+pub(crate) fn dispatch(
+    command: &str,
+    request: serde_json::Map<String, Value>,
+) -> Result<Value, Error> {
     static LOOPS: OnceLock<Mutex<LoopRegistry>> = OnceLock::new();
-    let object = request
-        .as_object_mut()
-        .ok_or_else(|| Error::new("INVALID_REQUEST", "request must be an object"))?;
-    object.remove("version");
-    object.remove("command");
+    let request = Value::Object(request);
     let mut registry = LOOPS
         .get_or_init(|| Mutex::new(LoopRegistry::with_builtins()))
         .lock()

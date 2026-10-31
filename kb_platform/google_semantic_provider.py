@@ -1,9 +1,3 @@
-"""Observed Google embeddings for explicit canonical indexing and queries.
-
-The remote adapter supplies authentication, endpoint and task formats. This
-bridge supplies immutable input receipts and the existing unified BudgetLedger.
-Each admitted request executes once, without embedding cache or automatic retry.
-"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -184,8 +178,8 @@ class GoogleSemanticProvider:
                 else:
                     path = "/models/" + self.remote.model + ":embedContent"
                     headers = self.remote._headers
-                # Authentication occurs before this physical Embedding request.
-                # A 401 is terminal here; it is not silently resent after refresh.
+
+
                 issued_before = self.remote._issued_requests
                 started = True
                 response = self.remote._post(path, payload, headers, "embedding_" + task, digest(payload))
@@ -222,7 +216,7 @@ class GoogleSemanticProvider:
                      or (isinstance(exc, RemoteModelError) and (exc.status is not None
                          or exc.code in {"PROVIDER_INVALID_RESPONSE_JSON", "PROVIDER_INVALID_RESPONSE_OBJECT"})))
             status = "ERROR" if known else "UNKNOWN"
-            # Token usage stays reserved when absent, including HTTP failures.
+
             diagnostic = type(exc).__name__
             self.ledger.finish(request_id, status=status, usage=usage, diagnostic=diagnostic)
             record.update(status=status, usage=usage, error=diagnostic)

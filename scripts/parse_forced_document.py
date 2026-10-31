@@ -1,8 +1,3 @@
-"""Official Docling full-page OCR worker, isolated from unchanged layout jobs.
-
-Keeping this entry separate preserves exact existing layout inference caches.
-No reference text, questions, or evidence annotations enter this worker.
-"""
 from __future__ import annotations
 
 import hashlib

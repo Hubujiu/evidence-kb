@@ -1,4 +1,3 @@
-"""Synthetic source fixtures: parser/evidence contracts, not production RAG quality."""
 import hashlib
 import unittest
 from unittest.mock import patch

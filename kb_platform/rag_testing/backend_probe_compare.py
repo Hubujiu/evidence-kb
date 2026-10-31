@@ -1,4 +1,3 @@
-"""Reopen built indexes for interleaved diagnostics and deterministic ACL challenges."""
 from __future__ import annotations
 
 import argparse
@@ -115,7 +114,7 @@ def compare_runs(inputs, runs, output):
                 except Exception as exc:
                     acl.append(dict(engine=name, case_id=req.case_id, allowed_fraction=fraction, error=str(exc)))
     write_json(output/'acl-challenges.json', acl)
-    # Separate profiled pass is never included in reported latency.
+
     for name, engine in engines.items():
         profiler = cProfile.Profile()
         profiler.enable()
@@ -127,7 +126,7 @@ def compare_runs(inputs, runs, output):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Reopen built indexes for interleaved diagnostics and deterministic ACL challenges.')
     parser.add_argument('--inputs', type=Path, required=True)
     parser.add_argument('--runs', type=Path, nargs='+', required=True)
     parser.add_argument('--output', type=Path, required=True)

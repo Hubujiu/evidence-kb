@@ -1,5 +1,3 @@
-"""Knowledge-specific tool context and planner projection over the generic registry."""
-
 from copy import deepcopy
 from dataclasses import dataclass, field
 
@@ -36,10 +34,11 @@ class KnowledgeToolPlugins(ToolPlugins):
     def instructions(self):
         return "\n".join(f"{name}(plugin_args): {self[name].description}" for name in self.names())
 
+    def validate_arguments(self, name, arguments):
+        validate_output(arguments, self._validators[name])
+
     def arguments(self, decision):
-        arguments = decision.get("plugin_args", {})
-        validate_output(arguments, self._validators[decision["action"]])
-        return deepcopy(arguments)
+        return deepcopy(decision.get("plugin_args", {}))
 
     def execute(self, name, context, args):
         result = super().execute(name, context, args)

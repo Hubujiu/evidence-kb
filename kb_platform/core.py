@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 from contextlib import contextmanager
-from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import json
 import math
@@ -16,6 +15,8 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from .session_identity import Actor as Actor, PlatformError as PlatformError
+
 from .search import OpenSearch, SearchUnavailable, TIE_BREAK_FIELDS, content_order, QUERY_PROTOCOL
 from .storage import OriginalStore
 from .embeddings import EmbeddingError
@@ -26,23 +27,6 @@ CAPABILITIES = {'kb.read', 'kb.write', 'kb.manage', 'kb.manage_members', 'kb.man
 DEFAULT_POLICY = {'native_parse': True, 'ocr': False, 'embedding': False, 'rerank': False,
                   'llm_context': False, 'compile': False, 'preview': True, 'download': True,
                   'allowed_providers': [], 'include_hidden': False, 'include_notes': False}
-
-
-@dataclass(frozen=True)
-class Actor:
-    tenant_id: str
-    principal_id: str
-
-    def __post_init__(self):
-        if not self.tenant_id or not self.principal_id:
-            raise ValueError('Identity requires tenant and principal')
-
-
-class PlatformError(RuntimeError):
-    def __init__(self, code: str, message: str, status_code: int = 400):
-        super().__init__(message)
-        self.code = code
-        self.status_code = status_code
 
 
 def _deny():
@@ -63,8 +47,7 @@ def _policy(value: dict | None) -> dict:
 
 
 def _parse(data: bytes, filename: str, policy: dict) -> dict:
-    if (isinstance(data, bytes) and isinstance(filename, str) and len(data) <= 64 * 1024
-            and Path(filename).suffix.lower() in {'.md', '.txt'}):
+    if len(data) <= 64 * 1024 and Path(filename).suffix.lower() in {'.md', '.txt'}:
         try:
             from .documents import parse_document
 
@@ -432,7 +415,6 @@ class Platform:
         from hashlib import sha256
         from .embedding_jobs import EmbeddingJobs, EmbeddingJobError
         from .search import backend_dependencies
-        from .search_compat import resumable_search_dependencies
         from . import delivery_units, retrieval_expansion
 
         with self._tx(actor, kb_id) as conn:
@@ -449,7 +431,7 @@ class Platform:
             if (build['status'] != 'STAGING' or build['authority_revision'] != revision or
                     build['kb_revision'] != kb['revision'] or build['expected_manifest_id'] != kb['manifest_id']):
                 raise PlatformError('STALE_BUILD', 'Build inputs or authority changed', 409)
-            if not resumable_search_dependencies(config['search_dependencies'], backend_dependencies(self.backend)):
+            if config['search_dependencies'] != backend_dependencies(self.backend):
                 raise PlatformError('STALE_BUILD', 'Search implementation changed', 409)
             if (config['retrieval_unit_protocol'] != delivery_units.PROTOCOL or
                     config['retrieval_unit_implementation_sha256'] != sha256(Path(delivery_units.__file__).read_bytes()).hexdigest() or
@@ -504,7 +486,7 @@ class Platform:
         try:
             existing = self.backend.read_units(build['index_name'])
         except SearchUnavailable as exc:
-            # Only confirmed absence permits a new generation; outages remain errors.
+
             if str(exc) != 'Search generation not found':
                 raise
             self.backend.stage(build['index_name'], units,
@@ -526,12 +508,6 @@ class Platform:
     def _embedding_allowed(self, row):
         return (self.embedding_provider is not None and row['policy'].get('embedding', False) and
                 self.embedding_provider.provider_id in row['policy'].get('allowed_providers', []))
-
-    @staticmethod
-    def _build_config(build):
-        if isinstance(build['inputs'], dict):
-            return build['inputs']
-        return {'channels': ['bm25', 'structure', 'table'], 'embedding': None, 'vector_source_ids': []}
 
     def _units(self, actor, kb_id, build_id, rows):
         from .delivery_units import indexed_elements
@@ -603,7 +579,7 @@ class Platform:
                                  'AND status=\'PUBLISHED\'', (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
             if not build:
                 raise PlatformError('INVALID_MANIFEST', 'Published index unavailable', 503)
-            config = self._build_config(build)
+            config = build['inputs']
             if channel not in config['channels']:
                 raise PlatformError('CHANNEL_NOT_ADMITTED', 'Channel was not published in this manifest', 409)
             model_query = channel in {'dense', 'hybrid'}

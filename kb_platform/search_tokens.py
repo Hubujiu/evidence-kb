@@ -1,4 +1,3 @@
-"""Versioned local tokens for the lexical index; never calls an external analyzer."""
 import unicodedata
 
 import regex
@@ -13,7 +12,7 @@ LETTERS = regex.compile(r'[\p{L}\p{N}]')
 
 def tokens(text, *, exact=False):
     if not exact:
-        # Lucene's CJKWidthFilter normalizes width, not all compatibility forms.
+
         text = ''.join(unicodedata.normalize('NFKC', c) if '\uff00' <= c <= '\uffef' else c for c in text)
     words = [w.lower() for w in WORDS.split(text) if w]
     if exact:

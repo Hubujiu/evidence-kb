@@ -1,4 +1,3 @@
-"""Freeze/link/audit finite supplementary budgets; never send a model request."""
 from __future__ import annotations
 
 import argparse
@@ -8,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kb_platform.rag_testing.budget_batches import (LinkedBudgetLedger, cumulative_summary,  # noqa: E402
+from kb_platform.rag_testing.budget_batches import (LinkedBudgetLedger, cumulative_summary,
                                                     freeze_predecessor)
 
 
@@ -24,7 +23,7 @@ def _write(path, value):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Freeze/link/audit finite supplementary budgets; never send a model request.')
     sub = parser.add_subparsers(dest='command', required=True)
     freeze = sub.add_parser('freeze')
     freeze.add_argument('--prior-ledger', type=Path, required=True)

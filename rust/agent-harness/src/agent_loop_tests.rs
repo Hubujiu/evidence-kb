@@ -275,7 +275,7 @@ fn bridge_rejects_unknown_fields_and_handles_null_answers() {
     let request = json!({"version": 1, "command": "loop_create", "mode": "model-tools",
         "message": "x", "tools": [], "history": []});
     assert_eq!(
-        dispatch("loop_create", request).unwrap_err().code,
+        crate::call(request.to_string().as_bytes())["error"]["code"],
         "INVALID_REQUEST"
     );
     let decision: Decision =

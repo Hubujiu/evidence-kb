@@ -1,15 +1,13 @@
-"""Knowledge business behavior; state belongs to the active KnowledgeTurn."""
-
 from __future__ import annotations
 from copy import deepcopy
 from hashlib import sha256
 import time
 from uuid import uuid4
 from .agent_model import schema_instruction
-from .agent_store import digest
+from .session_store import digest
 from .agent_tool_view import project_tool_results
 from .core import PlatformError
-from .knowledge_policy import _value, _record, _visible_user_statements
+from .knowledge_policy import _visible_user_statements
 
 
 class KnowledgeModelCalls:
@@ -93,7 +91,6 @@ class KnowledgeModelCalls:
                 self.trace["compactions"].append(
                     {
                         "agent": role,
-                        "checkpoint_hash": checkpoint["checkpoint_hash"],
                         "covered_from": checkpoint["covered_from"],
                         "covered_through": checkpoint["covered_through"],
                     }
@@ -197,8 +194,8 @@ class KnowledgeModelCalls:
                     finally:
                         repair["new_call_id"] = self.trace["calls"][-1]["call_id"]
             raise
-        record = _record(envelope)
+        record = envelope.to_dict()
         record.update(role=role, call_id=call_id, context_estimate=prepared.estimate)
         self.trace["calls"].append({key: value for key, value in record.items() if key != "value"})
         self.event("model_completed", record, agent=role)
-        return _value(envelope)
+        return envelope.value

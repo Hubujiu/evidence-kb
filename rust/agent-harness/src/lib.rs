@@ -1,6 +1,5 @@
-//! Scoped plugin ownership and interchangeable agent loops, independent of adapters.
-
 pub mod agent_loop;
+pub mod graph;
 mod host;
 mod manifest;
 
@@ -37,10 +36,10 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-fn dispatch(mut request: Value) -> Result<Value, Error> {
-    let object = request
-        .as_object_mut()
-        .ok_or_else(|| Error::new("invalid_request", "request must be an object"))?;
+fn dispatch(request: Value) -> Result<Value, Error> {
+    let Value::Object(mut object) = request else {
+        return Err(Error::new("invalid_request", "request must be an object"));
+    };
     if object.remove("version").and_then(|v| v.as_u64()) != Some(PROTOCOL_VERSION) {
         return Err(Error::new(
             "protocol_version",
@@ -53,14 +52,19 @@ fn dispatch(mut request: Value) -> Result<Value, Error> {
         .ok_or_else(|| Error::new("invalid_request", "command must be a string"))?
         .to_owned();
     if command.starts_with("loop_") {
-        return agent_loop::dispatch(&command, request);
+        object.remove("command");
+        return agent_loop::dispatch(&command, object);
+    }
+    if command.starts_with("graph_") {
+        object.remove("command");
+        return graph::dispatch(&command, object);
     }
     static HOSTS: OnceLock<Mutex<HostRegistry>> = OnceLock::new();
     HOSTS
         .get_or_init(|| Mutex::new(HostRegistry::default()))
         .lock()
         .map_err(|_| Error::new("host_poisoned", "native host lock is poisoned"))?
-        .request(request)
+        .request(Value::Object(object))
 }
 
 pub fn call(bytes: &[u8]) -> Value {

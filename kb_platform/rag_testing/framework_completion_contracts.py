@@ -1,4 +1,3 @@
-"""Offline protocol, tool-retry and unverified-capability boundaries."""
 from copy import deepcopy
 from types import SimpleNamespace
 import unittest

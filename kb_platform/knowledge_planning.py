@@ -1,10 +1,8 @@
-"""Knowledge business behavior; state belongs to the active KnowledgeTurn."""
-
 from __future__ import annotations
 from copy import deepcopy
 import time
 from .agent_tool_registry import TOOLS, decision_schema as planning_schema, tool_arguments
-from .agent_store import digest
+from .session_store import digest
 from .agent_work_state import record_decision, record_receipt
 from .core import PlatformError
 from .knowledge_policy import DECISION_SYSTEM
@@ -48,88 +46,31 @@ class KnowledgePlanning:
         return outcome.value
 
     def validate_decision(self, value):
-        allowed_actions = self.service.plugins.schema(
-            planning_schema(self.config, self.advanced, self.semantic_enabled)
-        )["properties"]["action"]["enum"]
-        if (
-            not isinstance(value, dict)
-            or value.get("action") not in allowed_actions
-            or value.get("intent")
-            not in {"knowledge", "followup", "correction", "calculate", "general", "clarify", "out_of_domain"}
-        ):
-            raise ValueError("INVALID_AGENT_DECISION")
-        if value["action"] in self.service.plugins:
-            self.service.plugins.arguments(value)
-        if value["action"] in {
-            "search",
-            "search_pages",
-            "search_semantic_pages",
-            "search_pipeline",
-            "search_tables",
-        } and (not isinstance(value.get("query"), str) or not value["query"].strip()):
-            raise ValueError("INVALID_SEARCH_QUERY")
-        if value["action"] in {"table", "workflow_next", "navigate_references"}:
+        action = value["action"]
+        if action in self.service.plugins:
+            self.service.plugins.validate_arguments(action, value.get("plugin_args", {}))
+        if action in {"search", "search_pages", "search_semantic_pages", "search_pipeline", "search_tables"}:
+            if not value.get("query", "").strip():
+                raise ValueError("INVALID_SEARCH_QUERY")
+        if action in {"read", "table", "table_join", "workflow_next", "navigate_references"}:
             refs = value.get("citation_ids", [])
-            if (
-                not isinstance(refs, list)
-                or not refs
-                or len(refs) > (3 if value["action"] == "navigate_references" else 1)
-                or any(
-                    (
-                        ref not in self.state["evidence"] and ref not in self.state["evidence_catalog"]
-                        for ref in refs
-                    )
-                )
-            ):
+            if not refs or any(ref not in self.state["evidence"] and ref not in self.state["evidence_catalog"]
+                               for ref in refs):
                 raise ValueError("UNKNOWN_EVIDENCE_REFERENCE")
-        if value["action"] == "table_join":
-            refs = value.get("citation_ids", [])
-            if (
-                not isinstance(refs, list)
-                or len(refs) != 2
-                or len(set(refs)) != 2
-                or any(
-                    (
-                        ref not in self.state["evidence"] and ref not in self.state["evidence_catalog"]
-                        for ref in refs
-                    )
-                )
-            ):
+            if action in {"table", "workflow_next", "navigate_references"} and len(refs) > (
+                    3 if action == "navigate_references" else 1):
                 raise ValueError("UNKNOWN_EVIDENCE_REFERENCE")
-            if any(
-                (
-                    not isinstance(value.get(field), str) or not value[field].strip()
-                    for field in ("left_key", "right_key")
-                )
-            ):
+            if action == "table_join" and (len(refs) != 2 or refs[0] == refs[1]):
+                raise ValueError("UNKNOWN_EVIDENCE_REFERENCE")
+        if action == "table_join":
+            if any(not value.get(field, "").strip() for field in ("left_key", "right_key")):
                 raise ValueError("INVALID_JOIN_KEY")
-            if value.get("join_how", "inner") not in {"inner", "left"}:
+            if value.get("join_how", "inner") == "":
                 raise ValueError("INVALID_JOIN_MODE")
-        if value["action"] == "table" and value.get("table_operation", "rows") not in {
-            "rows",
-            "count",
-            "sum",
-            "min",
-            "max",
-        }:
+        if action == "table" and value.get("table_operation", "rows") == "":
             raise ValueError("INVALID_TABLE_OPERATION")
-        if value["action"] == "read" and (
-            not isinstance(value.get("citation_ids"), list)
-            or not value["citation_ids"]
-            or any(
-                (
-                    x not in self.state["evidence"] and x not in self.state["evidence_catalog"]
-                    for x in value["citation_ids"]
-                )
-            )
-        ):
-            raise ValueError("UNKNOWN_EVIDENCE_REFERENCE")
-        if value["action"] == "calculator" and (not isinstance(value.get("expression"), str)):
+        if action == "calculator" and "expression" not in value:
             raise ValueError("INVALID_CALCULATION")
-        if value["action"] == "read" and (
-            type(value.get("offset", 0)) is not int or not 0 <= value.get("offset", 0) <= 1000000
-        ):
-            raise ValueError("INVALID_READ_OFFSET")
 
     def plan_node(self, flow):
         step, decision = (flow["step"], flow["decision"])

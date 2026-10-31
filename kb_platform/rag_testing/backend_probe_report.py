@@ -1,4 +1,3 @@
-"""Current shared rescoring and per-case evidence gates for completed engine probes."""
 import argparse
 from pathlib import Path
 
@@ -45,7 +44,7 @@ def rescore(runs, output):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Current shared rescoring and per-case evidence gates for completed engine probes.')
     parser.add_argument('--runs', type=Path, nargs='+', required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()

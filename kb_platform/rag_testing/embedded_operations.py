@@ -1,4 +1,3 @@
-"""Real PostgreSQL authority and local search operational checks; no RAG quality score."""
 import argparse
 import json
 import os
@@ -10,7 +9,7 @@ from .runner import write_json
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Real PostgreSQL authority and local search operational checks; no RAG quality score.')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--backend', choices=['embedded', 'postgres'], default='embedded')
     args = parser.parse_args()

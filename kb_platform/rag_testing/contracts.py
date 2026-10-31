@@ -1,11 +1,10 @@
-"""Immutable JSON contracts. Gold is never part of AdapterInput."""
 from __future__ import annotations
 
 import hashlib
 import json
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def digest(value) -> str:
@@ -68,7 +67,7 @@ class Case(Contract):
     expected_behavior: Literal["answer", "abstain", "deny", "clarify"] = "answer"
     any_of: tuple[tuple[str, ...], ...] = ()
     critical: bool = True
-    # Explicit relevance labels; absence is unjudged, never implicitly irrelevant.
+
     qrels: dict[str, int] = Field(default_factory=dict)
     forbidden_text: tuple[str, ...] = ()
 
@@ -136,7 +135,7 @@ class Fragment(Contract):
 
 
 class RequestEvidenceBinding(Contract):
-    """Exact JSON leaf in a captured message containing one original fragment."""
+
     message_index: int = Field(ge=0)
     json_path: tuple[str | int, ...]
     fragment_index: int = Field(ge=0)
@@ -151,14 +150,12 @@ class Trace(Contract):
     status: Literal["OK", "ERROR", "TIMEOUT", "NOT_RUN"] = "OK"
     error: str | None = None
     stages: dict[str, tuple[Fragment, ...]] = Field(default_factory=dict)
-    # Each fragment must be linked to the actual final request, not retrieval metadata.
+
     final: tuple[Fragment, ...] = ()
     final_context: str | None = None
     request_messages: tuple[dict, ...] = ()
-    # Tool-driven readers distribute original evidence across multiple messages.
-    # With bindings, final_context is a derived canonical projection, not a claim
-    # that the model received one contiguous context string. Score the full wire
-    # messages against the case codepoint budget in this mode.
+
+
     request_evidence_bindings: tuple[RequestEvidenceBinding, ...] = ()
     capture: Literal["pre_send", "replay", "unobserved"] = "unobserved"
     behavior: Literal["answer", "abstain", "deny", "clarify"] | None = None
@@ -177,17 +174,9 @@ class Plan(Contract):
     minimum_slice_cases: int = Field(default=1, ge=1)
     slice_floors: dict[str, float] = Field(default_factory=dict)
     top_k: int = Field(default=5, gt=0)
-    # Pure evidence/component plans leave this off; generated-answer acceptance enables it.
+
     require_answer_behavior: bool = False
     objective: Literal['full', 'evidence'] = 'full'
-
-    @model_serializer(mode='wrap')
-    def serialize_compatible(self, handler):
-        data = handler(self)
-        # Keep old frozen plan hashes stable; new evidence objectives are bound.
-        if self.objective == 'full':
-            data.pop('objective', None)
-        return data
 
     @model_validator(mode="after")
     def floors(self):

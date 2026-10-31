@@ -1,4 +1,3 @@
-"""Versioned conversation endpoints; actor identity is supplied by the host API."""
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
@@ -73,7 +72,7 @@ def install_agent_routes(app, platform, research, identity, *, service_factory=N
         current = require()
         session = current.get(actor, session_id)
         history = current.history(actor, session_id)
-        # Export the public, currently reauthorized transcript, never raw store artifacts/state.
+
         transcript = []
         for event in history['events']:
             payload = event['payload']

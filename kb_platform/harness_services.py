@@ -1,11 +1,14 @@
-"""Explicit builtin catalog. Profiles choose services; dependencies govern startup."""
 from copy import deepcopy
 
-from .agent_decisions import Answer, ToolCall
 from .agent_engine import Runtime
 from .agent_plugins import ToolPlugins
 from .harness_loop import NativeLoop
-from .harness_sessions import MemorySessions
+from .harness_sessions import MemorySessions, DurableSessions
+from .harness_application import AgentApplication
+from .harness_context import HistoryContext, RecentTurns
+from .harness_model import CallableModel, StructuredDecisionModel
+from .context_budget import ContextBudget
+from .session_store import SessionStore
 from .plugin_host import PluginSpec
 
 
@@ -14,27 +17,12 @@ class HistoryPrompt:
         return {'messages': deepcopy(messages), 'tools': deepcopy(tools)}
 
 
-class CallableModel:
-    def __init__(self, decide):
-        if not callable(decide):
-            raise ValueError('MODEL_ADAPTER_REQUIRED')
-        self._decide = decide
-
-    def decide(self, request, context):
-        decision = self._decide(request['messages'], request['tools'])
-        if isinstance(decision, Answer):
-            return {'kind': 'answer', 'value': decision.value}
-        if isinstance(decision, ToolCall):
-            return {'kind': 'tool', 'name': decision.name, 'arguments': decision.arguments}
-        raise ValueError('INVALID_MODEL_DECISION')
-
-
 def _config(config, allowed=()):
     if set(config) - set(allowed):
         raise ValueError('UNKNOWN_HARNESS_PLUGIN_CONFIG')
 
 
-def builtin_plugins(*, runtime=None, decide=None, tools=()):
+def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
     registered = tuple(tools)
 
     def runtime_plugin(ctx, config):
@@ -55,7 +43,48 @@ def builtin_plugins(*, runtime=None, decide=None, tools=()):
 
     def model_plugin(ctx, config):
         _config(config)
-        ctx.provide('model', CallableModel(decide))
+        ctx.provide('model', model if model is not None else CallableModel(decide))
+
+    def store_plugin(ctx, config):
+        _config(config, ('root',))
+        ctx.provide('session.store', SessionStore(**config))
+
+    def durable_sessions(ctx, config):
+        _config(config)
+        ctx.provide('sessions', DurableSessions(ctx.require('session.store')))
+
+    def context_policy(ctx, config):
+        _config(config, ('input_budget', 'output_reserve', 'model_window', 'safety_reserve', 'strict_tokens'))
+        ctx.provide('context.policy', ContextBudget(**config))
+
+    def compaction_plugin(ctx, config):
+        _config(config)
+        ctx.provide('compaction', RecentTurns())
+
+    def context_plugin(ctx, config):
+        _config(config, ('system',))
+        selected_model = ctx.require('model')
+        policy = ctx.require('context.policy')
+        model_policy = getattr(selected_model, 'policy', None)
+        if model_policy is not None:
+            policy = ContextBudget(
+                input_budget=min(policy.effective_input_budget, model_policy.effective_input_budget),
+                output_reserve=model_policy.output_reserve, model_window=model_policy.model_window,
+                safety_reserve=model_policy.safety_reserve,
+                strict_tokens=policy.strict_tokens or model_policy.strict_tokens)
+        ctx.provide('prompt', HistoryContext(policy=policy,
+            compaction=ctx.require('compaction'), measure=getattr(selected_model, 'estimate_request', None),
+            **config))
+
+    def structured_model(ctx, config):
+        _config(config, ('output_limit',))
+        if model is None:
+            raise ValueError('MODEL_ADAPTER_REQUIRED')
+        ctx.provide('model', StructuredDecisionModel(model, **config))
+
+    def application_plugin(ctx, config):
+        _config(config)
+        ctx.provide('application', AgentApplication(ctx.require('sessions'), ctx.require('loop')))
 
     def mount_loop(mode):
         def mount(ctx, config):
@@ -69,6 +98,13 @@ def builtin_plugins(*, runtime=None, decide=None, tools=()):
 
     dependencies = ('runtime', 'sessions', 'tools')
     return (
+        PluginSpec('harness.store.sqlite', ('session.store',), (), store_plugin),
+        PluginSpec('harness.sessions.durable', ('sessions',), ('session.store',), durable_sessions),
+        PluginSpec('harness.context.policy', ('context.policy',), (), context_policy),
+        PluginSpec('harness.compaction.recent', ('compaction',), (), compaction_plugin),
+        PluginSpec('harness.context.history', ('prompt',), ('context.policy', 'compaction', 'model'), context_plugin),
+        PluginSpec('harness.model.structured', ('model',), (), structured_model),
+        PluginSpec('harness.application', ('application',), ('sessions', 'loop'), application_plugin),
         PluginSpec('harness.runtime', ('runtime',), (), runtime_plugin),
         PluginSpec('harness.sessions.memory', ('sessions',), (), sessions_plugin),
         PluginSpec('harness.prompt.history', ('prompt',), (), prompt_plugin),

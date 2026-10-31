@@ -1,8 +1,3 @@
-"""In-memory authority fixture for current product-chain contracts.
-
-Uses actual parsing, canonical units, gateway, retrieval and service code.
-Storage/search transport is deterministic; this is not live ACL acceptance.
-"""
 from contextlib import contextmanager
 from copy import deepcopy
 from types import SimpleNamespace
@@ -68,8 +63,6 @@ class Authority:
         self.build = {'index_name': 'explicit-test-index', 'inputs': {
             'channels': ['bm25', 'dense'], 'embedding': self.embedding_provider.manifest,
             'vector_source_ids': [row['source_id'] for row in self.rows]}}
-
-    _build_config = staticmethod(Platform._build_config)
 
     @contextmanager
     def _tx(self, actor, scope):

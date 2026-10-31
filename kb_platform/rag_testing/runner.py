@@ -1,4 +1,3 @@
-"""One runner for replay and SDK adapters; emits JSON, JUnit and escaped HTML."""
 from __future__ import annotations
 
 import html
@@ -15,7 +14,7 @@ from .scoring import corpus_hash, evaluate
 
 
 class Adapter(Protocol):
-    """Only input and authorized corpus enter the SUT. No gold or expected answer."""
+
     implementation: str
 
     def run(self, request: AdapterInput, sources: tuple[Source, ...], corpus: str) -> Trace: ...
@@ -59,28 +58,28 @@ def run(suite: Suite, plan: Plan, output: Path, *, adapter: Adapter | None = Non
         raise ValueError("adapter execution requires live plan")
     if traces is not None and plan.mode != "replay":
         raise ValueError("recorded traces require replay plan")
-    # Reject malformed replay collections before creating any output artifacts.
-    if traces is not None:
-        evaluate(suite, traces, plan)
-    output.mkdir(parents=True, exist_ok=False)  # no overwrites or duplicate runners
+
+    report = evaluate(suite, traces, plan) if traces is not None else None
+    output.mkdir(parents=True, exist_ok=False)
     write_json(output / "plan.json", plan.model_dump(mode="json"))
     write_json(output / "suite.json", suite.model_dump(mode="json"))
     write_json(output / "state.json", {"status": "RUNNING", "version": VERSION})
     (output / "traces").mkdir()
     if adapter is not None:
+        corpus = corpus_hash(suite)
         traces = []
         for case in suite.cases:
             start = time.perf_counter()
             try:
-                # Detached models prevent accidental mutation of scorer-owned data.
-                request = AdapterInput.model_validate_json(case.input.model_dump_json())
-                sources = tuple(Source.model_validate_json(s.model_dump_json()) for s in suite.sources
+
+                request = case.input.model_copy(deep=True)
+                sources = tuple(s.model_copy(deep=True) for s in suite.sources
                                 if s.id in request.allowed_sources)
-                trace = Trace.model_validate(adapter.run(request, sources, corpus_hash(suite)))
+                trace = Trace.model_validate(adapter.run(request, sources, corpus))
                 if trace.case_id != request.case_id:
                     raise ValueError("adapter returned wrong case identity")
             except Exception as exc:
-                trace = Trace(case_id=case.input.case_id, corpus_hash=corpus_hash(suite),
+                trace = Trace(case_id=case.input.case_id, corpus_hash=corpus,
                               implementation=adapter.implementation, principal=case.input.principal,
                               acl_revision=case.input.acl_revision, status="ERROR",
                               error=f"{type(exc).__name__}: {exc}",
@@ -90,7 +89,8 @@ def run(suite: Suite, plan: Plan, output: Path, *, adapter: Adapter | None = Non
     else:
         for trace in traces:
             write_json(output / "traces" / (digest(trace.case_id) + ".json"), trace.model_dump(mode="json"))
-    report = evaluate(suite, traces, plan)
+    if report is None:
+        report = evaluate(suite, traces, plan)
     report["framework_files"] = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                                  for p in sorted(Path(__file__).parent.glob("*.py"))}
     report["framework_hash"] = digest(report["framework_files"])

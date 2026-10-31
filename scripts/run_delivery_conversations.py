@@ -1,9 +1,3 @@
-"""Freeze/execute two real-session conversation challenges with the unified runner.
-
-Synthetic engineering cases only. The scorer checks the existing evidence and
-behavior contracts; answer/memory semantics remain visible in raw sidecars for
-independent review, never replaced with a product verifier score.
-"""
 import argparse
 from hashlib import sha256
 import json
@@ -93,7 +87,7 @@ def execute_conversations(client, frozen_directory, output, *, config_name, phys
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Freeze/execute two real-session conversation challenges with the unified runner.\n\nSynthetic engineering cases only. The scorer checks the existing evidence and\nbehavior contracts; answer/memory semantics remain visible in raw sidecars for\nindependent review, never replaced with a product verifier score.\n')
     sub = parser.add_subparsers(dest='command', required=True)
     freeze = sub.add_parser('freeze')
     freeze.add_argument('--prepared', type=Path, required=True)

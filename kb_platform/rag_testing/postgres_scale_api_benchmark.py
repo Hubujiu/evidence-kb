@@ -1,5 +1,3 @@
-"""Measure the real search API over the same frozen large component corpus."""
-
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
@@ -40,7 +38,7 @@ def scale_worker(pipe, side, inputs, output, dsn):
         settings = Settings(dsn, "", output / "store", identity, side)
         platform = Platform(dsn, "", settings.storage_root, search_backend=side)
 
-        # Physical calls are impossible: the adapter looks up the frozen cached vector.
+
         class FrozenProvider:
             provider_id = "frozen"
             manifest = {"provider": "frozen-vectors", "dimension": int(vectors.shape[1])}

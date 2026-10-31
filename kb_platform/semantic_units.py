@@ -1,8 +1,3 @@
-"""Original-span semantic unit contracts, independent of document pagination.
-
-These helpers bind representation inputs to immutable parse text. They do not
-assign page numbers to Office/text documents or execute an embedding provider.
-"""
 from __future__ import annotations
 
 from copy import deepcopy
@@ -27,7 +22,7 @@ def validate_source_identity(identity, text):
 
 
 def unit_bindings(units, source_text):
-    """Validate ordered exact intervals; locators are preserved, never invented."""
+
     if not isinstance(units, (list, tuple)) or not units or not isinstance(source_text, str):
         raise EmbeddingError("Nonempty canonical semantic units and source text required")
     result, seen, previous = [], set(), -1
@@ -42,8 +37,8 @@ def unit_bindings(units, source_text):
                 or not isinstance(text, str) or source_text[start:end] != text
                 or not isinstance(item.get("anchors", []), list)):
             raise EmbeddingError("Canonical semantic unit identity/order/range/text differs")
-        # Overlap is allowed: e.g. a Table and its parent context are distinct
-        # legitimate retrieval representations of the same original interval.
+
+
         result.append({"unit_id": unit_id, "kind": kind, "start": start, "end": end,
                        "anchors": deepcopy(item.get("anchors", [])),
                        "parent_id": item.get("parent_id"),

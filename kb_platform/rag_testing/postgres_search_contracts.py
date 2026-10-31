@@ -1,8 +1,10 @@
-"""Offline input contracts; database behavior is exercised by live acceptance."""
+from contextlib import nullcontext
 import unittest
+from unittest.mock import Mock, patch
 
 from kb_platform.postgres_search import lexical_text, validate_vector, PostgresSearch
-from kb_platform.search_compat import resumable_search_dependencies
+from kb_platform.core import Actor, Platform, PlatformError
+from kb_platform.search import OpenSearch
 
 
 class PostgresSearchContracts(unittest.TestCase):
@@ -22,11 +24,34 @@ class PostgresSearchContracts(unittest.TestCase):
         with self.assertRaises(ValueError):
             PostgresSearch._table('bad; DROP TABLE sources')
 
-    def test_only_reviewed_query_fix_can_resume_frozen_generation(self):
-        before = {'files': {'postgres_search.py': 'ce616199541d736792c7cf8e1d8b73b439eca5eaeeb868c00e495b5c5a745ae8',
-                            'search_tokens.py': 'frozen'}, 'packages': {'regex': '1'}}
-        after = {'files': {**before['files'], 'postgres_search.py':
-                 '02cf199bc551b9986363d96ddb5a7da9bd009f010485d30a1b549d1f5bc3e31b'}, 'packages': {'regex': '1'}}
-        self.assertTrue(resumable_search_dependencies(before, after))
-        self.assertFalse(resumable_search_dependencies(before, {**after, 'packages': {'regex': '2'}}))
-        self.assertFalse(resumable_search_dependencies(before, {**after, 'files': {**after['files'], 'postgres_search.py': 'other'}}))
+    def test_changed_search_dependencies_require_new_build(self):
+        frozen = {'files': {'postgres_search.py': 'previous-code'}, 'packages': {'regex': '1'}}
+        platform = Platform.__new__(Platform)
+        platform.backend = object()
+        connection = Mock()
+        connection.execute.return_value.fetchone.return_value = {
+            'status': 'STAGING', 'authority_revision': 1, 'kb_revision': 1,
+            'expected_manifest_id': 'published', 'inputs': {'search_dependencies': frozen}}
+        platform._tx = lambda *args: nullcontext(connection)
+        platform._lock_authority = lambda *args: 1
+        platform._auth = lambda *args: {'revision': 1, 'manifest_id': 'published'}
+        for current in ({**frozen, 'files': {'postgres_search.py': 'current-code'}},
+                        {**frozen, 'packages': {'regex': '2'}}):
+            with self.subTest(current=current), patch('kb_platform.search.backend_dependencies', return_value=current):
+                with self.assertRaises(PlatformError) as rejected:
+                    platform.resume_build(Actor('tenant', 'user'), 'kb', 'build')
+                self.assertEqual(rejected.exception.code, 'STALE_BUILD')
+
+    def test_search_uses_current_binding_mapping_without_probe(self):
+        backend = OpenSearch('https://search.invalid')
+        backend._request = Mock(return_value={'hits': {'hits': []}})
+        allowed = [{'binding_id': 'binding', 'source_id': 'source',
+                    'source_version_id': 'version', 'parse_snapshot_id': 'parse'}]
+        index = backend.index_name('tenant', 'kb', '1' * 32)
+        self.assertEqual([], backend.search(index, 'tenant', 'kb', allowed, 'query', 5))
+        backend._request.assert_called_once()
+        args, kwargs = backend._request.call_args
+        self.assertEqual(args, ('POST', f'/{index}/_search'))
+        filters = kwargs['json']['query']['bool']['filter']
+        self.assertEqual(filters[:2], [{'term': {'tenant_id': 'tenant'}}, {'term': {'kb_id': 'kb'}}])
+        self.assertEqual(set(filters[2]['terms']), {'binding_key'})

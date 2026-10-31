@@ -1,5 +1,3 @@
-//! JSON-lines transport for native plugin ownership and loop policy commands.
-
 use std::io::{self, BufRead, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::process::ExitCode;
@@ -26,7 +24,6 @@ fn read_frame(reader: &mut impl BufRead, limit: usize) -> io::Result<Option<Fram
         let newline = available.iter().position(|byte| *byte == b'\n');
         let length = newline.unwrap_or(available.len());
         if !too_large {
-            // One extra byte permits a CRLF terminator without reducing the payload limit.
             if length > limit.saturating_add(1).saturating_sub(request.len()) {
                 too_large = true;
                 request.clear();

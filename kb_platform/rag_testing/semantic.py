@@ -1,4 +1,3 @@
-"""Optional calibrated semantic reviewer. Results are sidecars, never silent gold edits."""
 from typing import Literal
 
 from pydantic import Field
@@ -13,12 +12,7 @@ class Verdict(Contract):
 
 
 def quote_choices(actual_text: str) -> list[str]:
-    """Bounded contiguous audit anchors, never synthesized evidence or gold.
 
-    Every nonempty line remains represented, including long lines. The anchor
-    is only a trace pointer: selecting one does not establish entailment or
-    completeness. Those remain the calibrated reviewer's task.
-    """
     return list(dict.fromkeys([''] + [line[start:start + 96]
         for line in actual_text.splitlines() if line.strip()
         for start in range(0, len(line), 96)]))
@@ -63,11 +57,7 @@ class Calibration(Contract):
 
 def review(*, question, fact, actual_text, judge, judge_revision, rubric, calibration, budget,
            reservation_resources):
-    """Caller owns a measured provider and its persistent budget ledger.
 
-    budget.reserve() must atomically reserve before sending; unknown outcomes stay
-    reserved. No retries on low scores, no credentials or vendor client in this module.
-    """
     if (not calibration.admitted() or calibration.judge_revision != judge_revision
             or calibration.rubric_hash != digest(rubric)):
         raise ValueError("judge calibration does not match the frozen reviewer")
@@ -85,7 +75,7 @@ def review(*, question, fact, actual_text, judge, judge_revision, rubric, calibr
         budget.finish(reservation, status="ERROR" if received else "UNKNOWN",
                       diagnostic=f"{type(exc).__name__}: {exc}")
         raise
-    budget.finish(reservation, status="COMPLETE")  # no provider usage reported: reservation stays charged
+    budget.finish(reservation, status="COMPLETE")
     return {"request_hash": digest(request), "calibration_hash": digest(calibration),
             "reservation": reservation, "verdict": result.model_dump(),
             "release_eligible": False, "review_required": True}

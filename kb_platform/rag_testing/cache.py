@@ -1,4 +1,3 @@
-"""Exact immutable stage cache. A cache hit is never an execution measurement."""
 from __future__ import annotations
 
 from contextlib import closing
@@ -33,9 +32,10 @@ class StageCache:
 
     def put(self, key: StageKey, payload):
         content_hash = digest(payload)
+        key_hash = digest(key)
         target = self.root / "objects" / (content_hash + ".json")
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, allow_nan=False)
-        # Exclusive creation plus full validation on reads; interrupted writes fail closed.
+
         try:
             with target.open("x", encoding="utf-8") as handle:
                 handle.write(raw)
@@ -43,13 +43,13 @@ class StageCache:
             if digest(json.loads(target.read_text("utf-8"))) != content_hash:
                 raise ValueError("cache object integrity failure")
         with closing(sqlite3.connect(self.db)) as db, db:
-            old = db.execute("SELECT hash FROM entries WHERE key=?", (digest(key),)).fetchone()
+            old = db.execute("SELECT hash FROM entries WHERE key=?", (key_hash,)).fetchone()
             if old and old[0] != content_hash:
                 raise ValueError("stage output changed; use a new implementation/sample identity")
-            db.execute("INSERT OR IGNORE INTO entries VALUES (?,?)", (digest(key), content_hash))
+            db.execute("INSERT OR IGNORE INTO entries VALUES (?,?)", (key_hash, content_hash))
 
     def get(self, key: StageKey, *, authorize: Callable[[], bool], mode="replay", under_test=False):
-        # Reauthorize even when the old ACL key still happens to be known.
+
         if not authorize():
             raise PermissionError("current authorization rejected cached artifact")
         if mode not in ("replay", "live", "cold"):

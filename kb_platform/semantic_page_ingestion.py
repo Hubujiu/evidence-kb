@@ -1,9 +1,3 @@
-"""Explicit authorized canonical PDF Page encoding, capsule creation and build.
-
-The provider owns physical reservations/usage. This bridge records and verifies
-those receipts; it never retries, downloads assets, or reads research indices.
-"""
-
 from __future__ import annotations
 
 from copy import deepcopy
@@ -150,12 +144,7 @@ class CanonicalPageIngestion:
         batch_size=2,
         build_service=None,
     ):
-        """No permission mutation; every selected source must match a frozen plan.
 
-        `expected_sources` is source-keyed {source_identity, original_sha256}.
-        The writer may implement its provider's capsule format. Import readback
-        and an optional existing build independently revalidate canonical data.
-        """
         if not execute:
             raise ValueError("Explicit execute=True is required; nothing was encoded")
         output = Path(output).resolve()
@@ -376,7 +365,7 @@ class CanonicalPageIngestion:
                         "SCOPE_CHANGED", "Authorization changed before capsule completion", 409
                     )
             _write(output / "capsules.json", capsules)
-            # Reacquire the existing build's authority lock; never nest it.
+
             built = (
                 build_service.build(actor, kb_id, capsules, expected_state=expected_state)
                 if build_service

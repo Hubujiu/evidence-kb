@@ -1,4 +1,3 @@
-"""Durable single-writer conversations; raw events never become model memory by default."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -10,7 +9,7 @@ import sqlite3
 import time
 from uuid import uuid4
 
-from .core import PlatformError
+from .session_identity import PlatformError
 
 
 def canonical(value):
@@ -25,14 +24,10 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-class AgentStore:
-    """SQLite transactions serialize writers across processes, not only HTTP threads.
+class SessionStore:
 
-    Owner checks precede every read, including artifact reads. A request lease makes a
-    timed-out request observable; it never silently repeats a possibly executed tool.
-    """
 
-    def __init__(self, root='.local/agentic-v5'):
+    def __init__(self, root='.local/agent-sessions'):
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / 'sessions.sqlite3'
@@ -89,12 +84,12 @@ class AgentStore:
         return {'session_id': row['id'], 'scope_id': row['scope'], 'revision': row['revision'],
                 'state': json.loads(row['state']), 'created_at': row['created'], 'updated_at': row['updated']}
 
-    def create(self, actor, scope_id, source_policy, config_name='recommended'):
+    def create(self, actor, scope_id, initial_state):
+
+        if not isinstance(initial_state, dict):
+            raise ValueError('INVALID_SESSION_STATE')
         session_id = uuid4().hex
-        state = {'version': 'agentic-rag/5.0', 'source_policy': source_policy,
-                 'config_name': config_name, 'turn_number': 0, 'topic': '', 'constraints': [],
-                 'evidence': {}, 'checkpoints': {}, 'last_answer': None, 'corrections': [],
-                 'source_epoch': 0, 'authority': None}
+        state = initial_state
         timestamp = now()
         with self._db() as db:
             db.execute('INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?)',
@@ -107,7 +102,7 @@ class AgentStore:
             return self._decode(self._owner(db, actor, session_id))
 
     def list_sessions(self, actor, *, limit=50, offset=0):
-        """Owner-scoped metadata only; source text and model state never enter the listing."""
+
         if type(limit) is not int or not 1 <= limit <= 100 or type(offset) is not int or offset < 0:
             raise PlatformError('INVALID_SESSION_PAGE', 'Expected limit1..100 and nonnegative offset', 422)
         with self._db() as db:
@@ -194,8 +189,8 @@ class AgentStore:
         return self._finish(actor, session_id, token, state, response, assistant_event=assistant_event)
 
     def fail(self, actor, session_id, token, state, response):
-        """An expired writer may close its failure only until another writer takes over."""
-        if response.get('status') != 'error' or response.get('answer') or response.get('evidence') or response.get('claims'):
+
+        if not isinstance(response, dict) or response.get('status') != 'error':
             raise ValueError('INVALID_FAILURE_RESPONSE')
         return self._finish(actor, session_id, token, state, response, failure=True)
 
@@ -207,7 +202,7 @@ class AgentStore:
                                      (session_id, token)).fetchone()
                 if request is None:
                     raise PlatformError('TURN_LEASE_EXPIRED', 'Conversation writer was superseded', 409)
-                self._event(db, session_id, 'turn_failed', {'code': response['stop_reason']},
+                self._event(db, session_id, 'turn_failed', {'code': response.get('stop_reason', 'SESSION_FAILED')},
                             request['request_id'], 'orchestrator')
             else:
                 request = self._lease(db, session_id, token)

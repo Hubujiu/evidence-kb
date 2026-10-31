@@ -1,4 +1,3 @@
-"""Immutable PostgreSQL generations: transactional BM25 and exact cosine search."""
 from contextlib import contextmanager
 import hashlib
 import json
@@ -18,7 +17,7 @@ FORMAT = 'postgres-textsearch-exact-vector/1'
 
 
 def lexical_text(text, exact=False):
-    # The SQL parser sees one safe lexeme for each existing tokenizer token.
+
     return ' '.join('t' + hashlib.sha256(t.encode()).hexdigest() for t in tokens(text, exact=exact))
 
 
@@ -134,10 +133,6 @@ class PostgresSearch:
         return row['manifest'], row['checksum']
 
     def search(self, index, tenant_id, kb_id, allowed, query, top_k, kind=None, *, exclude_citation_ids=()):
-        if (not isinstance(exclude_citation_ids, (list, tuple)) or len(exclude_citation_ids) > 50 or
-                any(not isinstance(v, str) or not v or len(v) > 512 for v in exclude_citation_ids) or
-                len(set(exclude_citation_ids)) != len(exclude_citation_ids)):
-            raise ValueError('INVALID_EXCLUDED_CITATIONS')
         if not allowed:
             return []
         table = self._table(index, kind == 'Page')
@@ -160,7 +155,7 @@ class PostgresSearch:
                     sql.Identifier(field), sql.Identifier('kb_search', table), predicate))
         if not expressions:
             return []
-        # Dismax with tie_breaker=0: union of each field's top N contains the exact top N.
+
         statement = sql.SQL('WITH ranked AS (SELECT rowid,max(score) AS score FROM ({}) fields '
             'WHERE score>0 GROUP BY rowid ORDER BY score DESC,rowid LIMIT %s) '
             "SELECT u.data - 'vector' AS data,r.score FROM ranked r JOIN {} u USING(rowid) ORDER BY r.score DESC,r.rowid").format(
@@ -168,7 +163,7 @@ class PostgresSearch:
         params.append(size)
         with self._tx(index, tenant_id, kb_id) as conn:
             rows = conn.execute(statement, params).fetchall()
-        hits = [{**{k: v for k, v in r['data'].items() if k != 'vector'}, 'score': r['score']} for r in rows]
+        hits = [{**r['data'], 'score': r['score']} for r in rows]
         return lexical_results(hits, query, top_k)
 
     def _dense(self, index, tenant, kb, allowed, vector, top_k, *, pages=False, build=None, excluded=()):
@@ -189,7 +184,7 @@ class PostgresSearch:
             sql.SQL(' UNION ALL ').join(queries))
         with self._tx(index, tenant, kb) as conn:
             rows = conn.execute(statement, [*params, top_k]).fetchall()
-        return [{**{k: v for k, v in r['data'].items() if k != 'vector'}, 'score': r['score']} for r in rows]
+        return [{**r['data'], 'score': r['score']} for r in rows]
 
     def dense(self, index, tenant_id, kb_id, allowed, vector, top_k):
         return self._dense(index, tenant_id, kb_id, allowed, vector, top_k)
@@ -203,4 +198,4 @@ class PostgresSearch:
             rows = conn.execute(sql.SQL("SELECT data - 'vector' AS data FROM {} WHERE binding_key=%s "
                 "AND (data->>'parent_id'=%s OR unit_id=ANY(%s)) ORDER BY (data->>'ordinal')::integer,rowid LIMIT %s").format(
                     sql.Identifier('kb_search', self._table(index))), (binding_key(hit), parent, [parent, hit['unit_id']], limit)).fetchall()
-        return [{**{k: v for k, v in r['data'].items() if k != 'vector'}, 'score': hit['score']} for r in rows]
+        return [{**r['data'], 'score': hit['score']} for r in rows]

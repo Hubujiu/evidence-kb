@@ -1,4 +1,3 @@
-"""Transactional physical-call reservations. Unknown remote outcomes never auto-retry."""
 from contextlib import closing
 import json
 import sqlite3

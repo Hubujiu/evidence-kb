@@ -1,5 +1,3 @@
-"""Read-only historical RAG replay and current ContextManager integration; no provider imports."""
-# ruff: noqa: E402
 import argparse
 import json
 import sqlite3
@@ -7,8 +5,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from kb_platform.rag_testing.contracts import AdapterInput, Case, Evidence, Fragment, Plan, Source, Suite, Trace, digest, text_hash
 from kb_platform.rag_testing.scoring import corpus_hash
@@ -16,6 +13,8 @@ from kb_platform.rag_testing.runner import run, write_json
 from kb_platform.rag_testing.capture import prepared_trace
 from kb_platform.agent_context import ContextManager
 from kb_platform.rag_testing.comparison import compare
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def read(path):
@@ -60,7 +59,7 @@ def migrate(base, legacy, output):
     evidence, cases = [], []
     for q in questions:
         path = []
-        # Preserve the historical §-paragraph annotation policy; no answer-based relabeling.
+
         for docid in q['gold']:
             text = originals[docid]['text']
             offset = 0
@@ -104,8 +103,8 @@ def migrate(base, legacy, output):
             call = matches[0] if matches else None
             final = tuple(fragment(p) for p in row['context'])
             context = json.dumps(row['context'], ensure_ascii=False)
-            # Preserve doc_id alongside standard source_id in serialized historical requests.
-            # The scorer understands doc_id as the historical source identity field.
+
+
             t = Trace(case_id=q['id'], corpus_hash=corpus_hash(suite), implementation='recorded:' + method,
                       principal='historical-synthetic-actor', acl_revision='frozen-local-corpus',
                       status='ERROR' if row['technical_error'] else 'OK',
@@ -139,7 +138,7 @@ def migrate(base, legacy, output):
                            'complete_chain_but_legacy_answer_failed': [r['question_id'] for r in old if not r['score']
                                and next(x for x in report['rows'] if x['case_id'] == r['question_id'])['complete_evidence'] is True]}
 
-    # Real current product assembly over cached retrieval output, without generation.
+
     class CurrentAssembly:
         implementation = 'current-ContextManager-over-recorded-hybrid'
         preserve_windows = False
@@ -205,7 +204,7 @@ def migrate(base, legacy, output):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description='Read-only historical RAG replay and current ContextManager integration; no provider imports.')
     parser.add_argument('--base', type=Path, default=ROOT / '.local/benchmark-crossdoc/crossdoc-hard-20261024-01')
     parser.add_argument('--legacy', type=Path, default=ROOT / 'reports/benchmark-crossdoc/crossdoc-hard-20261024-01')
     parser.add_argument('--output', type=Path, required=True)
