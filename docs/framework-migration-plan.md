@@ -1,6 +1,6 @@
 # 成熟框架替换计划与当前边界
 
-更新：2026-10-29。目标是移交通用能力的维护责任，保留项目特有的权限、证据、预算和请求恢复合同。没有证据支持的能力不通过改名、默认假设或另建评测体系宣称完成。
+更新：2026-10-30。目标是移交通用能力的维护责任，保留项目特有的权限、证据、预算和请求恢复合同。没有证据支持的能力不通过改名、默认假设或另建评测体系宣称完成。
 
 ## 逐项状态
 
@@ -14,7 +14,7 @@
 | Markdown 解析 | PR #8 采用 markdown-it-py | 原文切片、坐标、哈希、证据锚点和历史表格导航 |
 | 专用 reranker 配对试验 | PR #9 采用 CrossEncoder，完成固定候选对照；生产切换未获准入证据 | 证据覆盖判断独立于排序分数；不切换生产默认 |
 | 重试所有权与通用调度 | 本轮只读工具调度采用 Tenacity；运输层仍唯一负责物理请求重试 | 非只读、UNKNOWN、权限/预算拒绝不重试；Retry-After、累计等待及截止时间保持有界 |
-| 匹配模型的 token 计量 | **未完成：缺少 Luna 模型与 tokenizer/chat framing 或计数接口的可验证绑定** | 保留标注为估算的计量；strict_tokens 继续在发送和预算预留前拒绝 |
+| 上下文 token 估算 | **采用现有启发式估算；精确计量研究终止，不再作为验收阻塞** | 完整消息、Schema、输出预留与安全余量继续计入；估算不替代供应商实际 usage |
 
 ## 本轮移除与兼容性
 
@@ -43,14 +43,23 @@
 
 运输层包含发送回执、重试血缘、预算和未知结果转换，未套用通用装饰器来隐藏这些行为。没有新增全局重试器或另一份费用账本。
 
-## token 计量为何仍受阻塞
+## 上下文采用启发式 token 估算
 
-项目公开配置使用 `codex/gpt-6-luna`，现有 AgentModel 能力声明为 tokenizer_verified=false，且目前走兼容网关的 Chat Completions。检查的 [tiktoken 模型映射](https://github.com/openai/tiktoken/blob/main/tiktoken/model.py) 没有该模型绑定；不能去掉前缀或按名称猜测编码。即便选定文本 tokenizer，也不能据此确认网关的消息封装和工具/Schema 开销；[官方计数示例](https://developers.openai.com/cookbook/examples/how_to_count_tokens_with_tiktoken) 也区分模型相关的消息计量。
+按 2026-10-30 的产品决定，不再研究跨模型精确 token 计量，也不把 tokenizer 绑定列为后续验收前置条件。同一提供商的不同模型可能使用不同分词与消息封装；这里选择不依赖模型专用 tokenizer 的本地估算，而不是声称所有模型都无法精确计量。
 
-本轮没有添加一个未经准入的 tokenizer 后备路径来降低工程估算值。精确替换仍需要提供者确认的模型 revision、tokenizer/chat template 或计数接口合同，并针对实际最终载荷核验。该依赖未满足时，不能将整体计划标为全部完成。已有 BGE 组件的真实 tokenizer 长度检查不等同 Luna 对话请求的计量能力。
+参考成熟项目的公开实现（2026-10-30 查阅）：
+
+- [LangChain count_tokens_approximately](https://reference.langchain.com/python/langchain-core/messages/utils/count_tokens_approximately) 默认使用每 token 4 个字符和每消息 3 个额外 token，计入角色、工具调用与工具定义；文档明确这是近似值，4 字符比例针对常见英文文本。
+- [Pi 上下文压缩实现](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) 使用字符数除以 4 的启发式，计入工具参数；可用时用最近一次 usage 加后续消息估算，历史编辑或压缩使旧 usage 失效时重新估算，并预留上下文空间。
+
+本项目保留 `context_budget.estimate_messages` 的现有公式：完整消息规范化 JSON 的 UTF-8 字节数 + 每条消息 16 + 固定 32。中文、代码、转义字符及结构化字段均计入，Schema 在最终校验之前插入。该公式比常见字符数除以 4 更保守，可能提前裁剪；它是工程预算单位，不保证任意模型的真实 token 上界。本次不改变公式、预算或裁剪结果，也不引入新的依赖或模型调用。
+
+输入额度仍取配置额度与“模型窗口减输出预留和安全余量”的较小值。默认 `strict_tokens=false`；`exact=false`、`tokenizer_verified=false` 保持事实含义。显式要求 `strict_tokens=true` 的旧调用仍在发送和预留前拒绝，避免将估算伪装成精确承诺；该保护不是待实现的精确计量功能。
+
+供应商实际 usage 与发送前估算分别记录，缺失 usage 仍为 unknown，费用和 UNKNOWN 预留不能被估算覆盖。历史经过裁剪、权限过滤或 Schema 变化后，当前路径重新估算最终消息，不套用旧 usage 来降低准入预算。BGE 的模型专用 tokenizer 继续服务于其组件输入长度限制，与对话上下文估算职责不同。
 
 ## 验证与停止边界
 
 新增 `framework_completion_contracts.py` 接入统一发现，覆盖类型/可选字段/额外字段、工具功能开关与默认参数、重试次数、Retry-After、累计等待、截止/迟到结果、UNKNOWN、回执复用以及未验证 token 能力的拒绝行为。既有权限、证据、预算、恢复和 SDK 合同继续运行，没有删除测试或调整门槛。
 
-本轮不新增模型、Embedding 或语义裁判调用。统一评分器复用冻结控制 trace，不能将其 PASS 当作生产质量验收。生产 reranker 切换和精确 token 计量均不伪称已实现；前者已有不切换的实验结论，后者仍是明确的外部能力阻塞。
+本轮不新增模型、Embedding 或语义裁判调用。统一评分器复用冻结控制 trace，不能将其 PASS 当作生产质量验收。生产 reranker 保持不切换的实验结论；上下文采用启发式估算，精确 token 计量不再属于计划范围。真实供应商、数据库和答案质量验收仍按各自证据判定，不因该范围决定自动通过。

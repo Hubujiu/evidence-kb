@@ -1,6 +1,7 @@
 import ctypes
 from functools import lru_cache
 import json
+import os
 
 from .agent_native import library_path
 
@@ -24,10 +25,17 @@ def _library(path):
         raise PluginError('PLUGIN_NATIVE_UNAVAILABLE') from exc
 
 
+@lru_cache(maxsize=4)
+def _selected_library(configured):
+    return _library(library_path().resolve())
+
+
 def native_call(command, **fields):
+    if command.startswith('runtime_'):
+        fields = {'protocol': 'plugin-runtime/1', **fields}
     payload = json.dumps({'version': 1, 'command': command, **fields}, ensure_ascii=False,
                          allow_nan=False, separators=(',', ':')).encode('utf-8')
-    library = _library(library_path().resolve())
+    library = _selected_library(os.environ.get('KB_AGENT_KERNEL_LIBRARY'))
     pointer = library.agent_harness_call(payload, len(payload))
     if not pointer:
         raise PluginError('PLUGIN_NATIVE_EMPTY_RESPONSE')

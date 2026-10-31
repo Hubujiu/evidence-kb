@@ -5,9 +5,13 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 
-from kb_platform.core import Actor, Platform, PlatformError
+from kb_platform.core import Actor, PlatformError
+from kb_platform.application_composition import create_platform
+from kb_platform.settings import Settings
 from kb_platform.remote import RemoteModelError
 from .embedding_jobs_contracts import live_contract_suite
+from .model_review_contracts import live_contract_suite as model_review_suite
+from .model_embedding_review_contracts import live_contract_suite as model_embedding_review_suite
 from .runner import write_json
 
 
@@ -31,8 +35,9 @@ def build_suite(dsn, output):
                     return [[1., 0., 0.] for _ in texts]
 
             self.provider = Provider()
-            self.platform = Platform(dsn, '', output / 'originals', self.provider, search_backend='postgres')
-            self.addCleanup(self.platform.backend.close)
+            self.platform = create_platform(Settings(dsn, '', output / 'originals', output / 'unused-identities', 'postgres'),
+                                            embedding_provider=self.provider)
+            self.addCleanup(self.platform.close)
             self.actor = Actor('pg-build-contract-' + uuid4().hex, 'owner')
             self.kb = self.platform.create_kb(self.actor, 'Recovery fixture')['kb_id']
             self.source = self.platform.ingest(self.actor, self.kb, 'one.md', b'# Policy\n\nALPHA backup.\n\nBETA restore.',
@@ -120,7 +125,9 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
-    suite = unittest.TestSuite([live_contract_suite(os.environ['KB_DSN']), build_suite(os.environ['KB_DSN'], args.output)])
+    dsn = os.environ['KB_DSN']
+    suite = unittest.TestSuite([live_contract_suite(dsn), model_review_suite(dsn),
+                               model_embedding_review_suite(dsn), build_suite(dsn, args.output)])
     with (args.output / 'checks.log').open('w', encoding='utf-8') as stream:
         result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
     report = dict(status='PASS' if result.wasSuccessful() else 'FAIL', tests=result.testsRun,

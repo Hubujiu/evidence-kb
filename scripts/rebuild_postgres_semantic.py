@@ -7,7 +7,9 @@ import sys
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from kb_platform.core import Actor, Platform
+from kb_platform.core import Actor
+from kb_platform.application_composition import create_platform
+from kb_platform.settings import Settings
 from kb_platform.google_semantic_provider import GoogleSemanticProvider
 from kb_platform.rag_testing.budget import BudgetLedger
 from kb_platform.rag_testing.contracts import digest
@@ -42,7 +44,8 @@ def main():
     if old['embedding'] != provider.manifest:
         raise ValueError('Saved vectors require the current embedding manifest')
     actor = Actor(old['tenant_id'], old['built_by_principal'])
-    platform = Platform(os.environ['KB_DSN'], '', args.output / 'backup-only', search_backend='postgres')
+    platform = create_platform(Settings(os.environ['KB_DSN'], '', args.output / 'backup-only',
+                                        args.output / 'unused-identities', 'postgres'))
     service = SemanticPageService(platform, provider, args.output / 'semantic-manifests')
     imported = {}
     with service.authority.locked(actor, old['kb_id'], manage=True) as snapshot:

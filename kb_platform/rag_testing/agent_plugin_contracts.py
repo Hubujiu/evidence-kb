@@ -2,6 +2,7 @@ from copy import deepcopy
 from dataclasses import replace
 import json
 from threading import Lock
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -14,10 +15,12 @@ from kb_platform.agent_provider import ProviderCompletion
 from kb_platform.agent_runtime import send_deadline, serialized_send
 from kb_platform.agent_call_budget import CallBudget
 from kb_platform.agent_tool_view import project_tool_results
-from kb_platform.knowledge_service import KnowledgeService as AgentService
+from .product_fixture import knowledge_service as AgentService
 from kb_platform.core import PlatformError
 from kb_platform.model_errors import RemoteModelError
 from kb_platform.provider_runtime import RuntimePolicyError
+from kb_platform.model_configuration import TextView
+from kb_platform.retrieval_pipeline import LunaCandidateReranker
 from . import agent_graph_contracts as fixtures
 
 
@@ -138,16 +141,27 @@ class RuntimeLifecycleContracts(TestCase):
     setup_service = fixtures.AgentGraphContracts.setup_service
     turn = fixtures.AgentGraphContracts.turn
 
+    def install_reranker(self, case):
+        models = SimpleNamespace(catalog=lambda: {'generation': SimpleNamespace(
+            provider='magpie_luna', model='synthetic-reranker', revision=1)})
+        case.gateway.pipeline_reranker = LunaCandidateReranker(TextView(models, case.model))
+
     def test_planning_with_reranking_preserves_answer_and_verification_calls(self):
         def ranking(messages):
             projection = json.loads(messages[-1]['content'])
-            return {'ranking': [{'citation_id': item['citation_id'], 'score': 0.5}
-                                for item in projection['evidence']]}
+            return {'scores': [index / len(projection['documents'])
+                               for index, _ in enumerate(projection['documents'])],
+                    'requirements': [{'need': 'original rule', 'supported': False, 'evidence': []}]}
 
         def search_pipeline(gateway, actor, scope, query, policy, config, **kwargs):
             hits = gateway.search(actor, scope, query, policy)
+            if limit == 6:
+                hits.reverse()
             if config.get('rerank'):
-                gateway.pipeline_reranker.rank(query, hits)
+                ranked = gateway.pipeline_reranker.rank(query, hits)
+                self.assertEqual(ranked, list(reversed([
+                    {'citation_id': item['citation_id'], 'score': index / len(hits)}
+                    for index, item in enumerate(hits)])))
             return {'hits': hits, 'trace': {'expansion': []}}
 
         for limit in (5, 6):
@@ -157,6 +171,7 @@ class RuntimeLifecycleContracts(TestCase):
                 script.append(('rerank', ranking))
             case = self.setup_service(script + [('answer', fixtures.cited_answer), ('verifier', fixtures.verdict())],
                                       config={'max_model_calls': limit})
+            self.install_reranker(case)
             case.service.retrieval_config = {'channels': ['bm25'], 'rerank': True}
             with patch.object(type(case.gateway), 'search_pipeline', search_pipeline), \
                     patch.object(type(case.gateway), 'pipeline_capabilities', return_value={
@@ -167,6 +182,39 @@ class RuntimeLifecycleContracts(TestCase):
             self.assertEqual(len(case.model.calls), limit)
             self.assertEqual([c['role'] for c in case.model.calls[-2:]], ['answer', 'verifier'])
             self.assertEqual(len(result['trace']['tool_calls']), 2)
+
+    def test_rerank_boundary_scores_and_candidate_identity(self):
+        for score in (0.75, float('nan'), float('inf'), -0.01, 1.01, True, 'NaN', '0.5', None):
+            with self.subTest(score=score):
+                def search_pipeline(gateway, actor, scope, query, policy, config, **kwargs):
+                    hits = gateway.search(actor, scope, query, policy)
+                    ranker = gateway.pipeline_reranker
+                    self.assertEqual(ranker.rank(query, []), [])
+                    with self.assertRaisesRegex(ValueError, 'DUPLICATE_RERANK_CANDIDATE'):
+                        ranker.rank(query, [hits[0], hits[0]])
+                    candidate = hits[-1]
+                    if score == 0.75:
+                        self.assertEqual(ranker.rank(query, [candidate]),
+                                         [{'citation_id': candidate['citation_id'], 'score': 0.75}])
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'AGENT_SCHEMA_MISMATCH'):
+                            ranker.rank(query, [candidate])
+                    return {'hits': hits, 'trace': {'expansion': []}}
+
+                case = self.setup_service([
+                    ('decision', fixtures.decision('search_pipeline', query='original')),
+                    ('rerank', {'scores': [score], 'requirements': [
+                        {'need': 'original rule', 'supported': False, 'evidence': []}]}),
+                    ('retrieval', fixtures.decision('answer')),
+                    ('answer', fixtures.cited_answer), ('verifier', fixtures.verdict())])
+                self.install_reranker(case)
+                case.service.retrieval_config = {'channels': ['bm25'], 'rerank': True}
+                with patch.object(type(case.gateway), 'search_pipeline', search_pipeline), \
+                        patch.object(type(case.gateway), 'pipeline_capabilities', return_value={
+                            'channels': ['bm25'], 'rerank_all_sources_admitted': True}):
+                    result = self.turn(case)
+                self.assertEqual(result['status'], 'answered', result)
+                self.assertEqual(sum(call['role'] == 'rerank' for call in case.model.calls), 1)
 
     def test_exploration_reserves_worst_case_physical_attempts(self):
         policy = CallBudget(10, True, max_attempts=3)

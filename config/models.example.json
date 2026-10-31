@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "budget": {"path": ".local/model-service/physical-calls.sqlite3", "caps": {"requests": 100}},
+  "providers": {
+    "compatible": {
+      "adapter": "openai-compatible",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "MODEL_COMPATIBLE_KEY"
+    },
+    "anthropic": {
+      "adapter": "anthropic",
+      "base_url": "https://api.anthropic.com/v1",
+      "api_key_env": "MODEL_ANTHROPIC_KEY"
+    }
+  },
+  "models": {
+    "generation": {
+      "provider": "anthropic", "model": "REPLACE_WITH_SUPPORTED_CHAT_MODEL",
+      "capabilities": ["chat"], "reservation": {"requests": 1}
+    },
+    "embedding": {
+      "provider": "compatible", "model": "text-embedding-3-small", "dimension": 768,
+      "capabilities": ["embedding"], "reservation": {"requests": 1}
+    },
+    "ocr": {
+      "provider": "compatible", "model": "REPLACE_WITH_SUPPORTED_VISION_MODEL",
+      "capabilities": ["ocr"], "reservation": {"requests": 1}
+    },
+    "transcribe": {
+      "provider": "compatible", "model": "whisper-1",
+      "capabilities": ["transcription"], "reservation": {"requests": 1}
+    },
+    "voice": {
+      "provider": "compatible", "model": "tts-1",
+      "capabilities": ["speech"], "reservation": {"requests": 1}
+    },
+    "image": {
+      "provider": "compatible", "model": "gpt-image-1",
+      "capabilities": ["image"], "reservation": {"requests": 1}
+    }
+  }
+}
