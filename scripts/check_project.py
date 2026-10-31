@@ -26,6 +26,8 @@ SHARED = frozenset({"contracts", "cache", "budget", "budget_batches", "provider_
 FOUNDATIONS = frozenset({"contracts", "cache", "budget", "budget_batches"})
 EXCLUDED_IMPORTS = frozenset({"output", "outputs", "reports"})
 AGENT_DEPENDENCIES = {
+    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
+    'model_plugins': frozenset({'plugin_host', 'model_configuration', 'remote', 'context_budget'}),
     'agent_provider': frozenset(),
     'model_errors': frozenset(),
     'agent_model': frozenset({'agent_provider', 'context_budget', 'agent_schema', 'model_errors'}),
@@ -49,7 +51,7 @@ AGENT_DEPENDENCIES = {
     'harness_context': frozenset({'context_budget'}),
     'harness_model': frozenset({'agent_decisions', 'agent_engine', 'agent_model', 'agent_schema', 'context_budget'}),
     'harness_application': frozenset({'harness_sessions'}),
-    'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles'}),
+    'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles', 'model_plugins'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
     'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),
 }
@@ -224,7 +226,7 @@ def architecture_violations(root: Path) -> list[str]:
             layer = AGENT_DEPENDENCIES.get(path.stem) if not evaluation else None
             if layer is not None and target.startswith('kb_platform.') and target.split('.')[1] not in layer:
                 reason = 'agent boundary cannot depend on this implementation; inject its port at composition'
-            if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider'}
+            if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider', 'model_service'}
                     and top in {'openai', 'httpx', 'fastapi', 'requests', 'psycopg'}):
                 reason = 'agent contracts and model policy cannot depend on transport or API frameworks'
             if top in EXCLUDED_IMPORTS:

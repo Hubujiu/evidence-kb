@@ -122,7 +122,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
         self.call_budget = CallBudget(
             self.execution_limits["max_model_calls"],
             bool(self.config["verify"]),
-            getattr(getattr(self.service.model, "provider", None), "max_attempts", 1),
+            getattr(self.service.model, "max_attempts",
+                    getattr(getattr(self.service.model, "provider", None), "max_attempts", 1)),
         )
         self.scope = session["scope_id"]
         self.started = time.perf_counter()
@@ -253,10 +254,11 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
             turn_gateway = copy(self.service.gateway)
 
             class BudgetedReranker:
-                provider_id = "magpie_luna"
+                provider_id = getattr(self.service.gateway, 'provider_id', 'magpie_luna')
                 manifest = {
                     "protocol": "agent-same-candidate-rerank/1",
-                    "model": getattr(getattr(self.service.model, "provider", None), "manifest", {}),
+                    "model": getattr(self.service.model, 'manifest',
+                                     getattr(getattr(self.service.model, "provider", None), "manifest", {})),
                 }
 
                 def rank(inner, query, candidates):
