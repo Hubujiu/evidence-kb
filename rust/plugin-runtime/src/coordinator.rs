@@ -1204,6 +1204,40 @@ impl Coordinator {
         self.inspect(host)
     }
 
+    fn instance_exited(
+        &mut self,
+        host: u64,
+        plugin: String,
+        instance: u64,
+        generation: u64,
+    ) -> Result<Value, Error> {
+        let current = self
+            .scopes
+            .get(&host)
+            .and_then(|scope| scope.instances.get(&plugin))
+            .and_then(|id| self.instances.get(id));
+        if current.is_none_or(|current| {
+            current.id != instance
+                || current.generation != generation
+                || current.desired != Desired::Enabled
+                || !matches!(current.phase, Phase::Starting | Phase::Active)
+        }) {
+            return Ok(json!({"accepted":false}));
+        }
+        self.update(
+            host,
+            plugin,
+            Update {
+                enabled: Some(false),
+                remove: false,
+                config: None,
+                manifest: None,
+                configuration_inputs: None,
+            },
+        )?;
+        Ok(json!({"accepted":true}))
+    }
+
     fn retry(&mut self, host: u64, plugin: Option<String>) -> Result<Value, Error> {
         let ids: Vec<_> = self
             .scope(host)?
@@ -1539,6 +1573,12 @@ impl Coordinator {
                 },
             ),
             Command::RuntimeRetry { host, plugin } => self.retry(host, plugin),
+            Command::RuntimeInstanceExited {
+                host,
+                plugin,
+                instance,
+                generation,
+            } => self.instance_exited(host, plugin, instance, generation),
             Command::RuntimeInspect { host } => self.inspect(host),
             Command::RuntimeCollect { host } => self.collect(host),
             Command::RuntimeAck { host, operations } => self.ack(host, operations),

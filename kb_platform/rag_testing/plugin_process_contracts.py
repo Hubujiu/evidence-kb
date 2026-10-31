@@ -99,6 +99,95 @@ class ProcessPackageContracts(unittest.TestCase):
             self.assertEqual(failure.exception.code, 'INVALID_PROCESS_ENTRY')
             self.assertEqual(list(manager.root.iterdir()), [])
 
+    def test_interrupted_metadata_is_never_published_and_retry_commits_complete_record(self):
+        with tempfile.TemporaryDirectory() as root:
+            manager, existing = self.package(root)
+            source = Path(root) / 'source'
+            manifest = json.loads((source / 'plugin.json').read_text('utf-8'))
+            manifest['name'] = 'new-package'
+            (source / 'plugin.json').write_text(json.dumps(manifest), 'utf-8')
+            entered, release = Event(), Event()
+            failures = []
+            dump = json.dump
+
+            def interrupted(value, stream, **kwargs):
+                if isinstance(value, dict) and 'contents' in value:
+                    stream.write('{"manifest":')
+                    stream.flush()
+                    entered.set()
+                    if not release.wait(2):
+                        raise RuntimeError('Installation write barrier expired')
+                    raise OSError('Interrupted installation metadata write')
+                return dump(value, stream, **kwargs)
+
+            def install():
+                try:
+                    manager.install(source)
+                except BaseException as error:
+                    failures.append(error)
+
+            with patch('kb_platform.plugin_process.json.dump', interrupted):
+                worker = Thread(target=install, daemon=True)
+                worker.start()
+                try:
+                    self.assertTrue(entered.wait(2))
+                    self.assertEqual(len(manager.installed()), 1)
+                    self.assertEqual(len(manager.catalogs(journal=Path(root) / 'journal')), 1)
+                    self.assertEqual(manager.catalog(existing['package'],
+                        journal=Path(root) / 'journal').key, 'process.fixture')
+                    self.assertFalse((manager.root / 'new-package.active.json').exists())
+                finally:
+                    release.set()
+                    worker.join(2)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual([type(error) for error in failures], [OSError])
+            self.assertEqual(len(manager.installed()), 1)
+            self.assertEqual(list(manager.root.glob('*.tmp')), [])
+            retried = manager.install(source)
+            self.assertEqual(len(manager.catalogs(journal=Path(root) / 'journal')), 2)
+            self.assertEqual(manager.catalog(retried['package'],
+                journal=Path(root) / 'journal').key, 'process.new-package')
+
+    def test_retry_rejects_corrupt_existing_record_before_switching_active_pointer(self):
+        with tempfile.TemporaryDirectory() as root:
+            manager, existing = self.package(root)
+            source = Path(root) / 'source'
+            (source / 'helper.py').write_text('value = "new version"\n', 'utf-8')
+            replacement = manager.install(source)
+            active = manager.root / 'fixture.active.json'
+            active.write_text(json.dumps({'digest': existing['digest']}), 'utf-8')
+            metadata = manager.root / f'{replacement["digest"]}.installation.json'
+            metadata.write_text('{"manifest":', 'utf-8')
+            self.assertEqual(len(manager.catalogs(journal=Path(root) / 'journal')), 1)
+            with self.assertRaises(PluginError) as failure:
+                manager.install(source)
+            self.assertEqual(failure.exception.code, 'INVALID_PROCESS_INSTALLATION')
+            self.assertEqual(json.loads(active.read_text('utf-8')), {'digest': existing['digest']})
+            self.assertEqual(manager.catalog(existing['package'],
+                journal=Path(root) / 'journal').key, 'process.fixture')
+
+    def test_exit_notification_only_disables_its_current_generation(self):
+        with tempfile.TemporaryDirectory() as root:
+            manager, installed = self.package(root)
+            spec = manager.catalog(installed['package'], journal=Path(root) / 'journal')
+            with patch.object(ProcessTransport, 'start'):
+                host = PluginHost({'version': 1, 'plugins': [
+                    {'id': 'process', 'use': spec.key}]}, [spec])
+                try:
+                    old = host.service('echo').transport
+                    host.update('process', config={'timeout': 3})
+                    current = host.service('echo').transport
+                    self.assertNotEqual(old.identity['generation'], current.identity['generation'])
+                    self.assertEqual(old.on_exit(), {'accepted': False})
+                    self.assertIs(host.service('echo').transport, current)
+                    self.assertFalse(current._closed)
+                    self.assertEqual(current.on_exit(), {'accepted': True})
+                    self.assertTrue(current._closed)
+                    self.assertEqual(host.inspect()['counts']['resources'], 0)
+                finally:
+                    host.close()
+                self.assertEqual(current.on_exit(), {'accepted': False})
+
     def test_idle_process_exit_pumps_cleanup_outside_reader(self):
         with tempfile.TemporaryDirectory() as root:
             manager, installed = self.package(root)

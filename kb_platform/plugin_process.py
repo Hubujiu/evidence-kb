@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from io import BufferedReader
 import json
+import os
 from pathlib import Path
 from queue import Queue
 import shutil
@@ -74,6 +75,42 @@ class ProcessPackages:
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
+    def _publish(self, path, value):
+        temporary = self.root / f'{uuid4().hex}.tmp'
+        try:
+            with temporary.open('x', encoding='utf-8') as stream:
+                json.dump(value, stream, ensure_ascii=False, allow_nan=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if json.loads(temporary.read_text('utf-8')) != value:
+                raise PluginError('INVALID_PROCESS_INSTALLATION')
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def _installation(self, path):
+        try:
+            record = json.loads(path.read_text('utf-8'))
+            if (not isinstance(record, dict)
+                    or set(record) != {'manifest', 'source', 'digest', 'package', 'contents'}
+                    or not isinstance(record['source'], str)
+                    or not isinstance(record['manifest'], dict)
+                    or not isinstance(record['contents'], list)
+                    or any(not isinstance(item, list) or len(item) != 2
+                        or any(not isinstance(value, str) for value in item) for item in record['contents'])
+                    or record['digest'] != path.name.removesuffix('.installation.json')
+                    or record['digest'] != sha256(json.dumps(record['contents'],
+                        separators=(',', ':')).encode()).hexdigest()
+                    or record['package'] != str(self.root / f'{record["manifest"]["name"]}-{record["digest"]}')):
+                raise PluginError('INVALID_PROCESS_INSTALLATION')
+            package = Path(record['package'])
+            if _document(package / 'plugin.json') != record['manifest']:
+                raise PluginError('INVALID_PROCESS_INSTALLATION')
+            _verify_package(package, record['contents'])
+            return record
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise PluginError('INVALID_PROCESS_INSTALLATION') from error
+
     def install(self, source):
         source = Path(source).resolve()
         manifest = _document(source / 'plugin.json')
@@ -87,31 +124,36 @@ class ProcessPackages:
             temporary.rename(destination)
         _verify_package(destination, contents)
         record = {'manifest': manifest, 'source': str(source), 'digest': digest,
-                  'package': str(destination), 'contents': contents}
+                  'package': str(destination), 'contents': [list(item) for item in contents]}
         metadata = self.root / f'{digest}.installation.json'
-        if not metadata.exists():
-            with metadata.open('x', encoding='utf-8') as stream:
-                json.dump(record, stream, ensure_ascii=False)
+        if metadata.exists():
+            existing = self._installation(metadata)
+            if any(existing[key] != record[key] for key in ('manifest', 'digest', 'package', 'contents')):
+                raise PluginError('INVALID_PROCESS_INSTALLATION')
+        else:
+            self._publish(metadata, record)
         active = self.root / f'{manifest["name"]}.active.json'
-        temporary = self.root / f'{uuid4().hex}.tmp'
-        temporary.write_text(json.dumps({'digest': digest}), 'utf-8')
-        temporary.replace(active)
+        self._publish(active, {'digest': digest})
         return record
 
     def installed(self):
-        return [json.loads(path.read_text('utf-8')) for path in sorted(self.root.glob('*.installation.json'))]
+        return [self._installation(path) for path in sorted(self.root.glob('*.installation.json'))]
 
     def catalogs(self, *, journal):
         active = {json.loads(path.read_text('utf-8'))['digest'] for path in self.root.glob('*.active.json')}
         return tuple(self.catalog(row['package'], journal=journal)
-            for row in self.installed() if row['digest'] in active)
+            for row in (self._installation(self.root / f'{digest}.installation.json')
+                for digest in sorted(active)))
 
     def catalog(self, package, *, journal, timeout=10):
         path = Path(package).resolve()
         if not path.is_relative_to(self.root) or path.parent != self.root:
             raise PluginError('PROCESS_PACKAGE_NOT_INSTALLED')
-        record = next((row for row in self.installed() if row['package'] == str(path)), None)
-        if record is None:
+        metadata = self.root / f'{path.name.rsplit("-", 1)[-1]}.installation.json'
+        if not metadata.is_file():
+            raise PluginError('PROCESS_PACKAGE_CONTENT_CHANGED')
+        record = self._installation(metadata)
+        if record['package'] != str(path):
             raise PluginError('PROCESS_PACKAGE_CONTENT_CHANGED')
         _verify_package(path, record['contents'])
         manifest = _document(path / 'plugin.json')
@@ -119,7 +161,8 @@ class ProcessPackages:
             _verify_package(path, record['contents'])
             transport = ProcessTransport(path, journal=journal, timeout=config.get('timeout', timeout),
                 identity=dict(ctx.identity))
-            transport.on_exit = lambda: ctx.host.update(ctx.plugin_id, enabled=False)
+            transport.on_exit = lambda: ctx.host._instance_exited(ctx.plugin_id,
+                ctx.identity['instance'], ctx.identity['generation'])
             ctx.defer(transport.close)
             transport.start()
             for service, methods in manifest['services'].items():
