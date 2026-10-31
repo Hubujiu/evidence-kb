@@ -58,7 +58,7 @@ def build_suite(dsn, output):
             self.assertTrue(self.platform.search(self.actor, self.kb, 'ALPHA')['hits'])
             self.assertTrue(all(r['status'] == 'COMPLETE' for r in self.platform.build_status(self.actor,self.kb,build['build_id'])['embedding_batches']))
 
-        def test_resume_rejects_changed_search_dependencies_before_embedding(self):
+        def test_changed_search_dependency_rejects_resume_without_new_embedding(self):
             with self.assertRaises(PlatformError):
                 self.platform.stage(self.actor, self.kb, ['hybrid'])
             build = self.latest()
@@ -66,7 +66,7 @@ def build_suite(dsn, output):
                 conn.execute("UPDATE embedding_jobs SET retry_at=clock_timestamp() WHERE status='RETRY'")
                 conn.execute("UPDATE builds SET inputs=jsonb_set(inputs, '{search_dependencies,files,postgres_search.py}', "
                              "to_jsonb(%s::text)) WHERE build_id=%s",
-                             ('changed-search-implementation', build['build_id']))
+                             ('0' * 64, build['build_id']))
             before = list(self.calls)
             self.provider.fail = False
             with self.assertRaises(PlatformError) as raised:
