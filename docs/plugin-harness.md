@@ -1,5 +1,7 @@
 # Rust 插件宿主与 Agent loop
 
+模型能力与配置见 [模型服务](model-services.md)。共享注册表服从本页的 Rust 生命周期和租约约束。
+
 `rust/plugin-runtime` 是根应用的唯一生命周期权威。来源基线、运行状态和行为差异见 [Rust 插件运行时](plugin-runtime.md)。Python 保存业务对象并执行 Rust 派发的动作，既有算法和物理请求账本继续复用。
 
 ## 当前边界

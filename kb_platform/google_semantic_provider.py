@@ -173,9 +173,10 @@ class GoogleSemanticProvider:
         try:
             self.ledger.reserve(request_id, reserved, "google_canonical_" + task, require_settled=True)
         except ValueError as exc:
-            if str(exc) in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
-                            'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
-                raise EmbeddingCallError(ModelPreflightError(str(exc))) from exc
+            reason = self.embedding_preflight(request_id, exc)
+            if reason in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
+                          'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
+                raise EmbeddingCallError(ModelPreflightError(reason)) from exc
             raise
         usage, response_received, started, issued_before = None, False, False, None
         try:
@@ -263,6 +264,7 @@ class GoogleSemanticProvider:
         diagnostics = {
             'Formatted input exceeds conservative native token admission; no truncation': 'EMBEDDING_INPUT_TOO_LARGE',
             'Unresolved physical outcome requires inspection before another embedding request': 'UNRESOLVED_PHYSICAL_REQUEST',
+            'UNRESOLVED_PHYSICAL_REQUEST': 'UNRESOLVED_PHYSICAL_REQUEST',
             'BUDGET_INSUFFICIENT': 'BUDGET_INSUFFICIENT',
             'BUDGET_PRODUCER_BUSY': 'BUDGET_PRODUCER_BUSY',
             'BUDGET_PRODUCER_SEALED': 'BUDGET_PRODUCER_SEALED',
