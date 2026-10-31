@@ -50,15 +50,29 @@ def build_suite(dsn, output):
             self.assertEqual('STAGING', build['status'])
             with self.platform._tx(self.actor, self.kb) as conn:
                 conn.execute("UPDATE embedding_jobs SET retry_at=clock_timestamp() WHERE status='RETRY'")
-                conn.execute("UPDATE builds SET inputs=jsonb_set(inputs, '{search_dependencies,files,postgres_search.py}', "
-                             "to_jsonb(%s::text)) WHERE build_id=%s",
-                             ('ce616199541d736792c7cf8e1d8b73b439eca5eaeeb868c00e495b5c5a745ae8', build['build_id']))
             self.provider.fail = False
             self.platform.resume_build(self.actor, self.kb, build['build_id'])
             self.assertEqual(1, self.calls.count(self.calls[0]))
             self.platform.publish(self.actor, self.kb, build['build_id'])
             self.assertTrue(self.platform.search(self.actor, self.kb, 'ALPHA')['hits'])
             self.assertTrue(all(r['status'] == 'COMPLETE' for r in self.platform.build_status(self.actor,self.kb,build['build_id'])['embedding_batches']))
+
+        def test_changed_search_dependency_rejects_resume_without_new_embedding(self):
+            with self.assertRaises(PlatformError):
+                self.platform.stage(self.actor, self.kb, ['hybrid'])
+            build = self.latest()
+            with self.platform._tx(self.actor, self.kb) as conn:
+                conn.execute("UPDATE embedding_jobs SET retry_at=clock_timestamp() WHERE status='RETRY'")
+                conn.execute("UPDATE builds SET inputs=jsonb_set(inputs, '{search_dependencies,files,postgres_search.py}', "
+                             "to_jsonb(%s::text)) WHERE build_id=%s",
+                             ('0' * 64, build['build_id']))
+            before = list(self.calls)
+            self.provider.fail = False
+            with self.assertRaises(PlatformError) as raised:
+                self.platform.resume_build(self.actor, self.kb, build['build_id'])
+            self.assertEqual(raised.exception.code, 'STALE_BUILD')
+            self.assertEqual(self.calls, before)
+            self.assertEqual(self.latest()['status'], 'STAGING')
 
         def test_crash_after_search_commit_resumes_without_rebuilding(self):
             original = self.platform.backend.stage
