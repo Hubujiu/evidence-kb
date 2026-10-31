@@ -15,7 +15,7 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 
 `uv run` 让配置中的 `python` 使用项目环境。也可以直接启动 `target/debug/evidence-host.exe`，通过 `--worker` 指定 `.venv/Scripts/python.exe` 的绝对路径。Linux/macOS 可执行文件没有 `.exe`。
 
-在另一终端创建 `.local/api.stop` 请求正常关停；再次启动前移除旧标记。宿主监督启动、协议写入、关停与子进程退出。启动默认上限 30 秒，关停默认上限 10 秒；HTTP 长期运行本身没有总时限。超时和清理失败返回非零退出码，输出未完成根状态，不自动重放业务请求。强制终止进程不等于完成业务清理。
+在另一终端创建 `.local/api.stop` 请求正常关停；再次启动前移除旧标记。Unix 入口也将 Ctrl+C（SIGINT）和 SIGTERM 转为同一停止事件，依次执行应用 stop、等待 run 与 close、回收 worker 进程组；关停超时时，宿主继续存活并强制回收该组，返回非零退出码。宿主监督启动、协议写入、关停与子进程退出。启动默认上限 30 秒，关停默认上限 10 秒；HTTP 长期运行本身没有总时限。超时和清理失败返回非零退出码，输出未完成根状态，不自动重放业务请求。强制终止进程不等于完成业务清理。
 
 宿主拥有 worker 及其后代的进程生命周期。Windows 在恢复挂起的 worker 前将它加入关闭时终止的 Job Object；Unix 在创建 worker 时建立专属进程组。正常协议关停后或协议失败、超时时，宿主清理该组，避免残留插件进程。Unix 在清理进程组前保留已退出 leader 的身份，避免 PID 复用导致误终止。此机制不阻止可信插件刻意脱离进程组，也不替代业务资源的正常清理。
 

@@ -292,6 +292,33 @@ def cancellation(config):
     return Cancellation(config)
 
 
+class SignalApplication(Fixture):
+    def __init__(self, config):
+        super().__init__(config)
+        self.stopping = Event()
+
+    def run(self):
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.record('running', worker=os.getpid(), descendant=child.pid)
+        self.stopping.wait(30)
+        return {'stopped': self.stopping.is_set()}
+
+    def stop(self):
+        self.record('stop')
+        self.stopping.set()
+
+    def close(self):
+        self.record('closing')
+        if self.config.get('hang_close'):
+            Event().wait(30)
+        super().close()
+
+
+def signal_application(config):
+    return SignalApplication(config)
+
+
 def knowledge(config):
     return Knowledge(config)
 
