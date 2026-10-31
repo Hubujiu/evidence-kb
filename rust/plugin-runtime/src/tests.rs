@@ -59,6 +59,44 @@ fn inspect(runtime: &mut Coordinator, host: u64) -> Value {
 }
 
 #[test]
+fn exit_notification_ignores_old_generation_and_draining_replacement() {
+    let mut runtime = Coordinator::default();
+    let host = create(&mut runtime, vec![plugin("process", &["echo"], &[])], None);
+    let old = poll(&mut runtime, host).remove(0);
+    complete(&mut runtime, &old, "ok", &["echo"]);
+    request(
+        &mut runtime,
+        "update",
+        json!({"host":host,"plugin":"process","config":{"version":2}}),
+    )
+    .unwrap();
+    let notice = json!({"host":host,"plugin":"process","instance":old["instance"],"generation":old["generation"]});
+    assert_eq!(
+        request(&mut runtime, "instance_exited", notice.clone()).unwrap()["accepted"],
+        false
+    );
+    let cleanup = poll(&mut runtime, host).remove(0);
+    assert_eq!(cleanup["kind"], "cleanup");
+    complete(&mut runtime, &cleanup, "ok", &[]);
+    let new = poll(&mut runtime, host).remove(0);
+    assert_eq!(new["kind"], "init");
+    complete(&mut runtime, &new, "ok", &["echo"]);
+    assert_eq!(
+        request(&mut runtime, "instance_exited", notice).unwrap()["accepted"],
+        false
+    );
+    assert_eq!(
+        inspect(&mut runtime, host)["instances"][0]["desired"],
+        "enabled"
+    );
+    assert_eq!(request(&mut runtime, "instance_exited", json!({"host":host,"plugin":"process","instance":new["instance"],"generation":new["generation"]})).unwrap()["accepted"], true);
+    assert_eq!(
+        inspect(&mut runtime, host)["instances"][0]["desired"],
+        "disabled"
+    );
+}
+
+#[test]
 fn strict_validation_rejects_invalid_graphs_without_creating_instances() {
     let mut runtime = Coordinator::default();
     for (plugins, code) in [
