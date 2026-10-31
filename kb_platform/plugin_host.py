@@ -458,31 +458,36 @@ class PluginHost:
                 raise PluginError('INVALID_CALL_TIMEOUT')
             now = _advance_clock(self.id)
             deadline = now + max(1, int(timeout * 1000))
-        authority = self._authority()
-        action = native_call('runtime_invoke', host=self.id, registration=binding['registration'],
-            method=method, parent_lease=authority.identity if authority else None, deadline=deadline)
-        deadline = action['deadline']
-        invocation = _Lease(action['lease'], current_thread(), operation=action['operation'])
-        signal = Event()
-        with self._lock:
-            self._cancellations[action['operation']] = signal
+        invocation = _Lease(0, current_thread())
+        action = None
         timer = None
-        if deadline is not None:
-            def expire():
-                with self._lock:
-                    if action['operation'] not in self._cancellations:
-                        return
-                    _advance_clock(self.id)
-                    result = native_call('runtime_cancel', host=self.id, operation=action['operation'])
-                    if result['cancelled']:
-                        signal.set()
-            timer = Timer(max(0, deadline / 1000 - monotonic()), expire)
-            timer.daemon = True
-            timer.start()
-        call_token = _current_call.set(MappingProxyType({**action, 'cancel_signal': signal}))
-        token = _leases.set(tuple(item for item in _leases.get() if item[0] != self.id)
-            + ((self.id, invocation),))
+        timer_started = False
+        call_token = token = None
         try:
+            with self._lock:
+                authority = self._authority()
+                action = native_call('runtime_invoke', host=self.id, registration=binding['registration'],
+                    method=method, parent_lease=authority.identity if authority else None, deadline=deadline)
+                invocation.identity, invocation.operation = action['lease'], action['operation']
+                deadline = action['deadline']
+                signal = Event()
+                self._cancellations[action['operation']] = signal
+            if deadline is not None:
+                def expire():
+                    with self._lock:
+                        if action['operation'] not in self._cancellations:
+                            return
+                        _advance_clock(self.id)
+                        result = native_call('runtime_cancel', host=self.id, operation=action['operation'])
+                        if result['cancelled']:
+                            signal.set()
+                timer = Timer(max(0, deadline / 1000 - monotonic()), expire)
+                timer.daemon = True
+                timer.start()
+                timer_started = True
+            call_token = _current_call.set(MappingProxyType({**action, 'cancel_signal': signal}))
+            token = _leases.set(tuple(item for item in _leases.get() if item[0] != self.id)
+                + ((self.id, invocation),))
             result = getattr(self._implementation(binding), method)(*args, **kwargs)
         except BaseException as exc:
             invocation.completion = {'status': 'error', 'error': f'{type(exc).__name__}: {exc}'}
@@ -491,14 +496,20 @@ class PluginHost:
             invocation.completion = {'status': 'ok'}
             return result
         finally:
-            if timer is not None:
-                timer.cancel()
-                timer.join()
-            _current_call.reset(call_token)
-            _leases.reset(token)
-            with self._lock:
-                self._cancellations.pop(action['operation'], None)
-            self._release(invocation)
+            if action is not None:
+                try:
+                    if timer is not None:
+                        timer.cancel()
+                        if timer_started:
+                            timer.join()
+                    if call_token is not None:
+                        _current_call.reset(call_token)
+                    if token is not None:
+                        _leases.reset(token)
+                finally:
+                    with self._lock:
+                        self._cancellations.pop(action['operation'], None)
+                    self._release(invocation)
 
     def call(self, service, method, *args, **kwargs):
         return self.bind(service).call(method, *args, **kwargs)
@@ -616,19 +627,27 @@ class PluginHost:
 
     def update(self, plugin, *, enabled=None, config=None, remove=False):
         self._lifecycle_allowed()
-        if plugin not in self._entries:
-            raise PluginError('unknown_plugin', plugin)
-        spec, prior_config = self._entries[plugin]
-        selected_config = config if config is not None else prior_config
-        configuration_inputs = None
-        if config is not None or not (remove or enabled is False):
-            self._validate_config(spec, selected_config)
-            configuration_inputs = self._configuration_inputs(spec, selected_config)
-        result = native_call('runtime_update', host=self.id, plugin=plugin,
-            enabled=enabled, config=config, remove=remove,
-            configuration_inputs=configuration_inputs)
-        if config is not None:
-            self._entries[plugin] = self._entries[plugin][0], deepcopy(config)
+        selected_config = deepcopy(config)
+        while True:
+            with self._lock:
+                entry = self._entries.get(plugin)
+                if entry is None:
+                    raise PluginError('unknown_plugin', plugin)
+            spec, prior_config = entry
+            configuration_inputs = None
+            if config is not None or not (remove or enabled is False):
+                candidate = selected_config if config is not None else prior_config
+                self._validate_config(spec, candidate)
+                configuration_inputs = self._configuration_inputs(spec, candidate)
+            with self._lock:
+                if self._entries.get(plugin) is not entry:
+                    continue
+                result = native_call('runtime_update', host=self.id, plugin=plugin,
+                    enabled=enabled, config=selected_config, remove=remove,
+                    configuration_inputs=configuration_inputs)
+                if config is not None:
+                    self._entries[plugin] = spec, selected_config
+                break
         self._raise_failures(self._pump(), 'Plugin update did not finish')
         return {**result, 'runtime': self.inspect()}
 
