@@ -10,7 +10,6 @@ class TerminalContractError(ValueError):
 
 
 class ModelPreflightError(ValueError):
-
     model_sent = False
 
     def __init__(self, code):

@@ -14,12 +14,15 @@ from .planning_references import (bind_planning_schema, planning_bindings, proje
 
 
 class KnowledgeModelCalls:
-    def call(self, role, system, schema, validator, question=None, evidence_override=None):
+    def call(self, role, system, schema, validator, question=None, evidence_override=None, *, model=None,
+             rerank_payload=None):
         self.check_execution()
+        selected_model = self.service.model if model is None else model
         if question is None:
             question = self.message
         if role in {"decision", "retrieval", "rerank"} and (
-            not self.call_budget.can_explore(self.trace["calls"])
+            not self.call_budget.can_explore(self.trace["calls"], max_attempts=
+                getattr(getattr(selected_model, 'provider', None), 'max_attempts', 1))
         ):
             raise PlatformError("AGENT_BUDGET_EXHAUSTED", "Answer and verification budget reserved", 409)
         if (
@@ -81,7 +84,8 @@ class KnowledgeModelCalls:
         if planning:
             system += '\nPlanner references are call-local short handles (E1, E2, ...). Use only the current citation_ids enum; never copy or combine raw source/span identifiers. Handles are resolved by the application before tools execute. They do not carry across calls. answer/clarify need no citation_ids; the later answer role selects its own citations.'
         context = self.service.context
-        prepared = context.prepare(
+        prepared = context.prepare_rerank(system + '\n' + schema_instruction(wire_schema), evidence,
+            rerank_payload) if rerank_payload is not None else context.prepare(
             role,
             system + "\n" + schema_instruction(wire_schema),
             project_references(projection_state, aliases) if planning else projection_state,
@@ -97,6 +101,16 @@ class KnowledgeModelCalls:
             item["citation_id"]: item.get("text", "") for item in prepared.projection["evidence"]
         }
         self.model_user_statements[role] = _visible_user_statements(prepared.projection)
+        output_validator = validator
+        if rerank_payload is not None:
+            from .reranking import validate_coverage
+
+            sources = {item['ref']: item['text'] for item in prepared.projection['evidence']}
+
+            def output_validator(value):
+                validator(value)
+                if 'requirements' in value:
+                    validate_coverage(value['requirements'], sources)
         history_compacted = bool(prepared.projection.get("omitted_event_refs"))
         if history_compacted and (not self.config["compact"]):
             raise PlatformError(
@@ -145,7 +159,7 @@ class KnowledgeModelCalls:
                     }
                 )
             self.check_execution()
-            envelope = self.service.model.complete(
+            envelope = selected_model.complete(
                 prepared.messages,
                 role=role,
                 schema=wire_schema,
@@ -160,7 +174,8 @@ class KnowledgeModelCalls:
                     - (time.perf_counter() - self.started),
                 },
                 output_limit=self.service.context_policy.output_reserve,
-                validator=(lambda value: validator(resolve_planning_decision(value, aliases))) if planning else validator,
+                validator=(lambda value: validator(resolve_planning_decision(value, aliases)))
+                if planning else output_validator,
             )
         except Exception as exc:
             failed = {
@@ -211,7 +226,8 @@ class KnowledgeModelCalls:
                     }
                 ):
                     try:
-                        return self.call(role, repair_system, schema, validator, question, evidence_override)
+                        return self.call(role, repair_system, schema, validator, question, evidence_override,
+                                         model=selected_model, rerank_payload=rerank_payload)
                     finally:
                         repair["new_call_id"] = self.trace["calls"][-1]["call_id"]
             raise

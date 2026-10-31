@@ -1,24 +1,15 @@
 from __future__ import annotations
 
-import base64
-from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
-import json
 import math
-import os
 from pathlib import Path
-import subprocess
-import sys
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
-import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from .session_identity import Actor as Actor, PlatformError as PlatformError
 
-from .search import OpenSearch, SearchUnavailable, TIE_BREAK_FIELDS, content_order, QUERY_PROTOCOL
-from .storage import OriginalStore
+from .search import SearchUnavailable, TIE_BREAK_FIELDS, content_order, QUERY_PROTOCOL
 from .embeddings import EmbeddingError
 
 
@@ -46,61 +37,17 @@ def _policy(value: dict | None) -> dict:
     return result
 
 
-def _parse(data: bytes, filename: str, policy: dict) -> dict:
-    if len(data) <= 64 * 1024 and Path(filename).suffix.lower() in {'.md', '.txt'}:
-        try:
-            from .documents import parse_document
-
-            return parse_document(data, filename, policy)
-        except Exception as exc:
-            raise PlatformError('PARSE_FAILED', 'Document parsing failed', 422) from exc
-    code = ('import base64,json,sys; from kb_platform.documents import parse_document; '
-            'x=json.load(sys.stdin); '
-            'print(json.dumps(parse_document(base64.b64decode(x["data"]),x["filename"],x["policy"])))')
-    payload = json.dumps({'data': base64.b64encode(data).decode(), 'filename': filename, 'policy': policy})
-    try:
-        timeout = max(1, min(3600, float(os.environ.get('EVIDENCE_KB_PARSE_TIMEOUT_SECONDS', '45'))))
-        result = subprocess.run([sys.executable, '-c', code], input=payload, capture_output=True,
-                                encoding='utf-8', timeout=timeout, cwd=Path(__file__).resolve().parent.parent)
-    except subprocess.TimeoutExpired as exc:
-        raise PlatformError('PARSE_TIMEOUT', 'Document parsing exceeded its configured timeout', 422) from exc
-    if result.returncode:
-        raise PlatformError('PARSE_FAILED', 'Document parsing failed', 422)
-    try:
-        return json.loads(result.stdout)
-    except ValueError as exc:
-        raise PlatformError('PARSE_FAILED', 'Document parser returned invalid output', 422) from exc
-
-
 class Platform:
-    def __init__(self, dsn: str, search_url: str, storage_root, embedding_provider=None, ocr_client=None,
-                 *, search_backend=None):
-        self.dsn = dsn
-        import os
-        choice = search_backend or os.getenv('KB_SEARCH_BACKEND', 'postgres')
-        if choice not in ('embedded', 'opensearch', 'postgres'):
-            raise ValueError('Unknown search backend')
-        if choice == 'postgres':
-            from .postgres_search import PostgresSearch
-            self.backend = PostgresSearch(dsn)
-        elif choice == 'embedded':
-            from .embedded_search import EmbeddedSearch
-            self.backend = EmbeddedSearch(Path(storage_root) / '.search-indexes')
-        else:
-            self.backend = OpenSearch(search_url)
-        self.store = OriginalStore(storage_root)
-        self.embedding_provider = embedding_provider
-        self.ocr_client = ocr_client
+    def __init__(self, *, repository, search, store, parser, embedding_jobs,
+                 embedding_provider=None, ocr_client=None):
+        self.repository = repository
+        self.dsn = repository.dsn
+        self.backend, self.store, self.parser = search, store, parser
+        self.embedding_jobs = embedding_jobs
+        self.embedding_provider, self.ocr_client = embedding_provider, ocr_client
 
-    @contextmanager
     def _tx(self, actor: Actor, kb_id: str | None = None):
-        try:
-            with psycopg.connect(self.dsn, row_factory=dict_row, connect_timeout=5) as conn:
-                conn.execute("SELECT set_config('app.tenant_id', %s, true), set_config('app.kb_id', %s, true)",
-                             (actor.tenant_id, kb_id or ''))
-                yield conn
-        except psycopg.OperationalError as exc:
-            raise PlatformError('AUTHORITY_UNAVAILABLE', 'Authorization service unavailable', 503) from exc
+        return self.repository.transaction(actor, kb_id)
 
     def _auth(self, conn, actor: Actor, kb_id: str, capability='kb.read') -> dict:
         if not kb_id:
@@ -202,7 +149,7 @@ class Platform:
             parse_authorization = {'principal': f'{actor.tenant_id}:{actor.principal_id}',
                                    'acl_revision': str(self._revision(conn, actor))}
         path, digest = self.store.put(actor.tenant_id, data)
-        document = _parse(data, filename, {**parse_policy, '_parse_authorization': parse_authorization})
+        document = self.parser(data, filename, {**parse_policy, '_parse_authorization': parse_authorization})
         if (self.ocr_client is not None and parse_policy.get('ocr') and
                 self.ocr_client.provider_id in parse_policy['allowed_providers'] and
                 document['status'] in {'PARTIAL', 'BLOCKED'}):
@@ -402,18 +349,17 @@ class Platform:
                 'excluded_vector_source_count': len(config['excluded_vector_source_ids'])}
 
     def build_status(self, actor, kb_id, build_id):
-        from .embedding_jobs import EmbeddingJobs
         with self._tx(actor, kb_id) as conn:
             self._auth(conn, actor, kb_id, 'kb.manage')
             row = conn.execute('SELECT build_id,status,unit_count FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
                                (actor.tenant_id, kb_id, build_id)).fetchone()
             if row is None:
                 _deny()
-        return {**row, 'embedding_batches': EmbeddingJobs(self.dsn).status(actor.tenant_id, kb_id, build_id)}
+        return {**row, 'embedding_batches': self.embedding_jobs.status(actor.tenant_id, kb_id, build_id)}
 
     def resume_build(self, actor, kb_id, build_id):
         from hashlib import sha256
-        from .embedding_jobs import EmbeddingJobs, EmbeddingJobError
+        from .embedding_jobs import EmbeddingJobError
         from .search import backend_dependencies
         from . import delivery_units, retrieval_expansion
 
@@ -470,7 +416,7 @@ class Platform:
                 acl_revision=str(revision), sources=[dict(source_id=r['source_id'], source_version_id=r['source_version_id'],
                 parse_snapshot_id=r['parse_snapshot_id'], source_text_sha256=sha256(
                     '\n'.join(e['raw_text'] for e in r['document']['elements']).encode()).hexdigest()) for r in rows])
-            jobs = EmbeddingJobs(self.dsn)
+            jobs = self.embedding_jobs
             jobs.reconcile(actor.tenant_id, kb_id, build_id, self.embedding_provider, authorize)
             try:
                 encoded = jobs.run(actor.tenant_id, kb_id, build_id, self.embedding_provider, eligible, authorize, context)

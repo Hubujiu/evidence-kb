@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from kb_platform.knowledge_service import KnowledgeService as AgentService
+from .product_fixture import knowledge_service as AgentService
 from kb_platform.agent_context import ContextManager, ContextPolicy
 from kb_platform.agent_model import CompletionEnvelope
 from kb_platform.agent_schema import compile_schema, validate_output

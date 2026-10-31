@@ -8,7 +8,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from kb_platform.core import Platform
+from kb_platform.application_composition import create_platform
 from kb_platform.delivery_units import indexed_elements
 from kb_platform.documents import parse_native_document
 from kb_platform.rag_testing.contracts import Plan
@@ -82,7 +82,8 @@ def main(argv=None):
                       timeout=args.timeout, trust_env=False) as client:
         if args.command in ('prepare', 'rebind'):
             settings = Settings.from_environment()
-            platform = Platform(settings.dsn, settings.search_url, args.storage_root)
+            platform = create_platform(Settings(settings.dsn, settings.search_url, args.storage_root,
+                                                settings.identities_file, settings.search_backend))
             if args.command == 'rebind':
                 prepared = rebind_http(client, args.prepared, args.output, platform=platform,
                     expected_tenant_id=args.expected_tenant, physical_directory=args.physical_records)

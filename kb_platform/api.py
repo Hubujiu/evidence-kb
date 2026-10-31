@@ -1,4 +1,3 @@
-from contextlib import ExitStack
 import html
 import json
 import os
@@ -60,61 +59,30 @@ class TableRequest(RequestModel):
     filters: list | None = None
 
 
-def create_app(settings: Settings | None = None, platform: Platform | None = None, *, agent_factory=None, model_clients=None):
-    with ExitStack() as cleanup:
-        app = _create_app(settings, platform, agent_factory=agent_factory,
-                          model_clients=model_clients, cleanup=cleanup)
-        resources = cleanup.pop_all()
-        app.router.add_event_handler('shutdown', resources.close)
-        return app
+def create_app(settings: Settings | None = None, platform: Platform | None = None, *,
+               agent_factory=None, model_clients=None, profile=None, extra_plugins=()):
+    from .application_composition import create_root_application
 
-
-def _create_app(settings, platform, *, agent_factory, model_clients, cleanup):
-    settings = settings or Settings.from_environment()
+    settings = settings if settings is not None else Settings.from_environment()
     identities = settings.identities()
-    provider, luna, research, models = None, None, None, None
-    if platform is None and os.getenv('KB_REMOTE_MODELS') == '1':
-        from .remote import GoogleEmbeddingProvider, LunaClient
-
-        config_path = os.getenv('KB_PROVIDERS_CONFIG', '.local/providers.json')
-        from .model_configuration import from_clients, from_config, EmbeddingView, OCRView
-        model_config = os.getenv('KB_MODELS_CONFIG')
-        if model_config:
-            models = from_config(model_config)
-            cleanup.callback(models.close)
-            configured = json.loads(Path(model_config).read_text('utf-8'))
-            if 'embedding' in models.catalog():
-                provider = EmbeddingView(models, dimension=configured['models']['embedding']['dimension'])
-            if 'ocr' in models.catalog():
-                luna = OCRView(models, 'ocr')
-        else:
-            if model_clients is None:
-                provider = GoogleEmbeddingProvider(config_path)
-                try:
-                    raw_luna = LunaClient(os.getenv('KB_AGENT_PROVIDERS_CONFIG') or config_path)
-                except BaseException:
-                    provider.close()
-                    raise
-            else:
-                raw_luna, provider = model_clients
-            if model_clients is None:
-                cleanup.callback(provider.close)
-                cleanup.callback(raw_luna.close)
-            models = from_clients(raw_luna, provider)
-            cleanup.callback(models.close)
-            luna = OCRView(models, manifest=raw_luna.manifest, stats=raw_luna.snapshot_stats)
-            provider = EmbeddingView(models, dimension=provider.dimension, manifest=provider.manifest)
-    service = platform or Platform(settings.dsn, settings.search_url, settings.storage_root, provider, luna,
-                                   search_backend=settings.search_backend)
-    if models is not None and 'generation' in models.catalog():
-        from .research import ResearchService
-
-        research = ResearchService(service, luna, provider, root=os.getenv('KB_RESEARCH_ROOT', '.local/research-v4e-pruned'))
+    composition = create_root_application(settings, platform=platform, profile=profile,
+        model_clients=model_clients, service_factory=agent_factory, extra_plugins=extra_plugins,
+        remote=False if platform is not None else None)
+    service, research, models = composition.platform, composition.research, composition.models
+    provider = service.embedding_provider if service is not None else None
+    luna = service.ocr_client if service is not None else None
     app = FastAPI(title="文档证据与单库检索", version="0.2.0")
-    app.state.models = models
+    app.state.platform, app.state.research, app.state.models = service, research, models
     app.state.model_clients = model_clients
-    app.state.platform = service
-    app.state.research = research
+    app.state.root_plugins = composition.host
+    app.router.add_event_handler('shutdown', composition.close)
+    if service is None:
+        @app.get('/health')
+        def native_health():
+            return {'status': 'running', 'profile': 'native', 'capabilities': []}
+
+        app.state.agent, app.state.agent_plugins = None, composition.host
+        return app
     bearer = HTTPBearer(auto_error=False)
 
     def identity(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
@@ -175,8 +143,8 @@ def _create_app(settings, platform, *, agent_factory, model_clients, cleanup):
             "remote_configured": {'luna': luna.manifest if luna else None,
                                   'embedding': provider.manifest if provider else None} if models else None,
             "scope_only": False,
-            "configured_requires_verification": ((["ocr_model"] if luna else [])
-                + (["dense", "hybrid"] if provider else []) + (["rerank"] if research else [])),
+            "configured_requires_verification": (["ocr_model"] if luna else []) +
+                (["dense", "hybrid"] if provider else []) + (["rerank"] if research else []),
             "not_run": None if research else ["ocr_model", "rerank", "visual"],
             "not_implemented": ["visual"],
             "availability_note": 'Provider configuration does not prove a successful call; each scope needs its own build.',
@@ -304,13 +272,8 @@ def _create_app(settings, platform, *, agent_factory, model_clients, cleanup):
 
     from .agent_api import install_agent_routes
 
-    install_agent_routes(app, service, research, identity, service_factory=agent_factory)
-    if app.state.agent_plugins is not None:
-        cleanup.callback(app.state.agent_plugins.close)
-    if research is not None:
-        from .model_configuration import TextView
-
-        research.luna = TextView(models, app.state.agent.model)
+    install_agent_routes(app, service, research, identity, service_factory=agent_factory,
+                         application=composition.application, host=composition.host)
     return app
 
 
