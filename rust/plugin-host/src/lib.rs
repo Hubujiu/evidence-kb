@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 
 mod process_tree;
 use process_tree::ProcessTree;
+mod shutdown_signals;
+pub use shutdown_signals::ShutdownSignals;
 
 pub const PROTOCOL: &str = "plugin-host/1";
 pub const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024 + 64 * 1024;
@@ -165,6 +167,7 @@ struct Worker {
     next_write: u64,
     write_timeout: Duration,
     stop_file: Option<PathBuf>,
+    watch_stop: bool,
 }
 
 impl Worker {
@@ -231,6 +234,7 @@ impl Worker {
             next_write: 0,
             write_timeout: Duration::from_millis(profile.shutdown_timeout_ms),
             stop_file: None,
+            watch_stop: false,
         })
     }
 
@@ -253,7 +257,10 @@ impl Worker {
 
     fn event(&mut self, deadline: Option<Instant>) -> Result<Event, HostError> {
         loop {
-            if self.stop_file.as_ref().is_some_and(|path| path.exists()) {
+            if self.watch_stop
+                && (shutdown_signals::take_stop_request()
+                    || self.stop_file.as_ref().is_some_and(|path| path.exists()))
+            {
                 self.stop_file.take();
                 return Ok(Event::Stop);
             }
@@ -375,6 +382,7 @@ impl Host {
                 json!({"status":"ready","runtime_owner_pid":std::process::id(),"roots":roots})
             );
             worker.stop_file = profile.stop_file;
+            worker.watch_stop = true;
             worker.send(
                 json!({"protocol":PROTOCOL,"kind":"request","id":3,"method":"run","params":{}}),
             )?;
