@@ -138,14 +138,12 @@ class OpenAICompatibleAdapter:
             temporary.write_text(json.dumps(record), encoding='utf-8')
             temporary.replace(target)
 
-        save()
         try:
             self.ledger.reserve(identity, self.reservation, category=category, require_settled=True)
         except BaseException as exc:
-            record['status'] = 'REJECTED'
-            save()
             if isinstance(exc, ValueError) and str(exc) in {
-                    'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST'}:
+                    'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
+                    'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
                 raise ModelPreflightError(str(exc)) from exc
             raise
         response, sending = None, False
@@ -165,18 +163,24 @@ class OpenAICompatibleAdapter:
                 self.admission.block(identity, payload_sha256=payload_hash, category=category)
             save()
         except BaseException as exc:
-            if response is None:
-                known_unsent = not sending or isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
-                self.ledger.finish(identity, status='ERROR' if known_unsent else 'UNKNOWN',
-                                   usage=dict.fromkeys(self.reservation, 0) if known_unsent else None,
-                                   diagnostic=type(exc).__name__)
-                record.update(status='ERROR' if known_unsent else 'UNKNOWN', error=type(exc).__name__)
-                save()
-            if not sending:
-                raise
-            error = RemoteModelError('PROVIDER_TRANSPORT_ERROR' if response is None and known_unsent else
-                                     'PROVIDER_OUTCOME_UNKNOWN' if response is None else 'PROVIDER_LEDGER_ERROR')
-            error.model_sent = True
+            known_unsent = response is None and (
+                not sending or isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)))
+            code = ('PROVIDER_TRANSPORT_ERROR' if known_unsent else
+                    'PROVIDER_OUTCOME_UNKNOWN' if response is None else 'PROVIDER_LEDGER_ERROR')
+            try:
+                if response is None:
+                    self.ledger.finish(identity, status='ERROR' if known_unsent else 'UNKNOWN',
+                                       usage=dict.fromkeys(self.reservation, 0) if known_unsent else None,
+                                       diagnostic=type(exc).__name__)
+                    record.update(status='ERROR' if known_unsent else 'UNKNOWN', error=type(exc).__name__)
+                    save()
+            except BaseException as recording_error:
+                exc, code = recording_error, 'PROVIDER_LEDGER_ERROR'
+            else:
+                if not sending:
+                    raise
+            error = RemoteModelError(code)
+            error.model_sent = not known_unsent
             error.physical_request_id = identity
             raise error from exc
         try:
