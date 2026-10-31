@@ -19,6 +19,14 @@ from .budget import BudgetLedger
 
 
 class ModelServiceContracts(unittest.TestCase):
+    def configuration(self, routes):
+        return {'version': 1, 'budget': {'path': str(self.root / 'api-budget.sqlite3'), 'caps': {'requests': 30}},
+            'providers': {'fixture': {'adapter': 'openai-compatible', 'base_url': 'https://fixture.invalid/v1',
+                                       'api_key_env': 'SYNTH_KEY'}},
+            'models': {route: {'provider': 'fixture', 'model': 'fixture', 'reservation': {'requests': 1},
+                'capabilities': ['chat' if route == 'generation' else route],
+                **({'dimension': 2} if route == 'embedding' else {})} for route in routes}}
+
     def setUp(self):
         directory = TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -440,16 +448,17 @@ class ModelServiceContracts(unittest.TestCase):
         from kb_platform.core import Actor
 
         config_path = self.root / 'application.json'
-        config_path.write_text(json.dumps({'models': {'generation': {}}}))
+        config_path.write_text(json.dumps(self.configuration(('generation',))))
         models = ModelService()
         models.register('generation', self.adapter({}))
         settings = SimpleNamespace(identities=lambda: {}, dsn='', search_url='', storage_root=self.root,
                                    search_backend='postgres')
         fake_platform = SimpleNamespace(embedding_provider=None, ocr_client=None)
         with patch.dict('os.environ', {'KB_DEFER_DEFAULT_APP': '1', 'KB_REMOTE_MODELS': '1',
-                        'KB_MODELS_CONFIG': str(config_path), 'KB_AGENT_ROOT': str(self.root / 'app-sessions')}):
+                        'KB_MODELS_CONFIG': str(config_path), 'KB_AGENT_ROOT': str(self.root / 'app-sessions'),
+                        'SYNTH_KEY': 'synthetic'}):
             from kb_platform.api import create_app
-            with patch('kb_platform.api.Platform', return_value=fake_platform), \
+            with patch('kb_platform.core.Platform', return_value=fake_platform), \
                     patch('kb_platform.model_configuration.from_config', return_value=models):
                 app = create_app(settings, agent_factory=_KnowledgeFixture)
         try:
@@ -457,6 +466,8 @@ class ModelServiceContracts(unittest.TestCase):
             result = endpoint(Actor('t', 'u'))
             self.assertEqual(result['remote_configured'], {'luna': None, 'embedding': None})
             self.assertIs(app.state.models, models)
+            self.assertIs(app.state.root_plugins, app.state.agent_plugins)
+            self.assertIs(app.state.root_plugins.service('models'), models)
             self.assertEqual(app.state.agent_plugins.service('knowledge.gateway').provider_id, 'vendor-a')
             self.assertIs(app.state.research.luna.structured, app.state.agent.model)
         finally:
@@ -600,15 +611,16 @@ class ModelServiceContracts(unittest.TestCase):
         for routes in [('embedding',), ('ocr',), ('embedding', 'ocr')]:
             with self.subTest(routes=routes):
                 models = ModelService()
-                config_path.write_text(json.dumps({'models': {route: {'dimension': 2} for route in routes}}))
+                config_path.write_text(json.dumps(self.configuration(routes)))
                 for route in routes:
                     models.register(route, self.adapter({}, capabilities=[C(route)]))
-                def platform(dsn, search, storage, embedding, ocr, **kwargs):
-                    return SimpleNamespace(embedding_provider=embedding, ocr_client=ocr)
+                def platform(**ports):
+                    return SimpleNamespace(embedding_provider=ports["embedding_provider"],
+                                           ocr_client=ports["ocr_client"])
                 with patch.dict('os.environ', {'KB_DEFER_DEFAULT_APP': '1', 'KB_REMOTE_MODELS': '1',
-                                               'KB_MODELS_CONFIG': str(config_path)}):
+                                               'KB_MODELS_CONFIG': str(config_path), 'SYNTH_KEY': 'synthetic'}):
                     from kb_platform.api import create_app
-                    with patch('kb_platform.api.Platform', side_effect=platform), \
+                    with patch('kb_platform.core.Platform', side_effect=platform), \
                             patch('kb_platform.model_configuration.from_config', return_value=models), \
                             patch('kb_platform.remote.LunaClient', side_effect=AssertionError('unexpected generation')):
                         app = create_app(settings)
@@ -625,3 +637,121 @@ class ModelServiceContracts(unittest.TestCase):
                     for shutdown in app.router.on_shutdown:
                         shutdown()
                 self.assertEqual(models.catalog(), {})
+
+
+class ModelRouteLifecycleContracts(unittest.TestCase):
+    @staticmethod
+    def adapter(*, close=None):
+        class Adapter:
+            info = ModelInfo('local', 'echo', frozenset({C.CHAT}))
+
+            def invoke(self, request):
+                return ModelResult('local', 'echo', C.CHAT, {'text': 'ok'})
+
+        instance = Adapter()
+        if close is not None:
+            instance.close = close
+        return instance
+
+    @staticmethod
+    def request():
+        return ModelRequest(C.CHAT, {'messages': [{'role': 'user', 'content': 'hello'}]})
+
+    def test_same_adapter_re_registration_and_independent_route_keep_identity(self):
+        models = ModelService()
+        adapter = self.adapter()
+        dispose = models.register('generation', adapter)
+        models.register('independent', adapter)
+        old = models.bind('generation', C.CHAT)
+        independent = models.bind('independent', C.CHAT)
+        dispose()
+        models.register('generation', adapter)
+        current = models.bind('generation', C.CHAT)
+        self.assertNotEqual(old.registration_id, current.registration_id)
+        with self.assertRaisesRegex(RuntimeError, 'MODEL_BINDING_CHANGED'):
+            old.invoke(self.request())
+        self.assertEqual(independent.invoke(self.request()).data, {'text': 'ok'})
+        self.assertEqual(current.invoke(self.request()).data, {'text': 'ok'})
+
+    def test_failed_cleanup_remains_visible_and_retry_skips_completed_routes(self):
+        models, closed, failures = ModelService(), [], [True]
+
+        def failing():
+            closed.append('failed')
+            if failures.pop(0) if failures else False:
+                raise RuntimeError('synthetic close failure')
+
+        models.register('failed', self.adapter(close=failing), owned=True)
+        models.register('complete', self.adapter(close=lambda: closed.append('complete')), owned=True)
+        with self.assertRaisesRegex(RuntimeError, 'synthetic close failure'):
+            models.close()
+        state = models.inspect()
+        self.assertEqual(set(state), {'failed'})
+        self.assertEqual(state['failed']['phase'], 'cleanup_failed')
+        self.assertEqual(state['failed']['cleanup_error'], 'RuntimeError')
+        with self.assertRaisesRegex(RuntimeError, 'MODEL_ROUTE_UNAVAILABLE'):
+            models.invoke('failed', self.request())
+        models.close()
+        self.assertEqual(closed, ['complete', 'failed', 'failed'])
+        self.assertEqual(models.inspect(), {})
+
+    def test_adapter_close_and_owner_lease_run_without_registry_lock(self):
+        from contextlib import contextmanager
+
+        models, observed = ModelService(), []
+
+        def concurrent_inspection():
+            finished = Event()
+            thread = Thread(target=lambda: (models.inspect(), finished.set()), daemon=True)
+            thread.start()
+            self.assertTrue(finished.wait(2), 'callback holds the model registry lock')
+            thread.join(2)
+            observed.append('inspected')
+
+        @contextmanager
+        def ownership():
+            concurrent_inspection()
+            yield
+
+        dispose = models.register('generation', self.adapter(close=concurrent_inspection), owned=True,
+            registration_id=1, owner_identity={'runtime': 7, 'instance': 2, 'generation': 1},
+            owner_lease=ownership)
+        self.assertEqual(models.invoke('generation', self.request()).data, {'text': 'ok'})
+        dispose()
+        self.assertEqual(observed, ['inspected', 'inspected'])
+
+    def test_explicit_registration_identity_cannot_be_reused_after_cleanup(self):
+        models = ModelService()
+        dispose = models.register('generation', self.adapter(), registration_id='fixed')
+        dispose()
+        with self.assertRaisesRegex(ValueError, 'MODEL_REGISTRATION_ID_REUSED'):
+            models.register('generation', self.adapter(), registration_id='fixed')
+
+    def test_runtime_route_plugin_disable_preserves_other_routes_and_registry(self):
+        class Client:
+            provider_id, model = 'local', 'echo'
+
+            def complete_json(self, system, user, **kwargs):
+                return {'value': 1}
+
+        profile = {'version': 1, 'plugins': [
+            {'id': 'models', 'use': 'models.service'}, {'id': 'clients', 'use': 'models.clients'},
+            {'id': 'route-a', 'use': 'models.route.client',
+             'config': {'route': 'a', 'client': 'raw', 'capability': 'chat'}},
+            {'id': 'route-b', 'use': 'models.route.client',
+             'config': {'route': 'b', 'client': 'raw', 'capability': 'chat'}}]}
+        with PluginHost(profile, model_plugins(clients={'raw': Client()})) as host:
+            models = host.service('models')
+            old = models.bind('a', C.OCR)
+            other = models.bind('b', C.OCR)
+            request = ModelRequest(C.OCR, {'media': Media(b'image', 'image/png')})
+            self.assertEqual(old.invoke(request).data, {'value': 1})
+            host.update('route-a', enabled=False)
+            self.assertIs(host.service('models'), models)
+            with self.assertRaisesRegex(RuntimeError, 'MODEL_ROUTE_UNAVAILABLE'):
+                old.invoke(request)
+            self.assertEqual(other.invoke(request).data, {'value': 1})
+            host.update('route-a', enabled=True)
+            with self.assertRaisesRegex(RuntimeError, 'MODEL_BINDING_CHANGED'):
+                old.invoke(request)
+            self.assertNotEqual(models.bind('a', C.OCR).registration_id, old.registration_id)

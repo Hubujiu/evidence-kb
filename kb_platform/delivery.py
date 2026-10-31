@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
@@ -288,6 +289,17 @@ def _serialize_client_sends(provider, lock):
 
 def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
                         app_factory=None, inner_factory=None, budget_batch=None, dependency_probe=None):
+    with ExitStack() as cleanup:
+        app = _create_delivery_app(config_path, providers_path, run_root, app_factory=app_factory,
+                                   dependency_probe=dependency_probe, budget_batch=budget_batch,
+                                   inner_factory=inner_factory, cleanup=cleanup)
+        resources = cleanup.pop_all()
+        app.router.add_event_handler('shutdown', resources.close)
+        return app
+
+
+def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
+                         dependency_probe, budget_batch, inner_factory, cleanup):
     profile = load_profile(config_path, providers_path, run_root)
     batch = load_budget_batch(profile, budget_batch or os.getenv('KB_DELIVERY_BUDGET_BATCH') or None)
     ensure_private_identity(profile)
@@ -302,6 +314,8 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
 
         app_factory = create_app
     from .remote import GoogleEmbeddingProvider
+    from .platform_plugins import OwnedModelClients
+
     if os.getenv('KB_MODELS_CONFIG'):
         raise DeliveryConfigurationError('DELIVERY_REQUIRES_FROZEN_PROVIDER_CONFIG')
     captured = CapturedLuna(profile.provider_path)
@@ -310,12 +324,11 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
     except BaseException:
         captured.close()
         raise
-    try:
-        app = app_factory(settings, model_clients=(captured, embedding))
-    except BaseException:
-        captured.close()
-        embedding.close()
-        raise
+    owned_clients = OwnedModelClients(captured, embedding)
+    cleanup.callback(owned_clients.close_unclaimed)
+    app = app_factory(settings, model_clients=owned_clients)
+    if getattr(app.state, 'root_plugins', None) is not None:
+        cleanup.callback(app.state.root_plugins.close)
     research, agent, platform = app.state.research, app.state.agent, app.state.platform
     if research is None or agent is None or platform.embedding_provider is not research.embedding:
         raise DeliveryConfigurationError('DELIVERY_PROVIDER_WIRING_INVALID')
@@ -423,10 +436,6 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
         response.headers['X-Delivery-Profile'] = profile.config['id']
         return response
 
-    def close_providers():
-        for provider in providers:
-            provider.close()
-    app.router.add_event_handler('shutdown', close_providers)
     manifest = {**profile.public(), 'config_sha256': hashlib.sha256(profile.config_path.read_bytes()).hexdigest(),
                 'provider_config_sha256': hashlib.sha256(profile.provider_path.read_bytes()).hexdigest(),
                 'physical_ledger': str(ledger.path), 'physical_capture_root': str(capture_root),

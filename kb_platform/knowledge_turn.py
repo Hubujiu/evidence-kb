@@ -10,7 +10,7 @@ from .agent_builtin_tools import BuiltinTools
 from .agent_call_budget import CallBudget
 from .agent_work_state import begin_work_state, finish_work_state
 from .core import PlatformError
-from .knowledge_policy import VERSION, CONFIGS, SYSTEM, CLAIM_FIDELITY, _active_evidence_limit, source_policy
+from .knowledge_policy import VERSION, CONFIGS, CLAIM_FIDELITY, _active_evidence_limit, source_policy
 from .knowledge_workflow import PROTOCOL as GRAPH_PROTOCOL
 from .agent_engine import current_execution
 
@@ -122,8 +122,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
         self.call_budget = CallBudget(
             self.execution_limits["max_model_calls"],
             bool(self.config["verify"]),
-            getattr(self.service.model, "max_attempts",
-                    getattr(getattr(self.service.model, "provider", None), "max_attempts", 1)),
+            getattr(getattr(self.service.model, "provider", None), "max_attempts", 1),
         )
         self.scope = session["scope_id"]
         self.started = time.perf_counter()
@@ -252,14 +251,11 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
             self.format_repair_used = False
             self.advanced = advanced_tools(self.config, self.service.gateway)
             turn_gateway = copy(self.service.gateway)
+            selected_reranker = turn_gateway.pipeline_reranker
 
             class BudgetedReranker:
-                provider_id = getattr(self.service.gateway, 'provider_id', 'magpie_luna')
-                manifest = {
-                    "protocol": "agent-same-candidate-rerank/1",
-                    "model": getattr(self.service.model, 'manifest',
-                                     getattr(getattr(self.service.model, "provider", None), "manifest", {})),
-                }
+                provider_id = getattr(selected_reranker, 'provider_id', None)
+                manifest = getattr(selected_reranker, 'manifest', {})
 
                 def rank(inner, query, candidates):
                     ids = [item["citation_id"] for item in candidates]
@@ -267,36 +263,29 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                         return []
                     if len(set(ids)) != len(ids):
                         raise ValueError("DUPLICATE_RERANK_CANDIDATE")
-                    schema = object_schema(
-                        {
-                            "scores": {"type": "array", "minItems": len(ids), "maxItems": len(ids),
-                                       "items": {"type": "number", "minimum": 0, "maximum": 1}}
-                        }
-                    )
+                    self.check_execution()
+                    if not self.call_budget.can_explore(self.trace['calls']):
+                        raise PlatformError('AGENT_BUDGET_EXHAUSTED', 'Answer and verification budget reserved', 409)
 
-                    def validate(value):
-                        if (
-                            not isinstance(value, dict)
-                            or not isinstance(value.get("scores"), list)
-                            or len(value['scores']) != len(ids)
-                        ):
-                            raise ValueError("INVALID_RERANK_OUTPUT")
+                    def complete(model, system, user, purpose):
+                        properties = {'requirements': {'type': 'array', 'items': {'type': 'object'}}}
+                        required = ['requirements']
+                        if purpose != 'rerank_coverage':
+                            properties['scores'] = {
+                                'type': 'array', 'minItems': len(ids), 'maxItems': len(ids),
+                                'items': {'type': 'number', 'minimum': 0, 'maximum': 1}}
+                            required = ['scores']
+                        return self.call('rerank', system, object_schema(properties, required),
+                            lambda value: None, question=query, evidence_override=candidates, model=model,
+                            rerank_payload=json.loads(user))
 
-                    ranked = self.call(
-                        "rerank",
-                        SYSTEM
-                        + "\nScore every provided candidate for relevance to the query. Return only a scores array of numbers in exactly the following candidate order: "
-                        + json.dumps(ids)
-                        + ". Each position maps to that candidate, including irrelevant candidates. Do not return identifiers, reorder candidates, answer the question or invent evidence.",
-                        schema,
-                        validate,
-                        question=query,
-                        evidence_override=candidates,
-                    )
-                    return [{'citation_id': identity, 'score': score}
-                            for identity, score in zip(ids, ranked['scores'], strict=True)]
+                    bind = getattr(selected_reranker, 'bind_turn', None)
+                    reranker = bind(complete) if bind is not None else selected_reranker
+                    ranked = reranker.rank(query, candidates)
+                    self.check_execution()
+                    return ranked
 
-            turn_gateway.pipeline_reranker = BudgetedReranker()
+            turn_gateway.pipeline_reranker = BudgetedReranker() if selected_reranker is not None else None
             if "search_pipeline" in self.advanced and hasattr(turn_gateway, "pipeline_capabilities"):
                 admitted = turn_gateway.pipeline_capabilities(
                     self.actor, self.scope, self.state["source_policy"]

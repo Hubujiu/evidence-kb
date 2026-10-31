@@ -26,8 +26,6 @@ SHARED = frozenset({"contracts", "cache", "budget", "budget_batches", "provider_
 FOUNDATIONS = frozenset({"contracts", "cache", "budget", "budget_batches"})
 EXCLUDED_IMPORTS = frozenset({"output", "outputs", "reports"})
 AGENT_DEPENDENCIES = {
-    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
-    'model_plugins': frozenset({'plugin_host', 'model_configuration', 'remote', 'context_budget'}),
     'agent_provider': frozenset(),
     'model_errors': frozenset(),
     'agent_model': frozenset({'agent_provider', 'context_budget', 'agent_schema', 'model_errors'}),
@@ -38,12 +36,12 @@ AGENT_DEPENDENCIES = {
     'agent_plugins': frozenset({'agent_schema'}),
     'plugin_native': frozenset({'agent_native'}),
     'plugin_host': frozenset({'plugin_native'}),
-    'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
     'harness_sessions': frozenset({'agent_engine', 'agent_plugins', 'session_identity', 'session_store'}),
     'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host', 'session_identity'}),
     'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
                                   'harness_loop', 'plugin_host', 'harness_application', 'harness_context',
-                                  'harness_model', 'context_budget', 'session_store'}),
+                                  'harness_model', 'context_budget', 'session_store', 'plugin_configuration'}),
+    'plugin_configuration': frozenset({'context_budget'}),
     'context_budget': frozenset(),
     'session_identity': frozenset(),
     'session_store': frozenset({'session_identity'}),
@@ -52,7 +50,10 @@ AGENT_DEPENDENCIES = {
     'harness_context': frozenset({'context_budget'}),
     'harness_model': frozenset({'agent_decisions', 'agent_engine', 'agent_model', 'agent_schema', 'context_budget'}),
     'harness_application': frozenset({'harness_sessions'}),
-    'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles', 'model_plugins'}),
+    'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles',
+                                  'model_plugins'}),
+    'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
+    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
     'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),
 }
@@ -60,8 +61,11 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'agent_plugins', 'plugin_native', 'plugin_host', 'harness_sessions',
                            'harness_loop', 'harness_services', 'context_budget', 'session_identity', 'session_store',
                            'plugin_profiles', 'harness_graph', 'harness_context', 'harness_model',
-                           'harness_application', 'harness_profile', 'plugin_process'})
-NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'}, 'agent-harness': {'plugin-runtime', 'serde', 'serde_json'}, 'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
+                           'harness_application', 'harness_profile', 'model_service', 'plugin_process',
+                           'plugin_configuration'})
+NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
+                       'agent-harness': {'plugin-runtime', 'serde', 'serde_json'},
+                       'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
 @dataclass(frozen=True)
@@ -227,7 +231,7 @@ def architecture_violations(root: Path) -> list[str]:
             layer = AGENT_DEPENDENCIES.get(path.stem) if not evaluation else None
             if layer is not None and target.startswith('kb_platform.') and target.split('.')[1] not in layer:
                 reason = 'agent boundary cannot depend on this implementation; inject its port at composition'
-            if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider', 'model_service'}
+            if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider'}
                     and top in {'openai', 'httpx', 'fastapi', 'requests', 'psycopg'}):
                 reason = 'agent contracts and model policy cannot depend on transport or API frameworks'
             if top in EXCLUDED_IMPORTS:
@@ -459,7 +463,12 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=ROOT / ".local/checks" / uuid4().hex)
     parser.add_argument("--worker", choices=("contracts", "scorer"), help=argparse.SUPPRESS)
     parser.add_argument('--contract-shard', type=int, choices=range(4), help=argparse.SUPPRESS)
+    parser.add_argument('--local-integration', action='store_true',
+                        help='Run controlled loopback HTTP/parser/PostgreSQL checks using KB_INTEGRATION_DSN.')
     args = parser.parse_args()
+    integration_dsn = os.environ.get('KB_INTEGRATION_DSN') if args.local_integration else None
+    if args.local_integration and not integration_dsn:
+        parser.error('--local-integration requires KB_INTEGRATION_DSN for a dedicated acceptance database')
     output = args.output.resolve()
     if args.worker:
         return run_worker(args.worker, output, args.contract_shard)
@@ -507,6 +516,15 @@ def main() -> int:
             results.append(run_check('plugin-process-integration',
                 [sys.executable, '-B', '-m', 'kb_platform.rag_testing.plugin_process_integration',
                  '--output', str(output / 'plugin-process-integration')], output, env))
+        if args.local_integration:
+            if native_library is None:
+                results.append(run_check('runtime-integration', [sys.executable, '-c',
+                    'raise RuntimeError("current native build is required for integration")'], output, env))
+            else:
+                integration_env = {**env, 'KB_DSN': integration_dsn}
+                results.append(run_check('runtime-integration',
+                    [sys.executable, '-B', '-m', 'kb_platform.rag_testing.runtime_integration',
+                     '--output', str(output / 'runtime-integration')], output, integration_env))
         results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts"], output, env))
         for kind in ("contracts", "scorer"):
             if kind == "contracts" and native_library is None:
@@ -519,7 +537,10 @@ def main() -> int:
         "checks": [asdict(result) for result in results], "new_model_calls": 0,
         "new_embedding_calls": 0, "new_judge_calls": 0,
         "native_library": str(native_library) if native_library is not None else None,
-        "scope": "offline gates; component checks and scorer controls reported separately"})
+        "controlled_local_integration": args.local_integration,
+        "scope": ("offline gates plus controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
+                  if args.local_integration else
+                  "offline gates; component checks and scorer controls reported separately")})
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1
 

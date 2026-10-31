@@ -24,7 +24,7 @@ def scale_worker(pipe, side, inputs, output, dsn):
         from psycopg.types.json import Jsonb
         from fastapi.testclient import TestClient
         from kb_platform.api import create_app
-        from kb_platform.core import Platform
+        from kb_platform.application_composition import create_platform
         from kb_platform.settings import Settings
 
         suite = Suite.model_validate(read(inputs / "suite.json"))
@@ -36,7 +36,6 @@ def scale_worker(pipe, side, inputs, output, dsn):
         output.mkdir(parents=True, exist_ok=False)
         write_json(identity, {"x" * 40: {"tenant_id": tenant, "principal_id": "reader"}})
         settings = Settings(dsn, "", output / "store", identity, side)
-        platform = Platform(dsn, "", settings.storage_root, search_backend=side)
 
 
         class FrozenProvider:
@@ -47,7 +46,7 @@ def scale_worker(pipe, side, inputs, output, dsn):
                 return by_question[question]
 
         by_question = {c.input.question: queries[c.input.case_id] for c in suite.cases}
-        platform.embedding_provider = FrozenProvider()
+        platform = create_platform(settings, embedding_provider=FrozenProvider())
         with psycopg.connect(dsn) as conn:
             conn.execute("SELECT set_config('app.tenant_id',%s,true)", (tenant,))
             conn.execute("INSERT INTO tenant_state (tenant_id,revision) VALUES (%s,0)", (tenant,))
