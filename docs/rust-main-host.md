@@ -17,6 +17,8 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 
 在另一终端创建 `.local/api.stop` 请求正常关停；再次启动前移除旧标记。宿主监督启动、协议写入、关停与子进程退出。启动默认上限 30 秒，关停默认上限 10 秒；HTTP 长期运行本身没有总时限。超时和清理失败返回非零退出码，输出未完成根状态，不自动重放业务请求。强制终止进程不等于完成业务清理。
 
+宿主拥有 worker 及其后代的进程生命周期。Windows 在恢复挂起的 worker 前将它加入关闭时终止的 Job Object；Unix 在创建 worker 时建立专属进程组。正常协议关停后或协议失败、超时时，宿主清理该组，避免残留插件进程。Unix 在清理进程组前保留已退出 leader 的身份，避免 PID 复用导致误终止。此机制不阻止可信插件刻意脱离进程组，也不替代业务资源的正常清理。
+
 固定交付流程使用 `scripts/start_delivery.ps1`，先构建 `cargo build --release --workspace --locked --offline`。启动器保存 `process.json`、宿主路径和专属停止标记；使用 `scripts/stop_delivery.ps1 -Receipt <process.json>` 关停。既有配置验证、物理预算和提供者账本继续生效。
 
 ## 两种配置
@@ -58,7 +60,7 @@ flowchart TD
 | 层 | 所有权 |
 | --- | --- |
 | `rust/plugin-runtime` | 实例、代次、依赖、作用域、服务注册、租约和清理动作 |
-| `rust/plugin-host` | worker 生命周期、双向管道、帧边界、退出与关停期限；只依赖 Serde |
+| `rust/plugin-host` | worker 进程树生命周期、双向管道、帧边界、退出与关停期限；依赖 Serde 及按平台选择的 libc 或 windows-sys |
 | `rust/agent-harness` | loop/graph、协议 dispatcher，以及注入 dispatcher 的 `evidence-host` 入口 |
 | Python worker / `PluginHost` | 业务对象、执行派发动作、完成与 ack；不自行决定插件就绪或卸载终态 |
 | `rust/agent-kernel` | 单次 Agent 值状态的准入/关联/取消；当前仍通过 worker 加载同一构建的 C ABI 库 |

@@ -1,4 +1,5 @@
 import argparse
+from hashlib import sha256
 import io
 import http.client
 import json
@@ -55,7 +56,7 @@ class HostIntegration(unittest.TestCase):
     captures = []
 
     def setUp(self):
-        self.directory = self.output / self._testMethodName
+        self.directory = self.output / sha256(self.id().encode('utf-8')).hexdigest()[:12]
         self.directory.mkdir()
         self.events = self.directory / 'events.jsonl'
 
