@@ -11,6 +11,7 @@ from threading import Lock
 from uuid import uuid4
 
 from .embeddings import EmbeddingCallError, EmbeddingError, read_embedding_capture
+from .model_errors import ModelPreflightError
 from .rag_testing.budget import BudgetLedger
 from .rag_testing.contracts import digest
 from .remote import GoogleEmbeddingProvider, RemoteModelError
@@ -166,7 +167,14 @@ class GoogleSemanticProvider:
                   "request_payload_sha256": digest(payload), "provider_manifest": deepcopy(self.manifest),
                   "manifest_sha256": digest(self.manifest), "audit_context": deepcopy(audit_context),
                   "reserved": reserved, "status": "STARTED", "automatic_retries": 0}
-        self.ledger.reserve(request_id, reserved, "google_canonical_" + task, require_settled=True)
+        try:
+            self.ledger.reserve(request_id, reserved, "google_canonical_" + task, require_settled=True)
+        except ValueError as exc:
+            reason = self.embedding_preflight(request_id, exc)
+            if reason in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
+                          'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
+                raise EmbeddingCallError(ModelPreflightError(reason)) from exc
+            raise
         usage, response_received, started, issued_before = None, False, False, None
         try:
             with target.open("x", encoding="utf-8") as handle:
@@ -253,6 +261,7 @@ class GoogleSemanticProvider:
         diagnostics = {
             'Formatted input exceeds conservative native token admission; no truncation': 'EMBEDDING_INPUT_TOO_LARGE',
             'Unresolved physical outcome requires inspection before another embedding request': 'UNRESOLVED_PHYSICAL_REQUEST',
+            'UNRESOLVED_PHYSICAL_REQUEST': 'UNRESOLVED_PHYSICAL_REQUEST',
             'BUDGET_INSUFFICIENT': 'BUDGET_INSUFFICIENT',
             'BUDGET_PRODUCER_BUSY': 'BUDGET_PRODUCER_BUSY',
             'BUDGET_PRODUCER_SEALED': 'BUDGET_PRODUCER_SEALED',
