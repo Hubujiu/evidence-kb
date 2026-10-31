@@ -260,6 +260,87 @@ def live_contract_suite(dsn):
                     self.assertEqual(freeze_predecessor(f.ledger.path)['snapshot_sha256'], before['snapshot_sha256'])
                     self.assertEqual(next_ledger.cumulative_summary()['cumulative']['pending_or_unknown'], 0)
 
+        def test_late_unsent_outcome_recovers_same_request_before_and_after_reconcile(self):
+            for reconcile_first in (False, True):
+                with self.subTest(reconcile_first=reconcile_first):
+                    self.scope = ('late-unsent-' + uuid4().hex, 'kb', 'build')
+                    self.jobs = EmbeddingJobs(dsn, lease_seconds=1, max_attempts=1)
+                    original = self.provider.documents
+
+                    def unsent(texts):
+                        with self.jobs._tx(*self.scope[:2]) as conn:
+                            conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
+                        if reconcile_first:
+                            self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'],
+                                             'UNKNOWN')
+                        error = RuntimeError('known unsent after lease expiration')
+                        error.model_sent = False
+                        raise error
+
+                    self.provider.documents = unsent
+                    with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY'):
+                        self.run_jobs(units=[self.units[0]])
+                    row = self.jobs.status(*self.scope)[0]
+                    self.assertEqual((row['status'], row['attempt']), ('RETRY', 0))
+                    with self.jobs._tx(*self.scope[:2]) as conn:
+                        self.assertEqual(conn.execute('SELECT failures FROM embedding_circuits').fetchone()['failures'], 0)
+                        self.assertEqual(conn.execute('SELECT status FROM embedding_attempts').fetchone()['status'], 'ERROR')
+                    self.provider.documents = original
+                    self.assertEqual(len(self.run_jobs(units=[self.units[0]])), 1)
+                    final = self.jobs.status(*self.scope)[0]
+                    self.assertEqual((final['status'], final['attempt']), ('COMPLETE', 1))
+                    self.assertNotEqual(row['request_id'], final['request_id'])
+
+        def test_late_old_request_cannot_rewrite_new_claim_or_ambiguous_outcome(self):
+            _, dependency = self.jobs._prepare(*self.scope, self.provider, [self.units[0]], self.audit)
+            old = self.jobs._claim(*self.scope, 0, dependency)
+            with self.jobs._tx(*self.scope[:2]) as conn:
+                conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
+            with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_LEASE_LOST'):
+                self.jobs._finish(old, error=TimeoutError('sent outcome unknown'))
+            self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'], 'UNKNOWN')
+            error = RuntimeError('known unsent')
+            error.model_sent = False
+            with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY'):
+                self.jobs._finish(old, error=error)
+            current = self.jobs._claim(*self.scope, 0, dependency)
+            with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_LEASE_LOST'):
+                self.jobs._finish(old, error=error)
+            final = self.jobs.status(*self.scope)[0]
+            self.assertEqual((final['request_id'], final['status'], final['attempt']),
+                             (current['request_id'], 'RUNNING', 1))
+
+        def test_reconcile_known_unsent_capture_requires_matching_settled_zero_usage(self):
+            with TemporaryDirectory() as directory:
+                self.provider.audit_dir = Path(directory)
+                ledger = Path(directory) / 'physical.sqlite'
+                self.provider.ledger = SimpleNamespace(path=ledger)
+                _, dependency = self.jobs._prepare(*self.scope, self.provider, [self.units[0]], self.audit)
+                row = self.jobs._claim(*self.scope, 0, dependency)
+                record = {'status': 'ERROR', 'request_id': row['request_id'],
+                    'physical_request_id': row['request_id'], 'task': 'document', 'texts': ['one'],
+                    'provider_manifest': self.provider.manifest, 'audit_context': self.audit,
+                    'reserved': {'calls': 1}, 'usage': {'calls': 0}, 'physical_embedding_attempts': 0}
+                target = Path(directory) / (row['request_id'] + '.json')
+                with closing(sqlite3.connect(ledger)) as conn, conn:
+                    conn.execute('CREATE TABLE calls(id TEXT,status TEXT,usage TEXT)')
+                    conn.execute('INSERT INTO calls VALUES (?,?,?)',
+                                 (row['request_id'], 'UNKNOWN', json.dumps({'calls': 0})))
+                with self.jobs._tx(*self.scope[:2]) as conn:
+                    conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
+                target.write_text(json.dumps(record), 'utf-8')
+                self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'], 'UNKNOWN')
+                with closing(sqlite3.connect(ledger)) as conn, conn:
+                    conn.execute("UPDATE calls SET status='ERROR'")
+                for change in ({'request_id': 'other'}, {'audit_context': {}}, {'texts': ['other']},
+                               {'physical_embedding_attempts': 1}, {'usage': {'calls': 1}}):
+                    target.write_text(json.dumps({**record, **change}), 'utf-8')
+                    self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'], 'UNKNOWN')
+                target.write_text(json.dumps(record), 'utf-8')
+                final = self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]
+                self.assertEqual((final['status'], final['attempt']), ('RETRY', 0))
+                self.assertEqual(len(self.run_jobs(units=[self.units[0]])), 1)
+
         def test_partial_restart_reuses_only_completed_batches(self):
             self.provider.error_on = 'two'
             with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY'):
