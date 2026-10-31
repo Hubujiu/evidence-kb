@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "budget": {"path": ".local/document-models/physical-calls.sqlite3", "caps": {"requests": 100}},
+  "providers": {
+    "document-provider": {
+      "adapter": "openai-compatible",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "DOCUMENT_MODEL_KEY"
+    }
+  },
+  "models": {
+    "embedding": {
+      "provider": "document-provider", "model": "text-embedding-3-small", "dimension": 768,
+      "capabilities": ["embedding"], "batch_size": 16, "reservation": {"requests": 1}
+    },
+    "ocr": {
+      "provider": "document-provider", "model": "REPLACE_WITH_SUPPORTED_VISION_MODEL",
+      "capabilities": ["ocr"], "reservation": {"requests": 1}
+    }
+  }
+}

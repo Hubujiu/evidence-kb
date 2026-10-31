@@ -9,7 +9,7 @@ from .plugin_profiles import expand_profile
 
 DEFAULT_PROFILE = Path(__file__).resolve().parents[1] / 'config/agent-profiles/knowledge.json'
 ENVIRONMENT = {
-    'knowledge.provider.luna': {'providers_config': ('KB_AGENT_PROVIDERS_CONFIG', str)},
+    'models.service': {'providers_config': ('KB_AGENT_PROVIDERS_CONFIG', str)},
     'knowledge.context.policy': {
         'input_budget': ('KB_AGENT_INPUT_BUDGET', int),
         'output_reserve': ('KB_AGENT_OUTPUT_RESERVE', int),
@@ -49,20 +49,6 @@ def knowledge_plugins(platform, research, *, service_factory=None):
         ctx.provide('knowledge.platform', platform)
         ctx.provide('knowledge.research', research)
 
-    def provider(ctx, config):
-        from .agent_luna import LunaModelProvider
-
-        _config(config, ('providers_config',))
-        selected = config.get('providers_config')
-        if selected:
-            from .remote import LunaClient
-
-            reader = LunaClient(selected)
-            ctx.defer(reader.close)
-        else:
-            reader = ctx.require('knowledge.research').luna
-        ctx.provide('knowledge.provider', LunaModelProvider(reader))
-
     def policy(ctx, config):
         from .agent_context import ContextPolicy
 
@@ -83,12 +69,11 @@ def knowledge_plugins(platform, research, *, service_factory=None):
         ctx.provide('knowledge.budget', BudgetLedger(**config))
 
     def model(ctx, config):
-        from .agent_model import AgentModel
-
-        _config(config)
-        ctx.provide('knowledge.model', AgentModel(
-            ctx.require('knowledge.provider'), policy=ctx.require('knowledge.context.policy'),
-            ledger=ctx.require('knowledge.budget')))
+        _config(config, ('route',))
+        selected = ctx.require('models').structured(config.get('route', 'generation'),
+            policy=ctx.require('knowledge.context.policy'), ledger=ctx.require('knowledge.budget'))
+        ctx.provide('knowledge.model', selected)
+        ctx.provide('llm', selected)
 
     def store(ctx, config):
         from .knowledge_sessions import KnowledgeSessions
@@ -110,9 +95,10 @@ def knowledge_plugins(platform, research, *, service_factory=None):
         from .agent_tools import EvidenceGateway
 
         _config(config, ('provider_id',))
+        selected_model = ctx.require('knowledge.model')
         ctx.provide('knowledge.gateway', EvidenceGateway(
             ctx.require('knowledge.platform'), ctx.require('knowledge.research'),
-            provider_id=config.get('provider_id', 'magpie_luna')))
+            provider_id=config.get('provider_id', getattr(selected_model, 'provider_id', 'magpie_luna'))))
 
     def executor(ctx, config):
         from .provider_runtime import ToolExecutor
@@ -157,17 +143,16 @@ def knowledge_plugins(platform, research, *, service_factory=None):
 
     return (
         PluginSpec('knowledge.resources', ('knowledge.platform', 'knowledge.research'), (), resources),
-        PluginSpec('knowledge.provider.luna', ('knowledge.provider',), ('knowledge.research',), provider),
         PluginSpec('knowledge.context.policy', ('knowledge.context.policy',), (), policy),
         PluginSpec('knowledge.context', ('knowledge.context',), ('knowledge.context.policy',), context),
         PluginSpec('knowledge.budget', ('knowledge.budget',), (), budget),
-        PluginSpec('knowledge.model', ('knowledge.model',),
-                   ('knowledge.provider', 'knowledge.context.policy', 'knowledge.budget'), model),
+        PluginSpec('knowledge.model', ('knowledge.model', 'llm'),
+                   ('models', 'knowledge.context.policy', 'knowledge.budget'), model),
         PluginSpec('knowledge.sessions', ('knowledge.store',), ('session.store',), store),
         PluginSpec('knowledge.workflow.graph', ('knowledge.workflow',), (), workflow),
         PluginSpec('knowledge.driver.graph', ('loop',), (), driver),
         PluginSpec('knowledge.gateway', ('knowledge.gateway',),
-                   ('knowledge.platform', 'knowledge.research'), gateway),
+                   ('knowledge.platform', 'knowledge.research', 'knowledge.model'), gateway),
         PluginSpec('knowledge.executor', ('knowledge.executor',), (), executor),
         PluginSpec('knowledge.semantic', ('knowledge.semantic',),
                    ('knowledge.platform', 'knowledge.gateway'), semantic),
@@ -181,11 +166,23 @@ def knowledge_plugins(platform, research, *, service_factory=None):
 
 
 def create_knowledge_application(platform, research, *, profile=None, service_factory=None,
-                                 extra_plugins=(), environment=None):
+                                 extra_plugins=(), environment=None, models=None):
     from .harness_services import builtin_plugins
 
-    selected = load_knowledge_profile(profile, environment=environment)
-    catalog = (*builtin_plugins(), *knowledge_plugins(platform, research, service_factory=service_factory),
+    selected_environment = dict(os.environ if environment is None else environment)
+    if models is not None:
+
+
+        selected_environment.pop('KB_AGENT_PROVIDERS_CONFIG', None)
+    selected = load_knowledge_profile(profile, environment=selected_environment)
+    if models is not None and any(row['use'] == 'models.service' and row.get('config')
+                                  for row in selected['plugins']):
+        raise ValueError('MODEL_SERVICE_ALREADY_CONFIGURED')
+    from .model_plugins import model_plugins
+    if models is None and research is not None:
+        from .model_configuration import from_clients
+        models = from_clients(research.luna, getattr(research, 'embedding', None))
+    catalog = (*builtin_plugins(), *model_plugins(models), *knowledge_plugins(platform, research, service_factory=service_factory),
                *extra_plugins)
     host = PluginHost(selected, catalog)
     try:

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from contextlib import closing
 from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
 import re
+import sqlite3
 from threading import Lock
 from uuid import uuid4
 
-from .embeddings import EmbeddingError
+from .embeddings import EmbeddingCallError, EmbeddingError, read_embedding_capture
+from .model_errors import ModelPreflightError
 from .rag_testing.budget import BudgetLedger
 from .rag_testing.contracts import digest
 from .remote import GoogleEmbeddingProvider, RemoteModelError
@@ -164,7 +167,14 @@ class GoogleSemanticProvider:
                   "request_payload_sha256": digest(payload), "provider_manifest": deepcopy(self.manifest),
                   "manifest_sha256": digest(self.manifest), "audit_context": deepcopy(audit_context),
                   "reserved": reserved, "status": "STARTED", "automatic_retries": 0}
-        self.ledger.reserve(request_id, reserved, "google_canonical_" + task, require_settled=True)
+        try:
+            self.ledger.reserve(request_id, reserved, "google_canonical_" + task, require_settled=True)
+        except ValueError as exc:
+            reason = self.embedding_preflight(request_id, exc)
+            if reason in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
+                          'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
+                raise EmbeddingCallError(ModelPreflightError(reason)) from exc
+            raise
         usage, response_received, started, issued_before = None, False, False, None
         try:
             with target.open("x", encoding="utf-8") as handle:
@@ -243,6 +253,43 @@ class GoogleSemanticProvider:
     def documents(self, texts, *, request_id=None, audit_context=None, authorize=None):
         return self.documents_observed(texts, request_id=request_id or uuid4().hex,
             audit_context=audit_context, authorize=authorize)["vectors"]
+
+    def embedding_port(self):
+        return self
+
+    def embedding_preflight(self, request_id, error):
+        diagnostics = {
+            'Formatted input exceeds conservative native token admission; no truncation': 'EMBEDDING_INPUT_TOO_LARGE',
+            'Unresolved physical outcome requires inspection before another embedding request': 'UNRESOLVED_PHYSICAL_REQUEST',
+            'UNRESOLVED_PHYSICAL_REQUEST': 'UNRESOLVED_PHYSICAL_REQUEST',
+            'BUDGET_INSUFFICIENT': 'BUDGET_INSUFFICIENT',
+            'BUDGET_PRODUCER_BUSY': 'BUDGET_PRODUCER_BUSY',
+            'BUDGET_PRODUCER_SEALED': 'BUDGET_PRODUCER_SEALED',
+        }
+        reason = error.preflight_code if isinstance(error, EmbeddingCallError) else diagnostics.get(str(error))
+        if reason is None or not isinstance(request_id, str):
+            return None
+        try:
+            if (self.audit_dir / (request_id + '.json')).exists():
+                return None
+            with closing(sqlite3.connect(self.ledger.path.resolve().as_uri() + '?mode=ro', uri=True)) as ledger:
+                registered = ledger.execute('SELECT 1 FROM calls WHERE id=?', (request_id,)).fetchone()
+            return reason if registered is None else None
+        except (OSError, ValueError, sqlite3.Error):
+            return None
+
+    def recover_embedding(self, request_id):
+        self._unchanged()
+        observation = read_embedding_capture(self.audit_dir, self.ledger.path, request_id)
+        if observation is None:
+            return None
+        record = observation['record']
+        texts, task = record.get('texts'), record.get('task')
+        if (not isinstance(texts, list) or len(texts) != 1 or not isinstance(texts[0], str)
+                or task not in ('document', 'query')
+                or record.get('request_payload_sha256') != digest(self.remote._request_item(texts[0], task))):
+            return None
+        return observation
 
     def close(self):
         self.remote.close()

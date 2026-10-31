@@ -20,7 +20,7 @@ import httpx
 
 from .agent_engine import current_execution
 from .embeddings import EmbeddingError
-from .model_errors import RemoteModelError
+from .model_errors import RemoteModelError, TerminalContractError
 from .luna_sdk import TRANSPORT_MANIFEST, chat_response
 from .provider_runtime import (ProviderCircuit, RequestReceipts, RuntimePolicyError,
                                classify_failure, retry_after_seconds)
@@ -98,10 +98,6 @@ def _embedding_error(error):
     converted.code, converted.status = error.code, error.status
     converted.retry_after_seconds = error.retry_after_seconds
     return converted
-
-
-class TerminalContractError(ValueError):
-    pass
 
 
 def _provider_guard(operation):
@@ -650,6 +646,11 @@ class LunaClient(_Transport):
 
 class GoogleEmbeddingProvider(_Transport):
     provider_id = "google_gemini"
+
+    @property
+    def max_batch_size(self):
+
+        return 16 if self.platform == 'gemini_api' else 1
 
     def __init__(self, config_path=".local/providers.json"):
         config, selected = _read_config(config_path, "google")
