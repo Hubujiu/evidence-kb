@@ -48,6 +48,7 @@ def classify_provider_failure(row, provider, error):
     diagnostics = {
         'Formatted input exceeds conservative native token admission; no truncation': 'EMBEDDING_INPUT_TOO_LARGE',
         'BUDGET_INSUFFICIENT': 'EMBEDDING_BUDGET_INSUFFICIENT',
+        'UNRESOLVED_PHYSICAL_REQUEST': 'EMBEDDING_LEDGER_BLOCKED',
         'Unresolved physical outcome requires inspection before another embedding request': 'EMBEDDING_LEDGER_BLOCKED',
     }
     code = diagnostics.get(str(error))
