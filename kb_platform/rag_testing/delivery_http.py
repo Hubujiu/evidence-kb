@@ -501,7 +501,8 @@ class DeliveryHTTPAdapter:
                 'turn_id': turn_id, 'diagnostic': str(exc), 'exception': type(exc).__name__})
             write_json(case_dir / 'authority-observations.json', {'observations': authority_observations,
                                                                  'diagnostic': str(exc)})
-            return Trace(**base, status='ERROR', error=type(exc).__name__ + ':' + str(exc),
+            failure = (response.get('stop_reason') if response.get('status') == 'error' else None)
+            return Trace(**base, status='ERROR', error=failure or type(exc).__name__ + ':' + str(exc),
                          elapsed_ms=(time.perf_counter() - started) * 1000, **_usage(model_records))
 
 

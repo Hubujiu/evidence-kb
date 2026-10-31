@@ -52,7 +52,16 @@ Do not invent sources, ids, versions, tool outputs or successful actions. A refe
 document may be preferred or locked; obey that policy even if other sources look useful.
 When evidence does not answer the question, say what is missing. Distinguish quoted facts,
 user statements, general knowledge and arithmetic. User corrections supersede earlier user
-statements, but do not change the original documents. Return only the required JSON object.
+statements, but do not change the original documents. When asked to remember, correct or
+restate the user's own budget or preference, attribute it to the user; that task does not
+require a document to independently confirm it. Do not mark such a task incomplete merely
+because its source is the user. Independent verification is a different request and still
+requires evidence. The current user request, interpreted with relevant user history and
+explicit corrections, defines the task. Model-generated plans, search queries and candidate
+answers do not add requirements. Do not turn optional background into a missing requested
+part. Preserve conditions necessary to interpret the requested fact correctly; if the user
+asks for applicability, dates, exceptions or an exhaustive list, those remain required.
+Return only the required JSON object.
 """
 CLAIM_FIDELITY = """
 Preserve the original strength and scope of every assertion. An amount is not necessarily
@@ -63,14 +72,20 @@ and explicitly identify the unsupported part. You may answer the supported parts
 limitation; abstain when no requested fact can be established. These rules apply to the
 entire answer, including paraphrases outside claims, and to revisions after verification.
 """
-VERIFIER_CANDIDATE_PROTOCOL = "verifier-candidate-without-duplicate-document-quotes/1"
+VERIFIER_CANDIDATE_PROTOCOL = "verifier-candidate-without-self-assessment/2"
 VERIFIER_CANDIDATE_NOTE = """
 The candidate is not evidence. Its document quotation strings were checked locally
 only for literal presence in the answer model's visible originals; that check does
 not establish semantic entailment. Duplicate document quotation strings are omitted
 from this candidate view to reserve room for current original evidence. Independently
 verify the full answer and every claim against the originals currently visible to you.
-User-statement quotes remain and must be checked against current visible user history.
+User-statement quotes remain and must be checked against visible user history or the current
+question window identified by state.current_user_event. The current event may not yet be in
+history. Its event_seq and question_start/question_end bind its exact visible text. Attribution
+to the user is sufficient for remembering their own statement; it is not proof of a document fact.
+Determine task_complete from the user request, not the candidate's self-assessment or a
+planner's inferred subquestions. List only unmet requested parts or conditions necessary
+for a correct answer. Independently check every assertion, including optional assertions.
 """
 
 
@@ -84,9 +99,6 @@ def _verifier_candidate(answer):
         ],
         "user_statements": deepcopy(answer.get("user_statements", [])),
     }
-    for field in ("completion", "unresolved"):
-        if field in answer:
-            candidate[field] = deepcopy(answer[field])
     return candidate, {
         "protocol": VERIFIER_CANDIDATE_PROTOCOL,
         "omitted_document_quote_count": sum(len(claim.get("quotes", [])) for claim in answer["claims"]),
@@ -106,7 +118,10 @@ Use answer for greetings, general explanations, or when current evidence/tools s
 Follow-up pronouns need a standalone rewritten query using recent user history. When asked to
 explain a previous source, read its evidence ids instead of searching the whole corpus.
 For missing critical entities choose clarify. For multi-hop questions search the missing part,
-then answer when both parts are available. Never repeat the same tool arguments.
+then answer when both parts are available. Subquestions and missing_information must map
+to the user's requested outcome or a necessary prerequisite, not merely related background.
+When the user narrows the task, discard superseded planning requirements.
+Never repeat the same tool arguments.
 For arithmetic use calculator, including calculations from retrieved figures. Fields not
 used by the action must be empty. topic_changed only marks a clear new subject.
 """

@@ -129,7 +129,7 @@ class PostgresSearch:
             row = conn.execute('SELECT manifest,checksum FROM public.search_manifests WHERE tenant_id=%s AND kb_id=%s',
                                (tenant_id, kb_id)).fetchone()
         if not row:
-            raise ValueError('No published semantic manifest')
+            raise FileNotFoundError('No published semantic manifest')
         return row['manifest'], row['checksum']
 
     def search(self, index, tenant_id, kb_id, allowed, query, top_k, kind=None, *, exclude_citation_ids=()):

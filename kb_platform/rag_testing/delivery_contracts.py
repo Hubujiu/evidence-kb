@@ -20,6 +20,60 @@ from kb_platform.delivery import (
 from kb_platform.rag_testing.budget import BudgetLedger
 
 
+class DeliveryFailureTraceContracts(unittest.TestCase):
+    def test_unknown_provider_outcome_preserves_cause_and_blocks_next_case(self):
+        import httpx
+        from .contracts import AdapterInput, digest
+        from .delivery_http import DeliveryHTTPAdapter
+
+        for status in ('error', 'answered'):
+            with self.subTest(status=status), TemporaryDirectory() as directory:
+                root = Path(directory)
+                captures = root / 'capture'
+                captures.mkdir()
+                sent = []
+                authority = {'scope_id': 'kb', 'manifest_id': 'build', 'authority_revision': 1}
+
+                def respond(request):
+                    sent.append(request.url.path)
+                    if request.url.path == '/identity':
+                        body = {'principal_id': 'user'}
+                    elif request.url.path.endswith('/agent-authority'):
+                        body = authority
+                    elif request.url.path == '/scopes/kb/sessions':
+                        body = {'session_id': 'session', 'revision': 0}
+                    else:
+                        turn = json.loads(request.content)['request_id']
+                        payload = {'messages': [{'role': 'user', 'content': '{}'}]}
+                        record = {'physical_request_id': 'unknown', 'status': 'UNKNOWN',
+                            'payload': payload, 'payload_sha256': digest(payload),
+                            'context': {'session_id': 'session', 'turn_id': turn, 'call_id': 'call'}}
+                        (captures / 'unknown.json').write_text(json.dumps(record), 'utf-8')
+                        body = {'status': status, 'stop_reason': 'PROVIDER_OUTCOME_UNKNOWN', 'revision': 1,
+                            'trace': {'authority': authority, 'calls': [
+                                {'role': 'retrieval', 'call_id': 'call', 'request_hash': 'hash'}]}}
+                    return httpx.Response(200, json=body)
+
+                request = AdapterInput(case_id='first', question='Synthetic question', kb='kb', principal='user',
+                    acl_revision='1', allowed_sources=('source',), as_of='2026-10-30', context_budget=1000)
+                with httpx.Client(base_url='https://fixture.invalid', transport=httpx.MockTransport(respond)) as client:
+                    adapter = DeliveryHTTPAdapter(client, config_name='evidence_release_candidate',
+                        bindings={'citation': {'source_id': 'source', 'build_id': 'build'}},
+                        physical_directory=captures, artifacts=root/'artifacts')
+                    result = adapter.run(request, [SimpleNamespace(id='source')], 'corpus')
+                    self.assertEqual(result.status, 'ERROR')
+                    self.assertEqual(result.error, 'PROVIDER_OUTCOME_UNKNOWN' if status == 'error'
+                                     else 'ValueError:FINAL_PHYSICAL_PAYLOAD_MISSING_OR_AMBIGUOUS')
+                    self.assertEqual(result.model_calls, 1)
+                    self.assertIsNone(result.input_tokens)
+                    self.assertEqual(result.request_messages, ())
+                    before = list(sent)
+                    blocked = adapter.run(request.model_copy(update={'case_id': 'next'}),
+                                          [SimpleNamespace(id='source')], 'corpus')
+                    self.assertEqual(blocked.status, 'NOT_RUN')
+                    self.assertEqual(sent, before)
+
+
 class DeliveryContracts(unittest.TestCase):
     def setUp(self):
         temporary = TemporaryDirectory()

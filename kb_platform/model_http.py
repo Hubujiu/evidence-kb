@@ -3,7 +3,6 @@ import hashlib
 import json
 import math
 import time
-from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -16,26 +15,49 @@ from .provider_admission import ProviderAdmission
 from .provider_runtime import retry_after_seconds
 
 
+def validate_model_endpoint(endpoint):
+    if (not isinstance(endpoint, str) or not endpoint.startswith(('https://', 'http://'))
+            or any(ord(character) < 32 or ord(character) == 127 for character in endpoint)):
+        raise ValueError('INVALID_MODEL_ENDPOINT')
+    try:
+        url = httpx.URL(endpoint)
+        valid_port = url.port is None or 1 <= url.port <= 65535
+    except (httpx.InvalidURL, ValueError) as exc:
+        raise ValueError('INVALID_MODEL_ENDPOINT') from exc
+    if not url.host or url.username or url.password or url.query or url.fragment or not valid_port:
+        raise ValueError('INVALID_MODEL_ENDPOINT')
+
+
+def validate_provider_options(*, provider, model, endpoint, api_key, capabilities,
+                              reservation, caps, timeout=120, preferred_batch_size=1, adapter_name='OpenAICompatibleAdapter'):
+    from .rag_testing.budget import validate_resources
+
+    if (not isinstance(endpoint, str) or not endpoint.startswith(('https://', 'http://'))
+            or not isinstance(api_key, str) or not api_key
+            or type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0
+            or not reservation or not any(reservation.values())):
+        raise ValueError('INVALID_MODEL_PROVIDER_CONFIG')
+    validate_resources(caps, reservation, complete=True)
+    validate_model_endpoint(endpoint)
+    capabilities = frozenset(Capability(value) for value in capabilities)
+    if adapter_name == 'AnthropicAdapter' and capabilities != {Capability.CHAT}:
+        raise ValueError('ANTHROPIC_ADAPTER_SUPPORTS_TEXT_CHAT_ONLY')
+    modalities = {'text'}
+    if Capability.OCR in capabilities:
+        modalities.add('image')
+    if Capability.TRANSCRIPTION in capabilities:
+        modalities.add('audio')
+    revision = hashlib.sha256((adapter_name + ':1:' + endpoint.rstrip('/')).encode()).hexdigest()
+    return ModelInfo(provider, model, capabilities, frozenset(modalities), revision=revision,
+                     preferred_batch_size=preferred_batch_size)
+
+
 class OpenAICompatibleAdapter:
     def __init__(self, *, provider, model, endpoint, api_key, capabilities, ledger,
                  reservation, timeout=120, client=None, preferred_batch_size=1):
-        if (not endpoint.startswith(('https://', 'http://')) or not api_key
-                or type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0
-                or not reservation or not any(reservation.values())):
-            raise ValueError('INVALID_MODEL_PROVIDER_CONFIG')
-        ledger._valid(reservation, complete=True)
-        url = urlsplit(endpoint)
-        if not url.hostname or url.username or url.password or url.query or url.fragment:
-            raise ValueError('INVALID_MODEL_ENDPOINT')
-        capabilities = frozenset(Capability(value) for value in capabilities)
-        modalities = {'text'}
-        if Capability.OCR in capabilities:
-            modalities.add('image')
-        if Capability.TRANSCRIPTION in capabilities:
-            modalities.add('audio')
-        revision = hashlib.sha256((type(self).__name__ + ':1:' + endpoint.rstrip('/')).encode()).hexdigest()
-        self.info = ModelInfo(provider, model, capabilities, frozenset(modalities), revision=revision,
-                              preferred_batch_size=preferred_batch_size)
+        self.info = validate_provider_options(provider=provider, model=model, endpoint=endpoint,
+            api_key=api_key, capabilities=capabilities, reservation=reservation, caps=ledger.caps,
+            timeout=timeout, preferred_batch_size=preferred_batch_size, adapter_name=type(self).__name__)
         self.endpoint, self._key = endpoint.rstrip('/'), api_key
         self.ledger, self.reservation, self.timeout = ledger, dict(reservation), timeout
         self.provider_id, self.model, self.base_url = provider, model, self.endpoint
@@ -262,8 +284,6 @@ class OpenAICompatibleAdapter:
 class AnthropicAdapter(OpenAICompatibleAdapter):
 
     def __init__(self, **options):
-        if set(options['capabilities']) != {Capability.CHAT}:
-            raise ValueError('ANTHROPIC_ADAPTER_SUPPORTS_TEXT_CHAT_ONLY')
         super().__init__(**options)
         self.info = ModelInfo(self.info.provider, self.info.model, frozenset({Capability.CHAT}),
                               revision=self.info.revision)

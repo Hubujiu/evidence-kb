@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
@@ -12,7 +13,8 @@ import sqlite3
 from threading import Lock
 
 from kb_platform.rag_testing.budget import BudgetLedger as PhysicalBudgetLedger
-from kb_platform.rag_testing.budget_batches import LinkedBudgetLedger, freeze_predecessor
+from kb_platform.rag_testing.budget_batches import freeze_predecessor
+from kb_platform.rag_testing.budget_batches import ReviewedPredecessorLedger, validate_predecessor
 from kb_platform.rag_testing.provider_capture import CapturedLuna, observe_client, request_context
 from kb_platform.rag_testing.contracts import digest
 from kb_platform.embeddings import EmbeddingError
@@ -162,7 +164,7 @@ def load_budget_batch(profile, path):
                 len(set(paths)) != len(paths) or len(paths) < 2 or path.parent == profile.root):
             raise ValueError()
         for parent in predecessors:
-            observed = freeze_predecessor(parent['path'], parent['database_sha256'])
+            observed = validate_predecessor(parent)
             if observed['snapshot_sha256'] != parent['snapshot_sha256']:
                 raise ValueError()
         ledger = path.parent / 'physical-calls.sqlite3'
@@ -287,11 +289,22 @@ def _serialize_client_sends(provider, lock):
 
 def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
                         app_factory=None, inner_factory=None, budget_batch=None, dependency_probe=None):
+    with ExitStack() as cleanup:
+        app = _create_delivery_app(config_path, providers_path, run_root, app_factory=app_factory,
+                                   dependency_probe=dependency_probe, budget_batch=budget_batch,
+                                   inner_factory=inner_factory, cleanup=cleanup)
+        resources = cleanup.pop_all()
+        app.router.add_event_handler('shutdown', resources.close)
+        return app
+
+
+def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
+                         dependency_probe, budget_batch, inner_factory, cleanup):
     profile = load_profile(config_path, providers_path, run_root)
     batch = load_budget_batch(profile, budget_batch or os.getenv('KB_DELIVERY_BUDGET_BATCH') or None)
     ensure_private_identity(profile)
     settings = configure_environment(profile, batch['caps'] if batch else None)
-    ledger = (LinkedBudgetLedger(batch['ledger_path'], batch['caps'], predecessors=batch['predecessors']) if batch else
+    ledger = (ReviewedPredecessorLedger(batch['ledger_path'], batch['caps'], predecessors=batch['predecessors']) if batch else
               PhysicalBudgetLedger(profile.root / 'physical-calls.sqlite3', profile.config['physical_call_caps']))
     capture_root = Path(batch['capture_root']) if batch else profile.root / 'physical-requests'
     if ledger.summary()['pending_or_unknown']:
@@ -301,6 +314,8 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
 
         app_factory = create_app
     from .remote import GoogleEmbeddingProvider
+    from .platform_plugins import OwnedModelClients
+
     if os.getenv('KB_MODELS_CONFIG'):
         raise DeliveryConfigurationError('DELIVERY_REQUIRES_FROZEN_PROVIDER_CONFIG')
     captured = CapturedLuna(profile.provider_path)
@@ -309,12 +324,11 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
     except BaseException:
         captured.close()
         raise
-    try:
-        app = app_factory(settings, model_clients=(captured, embedding))
-    except BaseException:
-        captured.close()
-        embedding.close()
-        raise
+    owned_clients = OwnedModelClients(captured, embedding)
+    cleanup.callback(owned_clients.close_unclaimed)
+    app = app_factory(settings, model_clients=owned_clients)
+    if getattr(app.state, 'root_plugins', None) is not None:
+        cleanup.callback(app.state.root_plugins.close)
     research, agent, platform = app.state.research, app.state.agent, app.state.platform
     if research is None or agent is None or platform.embedding_provider is not research.embedding:
         raise DeliveryConfigurationError('DELIVERY_PROVIDER_WIRING_INVALID')
@@ -381,7 +395,8 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
             blocked_reason = blocked_reason or 'PREDECESSOR_LEDGER_CHANGED'
             usage = cumulative['new_batch']['summary'] if cumulative else ledger.ledger.summary()
         pending = cumulative['cumulative']['pending_or_unknown'] if cumulative else usage['pending_or_unknown']
-        budget_blocked = bool(blocked_reason or pending or usage['over_budget'] or
+        admission_pending = cumulative.get('admission_pending_or_unknown', pending) if cumulative else pending
+        budget_blocked = bool(blocked_reason or admission_pending or usage['over_budget'] or
                               cumulative and cumulative['status'] == 'BLOCKED')
         blocked = provider_blocked or budget_blocked
         remaining = {key: max(0, ledger.caps[key] - used)
@@ -395,9 +410,10 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
             'remaining': remaining,
             'provider_blocked': provider_blocked, 'provider_channels': provider_channels,
             'pending_or_unknown': pending, 'unknown_usage_requests': usage['unknown_usage_requests'],
+            'reviewed_unknown_requests': cumulative.get('reviewed_unknown_requests', 0) if cumulative else 0,
             'cumulative_unknown_usage_requests': cumulative['cumulative']['unknown_usage_requests']
                 if cumulative else None if batch else usage['unknown_usage_requests'],
-            'blocked_reason': blocked_reason or ('UNRESOLVED_PHYSICAL_REQUEST' if pending else
+            'blocked_reason': blocked_reason or ('UNRESOLVED_PHYSICAL_REQUEST' if admission_pending else
                                                 'PROVIDER_PERMISSION_BLOCKED' if provider_blocked else
                                                 'BUDGET_EXHAUSTED' if model_exhausted else None),
             'cumulative_effective_usage_or_reserved': (cumulative['cumulative']['effective_usage_or_reserved']
@@ -420,10 +436,6 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
         response.headers['X-Delivery-Profile'] = profile.config['id']
         return response
 
-    def close_providers():
-        for provider in providers:
-            provider.close()
-    app.router.add_event_handler('shutdown', close_providers)
     manifest = {**profile.public(), 'config_sha256': hashlib.sha256(profile.config_path.read_bytes()).hexdigest(),
                 'provider_config_sha256': hashlib.sha256(profile.provider_path.read_bytes()).hexdigest(),
                 'physical_ledger': str(ledger.path), 'physical_capture_root': str(capture_root),

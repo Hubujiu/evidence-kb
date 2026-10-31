@@ -1,0 +1,148 @@
+{
+  "schema": "cordis-reference-traces/1",
+  "source": {
+    "repository": "https://github.com/deepseek-ai/deepseek-harness",
+    "commit": "ce7073d51254c26cd63b22a60835b8f948deb447",
+    "packages": {
+      "@deepseek-ai/cordis": {
+        "vendor_version": "4.0.6-alpha.1",
+        "upstream_version": "4.0.0-rc.11",
+        "upstream_commit": "0b96d9fd517b998e44e2209560c9e5f0671ce933"
+      },
+      "@deepseek-ai/cosmokit": {
+        "vendor_version": "1.8.7-alpha.1",
+        "upstream_version": "1.8.1",
+        "upstream_commit": "16f6fc058ade66e8ac5da0033d35a8d0f279f544"
+      }
+    },
+    "node_version": "v22.23.1",
+    "lock_text_sha256": "86ac0775cb12e0e59ba204bdc823fce6f389d43e2ad2e04481f75b19d910a0c5"
+  },
+  "scenarios": [
+    {
+      "id": "dependency_cleanup_order",
+      "events": [
+        "provider.start",
+        "consumer.start",
+        "read:open",
+        "read:open",
+        "consumer.stop",
+        "provider.stop"
+      ]
+    },
+    {
+      "id": "dynamic_dependency_appearance_and_removal",
+      "events": [
+        "consumer.pending",
+        "provider.start",
+        "consumer.start:ready",
+        "consumer.stop",
+        "provider.stop",
+        "consumer.pending_again"
+      ]
+    },
+    {
+      "id": "scope_override_and_borrowed_parent",
+      "values": [
+        "parent",
+        "child",
+        "parent"
+      ],
+      "events": [
+        "parent.start",
+        "child.start",
+        "child.stop",
+        "parent.still_available",
+        "parent.stop"
+      ]
+    },
+    {
+      "id": "emit_order_and_listener_ownership",
+      "events": [
+        "a:2",
+        "b:2"
+      ]
+    },
+    {
+      "id": "parallel_waits_for_every_listener",
+      "events": [
+        "a.start",
+        "b.start",
+        "b.done",
+        "a.done"
+      ],
+      "required_before": [
+        [
+          "a.start",
+          "a.done"
+        ],
+        [
+          "b.start",
+          "b.done"
+        ],
+        [
+          "a.start",
+          "b.start"
+        ],
+        [
+          "b.start",
+          "a.done"
+        ]
+      ]
+    },
+    {
+      "id": "serial_strict_bail_predicate",
+      "events": [
+        "false",
+        "none",
+        "zero"
+      ],
+      "result": 0
+    },
+    {
+      "id": "bail_strict_bail_predicate",
+      "events": [
+        "false",
+        "none",
+        "zero"
+      ],
+      "result": 0
+    },
+    {
+      "id": "waterfall_middleware",
+      "events": [
+        "outer.before",
+        "inner.before",
+        "inner.after",
+        "outer.after"
+      ],
+      "result": 7
+    },
+    {
+      "id": "waterfall_repeated_next",
+      "rejected": true
+    }
+  ],
+  "intentional_differences": [
+    {
+      "id": "cleanup_error_retention",
+      "reference": "reference cleanup contains errors and releases dependencies",
+      "target": "CleanupFailed retains unfinished resources and required dependencies until explicit successful retry"
+    },
+    {
+      "id": "emit_observer_errors",
+      "reference": "emit propagates synchronous listener errors",
+      "target": "emit records observer errors and returns their tuple while continuing peers"
+    },
+    {
+      "id": "synchronous_python_bridge",
+      "reference": "JavaScript promises permit async lifecycle and callbacks",
+      "target": "Python mount/dispose and callback completion are synchronous; cancellation cannot preempt blocking Python"
+    },
+    {
+      "id": "scope_security",
+      "reference": "JavaScript Proxy and isolation labels provide contextual visibility",
+      "target": "explicit service handles, scopes and registration identities provide visibility and ownership without malicious-plugin sandboxing"
+    }
+  ]
+}

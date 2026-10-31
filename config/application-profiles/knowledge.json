@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "bundles": [
+    "platform",
+    "knowledge"
+  ],
+  "plugins": [
+    {
+      "id": "research",
+      "use": "platform.research"
+    }
+  ]
+}

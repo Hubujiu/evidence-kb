@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import ast
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
+import faulthandler
 import importlib.util
 import json
 import io
@@ -14,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import unittest
 from uuid import uuid4
@@ -23,8 +26,6 @@ SHARED = frozenset({"contracts", "cache", "budget", "budget_batches", "provider_
 FOUNDATIONS = frozenset({"contracts", "cache", "budget", "budget_batches"})
 EXCLUDED_IMPORTS = frozenset({"output", "outputs", "reports"})
 AGENT_DEPENDENCIES = {
-    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
-    'model_plugins': frozenset({'plugin_host', 'model_configuration', 'remote', 'context_budget'}),
     'agent_provider': frozenset(),
     'model_errors': frozenset(),
     'agent_model': frozenset({'agent_provider', 'context_budget', 'agent_schema', 'model_errors'}),
@@ -39,7 +40,8 @@ AGENT_DEPENDENCIES = {
     'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host', 'session_identity'}),
     'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
                                   'harness_loop', 'plugin_host', 'harness_application', 'harness_context',
-                                  'harness_model', 'context_budget', 'session_store'}),
+                                  'harness_model', 'context_budget', 'session_store', 'plugin_configuration'}),
+    'plugin_configuration': frozenset({'context_budget'}),
     'context_budget': frozenset(),
     'session_identity': frozenset(),
     'session_store': frozenset({'session_identity'}),
@@ -48,7 +50,10 @@ AGENT_DEPENDENCIES = {
     'harness_context': frozenset({'context_budget'}),
     'harness_model': frozenset({'agent_decisions', 'agent_engine', 'agent_model', 'agent_schema', 'context_budget'}),
     'harness_application': frozenset({'harness_sessions'}),
-    'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles', 'model_plugins'}),
+    'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles',
+                                  'model_plugins'}),
+    'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
+    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
     'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),
 }
@@ -56,8 +61,11 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'agent_plugins', 'plugin_native', 'plugin_host', 'harness_sessions',
                            'harness_loop', 'harness_services', 'context_budget', 'session_identity', 'session_store',
                            'plugin_profiles', 'harness_graph', 'harness_context', 'harness_model',
-                           'harness_application', 'harness_profile'})
-NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'}, 'agent-harness': {'serde', 'serde_json'}}
+                           'harness_application', 'harness_profile', 'model_service', 'plugin_process',
+                           'plugin_configuration'})
+NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
+                       'agent-harness': {'plugin-runtime', 'serde', 'serde_json'},
+                       'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
 @dataclass(frozen=True)
@@ -156,10 +164,10 @@ def native_architecture_violations(root: Path) -> list[str]:
             spec = spec if isinstance(spec, dict) else {'version': spec}
             if name not in allowed or spec.get('package', name) != name:
                 errors.append(f'{relative}: {name}: native harness cannot depend on business implementations')
-            elif name == 'agent-harness':
-                expected = (root / 'rust/agent-harness').resolve()
+            elif name in {'agent-harness', 'plugin-runtime'}:
+                expected = (root / 'rust' / name).resolve()
                 if not spec.get('path') or (directory / spec['path']).resolve() != expected:
-                    errors.append(f'{relative}: agent-harness must resolve to the reviewed workspace crate')
+                    errors.append(f'{relative}: {name} must resolve to the reviewed workspace crate')
             elif any(key in spec for key in ('path', 'git', 'workspace')):
                 errors.append(f'{relative}: {name}: native foundations must use their declared registry package')
         for source in sorted(directory.rglob('*.rs')):
@@ -223,7 +231,7 @@ def architecture_violations(root: Path) -> list[str]:
             layer = AGENT_DEPENDENCIES.get(path.stem) if not evaluation else None
             if layer is not None and target.startswith('kb_platform.') and target.split('.')[1] not in layer:
                 reason = 'agent boundary cannot depend on this implementation; inject its port at composition'
-            if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider', 'model_service'}
+            if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider'}
                     and top in {'openai', 'httpx', 'fastapi', 'requests', 'psycopg'}):
                 reason = 'agent contracts and model policy cannot depend on transport or API frameworks'
             if top in EXCLUDED_IMPORTS:
@@ -263,32 +271,132 @@ def write_json(path: Path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def run_worker(kind: str, output: Path) -> int:
+def contract_modules():
+    return [f"kb_platform.rag_testing.{p.stem}"
+            for p in sorted((ROOT / "kb_platform/rag_testing").glob("*_contracts.py"))]
+
+
+def combine_contract_reports(reports, expected):
+    discovered = reports[0].get('discovered', {}) if reports else {}
+    selected = [identity for report in reports for identity in report.get('selected', [])]
+    modules = {name: sum(owner == name for owner in discovered.values()) for name in expected}
+    counts = {key: sum(report.get(key, 0) for report in reports)
+              for key in ('total', 'failures', 'errors', 'skipped', 'expected_failures')}
+    complete = (bool(expected) and bool(discovered) and set(discovered.values()) == set(expected) and
+                len(selected) == len(set(selected)) and set(selected) == set(discovered) and
+                all(report.get('discovered') == discovered and
+                    report.get('total') == len(report.get('selected', [])) for report in reports))
+    passed = complete and all(report.get('decision') == 'PASS' for report in reports) and not any(
+        counts[key] for key in ('failures', 'errors', 'skipped', 'expected_failures'))
+    return {'decision': 'PASS' if passed else 'FAIL', 'modules': modules, **counts,
+            'discovery_complete': complete, 'scope': 'offline component contracts; no production RAG quality claim'}
+
+
+class ContractTimingResult(unittest.TextTestResult):
+    def __init__(self, *args, timing, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._timing = timing
+        self._outcomes = {'ERROR': self.errors, 'FAIL': self.failures, 'SKIP': self.skipped,
+            'EXPECTED_FAILURE': self.expectedFailures, 'UNEXPECTED_SUCCESS': self.unexpectedSuccesses}
+
+    def _record(self, test, event, status):
+        self._timing.write(json.dumps({'test': test.id(), 'event': event, 'status': status,
+            'monotonic': time.monotonic(), 'process_time': time.process_time()}) + '\n')
+        self._timing.flush()
+
+    def startTest(self, test):
+        super().startTest(test)
+        self._counts = {name: len(outcomes) for name, outcomes in self._outcomes.items()}
+        self._status = 'INCOMPLETE'
+        self._record(test, 'start', 'RUNNING')
+
+    def addSuccess(self, test):
+        super().addSuccess(test)
+        self._status = 'PASS'
+
+    def stopTest(self, test):
+        status = next((name for name, outcomes in self._outcomes.items()
+                       if len(outcomes) > self._counts[name]), self._status)
+        try:
+            self._record(test, 'stop', status)
+        finally:
+            super().stopTest(test)
+
+
+def run_contract_workers(output):
+    def execute(index):
+        directory = output / f'contracts-{index}'
+        directory.mkdir()
+        with tempfile.TemporaryDirectory(prefix=f'evidence-kb-contracts-{index}-') as scratch:
+            env = dict(os.environ)
+            env.update(KB_STORAGE_ROOT=scratch, KB_AGENT_ROOT=scratch, KB_RESEARCH_ROOT=scratch,
+                       KB_IDENTITIES_FILE=str(Path(scratch) / 'missing-identities.json'))
+            result = run_check('contracts', [sys.executable, '-B', str(Path(__file__).resolve()),
+                '--worker', 'contracts', '--contract-shard', str(index), '--output', str(directory)],
+                directory, env, timeout=170)
+        try:
+            report = json.loads((directory / 'contracts.json').read_text('utf-8'))
+        except (OSError, ValueError):
+            report = {'decision': 'FAIL', 'modules': {}, 'total': 0, 'errors': 1}
+        if result.exit_code:
+            report['decision'] = 'FAIL'
+        return report
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        reports = list(pool.map(execute, range(4)))
+    combined = combine_contract_reports(reports, contract_modules())
+    write_json(output / 'contracts.json', combined)
+    print(json.dumps(combined))
+    return 0 if combined['decision'] == 'PASS' else 1
+
+
+def run_worker(kind: str, output: Path, shard=None) -> int:
+    if kind == 'contracts' and shard is None:
+        return run_contract_workers(output)
     sys.path.insert(0, str(ROOT))
     sys.addaudithook(deny_external_io)
     if kind == "contracts":
-        modules = [f"kb_platform.rag_testing.{p.stem}"
-                   for p in sorted((ROOT / "kb_platform/rag_testing").glob("*_contracts.py"))]
-        if not modules:
-            raise RuntimeError("No contract modules discovered")
-        suite = unittest.TestSuite()
-        counts = {}
-        for module in modules:
-            tests = unittest.defaultTestLoader.loadTestsFromName(module)
-            count = tests.countTestCases()
-            if not count:
-                raise RuntimeError(f"Contract module has no discoverable tests: {module}")
-            counts[module] = count
-            suite.addTests(tests)
-        result = unittest.TextTestRunner(verbosity=2).run(suite)
-        passed = result.wasSuccessful() and not result.skipped and not result.expectedFailures
-        write_json(output / "contracts.json", {
-            "decision": "PASS" if passed else "FAIL", "modules": counts, "total": result.testsRun,
-            "failures": len(result.failures), "errors": len(result.errors), "skipped": len(result.skipped),
-            "expected_failures": len(result.expectedFailures),
-            "scope": "offline component contracts; no production RAG quality claim",
-        })
-        return 0 if passed else 1
+        faulthandler.dump_traceback_later(150)
+        try:
+            modules = contract_modules()
+            if not modules:
+                raise RuntimeError("No contract modules discovered")
+            tests = []
+            discovered = {}
+
+            def collect(suite, module):
+                for test in suite:
+                    if isinstance(test, unittest.TestSuite):
+                        collect(test, module)
+                    else:
+                        if test.id() in discovered:
+                            raise RuntimeError(f"Duplicate contract test: {test.id()}")
+                        discovered[test.id()] = module
+                        tests.append(test)
+
+            for module in modules:
+                suite = unittest.defaultTestLoader.loadTestsFromName(module)
+                if not suite.countTestCases():
+                    raise RuntimeError(f"Contract module has no discoverable tests: {module}")
+                collect(suite, module)
+            selected = sorted(tests, key=lambda test: test.id())[shard::4]
+            identities = [test.id() for test in selected]
+            counts = {module: sum(discovered[identity] == module for identity in identities) for module in modules}
+            suite = unittest.TestSuite(selected)
+            with (output / 'contracts-timing.jsonl').open('w', encoding='utf-8') as timing:
+                result = unittest.TextTestRunner(verbosity=2,
+                    resultclass=lambda *args, **kwargs: ContractTimingResult(*args, timing=timing, **kwargs)).run(suite)
+            passed = result.wasSuccessful() and not result.skipped and not result.expectedFailures
+            write_json(output / "contracts.json", {
+                "decision": "PASS" if passed else "FAIL", "modules": counts, "total": result.testsRun,
+                "discovered": discovered, "selected": identities,
+                "failures": len(result.failures), "errors": len(result.errors), "skipped": len(result.skipped),
+                "expected_failures": len(result.expectedFailures),
+                "scope": "offline component contracts; no production RAG quality claim",
+            })
+            return 0 if passed else 1
+        finally:
+            faulthandler.cancel_dump_traceback_later()
     from kb_platform.rag_testing.contracts import Plan, Suite, Trace
     from kb_platform.rag_testing.runner import run
 
@@ -354,10 +462,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='Run local and CI quality gates without provider credentials or live services.')
     parser.add_argument("--output", type=Path, default=ROOT / ".local/checks" / uuid4().hex)
     parser.add_argument("--worker", choices=("contracts", "scorer"), help=argparse.SUPPRESS)
+    parser.add_argument('--contract-shard', type=int, choices=range(4), help=argparse.SUPPRESS)
+    parser.add_argument('--local-integration', action='store_true',
+                        help='Run controlled loopback HTTP/parser/PostgreSQL checks using KB_INTEGRATION_DSN.')
     args = parser.parse_args()
+    integration_dsn = os.environ.get('KB_INTEGRATION_DSN') if args.local_integration else None
+    if args.local_integration and not integration_dsn:
+        parser.error('--local-integration requires KB_INTEGRATION_DSN for a dedicated acceptance database')
     output = args.output.resolve()
     if args.worker:
-        return run_worker(args.worker, output)
+        return run_worker(args.worker, output, args.contract_shard)
     try:
         output.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
@@ -399,6 +513,18 @@ def main() -> int:
         results.append(run_check("rust-tests", cargo + ["test", *native_args], output, env, timeout=600))
         if native_library is not None:
             env["KB_AGENT_KERNEL_LIBRARY"] = str(native_library)
+            results.append(run_check('plugin-process-integration',
+                [sys.executable, '-B', '-m', 'kb_platform.rag_testing.plugin_process_integration',
+                 '--output', str(output / 'plugin-process-integration')], output, env))
+        if args.local_integration:
+            if native_library is None:
+                results.append(run_check('runtime-integration', [sys.executable, '-c',
+                    'raise RuntimeError("current native build is required for integration")'], output, env))
+            else:
+                integration_env = {**env, 'KB_DSN': integration_dsn}
+                results.append(run_check('runtime-integration',
+                    [sys.executable, '-B', '-m', 'kb_platform.rag_testing.runtime_integration',
+                     '--output', str(output / 'runtime-integration')], output, integration_env))
         results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts"], output, env))
         for kind in ("contracts", "scorer"):
             if kind == "contracts" and native_library is None:
@@ -411,7 +537,10 @@ def main() -> int:
         "checks": [asdict(result) for result in results], "new_model_calls": 0,
         "new_embedding_calls": 0, "new_judge_calls": 0,
         "native_library": str(native_library) if native_library is not None else None,
-        "scope": "offline gates; component checks and scorer controls reported separately"})
+        "controlled_local_integration": args.local_integration,
+        "scope": ("offline gates plus controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
+                  if args.local_integration else
+                  "offline gates; component checks and scorer controls reported separately")})
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1
 
