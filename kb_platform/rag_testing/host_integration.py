@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import socket
+import signal
 import sys
 from threading import Event
 from time import monotonic
@@ -13,6 +14,40 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def process_running(pid):
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x00100000, False, pid)
+        if not handle:
+            if ctypes.get_last_error() == 87:
+                return False
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            result = kernel.WaitForSingleObject(handle, 0)
+            if result not in (0, 258):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return result == 258
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    state = Path(f'/proc/{pid}/stat')
+    try:
+        return not state.exists() or state.read_text().split(') ', 1)[1][0] != 'Z'
+    except FileNotFoundError:
+        return False
 
 
 class HostIntegration(unittest.TestCase):
@@ -158,6 +193,51 @@ class HostIntegration(unittest.TestCase):
         self.assertNotEqual(0, completed.returncode)
         self.assertIn('HOST_FIXTURE_STARTUP_FAILURE', completed.stderr)
         self.assertEqual('', completed.stdout.strip())
+
+    def check_process_tree(self, phase):
+        receipt = self.directory / 'processes.json'
+        profile = self.profile('generic')
+        document = json.loads(profile.read_text('utf-8'))
+        document['worker'] = [sys.executable, '-m', 'kb_platform.rag_testing.host_fixtures',
+                              str(receipt), phase]
+        document['startup_timeout_ms'] = 2000
+        profile.write_text(json.dumps(document), 'utf-8')
+        unrelated = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+        owned = {}
+        try:
+            completed = subprocess.run([os.environ['KB_PLUGIN_HOST_BINARY'], '--profile', str(profile)],
+                cwd=ROOT, text=True, encoding='utf-8', capture_output=True, timeout=10, check=False)
+            self.capture(completed.returncode, completed.stdout, completed.stderr)
+            owned = json.loads(receipt.read_text('utf-8'))
+            expires = monotonic() + 2
+            while monotonic() < expires and any(process_running(pid) for pid in owned.values()):
+                Event().wait(0.02)
+            observed = {name: process_running(pid) for name, pid in owned.items()}
+            (self.directory / 'liveness.json').write_text(json.dumps(observed), 'utf-8')
+            self.assertIsNone(unrelated.poll())
+            self.assertEqual({'worker': False, 'descendant': False}, observed)
+            if phase == 'completed':
+                self.assertEqual(0, completed.returncode, completed.stderr)
+                self.assertEqual('completed', json.loads(completed.stdout)['status'])
+            else:
+                self.assertNotEqual(0, completed.returncode)
+                expected = 'transport' if phase == 'malformed' else 'timeout'
+                self.assertEqual(expected, json.loads(completed.stderr.splitlines()[-1])['code'])
+        finally:
+            for pid in owned.values():
+                if process_running(pid):
+                    os.kill(pid, signal.SIGTERM)
+            unrelated.kill()
+            unrelated.wait(timeout=5)
+
+    def test_malformed_worker_cannot_leave_descendants(self):
+        self.check_process_tree('malformed')
+
+    def test_timed_out_worker_cannot_leave_descendants(self):
+        self.check_process_tree('timeout')
+
+    def test_completed_worker_cannot_leave_descendants(self):
+        self.check_process_tree('completed')
 
     def test_failed_mount_rolls_back_parent_owned_plugin_resources(self):
         completed = self.launch('failure', phase='mount', no_library=True)

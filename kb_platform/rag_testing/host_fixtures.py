@@ -2,6 +2,8 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from threading import Event, Lock
 
@@ -304,3 +306,28 @@ def process_dependency(config):
 
 def process_llm(config):
     return ProcessLLM(config)
+
+
+def process_tree_worker():
+    receipt, phase = Path(sys.argv[1]), sys.argv[2]
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    receipt.write_text(json.dumps({'worker': os.getpid(), 'descendant': child.pid}), 'utf-8')
+    if phase == 'malformed':
+        print('invalid-protocol', flush=True)
+        Event().wait(30)
+    elif phase == 'timeout':
+        Event().wait(30)
+    else:
+        for line in sys.stdin:
+            request = json.loads(line)
+            result = {'handshake': {'runtime': 'plugin-runtime/1'}, 'boot': {'ready': True},
+                      'run': {'ok': True}, 'shutdown': {}}[request['method']]
+            print(json.dumps({'protocol': 'plugin-host/1', 'kind': 'response',
+                'id': request['id'], 'ok': True, 'result': result}), flush=True)
+            if request['method'] == 'shutdown':
+                return
+
+
+if __name__ == '__main__':
+    process_tree_worker()
