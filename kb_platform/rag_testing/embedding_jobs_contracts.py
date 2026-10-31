@@ -3,6 +3,7 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
+from threading import Event, Thread, current_thread
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -90,6 +91,67 @@ def google_audit():
                 sources=[dict(source_id='s', source_version_id='v', parse_snapshot_id='p', source_text_sha256='h')])
 
 
+def google_admission_race(provider, first_call):
+    from .budget import BudgetLedger
+
+    checked, admitted, release_first, complete_second = Event(), Event(), Event(), Event()
+    outcomes, sent = {}, []
+    provider.ledger = BudgetLedger(provider.ledger.path.with_name('concurrent.sqlite'),
+        {'remote_embedding_calls': 2, 'input_tokens': 16384})
+    provider.remote.platform, provider.remote._headers, provider.remote._issued_requests = 'gemini_api', {}, 0
+    provider.remote._validated_vector = lambda values: values
+    summary = provider.ledger.summary
+
+    def gated_summary():
+        snapshot = summary()
+        if current_thread().name == 'request-A':
+            checked.set()
+            if not release_first.wait(5):
+                raise RuntimeError('request A was not released')
+        return snapshot
+
+    def respond(path, payload, headers, purpose, key):
+        sent.append(payload['content']['parts'][0]['text'])
+        provider.remote.calls += 1
+        provider.remote._issued_requests += 1
+        admitted.set()
+        if not complete_second.wait(5):
+            raise RuntimeError('request B was not released')
+        return {'embedding': {'values': [1., 0.]}, 'usageMetadata': {'promptTokenCount': 1}}
+
+    def invoke(request_id):
+        try:
+            outcomes[request_id] = first_call() if request_id == 'A' else provider.documents(['B'],
+                request_id='B', audit_context=google_audit(), authorize=lambda: True)
+        except Exception as error:
+            outcomes[request_id] = error
+
+    provider.remote._post = respond
+    first = Thread(target=invoke, args=('A',), name='request-A')
+    second = Thread(target=invoke, args=('B',), name='request-B')
+    with patch.object(provider.ledger, 'summary', side_effect=gated_summary):
+        first.start()
+        try:
+            if not checked.wait(3):
+                raise RuntimeError('request A did not read the idle ledger')
+            second.start()
+            if not admitted.wait(3) or summary()['pending_or_unknown'] != 1:
+                raise RuntimeError('request B did not enter STARTED')
+            release_first.set()
+            first.join(3)
+            if first.is_alive():
+                raise RuntimeError('request A did not finish while request B remained STARTED')
+        finally:
+            release_first.set()
+            complete_second.set()
+            first.join(3)
+            if second.ident is not None:
+                second.join(3)
+    if first.is_alive() or second.is_alive():
+        raise RuntimeError('admission contract workers did not terminate')
+    return outcomes, sent
+
+
 class EmbeddingJobsContracts(unittest.TestCase):
     def test_captured_google_refusal_preserves_zero_send_classification(self):
         for platform in ('gemini_api', 'vertex_ai'):
@@ -143,6 +205,15 @@ class EmbeddingJobsContracts(unittest.TestCase):
                 if scenario == 'input':
                     provider.ledger.reserve('fresh', {'remote_embedding_calls': 1, 'input_tokens': 8192})
                     self.assertIs(classify_provider_failure({'request_id': 'fresh'}, provider, original), original)
+
+    def test_untyped_budget_diagnostic_does_not_prove_request_was_unsent(self):
+        from kb_platform.embeddings import EmbeddingCallError
+        from kb_platform.model_errors import RemoteModelError
+
+        for original in (ValueError('BUDGET_INSUFFICIENT'), ValueError('UNRESOLVED_PHYSICAL_REQUEST'),
+                         RemoteModelError('PROVIDER_OUTCOME_UNKNOWN')):
+            error = EmbeddingCallError(original)
+            self.assertIs(classify_provider_failure({'request_id': 'fresh'}, object(), error), error)
 
     def test_ambiguous_transport_never_retries(self):
         for error in (TimeoutError(), ConnectionError(), RuntimeError()):
@@ -259,6 +330,33 @@ def live_contract_suite(dsn):
                     self.assertNotEqual(rows[-1]['request_id'], restarted.status(*scope)[-1]['request_id'])
                     self.assertEqual(freeze_predecessor(f.ledger.path)['snapshot_sha256'], before['snapshot_sha256'])
                     self.assertEqual(next_ledger.cumulative_summary()['cumulative']['pending_or_unknown'], 0)
+
+        def test_google_concurrent_admission_retries_unsent_job_after_competitor_completes(self):
+            with google_preflight_fixture() as provider:
+                outcomes, sent = google_admission_race(provider, lambda: self.jobs.run(*self.scope,
+                    provider, [{'text': 'A'}], lambda: True, google_audit()))
+                self.assertIsInstance(outcomes['A'], EmbeddingJobError)
+                self.assertEqual(outcomes['A'].code, 'EMBEDDING_LEDGER_BLOCKED')
+                self.assertEqual(outcomes['B'], [[1., 0.]])
+                self.assertEqual(sent, ['B'])
+                self.assertEqual(provider.remote.calls, 1)
+                self.assertEqual(provider.ledger.summary()['pending_or_unknown'], 0)
+                row = self.jobs.status(*self.scope)[0]
+                self.assertEqual((row['status'], row['attempt'], row['error']),
+                                 ('RETRY', 0, 'EMBEDDING_LEDGER_BLOCKED'))
+                self.assertFalse((provider.audit_dir / (row['request_id'] + '.json')).exists())
+                with closing(sqlite3.connect(provider.ledger.path)) as database:
+                    self.assertEqual(database.execute('SELECT id,status FROM calls').fetchall(), [('B', 'COMPLETE')])
+                with self.jobs._tx(*self.scope[:2]) as conn:
+                    self.assertEqual(conn.execute('SELECT failures FROM embedding_circuits').fetchone()['failures'], 0)
+                    attempt = conn.execute('SELECT status,diagnostic FROM embedding_attempts').fetchone()
+                    self.assertEqual((attempt['status'], attempt['diagnostic']), ('ERROR', 'EMBEDDING_LEDGER_BLOCKED'))
+                self.assertEqual(self.jobs.reconcile(*self.scope, provider, lambda: True)[0]['status'], 'RETRY')
+                self.assertEqual(len(self.jobs.run(*self.scope, provider, [{'text': 'A'}], lambda: True, google_audit())), 1)
+                retried = self.jobs.status(*self.scope)[0]
+                self.assertEqual((retried['status'], retried['attempt']), ('COMPLETE', 1))
+                self.assertNotEqual(retried['request_id'], row['request_id'])
+                self.assertEqual(sent, ['B', 'A'])
 
         def test_late_unsent_outcome_recovers_same_request_before_and_after_reconcile(self):
             for reconcile_first in (False, True):

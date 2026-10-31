@@ -8,6 +8,7 @@ from uuid import uuid4
 from kb_platform.core import Actor, Platform, PlatformError
 from kb_platform.remote import RemoteModelError
 from .embedding_jobs_contracts import live_contract_suite
+from .model_embedding_review_contracts import live_contract_suite as model_review_suite
 from .runner import write_json
 
 
@@ -120,7 +121,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
-    suite = unittest.TestSuite([live_contract_suite(os.environ['KB_DSN']), build_suite(os.environ['KB_DSN'], args.output)])
+    dsn = os.environ['KB_DSN']
+    suite = unittest.TestSuite([live_contract_suite(dsn), model_review_suite(dsn), build_suite(dsn, args.output)])
     with (args.output / 'checks.log').open('w', encoding='utf-8') as stream:
         result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
     report = dict(status='PASS' if result.wasSuccessful() else 'FAIL', tests=result.testsRun,

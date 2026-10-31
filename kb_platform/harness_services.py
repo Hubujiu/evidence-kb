@@ -82,6 +82,10 @@ def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
             raise ValueError('MODEL_ADAPTER_REQUIRED')
         ctx.provide('model', StructuredDecisionModel(model, **config))
 
+    def service_model(ctx, config):
+        _config(config, ('output_limit',))
+        ctx.provide('model', StructuredDecisionModel(ctx.require('llm'), **config))
+
     def application_plugin(ctx, config):
         _config(config)
         ctx.provide('application', AgentApplication(ctx.require('sessions'), ctx.require('loop')))
@@ -103,6 +107,7 @@ def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
         PluginSpec('harness.context.policy', ('context.policy',), (), context_policy),
         PluginSpec('harness.compaction.recent', ('compaction',), (), compaction_plugin),
         PluginSpec('harness.context.history', ('prompt',), ('context.policy', 'compaction', 'model'), context_plugin),
+        PluginSpec('harness.model.service', ('model',), ('llm',), service_model),
         PluginSpec('harness.model.structured', ('model',), (), structured_model),
         PluginSpec('harness.application', ('application',), ('sessions', 'loop'), application_plugin),
         PluginSpec('harness.runtime', ('runtime',), (), runtime_plugin),

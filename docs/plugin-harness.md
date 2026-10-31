@@ -29,9 +29,9 @@ Rust loop 请求执行效果，Python 适配器提供模型调用、工具执行
 | Plugin key | 提供的服务 |
 | --- | --- |
 | `knowledge.resources` | `knowledge.platform`、`knowledge.research`，借用应用已有资源 |
-| `knowledge.provider.luna` | `knowledge.provider` |
+| `models.service` | `models`，公共能力注册表；旧 provider profile 在加载时迁移 |
 | `knowledge.context.policy` / `knowledge.context` | `knowledge.context.policy` / `knowledge.context` |
-| `knowledge.budget` / `knowledge.model` | `knowledge.budget` / `knowledge.model` |
+| `knowledge.budget` / `knowledge.model` | `knowledge.budget` / `knowledge.model` 与公共 `llm`（同一对象） |
 | `harness.store.sqlite` | `session.store`，通用 SQLite 会话事务 |
 | `knowledge.sessions` | `knowledge.store`，注入上述事务服务的 KnowledgeSessions |
 | `knowledge.gateway` / `knowledge.executor` | `knowledge.gateway` / `knowledge.executor` |
@@ -43,6 +43,9 @@ Rust loop 请求执行效果，Python 适配器提供模型调用、工具执行
 | `knowledge.application` | `application` |
 
 现有 `KB_AGENT_*` 预算、上下文和存储环境变量仍可覆盖相应内置插件的配置；`KB_SEMANTIC_PAGE_CONFIG` 选择现有语义页配置。私有提供者配置仍由已有配置文件承载，不把密钥写入公开 profile。
+
+多能力模型协议、提供商注册、公共 `llm` 消费和 `core-models` profile 见
+[公共模型服务](model-services.md)。应用已经注入模型服务时，不再用环境变量额外创建客户端。
 
 ```mermaid
 flowchart LR
