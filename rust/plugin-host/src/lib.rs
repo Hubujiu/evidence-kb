@@ -5,10 +5,13 @@ use std::fmt;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
+
+mod process_tree;
+use process_tree::ProcessTree;
 
 pub const PROTOCOL: &str = "plugin-host/1";
 pub const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024 + 64 * 1024;
@@ -155,7 +158,7 @@ fn read_frame(reader: &mut impl BufRead) -> io::Result<Option<Vec<u8>>> {
 }
 
 struct Worker {
-    child: Child,
+    process: ProcessTree,
     outgoing: Option<SyncSender<(u64, Vec<u8>)>>,
     incoming: Receiver<Event>,
     writes: BTreeMap<u64, Instant>,
@@ -172,7 +175,8 @@ impl Worker {
         } else {
             executable.to_owned()
         };
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(&profile.worker[1..])
             .current_dir(&profile.cwd)
             .env(
@@ -182,11 +186,11 @@ impl Worker {
             )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
+            .stderr(Stdio::inherit());
+        let mut process = ProcessTree::spawn(&mut command)
             .map_err(|e| HostError::new("worker_spawn", e.to_string()))?;
-        let stdout = child.stdout.take().unwrap();
-        let mut stdin = child.stdin.take().unwrap();
+        let stdout = process.child.stdout.take().unwrap();
+        let mut stdin = process.child.stdin.take().unwrap();
         let (events, incoming) = mpsc::sync_channel(32);
         let reader_events = events.clone();
         thread::spawn(move || {
@@ -220,7 +224,7 @@ impl Worker {
             }
         });
         Ok(Self {
-            child,
+            process,
             outgoing: Some(outgoing),
             incoming,
             writes: BTreeMap::new(),
@@ -279,7 +283,7 @@ impl Worker {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if let Some(status) = self
-                        .child
+                        .process
                         .try_wait()
                         .map_err(|e| HostError::new("worker_exit", e.to_string()))?
                     {
@@ -297,7 +301,7 @@ impl Worker {
         self.outgoing.take();
         loop {
             if let Some(status) = self
-                .child
+                .process
                 .try_wait()
                 .map_err(|e| HostError::new("worker_exit", e.to_string()))?
             {
@@ -315,16 +319,6 @@ impl Worker {
             }
             thread::sleep(Duration::from_millis(10));
         }
-    }
-}
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        self.outgoing.take();
-        if !matches!(self.child.try_wait(), Ok(Some(_))) {
-            let _ = self.child.kill();
-        }
-        let _ = self.child.wait();
     }
 }
 
@@ -423,6 +417,19 @@ impl Host {
                 runtime_owner_pid: std::process::id(),
             })
         })();
+        worker.outgoing.take();
+        let cleanup = worker
+            .process
+            .shutdown(Instant::now() + Duration::from_millis(profile.shutdown_timeout_ms));
+        let outcome = match (outcome, cleanup) {
+            (outcome, Ok(())) => outcome,
+            (Ok(_), Err(error)) => Err(HostError::new("worker_cleanup", error.to_string())),
+            (Err(mut error), Err(cleanup)) => {
+                error.message =
+                    format!("{}; process tree cleanup failed: {cleanup}", error.message);
+                Err(error)
+            }
+        };
         outcome.map_err(|mut error| {
             error.roots = roots
                 .into_iter()

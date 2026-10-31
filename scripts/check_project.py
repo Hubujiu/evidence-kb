@@ -67,7 +67,7 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'plugin_configuration', 'host_protocol', 'host_worker'})
 NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
                        'agent-harness': {'plugin-runtime', 'plugin-host', 'serde', 'serde_json'},
-                       'plugin-host': {'serde', 'serde_json'},
+                       'plugin-host': {'serde', 'serde_json', 'libc', 'windows-sys'},
                        'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
