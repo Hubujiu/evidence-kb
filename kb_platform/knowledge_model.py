@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import nullcontext
 from copy import deepcopy
 from hashlib import sha256
 import time
@@ -16,13 +17,60 @@ from .planning_references import (bind_planning_schema, planning_bindings, proje
 class KnowledgeModelCalls:
     def call(self, role, system, schema, validator, question=None, evidence_override=None, *, model=None,
              rerank_payload=None):
-        self.check_execution()
         selected_model = self.service.model if model is None else model
+        repair = None
+        for attempt in range(2):
+            context = self.service.tool_context({
+                "session_id": self.session_id,
+                "turn_id": self.request_id,
+                "repair_of_call_id": repair["failed_call_id"],
+                "repair_reason": repair["reason"],
+            }) if repair is not None else nullcontext()
+            try:
+                with context:
+                    return self._call_once(role, system, schema, validator, question, evidence_override,
+                                           model=selected_model, rerank_payload=rerank_payload, repair=repair)
+            except Exception as exc:
+                failed = getattr(exc, "call_record", {})
+                reason = failed.get("validator_reason")
+                if not (
+                    attempt == 0
+                    and (self.config.get("format_repair") or self.config.get("robust_tools"))
+                    and failed.get("code") == "INVALID_AGENT_OUTPUT"
+                    and failed.get("finish_reason") == "stop"
+                    and reason in {"DUPLICATE_JSON_KEY", "INVALID_JSON_SYNTAX", "AGENT_SCHEMA_MISMATCH"}
+                ):
+                    raise
+                repair = {
+                    "failed_call_id": failed["call_id"],
+                    "reason": reason,
+                    "attempts": 1,
+                    "kind": "new_generation_after_received_invalid_format",
+                }
+                self.trace.setdefault("format_repairs", []).append(repair)
+                system += (
+                    "\nThe previous response was received but its JSON format was invalid ("
+                    + reason
+                    + "). Return exactly one valid JSON object. Every object key must appear once and every value must match its schema. Omit unused optional fields; do not use zero for an unused event_seq. Do not change source permissions, evidence or the requested task. Repair only the current role: "
+                    + role
+                    + ". Allowed top-level keys: "
+                    + ", ".join(schema.get("properties", {}))
+                    + "."
+                )
+                if role in {"decision", "retrieval"}:
+                    system += ' This role only routes the next action. action="answer" means the evidence is ready for a later answer role; it does not ask you to write that answer now. Return the planner intent/action and applicable citation_ids. Do not emit answer, claims, quotes, evidence_ids or final-answer prose. Preserve the current planner schema rather than switching to an answer schema.'
+                if failed.get('validator_issue'):
+                    system += '\nValidation location and constraint: ' + canonical(failed['validator_issue'])
+                    system += '. Fix this specific constraint. Group related subquestions when the list exceeds its limit, preserving the full task scope. Return only required fields and fields needed for the chosen action; omit other optional fields.'
+
+    def _call_once(self, role, system, schema, validator, question, evidence_override, *, model,
+                   rerank_payload, repair):
+        self.check_execution()
         if question is None:
             question = self.message
         if role in {"decision", "retrieval", "rerank"} and (
             not self.call_budget.can_explore(self.trace["calls"], max_attempts=
-                getattr(getattr(selected_model, 'provider', None), 'max_attempts', 1))
+                getattr(getattr(model, 'provider', None), 'max_attempts', 1))
         ):
             raise PlatformError("AGENT_BUDGET_EXHAUSTED", "Answer and verification budget reserved", 409)
         if (
@@ -77,7 +125,7 @@ class KnowledgeModelCalls:
         planning = role in {'decision', 'retrieval'}
         if self.config.get("work_state") and planning:
             projection_state["work_state"] = deepcopy(self.state["work_state"])
-        if self.config.get("canonical_ids"):
+        if self.config.get("canonical_ids") and "claims" in schema.get("properties", {}):
             system += "\nCitation protocol: claims.evidence_ids and quotes.evidence_id MUST use each visible evidence record's top-level citation_id (also its top-level evidence_id). The record's nested evidence_ids array contains raw parser span IDs and MUST NOT be cited as a claim reference. Copy the canonical identifier exactly."
         aliases = planning_bindings(set(self.state['evidence']) | set(self.state['evidence_catalog'])) if planning else {}
         wire_schema = bind_planning_schema(schema, aliases) if planning else schema
@@ -136,6 +184,8 @@ class KnowledgeModelCalls:
             "strict_tokens": False,
         }
         call_id = uuid4().hex
+        if repair is not None:
+            repair["new_call_id"] = call_id
         self.event(
             "model_started",
             {
@@ -159,7 +209,7 @@ class KnowledgeModelCalls:
                     }
                 )
             self.check_execution()
-            envelope = selected_model.complete(
+            envelope = model.complete(
                 prepared.messages,
                 role=role,
                 schema=wire_schema,
@@ -186,50 +236,7 @@ class KnowledgeModelCalls:
             }
             self.trace["calls"].append(failed)
             self.event("model_failed", failed, agent=role)
-            reason = failed.get("validator_reason")
-            if (
-                (self.config.get("format_repair") or self.config.get("robust_tools"))
-                and (not self.format_repair_used)
-                and (failed.get("code") == "INVALID_AGENT_OUTPUT")
-                and (failed.get("finish_reason") == "stop")
-                and (reason in {"DUPLICATE_JSON_KEY", "INVALID_JSON_SYNTAX", "AGENT_SCHEMA_MISMATCH"})
-            ):
-                self.format_repair_used = True
-                repair = {
-                    "failed_call_id": call_id,
-                    "reason": reason,
-                    "attempts": 1,
-                    "kind": "new_generation_after_received_invalid_format",
-                }
-                self.trace.setdefault("format_repairs", []).append(repair)
-                repair_system = (
-                    system
-                    + "\nThe previous response was received but its JSON format was invalid ("
-                    + reason
-                    + "). Return exactly one valid JSON object. Every object key must appear once and every value must match its schema. Omit unused optional fields; do not use zero for an unused event_seq. Do not change source permissions, evidence or the requested task. Repair only the current role: "
-                    + role
-                    + ". Allowed top-level keys: "
-                    + ", ".join(schema.get("properties", {}))
-                    + "."
-                )
-                if role in {"decision", "retrieval"}:
-                    repair_system += ' This role only routes the next action. action="answer" means the evidence is ready for a later answer role; it does not ask you to write that answer now. Return the planner intent/action and applicable citation_ids. Do not emit answer, claims, quotes, evidence_ids or final-answer prose. Preserve the current planner schema rather than switching to an answer schema.'
-                if failed.get('validator_issue'):
-                    repair_system += '\nValidation location and constraint: ' + canonical(failed['validator_issue'])
-                    repair_system += '. Fix this specific constraint. Group related subquestions when the list exceeds its limit, preserving the full task scope. Return only required fields and fields needed for the chosen action; omit other optional fields.'
-                with self.service.tool_context(
-                    {
-                        "session_id": self.session_id,
-                        "turn_id": self.request_id,
-                        "repair_of_call_id": call_id,
-                        "repair_reason": reason,
-                    }
-                ):
-                    try:
-                        return self.call(role, repair_system, schema, validator, question, evidence_override,
-                                         model=selected_model, rerank_payload=rerank_payload)
-                    finally:
-                        repair["new_call_id"] = self.trace["calls"][-1]["call_id"]
+            exc.call_record = failed
             raise
         record = envelope.to_dict()
         value = resolve_planning_decision(envelope.value, aliases) if planning else envelope.value
