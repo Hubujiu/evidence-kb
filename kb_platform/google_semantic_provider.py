@@ -166,7 +166,7 @@ class GoogleSemanticProvider:
                   "request_payload_sha256": digest(payload), "provider_manifest": deepcopy(self.manifest),
                   "manifest_sha256": digest(self.manifest), "audit_context": deepcopy(audit_context),
                   "reserved": reserved, "status": "STARTED", "automatic_retries": 0}
-        self.ledger.reserve(request_id, reserved, "google_canonical_" + task)
+        self.ledger.reserve(request_id, reserved, "google_canonical_" + task, require_settled=True)
         usage, response_received, started, issued_before = None, False, False, None
         try:
             with target.open("x", encoding="utf-8") as handle:

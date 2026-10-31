@@ -188,29 +188,33 @@ class EmbeddingJobs:
         delay = retry_delay(error, row['attempt']) if error else None
         status = 'COMPLETE'
         diagnostic = error.code if isinstance(error, EmbeddingPreflightError) else type(error).__name__ if error else None
+        retry_without_attempt = (getattr(error, 'model_sent', None) is False
+            or isinstance(error, EmbeddingPreflightError) and error.code in RECOVERABLE_PREFLIGHT)
         if error:
             status = 'ERROR' if isinstance(error, EmbeddingPreflightError) or getattr(error, 'status', None) is not None else 'UNKNOWN'
-            if isinstance(error, EmbeddingPreflightError) and error.code in RECOVERABLE_PREFLIGHT:
+            if retry_without_attempt:
                 status = 'RETRY'
             if delay is not None and row['attempt'] < self.max_attempts:
                 status = 'RETRY'
         with self._tx(*scope[:2]) as conn:
             updated = conn.execute('UPDATE embedding_jobs SET status=%s,vectors=%s,vectors_hash=%s,error=%s,'
-                'attempt=attempt-CASE WHEN %s THEN 1 ELSE 0 END,'
+                'attempt=attempt-CASE WHEN %s AND attempt>0 THEN 1 ELSE 0 END,'
                 "retry_at=CASE WHEN %s::double precision IS NULL THEN NULL ELSE clock_timestamp()+%s * interval '1 second' END "
                 'WHERE tenant_id=%s AND kb_id=%s AND build_id=%s AND batch_no=%s '
                 "AND request_id=%s AND status=ANY(%s) AND (%s OR lease_until>=clock_timestamp()) RETURNING retry_at",
                 (status, Jsonb(vectors) if vectors is not None else None,
                  digest(vectors) if vectors is not None else None, diagnostic,
-                 isinstance(error, EmbeddingPreflightError) and error.code in RECOVERABLE_PREFLIGHT,
-                 delay, delay, *scope, row['request_id'], ['UNKNOWN'] if recovered else ['RUNNING'], recovered)).fetchone()
+                 retry_without_attempt,
+                 delay, delay, *scope, row['request_id'], ['UNKNOWN'] if recovered else
+                 ['RUNNING', 'UNKNOWN'] if retry_without_attempt else ['RUNNING'],
+                 recovered or retry_without_attempt)).fetchone()
             if not updated:
                 raise EmbeddingJobError('EMBEDDING_LEASE_LOST')
             conn.execute('UPDATE embedding_attempts SET status=%s,diagnostic=%s WHERE '
                          'tenant_id=%s AND kb_id=%s AND request_id=%s',
                          ('ERROR' if status == 'RETRY' else status,
                           diagnostic, *scope[:2], row['request_id']))
-            if error and not isinstance(error, EmbeddingPreflightError):
+            if error and not isinstance(error, EmbeddingPreflightError) and not retry_without_attempt:
                 conn.execute('UPDATE embedding_circuits SET failures=failures+1, '
                     'open_until=CASE WHEN failures+1 >= %s THEN clock_timestamp()+%s * '
                     "interval '1 second' ELSE open_until END WHERE tenant_id=%s AND kb_id=%s AND provider_hash=%s",
@@ -276,32 +280,76 @@ class EmbeddingJobs:
             if vectors is not None:
                 self._auth(authorize)
                 self._finish(row, vectors=vectors, recovered=True)
+            elif recovered_unsent(row, provider):
+                self._auth(authorize)
+                error = EmbeddingJobError('EMBEDDING_KNOWN_UNSENT')
+                error.model_sent = False
+                try:
+                    self._finish(row, error=error, recovered=True)
+                except EmbeddingJobError as outcome:
+                    if outcome.code != 'EMBEDDING_RETRY':
+                        raise
         return self.status(tenant_id, kb_id, build_id)
 
 
-def recovered_vectors(row, provider):
-    if not hasattr(provider, 'audit_dir') or not hasattr(provider, 'ledger'):
-        return None
-    path = Path(provider.audit_dir) / (row['request_id'] + '.json')
-    if not path.is_file():
-        return None
+def recovered_observation(row, provider):
     try:
-        record = json.loads(path.read_text('utf-8'))
+        recover = getattr(provider, 'recover_embedding', None)
+        if recover is not None:
+            observation = recover(row['request_id'])
+            if observation is None:
+                return None
+            record = observation['record']
+        elif hasattr(provider, 'audit_dir') and hasattr(provider, 'ledger'):
+            path = Path(provider.audit_dir) / (row['request_id'] + '.json')
+            record = json.loads(path.read_text('utf-8'))
+            with closing(sqlite3.connect(Path(provider.ledger.path).as_uri() + '?mode=ro', uri=True)) as ledger:
+                state = ledger.execute('SELECT status,usage FROM calls WHERE id=?', (row['request_id'],)).fetchone()
+            if state is None:
+                return None
+            observation = {'record': record, 'physical_status': state[0],
+                           'physical_usage': json.loads(state[1]) if state[1] is not None else None}
+        else:
+            return None
         payload = row['payload']
         texts = [unit['text'] for unit in payload['units']]
-        if (record.get('status') != 'COMPLETE' or record.get('request_id') != row['request_id']
+        if (not isinstance(record, dict) or record.get('status') not in {'COMPLETE', 'ERROR'}
+                or record.get('request_id') != row['request_id']
                 or record.get('physical_request_id') != row['request_id'] or record.get('task') != 'document'
                 or record.get('texts') != texts or record.get('provider_manifest') != payload['manifest']
-                or provider.manifest != payload['manifest'] or record.get('audit_context') != payload['audit_context']):
+                or provider.manifest != payload['manifest'] or record.get('audit_context') != payload['audit_context']
+                or observation['physical_status'] != record['status']
+                or observation['physical_usage'] != record.get('usage')):
             return None
+        return observation
+    except (KeyError, TypeError, ValueError, OSError, sqlite3.Error, EmbeddingError):
+        return None
+
+
+def recovered_unsent(row, provider):
+    observation = recovered_observation(row, provider)
+    if observation is None:
+        return False
+    record = observation['record']
+    reserved, usage = record.get('reserved'), record.get('usage')
+    return (record['status'] == 'ERROR' and type(record.get('physical_embedding_attempts')) is int
+            and record['physical_embedding_attempts'] == 0
+            and isinstance(reserved, dict) and bool(reserved)
+            and isinstance(usage, dict) and set(usage) == set(reserved)
+            and all(type(value) is int and value == 0 for value in usage.values()))
+
+
+def recovered_vectors(row, provider):
+    try:
+        observation = recovered_observation(row, provider)
+        if observation is None or observation['record']['status'] != 'COMPLETE':
+            return None
+        record = observation['record']
+        texts = [unit['text'] for unit in row['payload']['units']]
 
         from .semantic_units import digest as semantic_digest
         vectors = validate_vectors(record.get('vectors'), len(texts), provider.dimension)
         if record.get('vectors_sha256') != semantic_digest(vectors):
-            return None
-        with closing(sqlite3.connect(Path(provider.ledger.path).as_uri() + '?mode=ro', uri=True)) as ledger:
-            state = ledger.execute('SELECT status,usage FROM calls WHERE id=?', (row['request_id'],)).fetchone()
-        if not state or state[0] != 'COMPLETE' or json.loads(state[1]) != record.get('usage'):
             return None
         return vectors
     except (ValueError, OSError, sqlite3.Error, EmbeddingError):
