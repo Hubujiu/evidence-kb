@@ -7,7 +7,7 @@
     },
     {
       "id": "provider",
-      "use": "knowledge.provider.luna"
+      "use": "models.service"
     },
     {
       "id": "policy",
