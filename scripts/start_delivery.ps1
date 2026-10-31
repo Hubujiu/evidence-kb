@@ -4,6 +4,7 @@ param(
     [string]$RunRoot = '.local/delivery-20261026-01',
     [string]$SemanticRuntime = '.local/delivery-20261026-01/postgres-semantic-runtime.json',
     [string]$BudgetBatch = '',
+    [string]$HostBinary = '',
     [switch]$CheckOnly,
     [switch]$StartDependencies
 )
@@ -31,6 +32,11 @@ if ($BudgetBatch) {
 & $deliveryPython -B -m scripts.delivery_server_app --check --config $deliveryConfig --providers $deliveryProviders --run-root $deliveryRoot
 if ($LASTEXITCODE -ne 0) { throw 'Delivery configuration validation failed; no service started.' }
 if ($CheckOnly) { return }
+$deliveryHost = if ($HostBinary) { (Resolve-Path -LiteralPath $HostBinary).Path } else { Join-Path $deliveryWorkspace 'target/release/evidence-host.exe' }
+if (-not (Test-Path -LiteralPath $deliveryHost -PathType Leaf)) { throw 'Missing Rust host. Run cargo build --release --workspace --locked first.' }
+$deliveryKernel = Join-Path (Split-Path -Parent $deliveryHost) 'agent_kernel.dll'
+if (-not (Test-Path -LiteralPath $deliveryKernel -PathType Leaf)) { throw 'Missing matching agent_kernel.dll beside Rust host.' }
+$env:KB_AGENT_KERNEL_LIBRARY = $deliveryKernel
 $deliveryDocument = Get-Content -LiteralPath $deliveryConfig -Raw | ConvertFrom-Json
 $deliveryListener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $deliveryPort)
 try { $deliveryListener.Start() }
@@ -52,12 +58,15 @@ $env:KB_DELIVERY_CONFIG = $deliveryConfig
 $env:KB_DELIVERY_PROVIDERS = $deliveryProviders
 $env:KB_DELIVERY_ROOT = $deliveryRoot
 $env:PYTHONIOENCODING = 'utf-8'
-$deliveryProcess = Start-Process -FilePath $deliveryPython `
-    -ArgumentList @('-B', '-m', 'uvicorn', 'kb_platform.delivery:create_delivery_app', '--factory', '--host', '127.0.0.1', '--port', "$deliveryPort", '--workers', '1') `
+$deliveryStopFile = Join-Path $deliveryRun 'stop.request'
+$deliveryHostProfile = Join-Path $deliveryWorkspace 'config/host-profiles/delivery.json'
+$deliveryProcess = Start-Process -FilePath $deliveryHost `
+    -ArgumentList @('--profile', ('"{0}"' -f $deliveryHostProfile), '--worker', ('"{0}"' -f $deliveryPython), '--stop-file', ('"{0}"' -f $deliveryStopFile)) `
     -WorkingDirectory $deliveryWorkspace -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $deliveryRun 'stdout.log') `
     -RedirectStandardError (Join-Path $deliveryRun 'stderr.log')
 $deliveryReceipt = @{pid=$deliveryProcess.Id; port=$deliveryPort; run=$deliveryRun; profile=$deliveryDocument.id;
+    host_binary=$deliveryHost; host_profile=$deliveryHostProfile; stop_file=$deliveryStopFile;
     config=$deliveryConfig; providers=$deliveryProviders; identities=(Join-Path $deliveryRoot 'identities.json');
     semantic_runtime=$deliverySemanticRuntime;
     semantic_runtime_sha256=(Get-FileHash -LiteralPath $deliverySemanticRuntime -Algorithm SHA256).Hash.ToLowerInvariant();

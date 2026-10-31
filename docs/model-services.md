@@ -63,13 +63,21 @@ HTTP 状态，不保存密钥、认证头或媒体原文。新适配器不缓存
 
 ## 配置与产品接入
 
+独立进程插件可在 manifest 声明 `requires: ["llm"]`，通过依赖回调调用
+`llm.complete_json(messages, role=..., schema=..., call_context=...)`。该方法调用原有
+`complete()` 并将 `CompletionEnvelope` 转成 JSON 对象，保留 value、request_id、usage、
+attempts、finish_reason、cache_kind 和 request_hash，不另建模型路由或账本。
+Python 插件继续使用返回类型化结果的 `complete()`。进程接口仅传递 JSON 参数，不能传递
+Python validator 回调或任意对象。完整示例见 `examples/process-llm/`，回调协议见
+[插件运行时](plugin-runtime.md)。
+
 复制 `config/models.example.json` 到私有 `.local/models.json`，按供应商真实能力填写模型名，
 删除不用的路由，并设置 `api_key_env` 指向的环境变量。示例模型名不代表账户已获准调用。
 
 ```bash
 export KB_REMOTE_MODELS=1
 export KB_MODELS_CONFIG=.local/models.json
-uv run uvicorn kb_platform.api:app --host 127.0.0.1 --port 58080
+uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
 知识库默认使用 `generation`，可选 `embedding` 与 `ocr` 路由。Embedding 配置还需给出

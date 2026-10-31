@@ -12,7 +12,7 @@ uv sync --locked --group dev
 uv run --no-sync python scripts/check_project.py
 ```
 
-Rust 工具链由 `rust-toolchain.toml` 固定，依赖由 `Cargo.lock` 锁定；新环境先下载固定依赖，随后检查使用离线构建。workspace 包含通用生命周期 `agent-kernel` 和插件/loop 实现 `agent-harness`。统一入口执行原生格式、Clippy（警告视为错误）、离线 release 构建和测试。每轮在独立 target 目录构建，成功后把动态库复制到本轮输出的 `native/`，合同进程只加载这个副本。构建失败或制品缺失时，合同报告 `BLOCKED`、整体 `FAIL`，不会加载环境指向的旧库；其他门禁继续收集结果。部署构建见 [Rust 运行时](rust-agent-runtime.md)，profile 与扩展接口见 [插件宿主](plugin-harness.md)。
+Rust 工具链由 `rust-toolchain.toml` 固定，依赖由 `Cargo.lock` 锁定；新环境先下载固定依赖，随后检查使用离线构建。workspace 包含通用生命周期 `plugin-runtime`、进程监督 `plugin-host`、loop/graph 与可执行入口 `agent-harness`，以及单次运行值状态和 C ABI `agent-kernel`。统一入口执行原生格式、Clippy（警告视为错误）、离线 release 构建和测试。每轮在独立 target 目录构建，成功后把动态库、`evidence-host` 和原生 worker 夹具复制到本轮输出的 `native/`。构建失败或制品缺失时，相关阶段报告 `BLOCKED`、整体 `FAIL`，不会加载旧制品；其他门禁继续收集结果。部署构建见 [Rust 主宿主](rust-main-host.md)，profile 与扩展接口见 [插件宿主](plugin-harness.md)。
 
 默认结果写入 `.local/checks/<唯一编号>/`。指定目录时必须使用尚不存在的路径。
 
@@ -32,7 +32,7 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 生命周期、配置 schema、进程插件和显式恢复接口以 [插件运行时](plugin-runtime.md) 为准。`plugin-runtime` 仅依赖固定的 Serde、serde_json 和 Tokio；harness 通过 workspace 路径依赖它。通用运行时不得反向依赖 Agent 或知识库，精确边界由 checker 和架构合同检查。
 
-普通合同仍禁止联网和启动子进程。正式 checker 另外编排受控本地进程插件 fixture。需要真实 HTTP、解析子进程和 PostgreSQL 时使用 `--local-integration` 并设置 `KB_INTEGRATION_DSN`，数据库名须以 `rust_plugin_acceptance_` 开头，且连接 loopback。这个入口保留相同的所有离线检查，不会自动调用真实模型。
+普通合同仍禁止联网和启动子进程。正式 checker 另外编排受控进程插件与 Rust 主宿主 fixture，包含临时 loopback HTTP 健康检查；这些阶段使用合成数据和本地模型响应。完整知识库 HTTP、解析子进程和 PostgreSQL 验收使用 `--local-integration` 并设置 `KB_INTEGRATION_DSN`，数据库名须以 `rust_plugin_acceptance_` 开头，且连接 loopback。这个入口保留相同的所有离线检查，不会自动调用真实模型。
 
 先声明 `PluginSpec` 的 `provides`、`requires` 和版本，再把实现加入可信 catalog。profile 的 `use` 只能引用已登记的键，不能写 Python 导入路径或任意代码。默认知识库 profile 在 `config/agent-profiles/knowledge.json`；`KB_AGENT_PROFILE` 允许启动时选择另一个配置。
 

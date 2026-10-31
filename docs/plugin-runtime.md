@@ -4,6 +4,8 @@
 
 来源、固定版本和实际参考轨迹见 [来源与基线](rust-plugin-provenance.md)。业务服务及资源所有权见 [业务插件](business-plugins.md)。
 
+默认进程入口、语言执行环境与 `plugin-host/1` 协议见 [Rust 主宿主](rust-main-host.md)。主宿主模式中，下述 Python SDK 通过管道访问主进程的同一个 coordinator；Python 嵌入模式通过 C ABI 调用相同实现。
+
 ## 身份与状态
 
 Rust 为每个 runtime、scope、instance、generation、operation、service registration、resource 和 lease 分配身份。对象地址不参与注册身份。重新注册同一个对象也产生新身份。`host.bind(name)` 保存具体注册身份，旧绑定不能透明转向新服务。
@@ -93,7 +95,23 @@ $env:KB_PROCESS_PLUGINS_ROOT = (Resolve-Path .local/plugins).Path
 
 在 profile 中选择 `{"id":"echo","use":"process.echo"}`。根 catalog 读取已安装、显式选中的包版本。安装记录保存来源、版本、文件哈希和内容地址；装载前重新核验内容。再次安装同名新版只选择新版，旧包和记录保持可读。
 
-握手核对协议、能力和实际 Python 环境信息。manifest 可用绝对路径 `python` 选择预先准备的独立 Python 环境，省略时使用宿主解释器；安装器不自动下载安装依赖。入口作为包加载，辅助模块使用相对导入，宿主搜索路径不改变。业务信封携带 Rust operation、generation、lease 和 deadline。取消发送目标调用的独立通知，等待插件实际结束；超出停止等待期才终止进程并等待退出。`host.update('echo', enabled=False)` 停用当前实例。安装包不因此删除。
+握手核对协议、能力和语言无关的 `runtime: {language, version, executable}`。manifest 的 `command` 是直接执行的 argv 数组，例如 `["node", "plugin.mjs"]`，不经过 shell，工作目录为已安装包目录。带目录的相对可执行文件路径相对包目录，单一名称从 PATH 查找。`command` 与 `entry`/`python` 互斥；Python 后端仍支持用绝对路径 `python` 选择预先准备的独立环境，省略时使用宿主解释器。安装器不自动下载安装依赖。Python 入口作为包加载，辅助模块使用相对导入，宿主搜索路径不改变。
+
+业务信封携带 Rust operation、generation、lease 和 deadline。取消发送目标调用的独立通知，等待插件实际结束；超出停止等待期才终止进程并等待退出。`host.update('echo', enabled=False)` 停用当前实例。安装包不因此删除。
+
+旧进程包如果仍在握手中返回 `python_version`，需要改为上述语言无关 runtime 字段后重新安装新包。宿主不会把缺少新字段的握手默认为兼容。
+
+manifest 可声明 `requires: ["shared.model"]`，缺省为空。依赖参与与内置插件相同的装配、缺失检查和清理顺序。外部插件只能在活动 invoke 期间发送依赖调用，`parent` 必须是该 invoke 的请求 ID：
+
+```json
+{"protocol":"evidence-plugin-process/1","id":"callback-1","kind":"call","parent":"active-request-id","service":"shared.model","method":"generate","args":["question"],"kwargs":{}}
+```
+
+宿主回复 `{protocol,id,ok,result}` 或 `{protocol,id,ok:false,error:{code,message}}`。读取线程只将回调排入对应调用队列；原请求线程通过声明依赖绑定执行，继承原调用上下文、父租约与剩余截止时间。未声明依赖返回错误且不执行；未知或已完成 parent、重复 callback ID 使传输失败且不重试，每个 parent 最多 1024 个 callback ID。参数与结果必须可 JSON 序列化。回调回复写入仍受监督，发送失败保留 UNKNOWN，不重新执行依赖。
+
+`examples/process-dependency/` 同时提供 Python 和 Node 消费者；`examples/process-echo/plugin.mjs` 提供 Node 服务端。正式进程集成默认执行 Python 夹具，显式传入 `--plugin-node <node路径>` 可执行相同 Node 合同，不要求所有开发环境安装 Node。
+
+实际公共结构化模型的进程入口是 `llm.complete_json`，参数与 `complete` 一致且须可 JSON 序列化，结果保留完整 completion 信封。`examples/process-llm/` 声明依赖 `llm`，通过该入口调用既有模型适配器、租约和物理账本；示例本身不创建模型客户端。
 
 每次 transport 请求有唯一关联身份，记录 PREPARED、SENT 和终结结果。发送后崩溃或结果无法确认保留 UNKNOWN，没有自动重发。该 transport 记录不替代模型物理请求账本，也不把 UNKNOWN 费用当作零。重复相同响应在保留窗口内幂等，冲突响应使 transport 失败。外部进程退出时 Rust 撤销新准入，依赖方看到准确停用状态。
 

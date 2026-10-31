@@ -2,6 +2,8 @@
 
 共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由由 Rust 生命周期管理。
 
+默认入口现为 [Rust 主宿主](rust-main-host.md)：`evidence-host` 持有生命周期 coordinator、loop 和 graph，启动执行环境并监督退出。Python worker 保存业务对象，按同一 Rust 命令协议执行并回报效果；断开主宿主后不会回退到本地生命周期。`plugin-host` 是与 Agent 无关的进程监督库，业务 dispatcher 由可执行入口注入。
+
 通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/application-profiles/` 中选定的根 profile，展开 platform 与 knowledge 组合包并取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由可信 catalog 提供。Rust 拥有依赖解析、作用域、生命周期、通用 loop 和图节点推进，Python 执行服务效果与知识库路由策略。通用宿主、loop 与工具目录不导入知识库业务。
 
 默认检索由 `postgres_search.py` 提供，使用 pg_textsearch BM25 和 pgvector 精确检索。检索代际、语义页活动清单和 Embedding 恢复任务均在 PostgreSQL 中持久化。`search.py` 保留共有排序/绑定合同；`embedded_search.py` 与 OpenSearch 仅用于历史迁移和明确配置的对照。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件文件只供备份下载，证据以数据库不可变解析快照为准。持久化与切换说明见 [检索存储](search-storage.md)。
@@ -12,8 +14,10 @@
 
 ```mermaid
 flowchart TD
-    Launcher[scripts/start_delivery.ps1] --> Delivery[kb_platform.delivery]
-    CLI[scripts/delivery_server_app.py] --> Delivery
+    Launcher[scripts/start_delivery.ps1] --> Host[Rust evidence-host]
+    Host --> Worker[host_worker / host_applications]
+    Worker --> Delivery[kb_platform.delivery]
+    CLI[scripts/delivery_server_app.py 配置检查] --> Delivery
     Delivery --> API[api.create_app]
     API --> Routes[agent_api]
     Routes --> Profile[knowledge_profile / PluginHost]
@@ -37,6 +41,8 @@ flowchart TD
 `retrieval_pipeline.PipelineConfig` 表达检索策略。检索管线在授权范围内召回原文子单元、融合候选、重排并装配原文。`agent_context.ContextManager` 管理实际发送前的上下文。此次重构没有改写检索或装配算法。
 
 ## Rust Agent 运行时与知识库业务
+
+主宿主模式中，Python 的 `plugin_native.native_call` 通过 `plugin-host/1` 请求主进程，插件状态唯一位于主进程。单次 Agent 的 `Kernel` 是独立值状态，仍通过同一构建的 C ABI 动态库计算；它不创建第二套插件生命周期。直接 Python 嵌入入口继续使用原有 C ABI，供组件调用与离线验证使用。
 
 `rust/plugin-runtime` 独占实例、代次、依赖、服务注册、作用域、调用租约、配置与资源清理。`rust/agent-kernel` 保留单次运行的操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-harness` 保留通用 loop 和 graph，将版本化生命周期命令交给 plugin-runtime。Python 只执行派发动作并回报结果，不再通知 ready 或最终 disposed。loop 发出会话、提示词、模型和工具效果，由 Python 适配器执行。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。
 
