@@ -248,7 +248,6 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
             self.seen_turn_evidence = set()
             self.model_evidence = {}
             self.model_user_statements = {}
-            self.format_repair_used = False
             self.advanced = advanced_tools(self.config, self.service.gateway)
             turn_gateway = copy(self.service.gateway)
             selected_reranker = turn_gateway.pipeline_reranker

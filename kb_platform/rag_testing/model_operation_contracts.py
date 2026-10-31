@@ -122,6 +122,7 @@ class ModelOperationContracts(unittest.TestCase):
         self.assertEqual(run.budget.snapshot()['calls'], 4)
         self.assertEqual(run.physical.summary()['physical_requests'], 4)
         self.assertEqual(len(run.pending), 3)
+        self.assertNotIn('new_call_id', result['trace']['format_repairs'][-1])
 
     def test_transport_failure_is_not_an_output_correction(self):
         run = self.model_case([httpx.ReadError('synthetic disconnected response'), fixtures.decision()])
