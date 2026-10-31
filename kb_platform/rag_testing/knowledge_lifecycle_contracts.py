@@ -28,7 +28,7 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
             return KnowledgeService(platform, case.model if model is None else model,
                 **{**settings, 'gateway': case.gateway, 'retrieval_config': {'channels': ['bm25'], 'rerank': False}})
 
-        application, host = create_knowledge_application(case.authority, SimpleNamespace(luna=object()),
+        application, host = create_knowledge_application(case.authority, SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={})),
             profile=case.profile, service_factory=factory, extra_plugins=extra_plugins, environment={})
         self.addCleanup(host.close)
         return application, host

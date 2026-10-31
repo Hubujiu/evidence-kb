@@ -5,7 +5,9 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 
-from kb_platform.core import Actor, Platform, PlatformError
+from kb_platform.core import Actor, PlatformError
+from kb_platform.application_composition import create_platform
+from kb_platform.settings import Settings
 from kb_platform.remote import RemoteModelError
 from .embedding_jobs_contracts import live_contract_suite
 from .model_review_contracts import live_contract_suite as model_review_suite
@@ -33,8 +35,9 @@ def build_suite(dsn, output):
                     return [[1., 0., 0.] for _ in texts]
 
             self.provider = Provider()
-            self.platform = Platform(dsn, '', output / 'originals', self.provider, search_backend='postgres')
-            self.addCleanup(self.platform.backend.close)
+            self.platform = create_platform(Settings(dsn, '', output / 'originals', output / 'unused-identities', 'postgres'),
+                                            embedding_provider=self.provider)
+            self.addCleanup(self.platform.close)
             self.actor = Actor('pg-build-contract-' + uuid4().hex, 'owner')
             self.kb = self.platform.create_kb(self.actor, 'Recovery fixture')['kb_id']
             self.source = self.platform.ingest(self.actor, self.kb, 'one.md', b'# Policy\n\nALPHA backup.\n\nBETA restore.',

@@ -4,7 +4,9 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
-from kb_platform.core import Actor, Platform, PlatformError
+from kb_platform.core import Actor, PlatformError
+from kb_platform.application_composition import create_platform
+from kb_platform.settings import Settings
 from .runner import write_json
 
 
@@ -16,7 +18,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     dsn = os.environ['KB_DSN']
     root = args.output / 'originals'
-    platform = Platform(dsn, '', root, search_backend=args.backend)
+    platform = create_platform(Settings(dsn, '', root, args.output / 'unused-identities', args.backend))
     actor = Actor('embedded-acceptance-' + uuid4().hex, 'owner')
     reader = Actor(actor.tenant_id, 'reader')
     scope = platform.create_kb(actor, 'Local search acceptance')['kb_id']
@@ -41,7 +43,7 @@ def main():
     check('publish_idempotent', platform.publish(actor, scope, build['build_id'])['idempotent'])
     result = platform.search(reader, scope, 'ALPHA')
     check('published_original_retrievable', bool(result['hits']))
-    restarted = Platform(dsn, '', root, search_backend=args.backend)
+    restarted = create_platform(Settings(dsn, '', root, args.output / 'unused-identities', args.backend))
     check('restart_same_citations', [h['citation_id'] for h in result['hits']] ==
           [h['citation_id'] for h in restarted.search(reader, scope, 'ALPHA')['hits']])
     platform.set_source_readers(actor, source['source_id'], [])
@@ -72,6 +74,8 @@ def main():
         check('missing_backup_download_fails_explicitly', error.code == 'SOURCE_INTEGRITY')
     else:
         check('missing_backup_download_fails_explicitly', False)
+    restarted.close()
+    platform.close()
     print(json.dumps(dict(status='PASS', checks=len(passed), new_remote_calls=0)))
 
 

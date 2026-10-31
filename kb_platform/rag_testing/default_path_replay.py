@@ -23,6 +23,7 @@ def replay_application(authority, model, gateway, root, context_policy):
     by_id = {row['id']: row for row in profile['plugins']}
     by_id['model'].update(use='replay.model', config={})
     by_id['gateway'].update(use='replay.gateway', config={})
+    by_id['reranker'].update(use='knowledge.reranker.none', config={})
     by_id['store']['config']['root'] = str(root)
     by_id['knowledge']['config']['retrieval_config'] = {'channels': ['bm25'], 'rerank': False}
     if context_policy is not None:
