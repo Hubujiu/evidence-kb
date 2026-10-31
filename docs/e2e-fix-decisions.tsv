@@ -1,0 +1,12 @@
+ts	phase	decision	why	evidence	result
+2026-10-31T12:00:00Z	frame	先复现两项已保存的失败，再修改代码	复用真实请求，避免随机重跑掩盖根因	reports/rust-main-host/e2e-20261031-01/summary.json	open
+2026-10-31T11:53:39.4772445Z	design	保留完整原文区间，隔离模型角色输出和单次纠正额度	先修正错误的上下文状态和跨调用共享状态，不放宽停止及解析规则	.local/e2e-fix-design/workflow.md; .local/e2e-fix-design/output.md	selected
+2026-10-31T12:01:50.8663392Z	verify	两项真实模型增量验收通过，保留旧失败结果	验证当前修复而不重复付费执行全套数据	reports/rust-main-host/fix-20261031-01/live-summary.json	2 PASS; 15 model; 3 embedding; 0 judge
+2026-10-31T12:01:50.8663392Z	review	接受异常退出遗留后代进程的审查发现	宿主应拥有整个worker进程树的生命周期	.local/e2e-fix-design/orphan-reproduction.json	fix in progress
+2026-10-31T12:11:07.2552480Z	verify	保留首次完整检查失败，缩短测试制品的目录身份	Windows插件工作目录超过长度限制，不能靠缩短本次输出名隐藏问题	reports/rust-main-host/final-check-20261031-01/host-integration.log	fix; rerun pending
+2026-10-31T12:15:30.5728708Z	audit	撤回首行12:00UTC的精确时间声明	首行时间为手填占位，后续时间由系统采集，决策顺序以追加行和提交为准	docs/e2e-fix-decisions.tsv	chronology limitation recorded
+2026-10-31T12:15:30.5728708Z	ci	使用tester-army执行真实浏览器流程并设为必需CI	补齐Rust宿主到数据库和界面的集成边界，不增加付费模型	docs/browser-ci.md	implemented
+2026-10-31T12:15:30.5728708Z	review	修复hostaddr绕过和CI结果变量替换的反例	让数据库边界和必需门禁由单一输入合同约束	kb_platform/rag_testing/ci_contracts.py	8 PASS
+2026-10-31T12:15:30.5728708Z	verify	最终完整检查与新宿主浏览器均通过	验证冻结源码实际构建和完整关闭结果	reports/rust-main-host/final-check-20261031-02/summary.json; reports/rust-main-host/browser-20261031-02/report.json	PASS
+2026-10-31T12:15:30.5728708Z	delivery	创建三个非草稿PR且不合并	分别审查宿主、RAG修复和CI接入	https://github.com/Hubujiu/evidence-kb/pull/22; https://github.com/Hubujiu/evidence-kb/pull/23; https://github.com/Hubujiu/evidence-kb/pull/24	open; CI running
+2026-10-31T12:15:30.5728708Z	audit	保留跨模型审查和完整会话审计的限制	平台拒绝跨模型任务，未提供会话文件，同模型独立审查已完成	.local/e2e-fix-design/ci-review.md; .local/e2e-fix-design/process-tree-review.md	no unresolved source finding
