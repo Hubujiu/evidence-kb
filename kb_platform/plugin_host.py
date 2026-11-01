@@ -13,6 +13,7 @@ import warnings
 from jsonschema import Draft202012Validator, validators
 
 from .plugin_native import PluginError, native_call
+from .storage_sdk import StorageSlot
 
 
 _leases = ContextVar('plugin_scope_leases', default=())
@@ -80,14 +81,14 @@ class PluginSpec:
     config_schema: dict | None = None
     config_check: Callable | None = None
     config_inputs: Callable | None = None
-    storage_slots: tuple[str, ...] = ()
+    storage_slots: tuple[StorageSlot, ...] = ()
 
     def __post_init__(self):
         object.__setattr__(self, 'provides', tuple(self.provides))
         object.__setattr__(self, 'requires', tuple(self.requires))
         object.__setattr__(self, 'storage_slots', tuple(self.storage_slots))
-        if (len(set(self.storage_slots)) != len(self.storage_slots) or
-                any(not isinstance(slot, str) or not slot for slot in self.storage_slots)):
+        if (any(not isinstance(slot, StorageSlot) for slot in self.storage_slots) or
+                len({slot.name for slot in self.storage_slots}) != len(self.storage_slots)):
             raise ValueError('INVALID_PLUGIN_STORAGE_SLOTS')
         if self.config_schema is not None:
             Draft202012Validator.check_schema(self.config_schema)
