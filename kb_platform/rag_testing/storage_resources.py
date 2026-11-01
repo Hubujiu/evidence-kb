@@ -19,7 +19,7 @@ IMAGES = {
     'postgres': 'evidence-kb-postgres:18.6-textsearch1.5.1-vector0.8.6',
     'mysql': 'mysql:8.4',
     'redis': 'redis:8.2.10',
-    's3': 'docweave/minio:RELEASE.2025-10-15T17-29-55Z',
+    's3': 'evidence-kb-minio-storage-test:RELEASE.2025-10-15T17-29-55Z',
 }
 
 

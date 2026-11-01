@@ -57,6 +57,56 @@ jobs:
         run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
       - name: Fetch locked Rust dependencies
         run: cargo fetch --locked
+      - name: Use isolated system disk temporary storage on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $storageCheckTemp = [System.IO.Path]::GetFullPath("$env:SystemDrive\evidence-kb-checks-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-py${{ matrix.python }}")
+          if (Test-Path -LiteralPath $storageCheckTemp) { throw 'Temporary check directory already exists' }
+          New-Item -ItemType Directory -Path $storageCheckTemp | Out-Null
+          "TMP=$storageCheckTemp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TEMP=$storageCheckTemp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMPDIR=$storageCheckTemp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Observe durable SQLite commits on Windows disks
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @'
+          import json, os, sqlite3, time
+          from pathlib import Path
+          from uuid import uuid4
+          observations = []
+          for round_id in range(5):
+              targets = (("runner", os.environ["RUNNER_TEMP"]), ("system", os.environ["TEMP"]))
+              for label, root in targets[::1 if round_id % 2 == 0 else -1]:
+                  path = Path(root) / ("durable-probe-" + uuid4().hex + ".sqlite3")
+                  connection = sqlite3.connect(path)
+                  try:
+                      connection.execute("PRAGMA synchronous=FULL")
+                      journal = connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+                      connection.execute("CREATE TABLE probe(id INTEGER PRIMARY KEY, value TEXT)")
+                      start = time.monotonic()
+                      for index in range(64):
+                          connection.execute("INSERT INTO probe VALUES(?,?)", (index, "synthetic"))
+                          connection.commit()
+                      elapsed = time.monotonic() - start
+                      synchronous = connection.execute("PRAGMA synchronous").fetchone()[0]
+                      connection.close()
+                      connection = sqlite3.connect(path)
+                      count = connection.execute("SELECT COUNT(*) FROM probe").fetchone()[0]
+                      if count != 64 or synchronous != 2 or journal != "delete":
+                          raise RuntimeError("Durable SQLite disk probe mismatch")
+                      observations.append({"location": label, "root": root, "round": round_id,
+                          "commits": 64, "reopened_rows": count, "synchronous": synchronous,
+                          "journal_mode": journal, "seconds": elapsed})
+                  finally:
+                      connection.close()
+                      path.unlink()
+          output = Path("reports/ci/windows-temp-probe.json")
+          output.parent.mkdir(parents=True, exist_ok=True)
+          output.write_text(json.dumps(observations, indent=2), encoding="utf-8")
+          print(json.dumps(observations))
+          '@ | uv run --no-sync python -
       - name: Run offline quality gates
         run: uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}
       - name: Upload gate evidence
@@ -67,6 +117,13 @@ jobs:
           path: reports/ci/${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: warn
           retention-days: 14
+      - name: Remove owned Windows temporary storage
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $storageCheckTemp = [System.IO.Path]::GetFullPath("$env:SystemDrive\evidence-kb-checks-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-py${{ matrix.python }}")
+          if ([System.IO.Path]::GetDirectoryName($storageCheckTemp) -ne "$env:SystemDrive\" -or [System.IO.Path]::GetFileName($storageCheckTemp) -ne "evidence-kb-checks-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-py${{ matrix.python }}") { throw 'Unexpected temporary cleanup path' }
+          if (Test-Path -LiteralPath $storageCheckTemp) { Remove-Item -LiteralPath $storageCheckTemp -Recurse -Force }
 
   integration:
     name: integration (Rust host, PostgreSQL, browser)
@@ -114,7 +171,7 @@ jobs:
         run: |
           docker pull mysql:8.4
           docker pull redis:8.2.10
-          docker pull docweave/minio:RELEASE.2025-10-15T17-29-55Z
+          docker build -t evidence-kb-minio-storage-test:RELEASE.2025-10-15T17-29-55Z docker/minio
           uv run --no-sync python -m kb_platform.rag_testing.storage_resources prepare --output .local/ci-storage-resources
           uv run --no-sync python -c 'import json, os; from pathlib import Path; state=json.loads(Path(".local/ci-storage-resources/resources-private.json").read_text("utf-8")); selected={k:v for k,v in state["environment"].items() if k.startswith("KB_STORAGE_TEST_")}; [print("::add-mask::"+v) for v in selected.values()]; Path(os.environ["GITHUB_ENV"]).open("a").write("".join(k+"="+v+"\n" for k,v in selected.items()))'
       - name: Run project and database integration gates
