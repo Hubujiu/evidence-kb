@@ -25,11 +25,9 @@ def load_agent_profile(profile=None, *, environment=None, bundles=None):
 
 def create_agent_application(*, decide=None, model=None, tools=(), profile=None,
                              extra_plugins=(), bundles=None, environment=None, models=None,
-                             storage_configuration=None):
-    from dataclasses import replace
+                             storage_configuration=None, provider_catalog=None):
     from .storage_catalog import default_storage_providers
     from .storage_plugins import compile_storage_plugins
-    from .storage_sdk import RELATIONAL_V1, StorageSlot
     from .storage_cache_plugins import stage_cache_plugins
     from .model_plugins import model_plugins
 
@@ -45,20 +43,9 @@ def create_agent_application(*, decide=None, model=None, tools=(), profile=None,
     if storage_configuration is None and environment.get('KB_STORAGE_CONFIG'):
         storage_configuration = json.loads(Path(environment['KB_STORAGE_CONFIG']).read_text('utf-8'))
     if storage_configuration is not None:
-        changes = {}
-        for row in selected['plugins']:
-            if row['id'] not in storage_configuration.get('bindings', {}):
-                continue
-            if row['use'] in ('harness.store.sqlite', 'harness.store.database'):
-                row.update(use='harness.store.database', config={})
-                changes[row['use']] = (StorageSlot('primary', RELATIONAL_V1),)
-            elif row['use'] == 'models.budget':
-                row.setdefault('config', {})['database_slot'] = 'budget'
-                changes[row['use']] = (StorageSlot('budget', RELATIONAL_V1),)
-        catalog = tuple(replace(spec, storage_slots=changes[spec.key]) if spec.key in changes else spec
-                        for spec in catalog)
+        providers = default_storage_providers() if provider_catalog is None else provider_catalog
         selected, catalog = compile_storage_plugins(selected, catalog, storage_configuration,
-                                                     provider_catalog=default_storage_providers())
+                                                     provider_catalog=providers)
     host = PluginHost(selected, catalog)
     try:
         application = host.service('application')

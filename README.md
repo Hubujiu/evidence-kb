@@ -14,7 +14,7 @@
 
 ## 环境
 
-离线验证需要 Python 3.12 或 3.13、[uv](https://docs.astral.sh/uv/) 和 [Rustup](https://rustup.rs/) 管理的 Rust 工具链。Windows 还需要 MSVC C++ 构建工具，Linux 需要 C 链接器。运行文档工作台还需要 Docker Compose。远程模型、Embedding、Docling 和 OCR 不属于离线检查的前置条件。
+离线验证需要 Python 3.12 或 3.13、[uv](https://docs.astral.sh/uv/) 和 [Rustup](https://rustup.rs/) 管理的 Rust 工具链。Windows 还需要 MSVC C++ 构建工具，Linux 需要 C 链接器。使用 PostgreSQL、MySQL、Redis 或 S3 服务时需要相应服务；本地默认组合使用 SQLite、embedded 与 files。远程模型、Embedding、Docling 和 OCR 不属于离线检查的前置条件。
 
 ```powershell
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
@@ -32,7 +32,6 @@ uv run --no-sync python scripts/check_project.py
 
 ```powershell
 uv run python scripts/bootstrap.py
-docker compose up -d --wait
 uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
@@ -40,7 +39,7 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 
 正常停止时，在另一终端执行 `New-Item .local/api.stop -ItemType File`；下次启动前移除该标记。宿主等待在途工作与资源清理，异常退出返回非零状态。Linux 可用 `touch .local/api.stop`。HTTP 路由和页面仍由现有 Python 应用提供。
 
-Compose 默认只启动 PostgreSQL，镜像包含固定版本的 BM25 和向量扩展。正文、向量、索引和发布状态由数据库持久化，原件文件仅供备份下载。Compose 数据库仅绑定回环地址，包含公开开发密码；生产部署需要单独配置认证、网络、数据库凭据和备份。事务与恢复边界见 [检索存储](docs/search-storage.md)。
+`bootstrap.py` 显式初始化新的本地存储空间，并生成含数据身份的 `.local/storage.json`；已有文件不覆盖。已有旧数据须先按 [存储迁移](docs/storage-capability-cleanup.md) 导入新空间。配置其他后端时，使用 [公共存储配置](docs/storage-plugins-execution-plan.md)，BM25、dense、正文与原件可分别绑定。可选 Compose 只初始化开发 PostgreSQL 账号和扩展，不安装知识库业务表；包含公开开发密码，仅绑定回环地址。
 
 已有 OpenSearch 数据必须先显式导入，不能只切换环境变量。导入、回退和备份步骤见 [检索存储](docs/search-storage.md)。
 

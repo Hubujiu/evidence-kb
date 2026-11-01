@@ -23,7 +23,7 @@
 1. 选择稳定 `application_id`、owner 与 space。开发、验收和生产分别使用自己的身份。
 2. 复制 [v2 初始化模板](../config/storage.example.json)。配置实例的驱动参数与凭据环境变量，再选择每个服务的 export。
 3. 让 profile 的消费者实例与 `bindings` 对应。示例要求 `repository`、`originals`、`store`，将 `search` 设为 `platform.search.storage`，并增加 `{"id":"cache","use":"storage.cache.volatile"}`。不使用独立缓存插件时同时删除 `cache` 的绑定和未使用的实例、服务。
-4. 确认消费者声明的槽位与配置完全一致。PG 专用搜索入口要求 PG 合同；知识库仓储通过 relational 合同支持 PostgreSQL、SQLite，MySQL 领域方言尚未实现。
+4. 确认消费者声明的槽位与配置完全一致。知识库仓储、会话和缓存索引需要 structured 合同，预算额外需要 guarded 扩展；不再要求数据库厂商。
 5. 首次创建空间时，运行显式初始化命令生成含 `dataset_id` 的新文件。缓存绑定已有 `cache_id`，不创建持久 dataset。
 6. 将 `KB_STORAGE_CONFIG` 指向初始化后的文件。正常启动只打开和核对现有身份，不能直接使用缺少 `dataset_id` 的初始化模板。
 
@@ -34,7 +34,7 @@ $env:KB_STORAGE_CONFIG = (Resolve-Path .local/storage-configured.json).Path
 
 初始化命令不覆盖输入或已有输出。对已有数据集，先在输入绑定中填入核验后的 `dataset_id`；命令只验证这个身份，不因目标为空或身份不符重新初始化。不要删除身份字段来绕过旧数据核验。
 
-示例让 repository 和 BM25 使用同一 PostgreSQL 实例，dense 使用另一 PostgreSQL，source 使用 SQLite，会话使用 MySQL，原件使用 files，StageCache payload 使用 Redis。source 是独立检索原文适配；该示例的领域仓储使用 PG，也可显式绑定 SQLite。通用 PG lexical 需要 pg_textsearch，vector 需要 pgvector；领域专用旧 PG 搜索入口仍需两者。
+示例让 repository 和 BM25 使用同一 PostgreSQL 实例，dense 使用另一 PostgreSQL，source 使用 SQLite，会话使用 MySQL，原件使用 files，StageCache payload 使用 Redis。source 是独立检索原文适配。领域仓储可绑定 PostgreSQL、MySQL、SQLite 的 structured 出口；各逻辑空间独立。PG lexical 需要 pg_textsearch，vector 需要 pgvector。会话绑定须在应用 profile 中显式选用 `harness.store.database`，缓存须显式选用对应缓存插件；删除未使用的消费者绑定。
 
 把 dense 服务改为 embedded 时，实例配置为 `{"provider":"embedded","config":{"root":".local/storage/dense"}}`，服务 export 保持 `vector`。迁移旧索引和初始化新目标须独立完成，修改配置本身不复制数据。files 切换 S3 同样需要显式对象复制和业务引用切换。
 

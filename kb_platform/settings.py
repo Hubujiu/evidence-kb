@@ -8,22 +8,19 @@ from .session_identity import Actor
 
 @dataclass(frozen=True)
 class Settings:
-    dsn: str
-    search_url: str
     storage_root: Path
     identities_file: Path
-    search_backend: str = 'postgres'
-    search_channels_file: Path | None = None
+    storage_file: Path | None = None
 
     @classmethod
     def from_environment(cls):
+        if any(os.getenv(name) for name in ('KB_DSN', 'KB_SEARCH_URL', 'KB_SEARCH_BACKEND',
+                                             'KB_SEARCH_CHANNELS_CONFIG', 'KB_DATABASES_CONFIG')):
+            raise ValueError('STORAGE_CONFIGURATION_REQUIRED_USE_KB_STORAGE_CONFIG')
         return cls(
-            os.getenv("KB_DSN", "postgresql://kb_app:kb_local_app@127.0.0.1:55432/evidence_kb"),
-            os.getenv("KB_SEARCH_URL", "http://127.0.0.1:59200"),
-            Path(os.getenv("KB_STORAGE_ROOT", ".local/store")).resolve(),
-            Path(os.getenv("KB_IDENTITIES_FILE", ".local/identities.json")).resolve(),
-            os.getenv('KB_SEARCH_BACKEND', 'postgres'),
-            Path(os.environ['KB_SEARCH_CHANNELS_CONFIG']).resolve() if os.getenv('KB_SEARCH_CHANNELS_CONFIG') else None,
+            Path(os.getenv('KB_STORAGE_ROOT', '.local/store')).resolve(),
+            Path(os.getenv('KB_IDENTITIES_FILE', '.local/identities.json')).resolve(),
+            Path(os.getenv('KB_STORAGE_CONFIG', '.local/storage.json')).resolve(),
         )
 
     def identities(self):

@@ -32,7 +32,7 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 生命周期、配置 schema、进程插件和显式恢复接口以 [插件运行时](plugin-runtime.md) 为准。`plugin-runtime` 仅依赖固定的 Serde、serde_json 和 Tokio；harness 通过 workspace 路径依赖它。通用运行时不得反向依赖 Agent 或知识库，精确边界由 checker 和架构合同检查。
 
-普通合同仍禁止联网和启动子进程。正式 checker 另外编排受控进程插件与 Rust 主宿主 fixture，包含临时 loopback HTTP 健康检查；这些阶段使用合成数据和本地模型响应。完整知识库 HTTP、解析子进程和 PostgreSQL 验收使用 `--local-integration` 并设置 `KB_INTEGRATION_DSN`，数据库名须以 `rust_plugin_acceptance_` 开头，且连接 loopback。这个入口保留相同的所有离线检查，不会自动调用真实模型。
+普通合同仍禁止联网和启动子进程。正式 checker 另外编排受控进程插件与 Rust 主宿主 fixture，包含临时 loopback HTTP 健康检查；这些阶段使用合成数据和本地模型响应。完整知识库 HTTP、解析子进程和 PostgreSQL 验收使用 `--local-integration` 并设置 `KB_INTEGRATION_DSN` 与同库的 `KB_INTEGRATION_MIGRATION_DSN`；前者为受限运行账号，后者只供受控夹具初始化与清理。数据库名须以 `rust_plugin_acceptance_` 开头，且连接 loopback。这个入口保留相同的所有离线检查，不会自动调用真实模型。
 
 先声明 `PluginSpec` 的 `provides`、`requires` 和版本，再把实现加入可信 catalog。profile 的 `use` 只能引用已登记的键，不能写 Python 导入路径或任意代码。默认知识库 profile 在 `config/agent-profiles/knowledge.json`；`KB_AGENT_PROFILE` 允许启动时选择另一个配置。
 
@@ -85,3 +85,5 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 Ruff 拒绝可变默认参数、无效表达式、重复类型条件、可直接返回的布尔分支、可合并的相同分支和隐式 Optional。新增规则必须提供能检出违规、接受合法代码的合同，不用忽略规则或降低门槛消除失败。
 
 项目只支持当前数据和配置格式，不新增历史字段回退、旧格式自动升级或历史 hash 放行表。合法性校验放在输入边界，内部函数复用已验证的合同；权限复核、事务租约和外部响应验证仍按实际边界执行。新增 hash 必须有明确消费者及用途，例如内容完整性、精确缓存或请求幂等；不能只写入诊断输出。审查必须检查这些语义约束，lint 不保证识别跨函数重复校验或判断 hash 是否有业务价值。
+
+本轮删除的旧存储选择入口、失效性能脚本及构建恢复用例迁移映射见 [存储能力清理](storage-capability-cleanup.md)。当前验收不调用 `postgres_operations` 或 `embedded_operations`，旧报告中的这些名称属于历史入口。

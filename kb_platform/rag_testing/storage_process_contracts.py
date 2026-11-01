@@ -59,9 +59,16 @@ class StorageProcessContracts(unittest.TestCase):
         bound = self.bound('kv', KV_DURABLE_V1)
         self.assertIsNone(decode_value(bound.call_json(_request('set', 'binary', b'\x00\xff'))))
         self.assertEqual(decode_value(bound.call_json(_request('get', 'binary'))), b'\x00\xff')
-        for method in ('put_expiring', '_space', 'for_consumer', 'transaction', 'call_json', 'close'):
+        self.assertFalse(hasattr(bound, 'dependency_manifest'))
+        for method in ('put_expiring', 'dependency_manifest', '_space', 'for_consumer', 'transaction', 'call_json', 'close'):
             with self.subTest(method=method), self.assertRaisesRegex(StorageError, 'STORAGE_PROCESS_METHOD_REJECTED'):
                 bound.call_json(_request(method))
+
+    def test_document_dependency_manifest_is_in_the_declared_process_contract(self):
+        bound = self.bound('document', DOCUMENT_V1)
+        observed = decode_value(bound.call_json(_request('dependency_manifest')))
+        self.assertEqual(observed, bound.dependency_manifest())
+        self.assertEqual(observed['storage']['identity']['dataset_id'], bound.identity.dataset_id)
 
     def test_relational_bridge_only_allows_bounded_sql_json_and_rejects_ddl(self):
         bound = self.bound('relational', RELATIONAL_V1)

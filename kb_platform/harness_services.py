@@ -10,6 +10,8 @@ from .harness_model import CallableModel, StructuredDecisionModel
 from .context_budget import ContextBudget
 from .session_store import SessionStore
 from .plugin_host import PluginSpec
+from .storage_sdk import StorageSlot
+from .storage_sdk.relational import STRUCTURED_RELATIONAL_V1
 from .plugin_configuration import configured_plugins, config_schema, TEXT, POSITIVE
 
 
@@ -104,7 +106,8 @@ def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
     checks = {'harness.context.policy': check_context}
     return configured_plugins((
         PluginSpec('harness.store.sqlite', ('session.store',), (), store_plugin),
-        PluginSpec('harness.store.database', ('session.store',), (), database_store),
+        PluginSpec('harness.store.database', ('session.store',), (), database_store,
+                   storage_slots=(StorageSlot('primary', STRUCTURED_RELATIONAL_V1),)),
         PluginSpec('harness.sessions.durable', ('sessions',), ('session.store',), durable_sessions),
         PluginSpec('harness.context.policy', ('context.policy',), (), context_policy),
         PluginSpec('harness.compaction.recent', ('compaction',), (), compaction_plugin),

@@ -2,11 +2,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+from pathlib import Path
 
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from ..database_contracts import Migration, QueryLimits, SchemaPackage
 from ..storage_sdk import Document, StorageError
+from ..implementation_dependencies import implementation_dependencies
 
 
 MAX_VALUE_BYTES = 1024 * 1024
@@ -98,6 +100,15 @@ def _document(row, expected_key=None):
 
 
 class _SqlStore:
+    def dependency_manifest(self):
+        directory = Path(__file__).resolve().parents[1]
+        return {'version': 1, 'implementation': implementation_dependencies(__file__,
+            directory / 'storage_catalog.py', directory / 'database_contracts.py',
+            directory / 'database_migrations.py', directory / 'database_providers/base.py',
+            *(directory / 'database_providers' / (name + '.py') for name in ('postgres', 'mysql', 'sqlite')),
+            directory / 'storage_adapters/sql.py', packages=('sqlalchemy', 'psycopg', 'pymysql')),
+            'storage': {'dataset': str(self.identity)}}
+
     def __init__(self, database, *, table, fields, migrations=()):
         self._database = database
         self.identity = database.identity

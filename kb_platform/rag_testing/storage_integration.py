@@ -17,12 +17,16 @@ import unittest
 from uuid import uuid4
 import xml.etree.ElementTree as ET
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, func, literal, select, text
 from sqlalchemy.engine import make_url
 
 from kb_platform.database_contracts import SpaceKey
 from kb_platform.database_providers import MySQLProvider, PostgresProvider, SQLiteProvider
 from kb_platform.database_service import DatabaseService
+from kb_platform.storage_adapters.structured import StructuredSqlSpace
+from kb_platform.storage_sdk import ExistingDataset, StorageExport
+from kb_platform.storage_sdk.relational import GUARDED_RELATIONAL_V1
+from kb_platform.storage_service import StorageService
 from kb_platform.session_identity import Actor, PlatformError
 from kb_platform.session_store import SessionStore
 from kb_platform.session_transfer import export_sessions, import_sessions
@@ -101,7 +105,28 @@ class StorageFixtures:
         service, bound = self.bind(engine, name, consumer='first')
         key = bound.identity.space
         other = service.bind(service.grant('acceptance', key, consumer_identity='second'))
-        return SessionStore(database=bound), SessionStore(database=other)
+        if bound._grant.token == other._grant.token:
+            raise ValueError('Session clients must receive independent grants')
+        self.observations.setdefault('session_grants', []).append({
+            'engine': engine, 'first': bound._grant.token, 'second': other._grant.token})
+        return SessionStore(database=self._structured_bound(bound)), SessionStore(database=self._structured_bound(other))
+
+    def _structured_bound(self, bound):
+        registry = StorageService()
+        self.services.append(registry)
+        registry.register('structured', StorageExport('structured', (GUARDED_RELATIONAL_V1,),
+            lambda space, target: StructuredSqlSpace(bound._space)), owner_lease=bound._lease)
+        grant = registry.grant('structured', GUARDED_RELATIONAL_V1, bound.identity.space, 'fixture',
+                               target=ExistingDataset(bound.identity.dataset_id))
+        return registry.bind(grant)
+
+    def structured(self, engine, name, *, consumer='fixture', owner='sessions'):
+        service, bound = self.bind(engine, name, consumer=consumer, owner=owner)
+        return service, self._structured_bound(bound)
+
+    def structured_admin(self, engine, name, *, owner):
+        service, bound = self.bind(engine, name, owner=owner)
+        return service, StructuredSqlSpace(bound._space)
 
     def close(self):
         errors = []
@@ -154,12 +179,12 @@ def session_suite(fixtures):
             for engine in ('sqlite', 'postgresql', 'mysql'):
                 with self.subTest(engine=engine):
                     first, second = fixtures.pair(engine, 'contract-' + engine)
-                    result = exercise_session_database(first, second)
+                    result = exercise_session_database(first, second, engine=engine)
                     self.assertEqual(result['engine'], engine)
                     self.assertEqual(result['revision'], 5)
-                    self.assertNotEqual(first.database._grant.token, second.database._grant.token)
+                    self.assertIsNot(first.database, second.database)
                     with first.database.transaction(write=False) as tx:
-                        identity = tx.execute('SELECT 1 AS actual_connection').fetchone()
+                        identity = tx.execute(select(literal(1).label('actual_connection'))).fetchone()
                     self.assertEqual(identity['actual_connection'], 1)
                     fixtures.observations.setdefault('sessions', []).append(result)
 
@@ -167,7 +192,7 @@ def session_suite(fixtures):
             actor = Actor('synthetic-tenant', 'owner')
             engines = ('sqlite', 'postgresql', 'mysql')
             for source_engine in engines:
-                _, bound = fixtures.bind(source_engine, 'clone-source-' + source_engine)
+                _, bound = fixtures.structured(source_engine, 'clone-source-' + source_engine)
                 source = SessionStore(database=bound)
                 sid = source.create(actor, 'scope', {'source': source_engine})['session_id']
                 token = source.begin(actor, sid, 'complete', 0, 'fingerprint')['token']
@@ -180,7 +205,7 @@ def session_suite(fixtures):
                     if target_engine == source_engine:
                         continue
                     with self.subTest(source=source_engine, target=target_engine):
-                        _, target_bound = fixtures.bind(target_engine, source_engine + '-to-' + target_engine)
+                        _, target_bound = fixtures.structured(target_engine, source_engine + '-to-' + target_engine)
                         target = SessionStore(database=target_bound)
                         cloned = import_sessions(target, package, target_offline=True)
                         self.assertNotEqual(cloned['source_dataset_id'], cloned['target_dataset_id'])
@@ -199,8 +224,8 @@ def session_suite(fixtures):
             actor = Actor('tenant', 'owner')
             for engine in ('sqlite', 'postgresql', 'mysql'):
                 with self.subTest(engine=engine):
-                    _, a = fixtures.bind(engine, 'isolation-first-' + engine)
-                    _, b = fixtures.bind(engine, 'isolation-second-' + engine)
+                    _, a = fixtures.structured(engine, 'isolation-first-' + engine)
+                    _, b = fixtures.structured(engine, 'isolation-second-' + engine)
                     first, second = SessionStore(database=a), SessionStore(database=b)
                     sid = first.create(actor, 'scope', {})['session_id']
                     self.assertEqual(second.list_sessions(actor), [])
@@ -212,7 +237,9 @@ def session_suite(fixtures):
                         with a.transaction() as tx:
                             tx.execute('CREATE TABLE forbidden_runtime_ddl (id INTEGER)')
                     with a.transaction(write=False) as tx:
-                        count = tx.execute('SELECT COUNT(*) AS count FROM sessions').fetchone()['count']
+                        from kb_platform.session_storage.schema import metadata
+
+                        count = tx.execute(select(func.count().label('count')).select_from(metadata.tables['sessions'])).scalar()
                     self.assertEqual(count, 1)
 
         def test_real_cache_budget_unknown_and_explicit_ledger_import(self):
@@ -226,10 +253,10 @@ def session_suite(fixtures):
                     objects.register('fixture', FileBlobProvider(fixtures.resource_root / ('cache-objects-' + engine)))
                     try:
                         def bind(owner, space):
-                            return fixtures.bind(engine, 'persistence-' + space, owner=owner)[1]
+                            return fixtures.structured(engine, 'persistence-' + space, owner=owner)[1]
 
                         result = exercise_persistence(bind, objects.bind('fixture', space=engine),
-                            fixtures.resource_root / ('ledger-migration-' + engine))
+                            fixtures.resource_root / ('ledger-migration-' + engine), engine=engine)
                         self.assertEqual(result['engine'], engine)
                         fixtures.observations.setdefault('persistence', []).append(result)
                     finally:
@@ -361,6 +388,8 @@ def running_host(directory, environment, profile, name):
 
 
 def http_configuration(fixtures, engine):
+    if engine not in {'postgres', 'embedded', 'sqlite', 'mysql'}:
+        raise ValueError('Unknown HTTP storage acceptance arrangement')
     directory = fixtures.output / ('http-' + engine)
     directory.mkdir()
     application = 'storage-http-' + fixtures.run_id + '-' + engine
@@ -381,8 +410,10 @@ def http_configuration(fixtures, engine):
     if engine == 'sqlite':
         instances['authority'] = {'provider': 'sqlite', 'config': {
             'root': str(fixtures.resource_root / 'sqlite-authority')}}
+    elif engine == 'mysql':
+        instances['authority'] = {'provider': 'mysql', 'config': {'url_env': 'KB_STORAGE_TEST_MYSQL_URL'}}
     services = {
-        'main.sql': {'instance': 'authority' if engine == 'sqlite' else 'main', 'export': 'relational'},
+        'main.sql': {'instance': 'authority' if engine in ('sqlite', 'mysql') else 'main', 'export': 'structured'},
         'main.lexical': {'instance': 'main', 'export': 'lexical'},
         'dense.vector': {'instance': 'dense', 'export': 'vector'},
         'documents.records': {'instance': 'documents', 'export': 'document'},
@@ -420,10 +451,12 @@ def http_configuration(fixtures, engine):
     for slots in bindings.values():
         for value in slots.values():
             instance = services[value['service']]['instance']
-            if instances[instance]['provider'] != 'postgresql':
+            provider = instances[instance]['provider']
+            if provider not in ('postgresql', 'mysql'):
                 continue
             key = SpaceKey(application, value['owner'], value['space'])
-            database = 'dense_postgresql' if instance == 'dense' else 'postgresql'
+            database = ('mysql' if provider == 'mysql' else
+                        'dense_postgresql' if instance == 'dense' else 'postgresql')
             fixtures.spaces.append((database, 'kb_' + key.digest[:24]))
     write_json(directory / 'storage.json', initialize_configuration(configuration))
     profile = directory / 'application.json'
@@ -587,7 +620,7 @@ def staged_build_id(fixtures, directory, kb_id):
     engine = create_engine(fixtures.selected['postgresql'].set(drivername='postgresql+psycopg'))
     try:
         with engine.begin() as connection:
-            connection.execute(text("SELECT set_config('app.tenant_id',:tenant,true), set_config('app.kb_id',:kb,true)"),
+            connection.execute(text("SELECT set_config('storage_scope.tenant_id',:tenant,true), set_config('storage_scope.kb_id',:kb,true)"),
                                {'tenant': fixtures.run_id, 'kb': kb_id})
             table = connection.dialect.identifier_preparer.quote(schema) + '.builds'
             rows = connection.execute(text('SELECT build_id FROM ' + table +
@@ -599,10 +632,10 @@ def staged_build_id(fixtures, directory, kb_id):
         engine.dispose()
 
 
-def http_suite(fixtures):
+def http_suite(fixtures, *, engines=('postgres', 'embedded', 'sqlite', 'mysql')):
     class HttpStorageIntegration(unittest.TestCase):
         def test_real_rust_http_split_channels_restart_and_failed_build(self):
-            for engine in ('postgres', 'embedded', 'sqlite'):
+            for engine in engines:
                 with self.subTest(dense_backend=engine):
                     directory, profile, environment, tokens = http_configuration(fixtures, engine)
                     owner = {'Authorization': 'Bearer ' + tokens['owner']}
@@ -698,7 +731,7 @@ def http_suite(fixtures):
                         self.assertEqual(original.content, TEXT.encode())
                     fixtures.observations.setdefault('http', []).append({
                         'transport': 'Rust parent + Python worker + actual loopback TCP HTTP',
-                        'repository': 'sqlite' if engine == 'sqlite' else 'postgresql',
+                        'repository': engine if engine in ('sqlite', 'mysql') else 'postgresql',
                         'bm25': 'postgresql', 'dense': 'postgresql' if engine == 'postgres' else 'embedded', 'kb_id': kb_id, 'source_id': source['source_id'],
                         'originals': 's3' if engine == 'postgres' else 'files', 'original_download_after_restart': True,
                         'build_id': build['build_id'], 'restarted_hits': True, 'failure_did_not_publish': True,
@@ -710,42 +743,68 @@ def http_suite(fixtures):
 
 def knowledge_suite(fixtures):
     class KnowledgeStorageIntegration(unittest.TestCase):
+        def test_circuit_threshold_uses_old_values_consistently_on_three_actual_engines(self):
+            from kb_platform.knowledge_queries import KnowledgeQuery as K
+            from kb_platform.knowledge_storage import KnowledgeRepository
+
+            outcomes = []
+            for engine in ('sqlite', 'postgresql', 'mysql'):
+                _, database = fixtures.structured(engine, 'circuit-old-values', owner='knowledge-circuits')
+                repository = KnowledgeRepository(database=database)
+                actor, kb = Actor('tenant', 'owner'), 'scope'
+                with repository.transaction(actor, kb) as tx:
+                    tx.execute(K.CIRCUIT_ENSURE, ('tenant', kb, 'provider'))
+                for attempt in (1, 2, 3):
+                    with repository.transaction(actor, kb) as tx:
+                        tx.execute(K.CIRCUIT_FAILURE, (3, 60, 'tenant', kb, 'provider'))
+                        row = tx.execute(K.CIRCUIT_LOCK, ('tenant', kb, 'provider')).fetchone()
+                        now = tx.execute(K.JOB_CLOCK).fetchone()['db_now']
+                        opened = row['open_until'] is not None and row['open_until'] > now
+                        self.assertEqual((row['failures'], opened), (attempt, attempt == 3))
+                        outcomes.append({'engine': engine, 'failures': attempt, 'opened': opened})
+            fixtures.observations['circuit_threshold'] = outcomes
+
+        def test_legacy_knowledge_transfer(self):
+            from .knowledge_transfer_contracts import exercise_legacy_knowledge_transfer
+
+            fixtures.observations['legacy_knowledge_transfer'] = exercise_legacy_knowledge_transfer(self, fixtures)
+
         def test_actual_job_row_and_circuit_lock_waits_preserve_lease_deadlines(self):
             from kb_platform.knowledge_storage import KnowledgeRepository
             from .knowledge_persistence_contracts import exercise_job_lock_deadlines
 
-            _, database = fixtures.bind('postgresql', 'job-lock-deadlines', owner='knowledge-jobs')
-            observed = exercise_job_lock_deadlines(self, KnowledgeRepository(database=database))
-            fixtures.observations['job_lock_deadlines'] = observed
+            for engine in ('postgresql', 'mysql'):
+                with self.subTest(engine=engine):
+                    _, database = fixtures.structured(engine, 'job-lock-deadlines', owner='knowledge-jobs')
+                    observed = exercise_job_lock_deadlines(self, KnowledgeRepository(database=database))
+                    fixtures.observations.setdefault('job_lock_deadlines', []).append({'engine': engine, **observed})
 
-        def test_same_domain_behavior_on_actual_sqlite_and_postgresql(self):
+        def test_same_domain_behavior_on_actual_sqlite_postgresql_and_mysql(self):
             from .knowledge_persistence_contracts import exercise_knowledge_repository
 
-            for engine in ('sqlite', 'postgresql'):
+            for engine in ('sqlite', 'postgresql', 'mysql'):
                 with self.subTest(engine=engine):
-                    _, bound = fixtures.bind(engine, 'portable-knowledge-' + engine, owner='knowledge-domain')
+                    _, database = fixtures.structured(engine, 'portable-knowledge-' + engine, owner='knowledge-domain')
                     root = fixtures.resource_root / ('portable-knowledge-' + engine)
                     root.mkdir()
-                    observed = exercise_knowledge_repository(self, bound, root)
-                    fixtures.observations.setdefault('portable_knowledge', []).append(observed)
+                    observed = exercise_knowledge_repository(self, database, root)
+                    fixtures.observations.setdefault('portable_knowledge', []).append({'engine': engine, **observed})
 
         def test_search_restart_preserves_sealed_permissions_and_supports_a_new_build(self):
             import psycopg
             from psycopg import sql
 
             from kb_platform.database_contracts import DatabaseError
-            from kb_platform.database_providers.postgres import PostgresProvider, pg_transaction
-            from kb_platform.knowledge_storage import KnowledgeRepository
-            from kb_platform.postgres_search import PostgresSearch
+            from kb_platform.database_providers.postgres import pg_transaction
             from .product_fixture import Authority
+            from .storage_search_integration import _Configuration
 
-            name = 'knowledge-search-restart'
-            first_service, first = fixtures.bind('postgresql', name, owner='knowledge')
-            KnowledgeRepository(database=first)
+            configuration = _Configuration(fixtures, 'search-restart', 'postgresql', 'postgresql', shared=True)
+            initial = configuration.open()
+            first = configuration.databases['bm25'].bound
             authority = Authority([('restart.txt', 'RESTARTMARKER evidence stays immutable.')])
             for unit in authority.units:
                 unit['vector'] = [1.0, 0.25, 0.125]
-            initial = PostgresSearch(database=first)
             first_index = initial.index_name('tenant', 'scope', '3' * 32)
             initial.stage(first_index, authority.units, vector_dimension=3)
             initial.seal(first_index, 'first-seal')
@@ -754,42 +813,41 @@ def knowledge_suite(fixtures):
             def foundation_state(bound):
                 with bound._space.migration_engine.connect() as audit:
                     quote = audit.dialect.identifier_preparer.quote
-                    schema = quote(bound.schema) + '.'
-                    identity = audit.exec_driver_sql('SELECT * FROM ' + schema + '_database_identity').mappings().all()
-                    migrations = audit.exec_driver_sql('SELECT * FROM ' + schema +
+                    prefix = quote(bound.schema) + '.'
+                    identity = audit.exec_driver_sql('SELECT * FROM ' + prefix + '_database_identity').mappings().all()
+                    migrations = audit.exec_driver_sql('SELECT * FROM ' + prefix +
                         '_database_migrations ORDER BY schema_owner,version').mappings().all()
                     return {'identity': [dict(row) for row in identity], 'migrations': [dict(row) for row in migrations]}
 
             original_foundation = foundation_state(first)
 
             def assert_immutable(bound, search, index, phase):
-                metadata = sql.Identifier(bound.schema, 'search_generations')
-                statements = [('metadata-update', sql.SQL('UPDATE {} SET seal=seal WHERE index_name=%s').format(metadata),
-                               (index,))]
+                statements = [('metadata-update', sql.SQL('UPDATE {} SET seal=seal').format(
+                    sql.Identifier(bound.schema, '_storage_search_generations')))]
                 for table, column in (('_database_identity', 'dataset_id'), ('_database_migrations', 'content_hash')):
                     statements.append((table + '-update', sql.SQL('UPDATE {} SET {}={}').format(
-                        sql.Identifier(bound.schema, table), sql.Identifier(column), sql.Identifier(column)), ()))
-                for page in (False, True):
-                    table = sql.Identifier(bound.schema, search._table(index, page))
+                        sql.Identifier(bound.schema, table), sql.Identifier(column), sql.Identifier(column))))
+                for channel, backend in (('bm25', search.bm25), ('dense', search.vector)):
+                    target = search.channel_index(index, channel)
+                    table = sql.Identifier(bound.schema, backend._generation(target))
                     statements.extend([
-                        ('generation-update', sql.SQL('UPDATE {} SET body=body').format(table), ()),
-                        ('generation-delete', sql.SQL('DELETE FROM {}').format(table), ()),
-                        ('generation-insert', sql.SQL('INSERT INTO {} SELECT * FROM {}').format(table, table), ()),
+                        ('generation-update', sql.SQL('UPDATE {} SET record=record').format(table)),
+                        ('generation-delete', sql.SQL('DELETE FROM {}').format(table)),
+                        ('generation-insert', sql.SQL('INSERT INTO {} SELECT * FROM {}').format(table, table)),
                     ])
-                for operation, statement, params in statements:
+                for operation, statement in statements:
                     with self.subTest(phase=phase, operation=operation):
                         with self.assertRaises(psycopg.errors.InsufficientPrivilege):
-                            with pg_transaction(bound, 'tenant', 'scope') as raw:
-                                raw.execute(statement, params)
+                            with pg_transaction(bound) as raw:
+                                raw.execute(statement)
                         denied.append({'phase': phase, 'operation': operation, 'outcome': 'DENIED'})
 
             assert_immutable(first, initial, first_index, 'before-restart')
             self.assertEqual(foundation_state(first), original_foundation)
             identity, old_role = first.identity, first.runtime_role
-            first_service.close()
-            _, restored = fixtures.bind('postgresql', name, owner='knowledge')
-            KnowledgeRepository(database=restored)
-            search = PostgresSearch(database=restored)
+            configuration.close()
+            search = configuration.open()
+            restored = configuration.databases['bm25'].bound
             self.assertEqual(restored.identity, identity)
             self.assertNotEqual(restored.runtime_role, old_role)
             self.assertEqual(search.read_units(first_index), authority.units)
@@ -821,36 +879,37 @@ def knowledge_suite(fixtures):
                     limited.close()
                     with restored._space.migration_engine.begin() as audit:
                         audit.exec_driver_sql('REVOKE UPDATE ON ' + target + ' FROM ' + role)
-            final_foundation = foundation_state(restored)
-            self.assertEqual(final_foundation, original_foundation)
+            self.assertEqual(foundation_state(restored), original_foundation)
             fixtures.observations['search_restart_immutability'] = {
                 'dataset_id': identity.dataset_id, 'old_runtime_role': old_role,
                 'new_runtime_role': restored.runtime_role, 'first_index': first_index, 'second_index': second_index,
                 'old_seal_preserved': True, 'new_build_after_restart': True,
-                'foundation_metadata_before': original_foundation, 'foundation_metadata_after': final_foundation,
+                'foundation_metadata_before': original_foundation, 'foundation_metadata_after': foundation_state(restored),
                 'foundation_metadata_unchanged': True, 'unsafe_preconfigured_accounts_rejected': preconfigured_denials,
                 'denied_runtime_mutations': denied, 'decision': 'PASS'}
 
         def test_two_actual_knowledge_spaces_isolate_same_generation_and_rls_connection_reuse(self):
             from kb_platform.knowledge_queries import KnowledgeQuery
             from kb_platform.knowledge_storage import KnowledgeRepository
-            from kb_platform.postgres_search import PostgresSearch
             from .product_fixture import Authority
+            from .storage_search_integration import _Configuration
 
             clients, repositories, bounds = [], [], []
-            index = PostgresSearch.index_name('tenant', 'scope', '1' * 32)
             for label in ('FIRSTSPACE', 'SECONDSPACE'):
                 _, bound = fixtures.bind('postgresql', 'knowledge-' + label, owner='knowledge')
-                repository = KnowledgeRepository(database=bound)
-                search = PostgresSearch(database=bound)
+                repository = KnowledgeRepository(database=StructuredSqlSpace(bound._space))
+                configuration = _Configuration(fixtures, 'search-' + label, 'postgresql', 'postgresql', shared=True)
+                search = configuration.open()
+                index = search.index_name('tenant', 'scope', '1' * 32)
                 authority = Authority([('same-name.txt', label + ' publication requires review.')])
                 for unit in authority.units:
                     unit.update(build_id='1' * 32, vector=[1.0, 0.25, 0.125])
                 search.stage(index, authority.units, vector_dimension=3)
                 self.assertEqual(search.read_units(index), authority.units)
-                self.assertEqual(search.verify(index)['unit_count'], len(authority.units))
+                self.assertEqual(search.verify(index)['count'], len(authority.units))
                 manifest = {'tenant_id': 'tenant', 'kb_id': 'scope', 'build_id': '1' * 32,
                             'index_name': index, 'synthetic_space_label': label}
+                search.seal(index, 'seal-' + label)
                 search.publish_manifest(manifest, 'seal-' + label)
                 self.assertTrue(search.is_sealed(index, 'seal-' + label))
                 self.assertEqual(search.current_manifest('tenant', 'scope'), (manifest, 'seal-' + label))
@@ -869,9 +928,9 @@ def knowledge_suite(fixtures):
             pids = []
 
             def observe(tx, expected_tenant):
-                raw = tx._transaction
-                state = raw.execute("SELECT pg_backend_pid() AS pid, current_setting('app.tenant_id',true) AS tenant, "
-                                    "current_setting('app.kb_id',true) AS kb").fetchone()
+                raw = tx._transaction._transaction
+                state = raw.execute("SELECT pg_backend_pid() AS pid, current_setting('storage_scope.tenant_id',true) AS tenant, "
+                                    "current_setting('storage_scope.kb_id',true) AS kb").fetchone()
                 pids.append(state['pid'])
                 self.assertEqual((state['tenant'], state['kb']), (expected_tenant, 'same-kb'))
                 return raw
@@ -880,8 +939,7 @@ def knowledge_suite(fixtures):
                 raw = observe(tx, 'actor-tenant-A')
                 tx.execute(KnowledgeQuery.AUTHORITY_ENSURE, ('actor-tenant-A',))
                 tx.execute(KnowledgeQuery.KB_INSERT, ('actor-tenant-A', 'same-kb', 'A-only', 'owner'))
-                tx.execute(KnowledgeQuery.MEMBER_INSERT,
-                           ('actor-tenant-A', 'same-kb', 'owner', ['kb.read']))
+                tx.execute(KnowledgeQuery.MEMBER_INSERT, ('actor-tenant-A', 'same-kb', 'owner', ['kb.read']))
                 self.assertEqual([row['name'] for row in raw.execute('SELECT name FROM knowledge_bases').fetchall()], ['A-only'])
             with self.assertRaisesRegex(RuntimeError, 'synthetic rollback'):
                 with repository.transaction(Actor('actor-tenant-B', 'owner'), 'same-kb') as tx:
@@ -895,8 +953,8 @@ def knowledge_suite(fixtures):
                     raw = observe(tx, tenant)
                     self.assertEqual([row['name'] for row in raw.execute('SELECT name FROM knowledge_bases').fetchall()], expected)
             with bound.transaction(write=False) as tx:
-                state = tx.execute("SELECT pg_backend_pid() AS pid, current_setting('app.tenant_id',true) AS tenant, "
-                                   "current_setting('app.kb_id',true) AS kb").fetchone()
+                state = tx.execute("SELECT pg_backend_pid() AS pid, current_setting('storage_scope.tenant_id',true) AS tenant, "
+                                   "current_setting('storage_scope.kb_id',true) AS kb").fetchone()
                 pids.append(state['pid'])
                 self.assertFalse(state['tenant'])
                 self.assertFalse(state['kb'])
@@ -931,7 +989,7 @@ def run(output, environment=None):
               'planned': {'session_engines': 3, 'cross_engine_clones': 6, 'persistence_engines': 3,
                           'transaction_atomicity_probes': 78, 'nontransactional_schema_rejections': 1,
                           'knowledge_namespaces': 2, 'physical_connection_reuse': 1,
-                          'http_configurations': 3, 'synthetic_evidence_cases': 9, 'browser_cases': 2},
+                          'http_configurations': 4, 'synthetic_evidence_cases': 12, 'browser_cases': 2},
               'backends': {engine: {'host': url.host, 'port': url.port, 'database': url.database}
                            for engine, url in selected.items() if engine != 's3_endpoint'}}
     try:
@@ -940,11 +998,12 @@ def run(output, environment=None):
             from .storage_search_integration import suite as search_contract_suite
             from .storage_object_integration import suite as object_contract_suite
             from .model_provider_integration import suite as model_provider_suite
+            from .build_recovery_contracts import live_suite as build_recovery_suite
 
             suite = unittest.TestSuite((foundation_suite(fixtures), session_suite(fixtures),
                                         knowledge_suite(fixtures), contract_suite(fixtures),
                                         search_contract_suite(fixtures), object_contract_suite(fixtures),
-                                        http_suite(fixtures), model_provider_suite()))
+                                        http_suite(fixtures), model_provider_suite(), build_recovery_suite(fixtures)))
             planned = tuple(planned_tests(suite))
             write_json(output / 'plan.json', {'test_ids': planned, 'total': len(planned),
                        'new_model_calls_limit': 0, 'new_embedding_calls_limit': 0, 'new_judge_calls_limit': 0})

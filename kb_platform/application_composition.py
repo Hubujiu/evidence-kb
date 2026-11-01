@@ -1,5 +1,5 @@
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -50,67 +50,22 @@ def _client_routes():
                  client='embedding', capability='embedding')]
 
 
-def _search_channels(selected, settings, environment):
-    path = environment.get('KB_SEARCH_CHANNELS_CONFIG') or getattr(settings, 'search_channels_file', None)
-    if not path:
-        return selected
-    channels = json.loads(Path(path).read_text('utf-8'))
-    if not isinstance(channels, dict) or set(channels) != {'bm25', 'dense'}:
-        raise ValueError('INVALID_SEARCH_CHANNELS_CONFIGURATION')
-    search = next((row for row in selected['plugins'] if row['id'] == 'search'), None)
-    if search is None:
-        raise ValueError('SEARCH_SERVICE_REQUIRED')
-    search.update(use='platform.search.split', config={})
-    for channel in ('bm25', 'dense'):
-        value = dict(channels[channel])
-        backend = value.pop('backend', None)
-        if backend not in ('postgres', 'embedded'):
-            raise ValueError('INVALID_SEARCH_CHANNEL_BACKEND')
-        selected['plugins'].append(_row('search_' + channel,
-            'platform.search.' + channel + '.' + backend, **value))
-    selected['plugins'].append(_row('search_source', 'platform.search.source.postgres'))
-    return selected
-
-
-def _storage(selected, catalog, settings, environment):
+def _storage(selected, catalog, settings, environment, *, storage_configuration=None, provider_catalog=None):
     from .storage_catalog import default_storage_providers
     from .storage_plugins import compile_storage_plugins
-    from .storage_sdk import RELATIONAL_POSTGRES_V1, RELATIONAL_V1, StorageSlot
 
-    if environment.get('KB_DATABASES_CONFIG'):
-        raise ValueError('LEGACY_STORAGE_CONFIGURATION_REQUIRES_CONVERSION')
-    path = environment.get('KB_STORAGE_CONFIG')
-    if not path:
+    by_spec = {spec.key: spec for spec in catalog}
+    needs_storage = any(by_spec[row['use']].storage_slots for row in selected['plugins'] if not row.get('disabled'))
+    if storage_configuration is None:
+        path = environment.get('KB_STORAGE_CONFIG') or (getattr(settings, 'storage_file', None) if needs_storage else None)
+        if path is not None:
+            storage_configuration = json.loads(Path(path).read_text('utf-8'))
+    if storage_configuration is None:
+        if needs_storage:
+            raise ValueError('STORAGE_CONFIGURATION_REQUIRED')
         return selected, catalog
-    configuration = json.loads(Path(path).read_text('utf-8'))
-    by_id = {row['id']: row for row in selected['plugins']}
-    changes = {}
-    for identity, bindings in configuration['bindings'].items():
-        if identity not in by_id:
-            raise ValueError('UNKNOWN_STORAGE_CONSUMER')
-        row = by_id[identity]
-        use = row['use']
-        if use in ('harness.store.sqlite', 'harness.store.database'):
-            row.update(use='harness.store.database', config={})
-            changes[row['use']] = (StorageSlot('primary', RELATIONAL_V1),)
-        elif use == 'models.budget':
-            row.setdefault('config', {})['database_slot'] = 'budget'
-            changes[use] = (StorageSlot('budget', RELATIONAL_V1),)
-        elif use in ('platform.repository.postgres', 'platform.repository.storage'):
-            row.update(use='platform.repository.storage', config={'database_slot': 'primary'})
-        elif use in ('platform.search.postgres',
-                     'platform.search.bm25.postgres', 'platform.search.dense.postgres',
-                     'platform.search.source.postgres'):
-            row.setdefault('config', {})['database_slot'] = 'primary'
-            changes[use] = (StorageSlot('primary', RELATIONAL_POSTGRES_V1),)
-        elif use in ('platform.originals.files', 'platform.originals.blobs'):
-            row.update(use='platform.originals.storage', config={})
-        elif use == 'platform.search.split':
-            row.update(use='platform.search.storage', config={})
-    catalog = tuple(replace(spec, storage_slots=changes[spec.key]) if spec.key in changes else spec
-                    for spec in catalog)
-    return compile_storage_plugins(selected, catalog, configuration,
-                                   provider_catalog=default_storage_providers())
+    providers = default_storage_providers() if provider_catalog is None else provider_catalog
+    return compile_storage_plugins(selected, catalog, storage_configuration, provider_catalog=providers)
 
 
 def load_application_profile(settings, *, profile=None, environment=None, remote=None):
@@ -130,18 +85,13 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
         selected['plugins'].extend(load_knowledge_profile(environment=environment)['plugins'])
     selected = _overlay(selected, environment)
     by_id = {row['id']: row for row in selected['plugins']}
-    if 'search' in by_id and profile is None and not environment.get('KB_APPLICATION_PROFILE'):
-        if settings.search_backend not in ('postgres', 'embedded', 'opensearch'):
-            raise ValueError('UNKNOWN_SEARCH_BACKEND')
-        by_id['search']['use'] = 'platform.search.' + settings.search_backend
-    selected = _search_channels(selected, settings, environment)
     if not remote or 'platform' not in by_id:
         return selected
     if 'provider' not in by_id:
         selected['plugins'].append(_row('provider', 'models.service'))
         by_id['provider'] = selected['plugins'][-1]
     if model_path:
-        by_id['provider']['config'] = {'config_path': model_path}
+        by_id['provider'].setdefault('config', {})['config_path'] = model_path
         embedding, ocr = 'embedding' in configured, 'ocr' in configured
         if embedding:
             selected['plugins'].append(_row('embedding', 'models.embedding',
@@ -149,7 +99,6 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
         if ocr:
             selected['plugins'].append(_row('ocr', 'models.ocr'))
     else:
-        by_id['provider']['config'] = {}
         source = environment.get('KB_PROVIDERS_CONFIG', '.local/providers.json')
         selected['plugins'].extend([
             _row('model-clients', 'platform.model_clients.remote', providers_config=source,
@@ -168,7 +117,7 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
 
 def create_root_application(settings, *, profile=None, environment=None, platform=None,
                             research=None, models=None, model_clients=None, service_factory=None,
-                            extra_plugins=(), remote=None):
+                            extra_plugins=(), remote=None, storage_configuration=None, provider_catalog=None):
     selected = load_application_profile(settings, profile=profile, environment=environment, remote=remote)
     if platform is not None:
         excluded = {'repository', 'originals', 'parser', 'embedding-jobs', 'search', 'search_bm25', 'search_dense', 'capabilities'}
@@ -184,7 +133,8 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
     from .model_provider_plugins import compile_model_plugins
 
     selected, catalog = compile_model_plugins(selected, catalog)
-    selected, catalog = _storage(selected, catalog, settings, selected_environment)
+    selected, catalog = _storage(selected, catalog, settings, selected_environment,
+        storage_configuration=storage_configuration, provider_catalog=provider_catalog)
     host = PluginHost(selected, catalog)
     try:
         specs = {spec.key: spec for spec in catalog}
@@ -201,7 +151,8 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
 
 
 def create_borrowed_knowledge(platform, research, *, profile=None, service_factory=None,
-                              extra_plugins=(), environment=None, models=None):
+                              extra_plugins=(), environment=None, models=None,
+                              storage_configuration=None, provider_catalog=None):
     from .settings import Settings
 
     selected_environment = dict(os.environ if environment is None else environment)
@@ -227,8 +178,8 @@ def create_borrowed_knowledge(platform, research, *, profile=None, service_facto
     from .model_provider_plugins import compile_model_plugins
 
     selected, catalog = compile_model_plugins(selected, catalog)
-    if selected_environment.get('KB_STORAGE_CONFIG'):
-        selected, catalog = _storage(selected, catalog, None, selected_environment)
+    selected, catalog = _storage(selected, catalog, None, selected_environment,
+        storage_configuration=storage_configuration, provider_catalog=provider_catalog)
     host = PluginHost(deepcopy(selected), catalog)
     try:
         return HostedKnowledgeApplication(host, host.service('application')), host
@@ -237,7 +188,7 @@ def create_borrowed_knowledge(platform, research, *, profile=None, service_facto
         raise
 
 
-def create_platform(settings, *, embedding_provider=None):
+def create_platform(settings, *, embedding_provider=None, storage_configuration=None, provider_catalog=None):
     from .plugin_host import PluginSpec
 
     selected = load_application_profile(settings, environment={}, remote=False)
@@ -247,4 +198,5 @@ def create_platform(settings, *, embedding_provider=None):
         plugins = (PluginSpec('platform.capabilities.injected', ('platform.embedding', 'platform.ocr'), (),
                    lambda ctx, config: (ctx.provide('platform.embedding', embedding_provider),
                                         ctx.provide('platform.ocr', None))),)
-    return create_root_application(settings, profile=selected, environment={}, extra_plugins=plugins, remote=False).platform
+    return create_root_application(settings, profile=selected, environment={}, extra_plugins=plugins, remote=False,
+        storage_configuration=storage_configuration, provider_catalog=provider_catalog).platform

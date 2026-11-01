@@ -37,21 +37,21 @@
 		}
 	},
 	"services": {
-		"content.sql": {"instance": "content", "export": "relational"},
+		"content.sql": {"instance": "content", "export": "structured"},
 		"content.bm25": {"instance": "content", "export": "lexical"},
 		"vectors.dense": {"instance": "vectors", "export": "vector"},
 		"documents.source": {"instance": "documents", "export": "document"},
-		"documents.cache-index": {"instance": "documents", "export": "relational"},
-		"conversations.sql": {"instance": "conversations", "export": "relational"},
+		"documents.cache-index": {"instance": "documents", "export": "structured"},
+		"conversations.sql": {"instance": "conversations", "export": "structured"},
 		"originals.objects": {"instance": "originals", "export": "object"},
 		"cache.payload": {"instance": "cache", "export": "kv"}
 	},
 	"bindings": {
 		"repository": {
-			"primary": {"service": "content.sql", "owner": "knowledge", "space": "content"}
+			"primary": {"service": "content.sql", "owner": "knowledge", "space": "domain-v2"}
 		},
 		"search": {
-			"bm25": {"service": "content.bm25", "owner": "knowledge", "space": "content"},
+			"bm25": {"service": "content.bm25", "owner": "knowledge-search", "space": "lexical"},
 			"dense": {"service": "vectors.dense", "owner": "knowledge-search", "space": "vectors"},
 			"source": {"service": "documents.source", "owner": "knowledge-search", "space": "source"}
 		},

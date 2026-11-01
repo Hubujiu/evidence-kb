@@ -1,17 +1,24 @@
 from hashlib import sha256
 import json
 
-from .database_contracts import Migration, SchemaPackage
+from sqlalchemy import Column, MetaData, String, Table, Text, select
+
+from .storage_sdk.relational import ExactString, StructuredSchema
+
+
+metadata = MetaData()
+journal_entries = Table('journal_entries', metadata,
+    Column('namespace', ExactString(64), primary_key=True),
+    Column('entry_key', ExactString(256), primary_key=True),
+    Column('object_ref', Text, nullable=False),
+    Column('content_sha256', String(64), nullable=False))
 
 
 class ImmutableJsonJournal:
     def __init__(self, database, objects, *, namespace):
         self.database, self.objects, self.namespace = database, objects, namespace
         owner = database.identity.space.owner_id
-        database.prepare(SchemaPackage(owner, (Migration(1, (
-            'CREATE TABLE journal_entries (namespace VARCHAR(64) NOT NULL, entry_key VARCHAR(256) NOT NULL, '
-            'object_ref TEXT NOT NULL, content_sha256 VARCHAR(64) NOT NULL, PRIMARY KEY(namespace,entry_key))',
-        )),), runtime_appendonly=('journal_entries',)))
+        database.prepare(StructuredSchema(owner, metadata, appendonly=('journal_entries',)))
         database.seal()
 
     def _content(self, row):
@@ -22,9 +29,8 @@ class ImmutableJsonJournal:
 
     def read(self, key):
         with self.database.transaction(write=False) as db:
-            row = db.execute('SELECT object_ref,content_sha256 FROM journal_entries '
-                             'WHERE namespace=:namespace AND entry_key=:key',
-                             {'namespace': self.namespace, 'key': key}).fetchone()
+            row = db.execute(select(journal_entries.c.object_ref, journal_entries.c.content_sha256).where(
+                journal_entries.c.namespace == self.namespace, journal_entries.c.entry_key == key)).fetchone()
         if row is None:
             raise FileNotFoundError(key)
         return json.loads(self._content(row))
@@ -34,21 +40,17 @@ class ImmutableJsonJournal:
             raise ValueError('INVALID_JOURNAL_ENTRY_KEY')
         raw = json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False).encode('utf-8')
         ref = self.objects.put(self.namespace, raw)
-        insert = ('INSERT IGNORE INTO journal_entries(namespace,entry_key,object_ref,content_sha256) '
-                  'VALUES(:namespace,:key,:ref,:hash)' if self.database.info.engine == 'mysql' else
-                  'INSERT INTO journal_entries(namespace,entry_key,object_ref,content_sha256) '
-                  'VALUES(:namespace,:key,:ref,:hash) ON CONFLICT(namespace,entry_key) DO NOTHING')
         with self.database.transaction(write=True) as db:
-            db.execute(insert, {'namespace': self.namespace, 'key': key, 'ref': ref.locator,
-                                'hash': sha256(raw).hexdigest()})
-            old = db.execute('SELECT content_sha256 FROM journal_entries WHERE namespace=:namespace AND entry_key=:key',
-                             {'namespace': self.namespace, 'key': key}).fetchone()
+            db.insert(journal_entries, {'namespace': self.namespace, 'entry_key': key, 'object_ref': ref.locator,
+                'content_sha256': sha256(raw).hexdigest()}, conflict_keys=('namespace', 'entry_key'))
+            old = db.execute(select(journal_entries.c.content_sha256).where(
+                journal_entries.c.namespace == self.namespace, journal_entries.c.entry_key == key)).fetchone()
             if old['content_sha256'] != sha256(raw).hexdigest():
                 raise ValueError('PROVIDER_ADMISSION_IMMUTABLE_CONFLICT')
 
     def items(self, prefix):
         with self.database.transaction(write=False) as db:
-            rows = db.execute('SELECT entry_key,object_ref,content_sha256 FROM journal_entries '
-                              'WHERE namespace=:namespace ORDER BY entry_key',
-                              {'namespace': self.namespace}).fetchall()
+            rows = db.execute(select(journal_entries.c.entry_key, journal_entries.c.object_ref,
+                journal_entries.c.content_sha256).where(journal_entries.c.namespace == self.namespace)
+                .order_by(journal_entries.c.entry_key)).fetchall()
         return [(row['entry_key'], self._content(row)) for row in rows if row['entry_key'].startswith(prefix)]

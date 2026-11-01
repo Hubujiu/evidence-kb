@@ -1,49 +1,39 @@
-# PostgreSQL 检索存储与恢复
+# 检索存储与恢复
 
-默认 `KB_SEARCH_BACKEND=postgres`。PostgreSQL 18.6 + pg_textsearch 1.5.1 + pgvector 0.8.6 保存正文、页面、向量、引用、ACL、构建状态和发布清单。镜像源和二进制校验和固定在 `docker/postgres/Dockerfile`。没有启用 HNSW、量化或模型替换。当前检索走授权子集上的精确余弦距离。
+当前平台通过 `platform.search.storage` 分别绑定 lexical BM25、vector、document 三个合同。正文、ACL、引用、构建和 Embedding 任务通过 structured 关系合同保存；原件通过 object 合同下载。提供商配置见 [公共存储架构](storage-plugins-design.md)。
 
-## 数据与事务
+## 独立检索与发布
 
-每个构建有独立数据库表，正文与页面使用不同 BM25 统计。复用既有中文分词；token 编码为固定 ASCII 标识，防止数据库再次分词改变边界。各字段分别取 TopN，再按既有最大字段加权分数合并。授权过滤先于 LIMIT；绑定包含原文版本和解析版本。
+BM25 与 dense 可以使用同一 PostgreSQL、不同 PostgreSQL 数据库，或 PostgreSQL 与 embedded。通用 PostgreSQL lexical 只要求 pg_textsearch，vector 只要求 pgvector。镜像固定 PostgreSQL 18.6、pg_textsearch 1.5.1、pgvector 0.8.6，构建校验见 `docker/postgres/Dockerfile`。当前向量检索使用授权子集上的精确余弦距离，没有启用 HNSW 或量化。
 
-构建数据与 BM25 索引在同一 PostgreSQL 事务内创建。完成后应用角色失去 INSERT 权限，不授予 UPDATE/DELETE。解析正文和引用是权威数据；原件只供备份下载，原件缺失不会阻断证据预览和上下文读取。
+检索组合从独立 document source 读回权威原文，先按当前权限过滤，再执行 TopN。候选 ID、原文哈希、三方 dataset 与封存内容必须一致。原件只供下载与预览；不可变解析快照用于证据，原件缺失不影响已保存的证据文本。
 
-构建分阶段执行：创建 STAGING 和引用；事务外执行外部 Embedding；提交搜索代际；核验后 VALIDATED；最后在短事务内切换发布指针。崩溃可能留下未发布代际，但不会让用户读到半个新版本。恢复会校验冻结实现、权限、源版本、检索单元与已提交引用，变更则拒绝旧构建。语义页的活动 manifest 和校验和也保存在数据库；本地 manifest 文件只是审计副本。
+构建依次提交 STAGING 与引用，在事务外执行 Embedding，写入各搜索通道，读回并封存后进入 VALIDATED，最后通过短事务切换发布指针。某通道失败、权限变更或封存不全均不能发布。崩溃可以留下未发布代际，显式恢复仍核对实现、模型、权限、源版本、单元和引用；变化则拒绝旧构建。
 
 ## Embedding 任务恢复
 
-`embedding_jobs` 保存逐批输入依赖和结果，`embedding_attempts` 保存尝试关联，`embedding_circuits` 保存熔断状态。每次物理请求有新身份；费用继续由现有统一 BudgetLedger 记录，不新增费用账本。
+`embedding_jobs` 保存逐批输入依赖和结果，`embedding_attempts` 保存尝试关联，`embedding_circuits` 保存熔断状态。统一 BudgetLedger 继续记录每个物理请求的预留、费用与 UNKNOWN。
 
-- COMPLETE 批次校验哈希后复用；同一构建的输入、模型和授权依赖改变时拒绝恢复。
-- 明确的暂时性 HTTP 错误最多 3 次，采用退避与 Retry-After；返回 `retry_at`，不占用数据库事务等待网络。
-- 连续故障打开持久化熔断。状态接口和恢复接口分别为 `GET /knowledge-bases/{kb}/builds/{build}` 与 `POST /knowledge-bases/{kb}/builds/{build}/resume`。
-- RUNNING 超出租约转 UNKNOWN；旧执行者被隔离。只根据匹配的 COMPLETE 提供者回执及已结算账本恢复，无法判定的请求不自动重发。
-- 确认尚未发送的预算不足和未决账本阻塞保留为可恢复状态；解除条件后显式 resume，不消耗远程失败的重试次数。输入超限仍是终止错误。
-- 当前恢复由显式 resume 请求驱动；服务没有隐式后台付费重试。供应商不支持幂等键时，不承诺远端 exactly-once 或绝无重复计费。
+- COMPLETE 批次只有在哈希和全部依赖一致时才能复用。
+- 暂时性 HTTP 错误遵守有限重试与 Retry-After，等待不占用业务事务。
+- RUNNING 超出租约转为 UNKNOWN，旧执行者不得完成新租约的工作。只有匹配的 COMPLETE 回执和已结算账本才能恢复结果。
+- 明确未发送的预算不足可在解除条件后显式 resume，不消耗远程失败重试次数。未知物理请求不自动重发。
 
-## 安装与升级
+状态接口为 `GET /knowledge-bases/{kb}/builds/{build}`，恢复接口为 `POST /knowledge-bases/{kb}/builds/{build}/resume`。没有后台隐式付费重试；供应商不支持幂等时不承诺远端 exactly-once。
 
-新环境运行 `docker compose up -d --build --wait postgres`。初始化依次应用 `sql/001_init.sql`、`002_search.sql`、`003_embedding_jobs.sql`。已有数据库不会自动执行 initdb 文件，必须在备份后显式安装新的迁移 SQL。普通业务使用 `kb_app`，不使用管理员凭据。
+## 新部署与旧数据
 
-本地正式切换使用独立 `metadata_postgres` 卷。旧 `metadata` 卷及本地索引保留。`scripts/migrate_postgres_search.py` 只导入指定租户当前发布版本，校验原文件清单、权威身份、完整单元和原始向量精确回读，不调用 Embedding、不切换发布指针。缺失或损坏明确失败。
+`scripts/bootstrap.py` 显式创建本地 SQLite、embedded、files 的新数据集。可选 Compose 只安装开发账号与 PostgreSQL 扩展，不安装知识库表。其他提供商通过 v2 配置显式初始化，正常业务启动只验证既有身份。
 
-语义页使用 `scripts/rebuild_postgres_semantic.py` 从已验证 capsule 重建。只复用与当前 embedding manifest、原文版本和逐页文本完全一致的 capsule。
+旧 `KB_DSN` 和 `KB_SEARCH_BACKEND` 已删除，不能靠切换环境变量搬迁数据。旧数据库迁移、会话与账本导入见 [存储能力清理与迁移](storage-capability-cleanup.md)。新数据集不接纳旧 Migration 1，也不自动修正旧发布指针。
 
-构建恢复严格核对冻结实现、原文、模型和权限依赖。后端源码指纹改变时拒绝继续旧 STAGING 构建，不使用历史源码哈希白名单放行。创建新构建时，只能按精确依赖规则复用已验证的上游产物。已有语义页 manifest 绑定旧后端源码时，可在验证当前 embedding manifest、原文版本和逐页文本后，使用原有 capsule 显式重建 manifest；是否需要新增 Embedding 调用取决于这些依赖是否一致。升级前保留数据库备份和 capsule，不直接改写旧 manifest 或跳过依赖校验。
-
-## 备份、恢复与容灾边界
-
-`scripts/snapshot_delivery.py create` 默认完整导出 PostgreSQL，包括所有搜索表、向量、manifest 和 Embedding 任务。`verify` 在新数据库还原，核对全部表指纹和已选发布索引完整内容。应用会话、预算账本和身份配置仍按现有恢复包保存；这些应用状态目前仍使用 SQLite/文件，本次统一的是检索与构建数据，不能把整个应用称为无状态分布式系统。
-
-`python -m kb_platform.rag_testing.postgres_recovery --output reports/<新目录>` 在独立 Docker 资源中验证事务回滚、连接中断、SIGKILL、备份还原、物理复制与主库隔离后的手动提升。需要两台节点同版本插件。本地交付运行单 PostgreSQL 实例，没有部署自动故障切换，也不声称跨主机 RPO=0。实际主备部署应配置同步策略、隔离旧主、监控、WAL 保留与独立备份，并在目标环境重做演练。
-
-原始向量 JSON 为精确迁移回读保留，pgvector 列用于检索；BM25 索引和 WAL 另占磁盘。这些是同一数据库管理的副本，不是三个独立系统。
+`scripts/migrate_postgres_search.py`、`snapshot_delivery.py` 及旧 `postgres_search.py` 保留为历史 PostgreSQL 格式工具。它们不初始化当前平台，也不证明旧封存可用于新提供商。旧恢复包必须连同对应代码和配置恢复；当前提供商迁移须逐项核验新身份与内容。
 
 ## 验证入口
 
-- `uv run --no-sync python scripts/check_project.py`：离线统一门禁。
-- `python -m kb_platform.rag_testing.embedded_operations --backend postgres --output reports/<新目录>`：真实权限、发布和备份缺失行为，需 `KB_DSN`。
-- `python -m kb_platform.rag_testing.postgres_operations --output reports/<新目录>`：真实任务中断、恢复、租约、熔断；提供者是受控替身，零远程调用。
-- `python -m kb_platform.rag_testing.embedded_acceptance --postgres --suite <冻结suite> --catalog <原始catalog> --delivery-window --output reports/<新目录>`：真实 HTTP 检索链路配对，统一 scorer；模型为替身，不代表真实生成正确率。
+```powershell
+uv run --no-sync python scripts/check_project.py
+uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --output reports/storage-check-new
+```
 
-回退必须把代码配置与对应的原数据库和索引一起恢复。切换后的新构建没有写回旧后端，不能只修改环境变量就认为完成回退。
+真实存储入口覆盖三种关系后端、独立 BM25 与 dense、会话搬迁、对象、Redis、构建恢复及 Rust HTTP。浏览器与统一证据评分结果分别保存。测试使用合成文档、固定向量和本地模型夹具，零外部付费调用，不代表生产答案质量。

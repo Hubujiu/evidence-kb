@@ -15,6 +15,8 @@ from kb_platform.platform_plugins import platform_plugins
 from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
 from kb_platform.settings import Settings
+from kb_platform.storage_catalog import default_storage_providers, initialize_configuration
+from kb_platform.storage_plugins import compile_storage_plugins
 
 
 class PluginConfigurationContracts(unittest.TestCase):
@@ -37,7 +39,7 @@ class PluginConfigurationContracts(unittest.TestCase):
                                        'reservation': {'requests': 1}}}}
 
     def test_all_builtin_specs_declare_strict_object_configuration(self):
-        settings = Settings('', '', Path('.'), Path('unused'))
+        settings = Settings(Path('.'), Path('unused'))
         specs = (*builtin_plugins(), *model_plugins(), *platform_plugins(settings),
                  *knowledge_plugins(None, None))
         for spec in specs:
@@ -49,14 +51,20 @@ class PluginConfigurationContracts(unittest.TestCase):
     def test_invalid_store_apply_and_update_preserve_live_registration_and_revision(self):
         with TemporaryDirectory() as directory:
             profile = {'version': 1, 'plugins': [
-                {'id': 'store', 'use': 'harness.store.sqlite', 'config': {'root': directory}}]}
-            with PluginHost(profile, builtin_plugins()) as host:
+                {'id': 'store', 'use': 'harness.store.database'}]}
+            configuration = initialize_configuration({'version': 2, 'application_id': 'configuration-contract',
+                'instances': {'records': {'provider': 'sqlite', 'config': {'root': directory}}},
+                'services': {'sessions': {'instance': 'records', 'export': 'structured'}},
+                'bindings': {'store': {'primary': {'service': 'sessions', 'owner': 'sessions', 'space': 'history'}}}})
+            profile, catalog = compile_storage_plugins(profile, builtin_plugins(), configuration,
+                                                        provider_catalog=default_storage_providers())
+            with PluginHost(profile, catalog) as host:
                 before, binding = host.inspect(), host.bind('session.store')
                 original = host.service('session.store')
                 for config in ({'root': 7}, {'root': directory, 'rot': directory}):
                     with self.subTest(config=config):
                         candidate = deepcopy(profile)
-                        candidate['plugins'][0]['config'] = config
+                        next(row for row in candidate['plugins'] if row['id'] == 'store')['config'] = config
                         with self.assertRaises(PluginError):
                             host.apply(candidate)
                         with self.assertRaises(PluginError):
@@ -80,9 +88,9 @@ class PluginConfigurationContracts(unittest.TestCase):
             self.assertEqual(host.bind('context.policy').identity, binding.identity)
 
     def test_unknown_platform_configuration_has_no_constructor_effects(self):
-        settings = Settings('', '', Path('.'), Path('unused'))
+        settings = Settings(Path('.'), Path('unused'))
         profile = {'version': 1, 'plugins': [
-            {'id': 'originals', 'use': 'platform.originals.files', 'config': {'rot': 'must-not-create'}}]}
+            {'id': 'originals', 'use': 'platform.originals.storage', 'config': {'rot': 'must-not-create'}}]}
         with patch('kb_platform.storage.OriginalStore', side_effect=AssertionError('must not construct')):
             with self.assertRaises(PluginError):
                 PluginHost(profile, platform_plugins(settings))
@@ -208,7 +216,7 @@ class PluginConfigurationContracts(unittest.TestCase):
                            'api_key': 'synthetic', 'dimension': 768},
                 'cache_dir': str(root / 'cache'), 'log_path': str(root / 'calls.jsonl')}
             path.write_text(json.dumps(config), 'utf-8')
-            settings = Settings('', '', root, root / 'unused')
+            settings = Settings(root, root / 'unused')
             profile = {'version': 1, 'plugins': [{'id': 'clients', 'use': 'platform.model_clients.remote',
                                                 'config': {'providers_config': str(path)}}]}
             with PluginHost(profile, platform_plugins(settings)) as host:

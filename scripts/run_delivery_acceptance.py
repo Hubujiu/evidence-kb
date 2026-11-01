@@ -1,4 +1,5 @@
 import argparse
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -82,8 +83,7 @@ def main(argv=None):
                       timeout=args.timeout, trust_env=False) as client:
         if args.command in ('prepare', 'rebind'):
             settings = Settings.from_environment()
-            platform = create_platform(Settings(settings.dsn, settings.search_url, args.storage_root,
-                                                settings.identities_file, settings.search_backend))
+            platform = create_platform(replace(settings, storage_root=args.storage_root))
             if args.command == 'rebind':
                 prepared = rebind_http(client, args.prepared, args.output, platform=platform,
                     expected_tenant_id=args.expected_tenant, physical_directory=args.physical_records)

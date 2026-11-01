@@ -2,10 +2,11 @@ from .plugin_configuration import config_schema
 from .plugin_host import PluginSpec
 from .rag_testing.cache import StageCache
 from .storage_plugins import require_storage
-from .storage_sdk import KV_EXPIRING_V1, RELATIONAL_V1, StorageSlot
+from .storage_sdk import KV_EXPIRING_V1, StorageSlot
+from .storage_sdk.relational import STRUCTURED_RELATIONAL_V1
 
 
-INDEX = StorageSlot('index', RELATIONAL_V1)
+INDEX = StorageSlot('index', STRUCTURED_RELATIONAL_V1)
 PAYLOAD_CACHE = StorageSlot('payload', KV_EXPIRING_V1)
 
 

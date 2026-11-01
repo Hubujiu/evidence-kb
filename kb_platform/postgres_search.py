@@ -2,6 +2,7 @@ from contextlib import contextmanager
 import hashlib
 import json
 import math
+from pathlib import Path
 
 import psycopg
 from psycopg import sql
@@ -11,6 +12,7 @@ from psycopg_pool import ConnectionPool
 
 from .search import OpenSearch, SearchUnavailable, binding_key, content_order, lexical_results
 from .search_tokens import tokens
+from .implementation_dependencies import implementation_dependencies
 
 
 FORMAT = 'postgres-textsearch-exact-vector/1'
@@ -54,6 +56,13 @@ class PostgresSearch:
             identity = self.database.identity
             return {'database': str(identity)}
         return {'dsn_sha256': hashlib.sha256(self.dsn.encode()).hexdigest()}
+
+    def dependency_manifest(self):
+        return {'version': 1, 'implementation': implementation_dependencies(__file__,
+            Path(__file__).with_name('search.py'), Path(__file__).with_name('search_tokens.py'),
+            Path(__file__).parent / 'database_providers/postgres.py',
+            Path(__file__).resolve().parents[1] / 'sql/002_search.sql',
+            packages=('psycopg', 'psycopg-pool', 'regex')), 'storage': self.storage_identity()}
 
     @contextmanager
     def _connection(self, tenant=None, kb=None):

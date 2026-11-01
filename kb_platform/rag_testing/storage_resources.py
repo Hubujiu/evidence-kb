@@ -98,9 +98,9 @@ def prepare(output):
         pg_container = document['containers']['postgres']
         docker('exec', pg_container, 'createdb', '-U', 'kb_admin', dense)
         for selected in (database, dense):
-            for migration in sorted((ROOT / 'sql').glob('*.sql')):
-                docker('exec', '-i', pg_container, 'psql', '-U', 'kb_admin', '-d', selected,
-                       '-v', 'ON_ERROR_STOP=1', input=migration.read_text('utf-8'))
+            docker('exec', '-i', pg_container, 'psql', '-U', 'kb_admin', '-d', selected,
+                   '-v', 'ON_ERROR_STOP=1',
+                   input='CREATE EXTENSION vector; CREATE EXTENSION pg_textsearch;')
         import redis
 
         redis_url = f'redis://127.0.0.1:{ports["redis"]}/0'

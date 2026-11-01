@@ -5,13 +5,14 @@ import secrets
 from pathlib import Path
 from typing import Annotated, Literal
 
-import psycopg
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
 from .core import Actor, Platform, PlatformError
+from .database_contracts import DatabaseError
+from .storage_sdk import StorageError
 from .documents import max_upload_bytes, render_pdf_preview
 from .settings import Settings
 
@@ -60,14 +61,16 @@ class TableRequest(RequestModel):
 
 
 def create_app(settings: Settings | None = None, platform: Platform | None = None, *,
-               agent_factory=None, model_clients=None, profile=None, extra_plugins=()):
+               agent_factory=None, model_clients=None, profile=None, extra_plugins=(),
+               storage_configuration=None, provider_catalog=None):
     from .application_composition import create_root_application
 
     settings = settings if settings is not None else Settings.from_environment()
     identities = settings.identities()
     composition = create_root_application(settings, platform=platform, profile=profile,
         model_clients=model_clients, service_factory=agent_factory, extra_plugins=extra_plugins,
-        remote=False if platform is not None else None)
+        remote=False if platform is not None else None, storage_configuration=storage_configuration,
+        provider_catalog=provider_catalog)
     service, research, models = composition.platform, composition.research, composition.models
     provider = service.embedding_provider if service is not None else None
     luna = service.ocr_client if service is not None else None
@@ -106,7 +109,8 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     async def domain_error(request, exc):
         return JSONResponse(status_code=exc.status_code, content={"error": exc.code, "detail": str(exc)})
 
-    @app.exception_handler(psycopg.Error)
+    @app.exception_handler(DatabaseError)
+    @app.exception_handler(StorageError)
     async def authority_unavailable(request, exc):
         return JSONResponse(status_code=503, content={"error": "AUTHORITY_UNAVAILABLE"})
 

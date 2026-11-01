@@ -43,10 +43,15 @@ class Transaction:
                     policy = _RUNTIME_STATEMENT.match(statement.sql[command.end() + modifier.end():])
                     if policy is not None and policy.group(1).upper() in {'REPLACE', 'ROLLBACK'}:
                         raise DatabaseError('DATABASE_RUNTIME_STATEMENT_REQUIRED')
+        return self._execute(text(statement.sql), dict(statement.params), expected_rows=statement.expected_rows)
+
+    def _execute(self, statement, params=None, *, expected_rows=None):
+        if not self._active:
+            raise DatabaseError('DATABASE_TRANSACTION_CLOSED')
         self._statements += 1
         if self._statements > self._limits.max_statements or monotonic() > self._expires:
             raise DatabaseError('DATABASE_QUERY_LIMIT')
-        result = self._connection.execute(text(statement.sql), dict(statement.params))
+        result = self._connection.execute(statement, {} if params is None else dict(params))
         rows = []
         if result.returns_rows:
             for row in result.mappings():
@@ -62,7 +67,7 @@ class Transaction:
         result.close()
         if monotonic() > self._expires:
             raise DatabaseError('DATABASE_QUERY_TIMEOUT')
-        if statement.expected_rows is not None and count != statement.expected_rows:
+        if expected_rows is not None and count != expected_rows:
             raise DatabaseError('DATABASE_ROWCOUNT_CONFLICT')
         return QueryResult(rows, count)
 
@@ -78,10 +83,12 @@ def _size_value(value):
 
 
 @contextmanager
-def transaction(space, *, write=True, limits=None, migration=False, operation_id=None):
+def transaction(space, *, write=True, limits=None, migration=False, operation_id=None, isolation=None):
     limits = QueryLimits() if limits is None else limits
     engine = space.migration_engine if migration else space.runtime_engine
     with engine.connect() as connection:
+        if isolation is not None:
+            connection = connection.execution_options(isolation_level=isolation)
         controls = {'finishing': False}
         if space.info.engine == 'sqlite':
             connection.exec_driver_sql('BEGIN IMMEDIATE' if write else 'BEGIN')

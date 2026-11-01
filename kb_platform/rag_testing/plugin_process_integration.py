@@ -19,6 +19,7 @@ from kb_platform.storage_adapters.sql import SqlStorageProvider
 from kb_platform.storage_adapters.values import SqlKeyValueStore
 from kb_platform.storage_plugins import compile_storage_plugins, require_storage
 from kb_platform.storage_sdk import KV_DURABLE_V1, RELATIONAL_V1, SpaceKey, StorageProvider, StorageSlot
+from kb_platform.storage_sdk.relational import GUARDED_RELATIONAL_V1
 
 
 def wait_until(predicate, seconds):
@@ -386,7 +387,8 @@ def database_dependency_case(manager, installed, root):
         'bindings': {'storage': {'primary': {'service': 'local.sql', 'owner': 'tasks', 'space': 'records',
                                              'dataset_id': identity.dataset_id}}}}
     providers = {'sqlite': StorageProvider(lambda config: SqlStorageProvider(SQLiteProvider(config['root'])),
-                                          {'relational': (RELATIONAL_V1,)})}
+                                          {'relational': (RELATIONAL_V1,),
+                                           'structured': (GUARDED_RELATIONAL_V1,)})}
     profile, catalog = compile_storage_plugins(profile, (storage, process), configuration, provider_catalog=providers)
     with process_host(profile, catalog) as host:
         database = host.service('shared.database')
@@ -456,7 +458,7 @@ def storage_dependency_case(manager, installed, root):
                                            'dataset_id': identity.dataset_id}}}}
     providers = {'sqlite': StorageProvider(
         lambda config: SqlStorageProvider(SQLiteProvider(config['root']), adapters=adapters),
-        {'relational': (RELATIONAL_V1,), 'kv': (KV_DURABLE_V1,)})}
+        {'relational': (RELATIONAL_V1,), 'structured': (GUARDED_RELATIONAL_V1,), 'kv': (KV_DURABLE_V1,)})}
     profile, catalog = compile_storage_plugins(profile, (storage, process), configuration, provider_catalog=providers)
     with process_host(profile, catalog) as host:
         old = host.service('external.storage').transport

@@ -8,16 +8,21 @@ from threading import Barrier
 import unittest
 from unittest.mock import patch
 
+from sqlalchemy import select
+
 from kb_platform.session_identity import Actor, PlatformError
 from kb_platform.session_store import SessionStore, digest
+from kb_platform.session_storage.schema import metadata
 from kb_platform.session_transfer import (TABLE_COLUMNS, export_sessions, export_legacy_sqlite,
                                           import_sessions, validate_export)
 
 
-def exercise_session_database(first, second):
+def exercise_session_database(first, second, *, engine='structured'):
     check = unittest.TestCase()
     actor = Actor('synthetic-tenant', 'synthetic-principal')
-    sid = first.create(actor, 'scope', {'value': 1})['session_id']
+    large = '合成会话原文' * 20000
+    sid = first.create(actor, 'scope', {'value': 1, 'large': large})['session_id']
+    check.assertEqual(second.load(actor, sid)['state'], {'value': 1, 'large': large})
     barrier = Barrier(2, timeout=15)
 
     def begin(store, request):
@@ -36,8 +41,9 @@ def exercise_session_database(first, second):
     token = winners[0]['token']
     artifact = first.artifact(actor, sid, token, {'evidence': '原文'})
     check.assertEqual(second.artifact(actor, sid, token, {'evidence': '原文'}), artifact)
-    first.append(actor, sid, token, 'message', {'role': 'user', 'content': 'question'}, 'group')
+    first.append(actor, sid, token, 'message', {'role': 'user', 'content': large}, 'group')
     before = second.events(actor, sid)
+    check.assertEqual(before[0]['payload'], {'role': 'user', 'content': large})
     with check.assertRaises(TypeError):
         first.finish(actor, sid, token, {'invalid': object()}, {'status': 'complete'},
                      assistant_event={'role': 'assistant', 'content': 'must roll back'})
@@ -60,34 +66,25 @@ def exercise_session_database(first, second):
                 operation()
             check.assertEqual(error.exception.code, 'SESSION_NOT_FOUND')
     for table in ('events', 'artifacts'):
-        for sql in (f"UPDATE {table} SET session=:sid WHERE session=:sid",
-                    f"DELETE FROM {table} WHERE session=:sid"):
+        declared = metadata.tables[table]
+        for statement in (declared.update().where(declared.c.session == sid).values(
+                              {('payload' if table == 'events' else 'body'): '{"forged":true}'}),
+                          declared.delete().where(declared.c.session == sid)):
             with check.assertRaises(Exception):
                 with first.database.transaction(write=True) as tx:
-                    tx.execute(sql, {'sid': sid})
-        columns = TABLE_COLUMNS[table]
+                    tx.execute(statement)
         with first.database.transaction(write=False) as tx:
-            frozen = tx.execute(f'SELECT * FROM {table} WHERE session=:sid', {'sid': sid}).fetchall()
+            frozen = tx.execute(select(declared).where(declared.c.session == sid)).fetchall()
         check.assertTrue(frozen)
         replacement = {**frozen[0], ('payload' if table == 'events' else 'body'): '{"forged":true}'}
-        fields, values = ','.join(columns), ','.join(':' + column for column in columns)
-        insert = f'INSERT INTO {table} ({fields}) VALUES ({values})'
         field = 'payload' if table == 'events' else 'body'
-        key = 'session,seq' if table == 'events' else 'session,id'
-        engine = first.database.info.engine
-        if engine == 'mysql':
-            attempts = [insert.replace('INSERT INTO', 'REPLACE INTO', 1),
-                        insert + f' ON DUPLICATE KEY UPDATE {field}=VALUES({field})']
-        else:
-            attempts = [insert + f' ON CONFLICT ({key}) DO UPDATE SET {field}=excluded.{field}']
-            if engine == 'sqlite':
-                attempts.append(insert.replace('INSERT INTO', 'INSERT OR REPLACE INTO', 1))
-        for statement in attempts:
+        key = ('session', 'seq') if table == 'events' else ('session', 'id')
+        for options in ({}, {'conflict_keys': key, 'updates': {field: replacement[field]}}):
             with check.assertRaises(Exception):
                 with first.database.transaction(write=True) as tx:
-                    tx.execute(statement, replacement)
+                    tx.insert(declared, replacement, **options)
             with first.database.transaction(write=False) as tx:
-                actual = tx.execute(f'SELECT * FROM {table} WHERE session=:sid', {'sid': sid}).fetchall()
+                actual = tx.execute(select(declared).where(declared.c.session == sid)).fetchall()
             check.assertEqual(actual, frozen)
     check.assertEqual(second.read_artifact(actor, sid, artifact['artifact_id']), {'evidence': '原文'})
     for value in ('Case', 'case', 'case '):
@@ -112,7 +109,7 @@ def exercise_session_database(first, second):
                 operation()
             check.assertEqual(error.exception.code, 'TURN_LEASE_EXPIRED')
         second.finish(actor, sid, replacement['token'], {'value': 3}, {'status': 'complete'})
-    return {'engine': first.database.info.engine, 'concurrency': 'one-writer',
+    return {'engine': engine, 'concurrency': 'one-writer',
             'session_id': sid, 'revision': second.load(actor, sid)['revision'],
             'events': len(second.events(actor, sid)), 'immutability': 'events-and-artifacts',
             'replacement_cannot_rewrite_history': True,
@@ -124,7 +121,7 @@ class SessionDatabaseContracts(unittest.TestCase):
         with TemporaryDirectory() as directory:
             first, second = SessionStore(directory), SessionStore(directory)
             try:
-                result = exercise_session_database(first, second)
+                result = exercise_session_database(first, second, engine='sqlite')
                 self.assertEqual(result['engine'], 'sqlite')
                 self.assertEqual(result['revision'], 5)
             finally:

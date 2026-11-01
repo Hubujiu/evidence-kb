@@ -1,8 +1,11 @@
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
+import re
 from threading import RLock
 from uuid import uuid4
 
+from .implementation_dependencies import dependency_manifest, implementation_dependencies
 from .storage_sdk import (
     Contract, EphemeralCacheSpace, ExistingDataset, RELATIONAL_V1, SpaceKey, StorageError,
     StorageExport, StorageIdentity,
@@ -30,6 +33,7 @@ class _Export:
     registration_id: str
     owner_identity: object
     owner_lease: object
+    configuration_sha256: str | None
     active: int = 0
 
 
@@ -39,8 +43,11 @@ class StorageService:
         self._lock = RLock()
         self._closed = False
 
-    def register(self, name, export, *, owner_identity=None, owner_lease=None, registration_id=None):
-        if not isinstance(name, str) or not name or not isinstance(export, StorageExport):
+    def register(self, name, export, *, owner_identity=None, owner_lease=None, registration_id=None,
+                 configuration_sha256=None):
+        if (not isinstance(name, str) or not name or not isinstance(export, StorageExport)
+                or configuration_sha256 is not None and
+                (not isinstance(configuration_sha256, str) or re.fullmatch('[0-9a-f]{64}', configuration_sha256) is None)):
             raise ValueError('INVALID_STORAGE_REGISTRATION')
         registration = uuid4().hex if registration_id is None else str(registration_id)
         owner = _identity(owner_identity)
@@ -49,7 +56,7 @@ class StorageService:
                 raise StorageError('STORAGE_SERVICE_UNAVAILABLE', service=name)
             if (owner, registration) in self._issued:
                 raise StorageError('STORAGE_REGISTRATION_REUSED', service=name)
-            entry = _Export(export, registration, owner, owner_lease)
+            entry = _Export(export, registration, owner, owner_lease, configuration_sha256)
             self._exports[name] = entry
             self._issued.add((owner, registration))
         return lambda: self._unregister(name, entry)
@@ -86,6 +93,11 @@ class StorageService:
                 implementation = export.open_space(grant.space, grant.target)
                 for contract in export.contracts:
                     contract.validate(implementation)
+                    if 'dependency_manifest' in _methods(contract):
+                        try:
+                            dependency_manifest(implementation.dependency_manifest())
+                        except (TypeError, ValueError) as error:
+                            raise StorageError('STORAGE_IMPLEMENTATION_INVALID', contract=contract.key) from error
                 actual = getattr(implementation, 'identity', None)
                 expected = (grant.target.dataset_id if isinstance(grant.target, ExistingDataset)
                             else grant.target.cache_id)
@@ -173,6 +185,20 @@ class BoundStorage:
 
         return call_json(self, request)
 
+    def _dependency_manifest(self):
+        with self._lease():
+            try:
+                implementation = dependency_manifest(self._implementation.dependency_manifest())
+            except (TypeError, ValueError) as error:
+                raise StorageError('STORAGE_DEPENDENCY_MANIFEST_INVALID') from error
+            with self._service._lock:
+                configured = self._service._entry(self._grant.service, self._grant.registration_id).configuration_sha256
+            return {'version': 1, 'implementation': implementation_dependencies(__file__,
+                    Path(__file__).with_name('storage_plugins.py'),
+                    Path(__file__).parent / 'storage_sdk/__init__.py'),
+                'storage': {'identity': asdict(self.identity), 'contract': self._grant.contract.key},
+                'configuration_sha256': configured, 'provider': implementation}
+
     @contextmanager
     def _lease(self, *, include_consumer=True):
         consumer = self._consumer_lease() if include_consumer and self._consumer_lease is not None else nullcontext()
@@ -190,6 +216,8 @@ class BoundStorage:
             return getattr(self._implementation, name)
         if name not in self._methods:
             raise AttributeError(name)
+        if name == 'dependency_manifest':
+            return self._dependency_manifest
 
         def invoke(*args, **kwargs):
             with self._lease(include_consumer=name not in {'prepare', 'seal'}):

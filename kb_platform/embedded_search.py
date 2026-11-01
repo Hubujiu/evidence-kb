@@ -18,6 +18,7 @@ import tantivy as tv
 
 from .search import OpenSearch, SearchUnavailable, binding_key, content_order, lexical_results
 from .search_tokens import tokens
+from .implementation_dependencies import implementation_dependencies
 
 
 KEYWORDS = ('tenant_id', 'kb_id', 'binding_key', 'kind', 'citation_id', 'build_id')
@@ -42,6 +43,14 @@ class EmbeddedSearch:
         self.root = Path(root).resolve()
         self._readers = OrderedDict()
         self._lock = RLock()
+
+    def storage_identity(self):
+        return {'root_sha256': hashlib.sha256(str(self.root).encode()).hexdigest()}
+
+    def dependency_manifest(self):
+        return {'version': 1, 'implementation': implementation_dependencies(__file__,
+            Path(__file__).with_name('search.py'), Path(__file__).with_name('search_tokens.py'),
+            packages=('tantivy', 'numpy', 'regex')), 'storage': self.storage_identity()}
 
     def close(self):
         with self._lock:

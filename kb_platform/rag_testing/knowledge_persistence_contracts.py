@@ -1,6 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import timedelta
 import hashlib
+import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Event
@@ -8,41 +11,83 @@ import time
 import unittest
 from unittest.mock import patch
 from uuid import uuid4
+from weakref import WeakKeyDictionary
 
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy import create_engine, delete, update
+from sqlalchemy.engine import make_url
+from sqlalchemy.sql import Select
 
 from kb_platform.core import Actor, Platform, PlatformError
-from kb_platform.database_contracts import SpaceKey, SqlStatement
+from kb_platform.database_contracts import DatabaseError, Migration, SpaceKey
 from kb_platform.database_providers import PostgresProvider, SQLiteProvider
-from kb_platform.database_service import DatabaseService
 from kb_platform.documents import parse_native_document
 from kb_platform.embedded_search import EmbeddedSearch
 from kb_platform.embedding_jobs import EmbeddingJobError, EmbeddingJobs, digest
 from kb_platform.knowledge_queries import KnowledgeQuery as K
-from kb_platform.knowledge_schema import postgres_schema, sqlite_schema
+from kb_platform.knowledge_schema import EMBEDDING_JOBS, METADATA, PARSE_SNAPSHOTS, SOURCE_VERSIONS
 from kb_platform.knowledge_sql import OPERATIONS
-from kb_platform.knowledge_storage import DEFAULT_SPACE, KnowledgeRepository
+from kb_platform.knowledge_storage import KnowledgeRepository
 from kb_platform.storage import OriginalStore
 from kb_platform.storage_adapters.sql import SqlStorageProvider
 from kb_platform.storage_sdk import ExistingDataset
 
 
+_RAW_JOB_DATABASES = WeakKeyDictionary()
+
+
+class _PostgresRepositoryResources:
+    def __init__(self, provider, migration_url, schema):
+        self.provider, self.migration_url, self.schema = provider, migration_url, schema
+
+    def close(self):
+        if self.provider is None:
+            return
+        self.provider.close()
+        self.provider = None
+        engine = create_engine(self.migration_url, isolation_level='AUTOCOMMIT')
+        try:
+            with engine.connect() as connection:
+                quote = connection.dialect.identifier_preparer.quote
+                connection.exec_driver_sql('DROP SCHEMA IF EXISTS ' + quote(self.schema) + ' CASCADE')
+        finally:
+            engine.dispose()
+
+
 def postgres_repository(dsn):
-    owner = DatabaseService()
-    owner.register('knowledge', PostgresProvider(dsn, provision=False, schema='public'))
+    runtime = make_url(dsn)
+    migration_dsn = os.environ.get('KB_INTEGRATION_MIGRATION_DSN')
+    if not migration_dsn:
+        raise ValueError('CONTROLLED_KNOWLEDGE_MIGRATION_DATABASE_REQUIRED')
+    migration = make_url(migration_dsn)
+    if (runtime.host not in {'127.0.0.1', 'localhost'} or runtime.port != 55432
+            or not runtime.database or not runtime.database.startswith('rust_plugin_acceptance_')
+            or any(getattr(runtime, key) != getattr(migration, key) for key in ('host', 'port', 'database'))
+            or runtime.get_backend_name() != 'postgresql' or migration.get_backend_name() != 'postgresql'):
+        raise ValueError('CONTROLLED_KNOWLEDGE_MIGRATION_DATABASE_REQUIRED')
+    provider = SqlStorageProvider(PostgresProvider(runtime, migration_url=migration))
+    space = SpaceKey('live-contracts', 'knowledge', 'jobs-' + uuid4().hex)
+    owner = _PostgresRepositoryResources(provider, migration.set(drivername='postgresql+psycopg'),
+                                         'kb_' + space.digest[:24])
     try:
-        database = owner.bind(owner.grant('knowledge', DEFAULT_SPACE, 'knowledge-contract'))
-        database.seal()
-        return KnowledgeRepository(database=database, prepare=False), owner
+        identity = provider.initialize('structured', space)
+        exports = {export.name: export for export in provider.exports()}
+        database = exports['structured'].open_space(space, ExistingDataset(identity.dataset_id))
+        repository = KnowledgeRepository(database=database)
+        _RAW_JOB_DATABASES[repository] = exports['relational'].open_space(space, ExistingDataset(identity.dataset_id))
+        return repository, owner
     except BaseException:
         owner.close()
         raise
 
 
+@contextmanager
 def raw_job_transaction(jobs, tenant_id, kb_id):
     from kb_platform.database_providers.postgres import pg_transaction
 
-    return pg_transaction(jobs.repository.database, tenant_id, kb_id)
+    with pg_transaction(_RAW_JOB_DATABASES[jobs.repository], tenant_id, kb_id) as connection:
+        connection.execute("SELECT set_config('storage_scope.tenant_id',%s,true), "
+                           "set_config('storage_scope.kb_id',%s,true)", (tenant_id, kb_id))
+        yield connection
 
 
 class LocalEmbeddingProvider:
@@ -94,9 +139,6 @@ def exercise_knowledge_repository(check, database, root):
             platform.search(Actor('another-tenant', reader.principal_id), kb_id, 'synthetic')
         with check.assertRaises(PlatformError):
             platform.search(Actor(owner.tenant_id, 'outsider'), kb_id, 'synthetic')
-        restarted = KnowledgeRepository(database=database, prepare=False)
-        platform.repository = restarted
-        platform.embedding_jobs = EmbeddingJobs(restarted)
         check.assertEqual(platform.search(reader, kb_id, 'synthetic')['manifest_id'], build['build_id'])
         platform.set_source_readers(owner, ingested['source_id'], [])
         check.assertEqual(platform.search(reader, kb_id, 'synthetic')['hits'], [])
@@ -118,10 +160,10 @@ def exercise_knowledge_repository(check, database, root):
             dependency = transaction.execute(K.JOBS_INPUTS, scope).fetchone()['dependency_hash']
         claimed = jobs._claim(*scope, 0, dependency)
         with jobs._tx(*scope[:2]) as transaction:
-            transaction._transaction.execute(SqlStatement('UPDATE embedding_jobs SET lease_until=:deadline '
-                'WHERE tenant_id=:tenant_id AND kb_id=:kb_id AND build_id=:build_id AND batch_no=0',
-                {'deadline': (claimed['lease_until'] - timedelta(days=1)).isoformat(),
-                 'tenant_id': scope[0], 'kb_id': scope[1], 'build_id': scope[2]}, expected_rows=1))
+            result = transaction._transaction.execute(update(EMBEDDING_JOBS).where(
+                EMBEDDING_JOBS.c.build_id == scope[2], EMBEDDING_JOBS.c.batch_no == 0)
+                .values(lease_until=claimed['lease_until'] - timedelta(days=1)))
+            check.assertEqual(result.rowcount, 1)
         calls = len(provider.calls)
         jobs.reconcile(*scope, provider, lambda: True)
         with check.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_UNKNOWN'):
@@ -129,7 +171,7 @@ def exercise_knowledge_repository(check, database, root):
         check.assertEqual(len(provider.calls), calls)
         check.assertEqual(jobs.status(*scope)[0]['status'], 'UNKNOWN')
         check.assertTrue(repository.probe()['ready'])
-        return {'engine': database.info.engine, 'knowledge_build': build['status'],
+        return {'knowledge_build': build['status'],
             'cross_tenant': 'DENIED', 'revoked_citation': 'DENIED',
             'expired_job': 'UNKNOWN', 'external_model_calls': 0}
     finally:
@@ -138,8 +180,6 @@ def exercise_knowledge_repository(check, database, root):
 
 
 def exercise_job_lock_deadlines(check, repository):
-    from kb_platform import knowledge_storage
-
     jobs, provider = EmbeddingJobs(repository, lease_seconds=1), LocalEmbeddingProvider()
     tenant, kb_id = 'lease-contract-' + uuid4().hex, 'scope'
     scope, units, audit = (tenant, kb_id, 'finish'), [{'text': 'lease'}], {}
@@ -148,21 +188,20 @@ def exercise_job_lock_deadlines(check, repository):
     with jobs._tx(tenant, kb_id) as transaction:
         now = transaction.execute(K.JOB_CLOCK).fetchone()['db_now']
     with jobs._tx(*scope[:2]) as transaction:
-        transaction._transaction.execute(SqlStatement('UPDATE embedding_jobs SET lease_until=:deadline '
-            'WHERE tenant_id=:tenant_id AND kb_id=:kb_id AND build_id=:build_id AND batch_no=0',
-            {'deadline': (now + timedelta(seconds=.2)).isoformat(),
-             'tenant_id': tenant, 'kb_id': kb_id, 'build_id': scope[2]}, expected_rows=1))
+        result = transaction._transaction.execute(update(EMBEDDING_JOBS).where(
+            EMBEDDING_JOBS.c.build_id == scope[2], EMBEDDING_JOBS.c.batch_no == 0)
+            .values(lease_until=now + timedelta(seconds=.2)))
+        check.assertEqual(result.rowcount, 1)
     with ThreadPoolExecutor(max_workers=1) as executor:
         with jobs._tx(tenant, kb_id) as blocker:
             blocker.execute(K.JOB_LOCK, (*scope, 0))
-            entered, operation = Event(), knowledge_storage.execute_operation
+            entered, transaction = Event(), jobs._tx
 
             def observe_finish(*args, **kwargs):
-                if args[2] == K.JOB_FINISH:
-                    entered.set()
-                return operation(*args, **kwargs)
+                entered.set()
+                return transaction(*args, **kwargs)
 
-            with patch.object(knowledge_storage, 'execute_operation', side_effect=observe_finish):
+            with patch.object(jobs, '_tx', side_effect=observe_finish):
                 finishing = executor.submit(jobs._finish, claimed, vectors=[[1., 0.]])
                 check.assertTrue(entered.wait(2))
                 time.sleep(.4)
@@ -174,14 +213,13 @@ def exercise_job_lock_deadlines(check, repository):
     with ThreadPoolExecutor(max_workers=1) as executor:
         with jobs._tx(tenant, kb_id) as blocker:
             blocker.execute(K.CIRCUIT_LOCK, (tenant, kb_id, digest(provider.manifest)))
-            entered, operation = Event(), knowledge_storage.execute_operation
+            entered, transaction = Event(), jobs._tx
 
             def observe_claim(*args, **kwargs):
-                if args[2] == K.CIRCUIT_LOCK:
-                    entered.set()
-                return operation(*args, **kwargs)
+                entered.set()
+                return transaction(*args, **kwargs)
 
-            with patch.object(knowledge_storage, 'execute_operation', side_effect=observe_claim):
+            with patch.object(jobs, '_tx', side_effect=observe_claim):
                 claiming = executor.submit(jobs._claim, *scope, 0, dependency)
                 check.assertTrue(entered.wait(2))
                 time.sleep(1.1)
@@ -200,22 +238,46 @@ class KnowledgePersistenceContracts(unittest.TestCase):
         self.provider = SqlStorageProvider(SQLiteProvider(self.root / 'database'))
         self.addCleanup(self.provider.close)
         self.space = SpaceKey('contracts', 'knowledge', 'repository')
-        self.identity = self.provider.initialize('relational', self.space)
-        self.database = self.provider.exports()[0].open_space(self.space, ExistingDataset(self.identity.dataset_id))
+        self.identity = self.provider.initialize('structured', self.space)
+        self.database = next(export for export in self.provider.exports() if export.name == 'structured')\
+            .open_space(self.space, ExistingDataset(self.identity.dataset_id))
 
     def test_real_sqlite_knowledge_ingest_publish_acl_dense_and_unknown(self):
         exercise_knowledge_repository(self, self.database, self.root)
+
+    def test_business_uses_structured_capabilities_without_provider_brand_metadata(self):
+        database = self.database
+
+        class IndependentStore:
+            identity = database.identity
+
+            def prepare(self, schema):
+                return database.prepare(schema)
+
+            def seal(self):
+                database.seal()
+                return self
+
+            def transaction(self, **options):
+                return database.transaction(**options)
+
+        exercise_knowledge_repository(self, IndependentStore(), self.root)
 
     def test_operation_table_is_complete_and_ids_have_no_sql(self):
         self.assertEqual(set(K), set(OPERATIONS))
         self.assertTrue(all(query.value == query.value.lower() and ' ' not in query.value for query in K))
 
-    def test_existing_postgres_migration_one_hash_is_frozen(self):
-        self.assertEqual(postgres_schema('knowledge').migrations[0].digest,
+    def test_old_migration_hashes_are_archived_without_runtime_schema_selection(self):
+        archive = json.loads((Path(__file__).resolve().parents[2] /
+            'config/storage/legacy-knowledge-migration-v1.json').read_text('utf-8'))
+        self.assertEqual(archive['engines']['postgresql']['migrations'][0]['digest'],
             'c65c97d6918c75a741647e87131df806f71aa22ccb70d4ba3662f75dd9a91235')
-        statements = '\n'.join(sqlite_schema('knowledge').migrations[0].statements)
-        self.assertNotIn('search_generations', statements)
-        self.assertNotIn('CREATE EXTENSION', statements)
+        for engine in archive['engines'].values():
+            for migration in engine['migrations']:
+                self.assertEqual(Migration(migration['version'], tuple(migration['statements'])).digest,
+                                 migration['digest'])
+        self.assertNotIn('search_generations', METADATA.tables)
+        self.assertEqual(len(METADATA.tables), 12)
 
     def test_immutable_source_identity_is_idempotent_and_rejects_changed_content(self):
         repository = KnowledgeRepository(database=self.database)
@@ -257,13 +319,13 @@ class KnowledgePersistenceContracts(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'WRITE_TRANSACTION_REQUIRED'):
                 transaction.execute(K.AUTHORITY_ENSURE, (actor.tenant_id,))
 
-    def test_sqlite_appendonly_guard_rejects_runtime_update_and_delete(self):
+    def test_structured_appendonly_guard_rejects_runtime_update_and_delete(self):
         repository = KnowledgeRepository(database=self.database)
-        with self.database.transaction() as transaction:
-            with self.assertRaises(DBAPIError):
-                transaction.execute(SqlStatement("UPDATE source_versions SET filename='changed'"))
-            with self.assertRaises(DBAPIError):
-                transaction.execute(SqlStatement('DELETE FROM parse_snapshots'))
+        with repository.transaction(Actor('immutable', 'owner')) as transaction:
+            with self.assertRaises(DatabaseError):
+                transaction._transaction.execute(update(SOURCE_VERSIONS).values(filename='changed'))
+            with self.assertRaises(DatabaseError):
+                transaction._transaction.execute(delete(PARSE_SNAPSHOTS))
         self.assertTrue(repository.probe()['ready'])
 
     def test_concurrent_authority_bumps_do_not_lose_updates(self):
@@ -310,7 +372,8 @@ class KnowledgePersistenceContracts(unittest.TestCase):
         self.provider.close()
         replacement = SqlStorageProvider(SQLiteProvider(self.root / 'database'))
         self.addCleanup(replacement.close)
-        reopened = replacement.exports()[0].open_space(self.space, ExistingDataset(self.identity.dataset_id))
+        reopened = next(export for export in replacement.exports() if export.name == 'structured')\
+            .open_space(self.space, ExistingDataset(self.identity.dataset_id))
         platform.repository = KnowledgeRepository(database=reopened)
         self.assertEqual(reopened.identity, self.identity)
         self.assertEqual(platform.list_kbs(actor)[0]['kb_id'], kb_id)
@@ -324,14 +387,15 @@ class KnowledgePersistenceContracts(unittest.TestCase):
         with jobs._tx(*scope[:2]) as transaction:
             now = transaction.execute(K.JOB_CLOCK).fetchone()['db_now']
         with jobs._tx(*scope[:2]) as transaction:
-            transaction._transaction.execute(SqlStatement('UPDATE embedding_jobs SET lease_until=:deadline',
-                {'deadline': (now + timedelta(seconds=.05)).isoformat()}, expected_rows=1))
+            result = transaction._transaction.execute(update(EMBEDDING_JOBS)
+                .values(lease_until=now + timedelta(seconds=.05)))
+            self.assertEqual(result.rowcount, 1)
         with jobs._tx(*scope[:2]) as transaction:
             execute = transaction._transaction.execute
 
-            def paused(statement):
-                result = execute(statement)
-                if statement.sql.startswith('SELECT * FROM embedding_jobs'):
+            def paused(statement, values=None):
+                result = execute(statement, values)
+                if isinstance(statement, Select) and EMBEDDING_JOBS in statement.get_final_froms():
                     time.sleep(.1)
                 return result
 

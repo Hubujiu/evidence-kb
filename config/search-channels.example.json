@@ -1,4 +1,0 @@
-{
-  "bm25": {"backend": "postgres", "database_slot": "primary"},
-  "dense": {"backend": "postgres", "database_slot": "primary"}
-}

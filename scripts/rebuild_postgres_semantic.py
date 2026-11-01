@@ -1,7 +1,6 @@
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import sys
 from unittest.mock import patch
@@ -34,6 +33,7 @@ def main():
     parser.add_argument('--manifest', type=Path, required=True)
     parser.add_argument('--capsules', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--storage-config', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     config = json.loads(args.runtime.read_text('utf-8'))
@@ -44,8 +44,8 @@ def main():
     if old['embedding'] != provider.manifest:
         raise ValueError('Saved vectors require the current embedding manifest')
     actor = Actor(old['tenant_id'], old['built_by_principal'])
-    platform = create_platform(Settings(os.environ['KB_DSN'], '', args.output / 'backup-only',
-                                        args.output / 'unused-identities', 'postgres'))
+    platform = create_platform(Settings(args.output / 'backup-only', args.output / 'unused-identities',
+                                        args.storage_config))
     service = SemanticPageService(platform, provider, args.output / 'semantic-manifests')
     imported = {}
     with service.authority.locked(actor, old['kb_id'], manage=True) as snapshot:
@@ -76,7 +76,7 @@ def main():
         new_embedding_calls=0, ledger_unchanged=True,
         runtime=str((args.output / 'runtime.json').resolve())))
     provider.close()
-    platform.backend.close()
+    platform.close()
     print(json.dumps({'status': 'PASS', 'new_embedding_calls': 0, 'ledger_unchanged': True}))
 
 

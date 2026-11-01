@@ -6,13 +6,12 @@ from unittest.mock import Mock, patch
 
 from kb_platform.embedded_search import EmbeddedSearch
 from kb_platform.platform_plugins import platform_plugins
-from kb_platform.postgres_search import PostgresSearch
 from kb_platform.search import SearchUnavailable, backend_dependencies
 from kb_platform.search_channels import SearchLexicalAdapter, SearchVectorAdapter
 from kb_platform.search_evidence import DocumentEvidenceSource, unit_sha256
 from kb_platform.search_router import channel_records
 from kb_platform.search_router import SplitSearch
-from kb_platform.storage_sdk import LEXICAL_BM25_V1, VECTOR_V1
+from kb_platform.storage_sdk import DOCUMENT_V1, LEXICAL_BM25_V1, VECTOR_V1, SpaceKey, StorageIdentity
 from .product_fixture import Authority
 from .storage_values_contracts import value_store
 
@@ -157,12 +156,11 @@ class SearchRouterContracts(unittest.TestCase):
         first = backend_dependencies(self.router)
         swapped = backend_dependencies(SplitSearch(SearchLexicalAdapter(self.dense), SearchVectorAdapter(self.bm25), self.source))
         self.assertNotEqual(first, swapped)
-        postgres_a = PostgresSearch('postgresql://localhost/database_a')
-        postgres_b = PostgresSearch('postgresql://localhost/database_b')
-        self.addCleanup(postgres_a.close)
-        self.addCleanup(postgres_b.close)
-        self.assertNotEqual(backend_dependencies(postgres_a), backend_dependencies(postgres_b))
-        self.assertNotIn('postgresql://', str(backend_dependencies(postgres_a)))
+        space = SpaceKey('independent', 'products', 'vectors')
+        first_dataset = SearchVectorAdapter(self.dense, identity=StorageIdentity(space, 'dataset-a'))
+        second_dataset = SearchVectorAdapter(self.dense, identity=StorageIdentity(space, 'dataset-b'))
+        self.assertNotEqual(backend_dependencies(first_dataset), backend_dependencies(second_dataset))
+        self.assertNotIn(str(self.root), str(backend_dependencies(first_dataset)))
 
     def test_channel_contracts_do_not_require_document_or_other_search_interfaces(self):
         VECTOR_V1.validate(self.vector)
@@ -277,14 +275,13 @@ class SearchRouterContracts(unittest.TestCase):
                 self.vector.identity = original
             self.assertTrue(router.is_sealed(self.index, 'sealed'))
 
-    def test_split_plugin_declares_channels_and_authoritative_source_dependencies(self):
-        specs = {spec.key: spec for spec in platform_plugins(SimpleNamespace(storage_root=self.root, dsn=''))}
-        router = specs['platform.search.split']
-        self.assertEqual(('platform.search.bm25', 'platform.search.dense', 'platform.search.source'), router.requires)
+    def test_search_plugin_declares_only_channel_capabilities_and_authoritative_documents(self):
+        specs = {spec.key: spec for spec in platform_plugins(SimpleNamespace(storage_root=self.root))}
+        router = specs['platform.search.storage']
+        self.assertEqual((), router.requires)
         self.assertEqual(('platform.search',), router.provides)
-        for channel in ('bm25', 'dense'):
-            for backend in ('postgres', 'embedded'):
-                self.assertEqual(('platform.search.' + channel,), specs[f'platform.search.{channel}.{backend}'].provides)
+        self.assertEqual({'bm25': LEXICAL_BM25_V1, 'dense': VECTOR_V1, 'source': DOCUMENT_V1},
+                         {slot.name: slot.contract for slot in router.storage_slots})
 
 
 if __name__ == '__main__':

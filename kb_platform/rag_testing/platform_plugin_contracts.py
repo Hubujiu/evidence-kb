@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from kb_platform.application_composition import create_root_application, load_application_profile
+from kb_platform.application_composition import create_root_application
 from kb_platform.core import Actor, Platform, PlatformError
 from kb_platform.documents import parse_native_document
 from kb_platform.platform_ports import KnowledgeRepository
@@ -19,8 +19,8 @@ from kb_platform.settings import Settings
 
 
 class PlatformPluginContracts(unittest.TestCase):
-    def settings(self, root, backend='postgres'):
-        return Settings('', '', Path(root), Path(root) / 'identities.json', backend)
+    def settings(self, root):
+        return Settings(Path(root), Path(root) / 'identities.json')
 
     def test_constructor_uses_only_explicit_ports_and_never_reads_environment(self):
         repository = SimpleNamespace(dsn='fixture', transaction=lambda *args: nullcontext('connection'))
@@ -37,18 +37,19 @@ class PlatformPluginContracts(unittest.TestCase):
         with platform._tx(Actor('tenant', 'reader'), 'scope') as connection:
             self.assertEqual(connection, 'connection')
 
-    def test_repository_preserves_tenant_transaction_and_closes_only_own_connection(self):
+    def test_repository_preserves_trusted_scope_and_borrows_storage_lifecycle(self):
         connection = Mock()
-        database = SimpleNamespace(info=SimpleNamespace(engine='postgresql'),
+        database = SimpleNamespace(
             identity=StorageIdentity(SpaceKey('app', 'knowledge', 'content'), 'dataset'),
-            transaction=Mock(return_value=nullcontext(connection)), close=Mock())
-        repository = KnowledgeRepository(database=database, prepare=False)
+            prepare=Mock(), seal=Mock(), transaction=Mock(return_value=nullcontext(connection)), close=Mock())
+        repository = KnowledgeRepository(database=database)
         with repository.transaction(Actor('tenant', 'reader'), 'scope') as current:
             self.assertIsNot(current, connection)
-        database.transaction.assert_called_once_with(write=True, limits=KNOWLEDGE_TRANSACTION_LIMITS)
-        statement = connection.execute.call_args.args[0]
-        self.assertEqual(dict(statement.params), {'tenant': 'tenant', 'kb': 'scope'})
-        repository.close()
+        database.transaction.assert_called_once_with(write=True, limits=KNOWLEDGE_TRANSACTION_LIMITS,
+                                                     scope={'tenant_id': 'tenant', 'kb_id': 'scope'})
+        self.assertEqual(database.prepare.call_args.args[0].owner, 'knowledge')
+        database.seal.assert_called_once_with()
+        connection.execute.assert_not_called()
         database.close.assert_not_called()
 
     def test_ingest_checks_authority_before_parser_and_rechecks_after_parser(self):
@@ -103,10 +104,19 @@ class PlatformPluginContracts(unittest.TestCase):
                     ctx.defer(lambda: closed.append(label))
                     ctx.provide('platform.search', backend)
 
-                selected = load_application_profile(settings, environment={})
-                next(row for row in selected['plugins'] if row['id'] == 'search')['use'] = label
+                resources = ('platform.repository', 'platform.originals', 'platform.parser',
+                             'platform.embedding_jobs', 'platform.embedding', 'platform.ocr')
+
+                def provide_resources(ctx, config):
+                    for name in resources:
+                        ctx.provide(name, None if name.endswith(('embedding', 'ocr')) else object())
+
+                selected = {'version': 1, 'plugins': [
+                    {'id': 'resources', 'use': 'fixture.resources'}, {'id': 'search', 'use': label},
+                    {'id': 'platform', 'use': 'platform.service'}]}
                 composition = create_root_application(settings, profile=selected, environment={},
-                    extra_plugins=(PluginSpec(label, ('platform.search',), (), mount),))
+                    extra_plugins=(PluginSpec(label, ('platform.search',), (), mount),
+                                   PluginSpec('fixture.resources', resources, (), provide_resources)))
                 self.addCleanup(composition.close)
                 platform = composition.host.service('platform')
                 connection = Mock()
@@ -131,6 +141,7 @@ class PlatformPluginContracts(unittest.TestCase):
     def test_native_profile_and_borrowed_platform_preserve_resource_ownership(self):
         with TemporaryDirectory() as root:
             settings = self.settings(root)
+            settings = Settings(settings.storage_root, settings.identities_file, Path(root) / 'missing-storage.json')
             native = create_root_application(settings,
                 profile={'version': 1, 'plugins': [{'id': 'runtime', 'use': 'harness.runtime'}]},
                 environment={})

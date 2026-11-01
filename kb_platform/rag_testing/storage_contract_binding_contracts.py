@@ -15,6 +15,7 @@ from kb_platform.storage_sdk import (
     RELATIONAL_V1, SpaceKey, StorageError, StorageExport, StorageIdentity, StorageProvider, StorageSlot,
 )
 from kb_platform.storage_service import StorageService
+from kb_platform.storage_sdk.relational import GUARDED_RELATIONAL_V1
 
 
 PRIMARY = StorageSlot('primary', RELATIONAL_V1)
@@ -38,7 +39,7 @@ def _mount_tasks(ctx, config):
 
 def _provider_catalog(factory=None):
     return {'sqlite': StorageProvider(factory or (lambda config: SqlStorageProvider(SQLiteProvider(config['root']))),
-                                     {'relational': (RELATIONAL_V1,)})}
+                                     {'relational': (RELATIONAL_V1,), 'structured': (GUARDED_RELATIONAL_V1,)})}
 
 
 class StorageContractBindingContracts(unittest.TestCase):

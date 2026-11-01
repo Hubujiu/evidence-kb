@@ -2,7 +2,7 @@
 
 本文件由 `uv run --no-sync python -m scripts.generate_plugin_catalog --output docs/plugin-catalog.md` 生成。
 
-当前共有 72 个静态内置实现键。统计只构造 PluginSpec，不挂载宿主、不连接后端、不调用模型。
+当前共有 61 个静态内置实现键。统计只构造 PluginSpec，不挂载宿主、不连接后端、不调用模型。
 
 模型提供商实例、存储实例、授权绑定和消费方包装按配置动态生成；外部安装的进程插件另计。公共服务可选，第三方可以自建服务和适配器。
 
@@ -10,7 +10,7 @@
 | --- | ---: | --- |
 | 通用 Agent | 16 | [harness_services.py](../kb_platform/harness_services.py) |
 | 公共模型服务 | 9 | [model_plugins.py](../kb_platform/model_plugins.py) |
-| 平台基础设施 | 27 | [platform_plugins.py](../kb_platform/platform_plugins.py) |
+| 平台基础设施 | 16 | [platform_plugins.py](../kb_platform/platform_plugins.py) |
 | 知识库问答 | 18 | [knowledge_profile.py](../kb_platform/knowledge_profile.py) |
 | 公共存储服务 | 1 | [storage_plugins.py](../kb_platform/storage_plugins.py) |
 | 易失阶段缓存 | 1 | [storage_cache_plugins.py](../kb_platform/storage_cache_plugins.py) |
@@ -19,9 +19,9 @@
 
 | 提供商 | 服务出口及合同 |
 | --- | --- |
-| postgresql | relational: storage.relational.postgres/v1; kv: storage.kv/v1, storage.kv.durable/v1; document: storage.document/v1; vector: storage.vector/v1; lexical: storage.lexical.bm25/v1 |
-| mysql | relational: storage.relational/v1; kv: storage.kv/v1, storage.kv.durable/v1 |
-| sqlite | relational: storage.relational/v1; kv: storage.kv/v1, storage.kv.durable/v1; document: storage.document/v1 |
+| postgresql | relational: storage.relational.postgres/v1; structured: storage.relational.guarded/v1; kv: storage.kv/v1, storage.kv.durable/v1; document: storage.document/v1; vector: storage.vector/v1; lexical: storage.lexical.bm25/v1 |
+| mysql | relational: storage.relational/v1; structured: storage.relational.guarded/v1; kv: storage.kv/v1, storage.kv.durable/v1 |
+| sqlite | relational: storage.relational/v1; structured: storage.relational.guarded/v1; kv: storage.kv/v1, storage.kv.durable/v1; document: storage.document/v1 |
 | redis | kv: storage.kv/v1, storage.kv.expiring/v1 |
 | files | object: storage.object/v1 |
 | s3 | object: storage.object/v1 |
@@ -44,7 +44,7 @@
 | 通用 Agent | `harness.runtime` | runtime | 无 | 无 |
 | 通用 Agent | `harness.sessions.durable` | sessions | session.store | 无 |
 | 通用 Agent | `harness.sessions.memory` | sessions | 无 | 无 |
-| 通用 Agent | `harness.store.database` | session.store | 无 | 无 |
+| 通用 Agent | `harness.store.database` | session.store | 无 | primary: storage.relational.structured/v1 |
 | 通用 Agent | `harness.store.sqlite` | session.store | 无 | 无 |
 | 通用 Agent | `harness.tools` | tools | 无 | 无 |
 | 公共模型服务 | `models.budget` | models.budget | 无 | 无 |
@@ -65,22 +65,11 @@
 | 平台基础设施 | `platform.embedding_jobs` | platform.embedding_jobs | platform.repository | 无 |
 | 平台基础设施 | `platform.model_clients.remote` | model.clients | 无 | 无 |
 | 平台基础设施 | `platform.ocr.client` | ocr | models, model.clients, models.route.generation | 无 |
-| 平台基础设施 | `platform.originals.files` | platform.originals | 无 | 无 |
 | 平台基础设施 | `platform.originals.storage` | platform.originals | 无 | objects: storage.object/v1 |
 | 平台基础设施 | `platform.parser.native` | platform.parser | 无 | 无 |
-| 平台基础设施 | `platform.repository.postgres` | platform.repository | 无 | 无 |
-| 平台基础设施 | `platform.repository.storage` | platform.repository | 无 | primary: storage.relational/v1 |
+| 平台基础设施 | `platform.repository.storage` | platform.repository | 无 | primary: storage.relational.structured/v1 |
 | 平台基础设施 | `platform.research` | research | platform, platform.embedding, models, knowledge.model | 无 |
 | 平台基础设施 | `platform.research.borrowed` | research | 无 | 无 |
-| 平台基础设施 | `platform.search.bm25.embedded` | platform.search.bm25 | 无 | 无 |
-| 平台基础设施 | `platform.search.bm25.postgres` | platform.search.bm25 | 无 | 无 |
-| 平台基础设施 | `platform.search.dense.embedded` | platform.search.dense | 无 | 无 |
-| 平台基础设施 | `platform.search.dense.postgres` | platform.search.dense | 无 | 无 |
-| 平台基础设施 | `platform.search.embedded` | platform.search | 无 | 无 |
-| 平台基础设施 | `platform.search.opensearch` | platform.search | 无 | 无 |
-| 平台基础设施 | `platform.search.postgres` | platform.search | platform.repository | 无 |
-| 平台基础设施 | `platform.search.source.postgres` | platform.search.source | platform.repository | 无 |
-| 平台基础设施 | `platform.search.split` | platform.search | platform.search.bm25, platform.search.dense, platform.search.source | 无 |
 | 平台基础设施 | `platform.search.storage` | platform.search | 无 | bm25: storage.lexical.bm25/v1, dense: storage.vector/v1, source: storage.document/v1 |
 | 平台基础设施 | `platform.service` | platform | platform.repository, platform.search, platform.originals, platform.parser, platform.embedding_jobs, platform.embedding, platform.ocr | 无 |
 | 知识库问答 | `knowledge.application` | application | knowledge, knowledge.tools, loop | 无 |
@@ -102,7 +91,7 @@
 | 知识库问答 | `knowledge.tools.catalog` | knowledge.tool_plugins | 无 | 无 |
 | 知识库问答 | `knowledge.workflow.graph` | knowledge.workflow | 无 | 无 |
 | 公共存储服务 | `storage.service` | storage.registry | 无 | 无 |
-| 易失阶段缓存 | `storage.cache.volatile` | stage.cache | 无 | index: storage.relational/v1, payload: storage.kv.expiring/v1 |
+| 易失阶段缓存 | `storage.cache.volatile` | stage.cache | 无 | index: storage.relational.structured/v1, payload: storage.kv.expiring/v1 |
 
-关系方言约束与可选预算槽位由应用组合按配置声明，生成的真实依赖由 Rust 宿主检查。
+消费者声明存储合同与可选预算槽位，生成的真实依赖由 Rust 宿主检查；装配层不补厂商约束。
 合同 SDK 与注册器不强制第三方业务使用公共服务；模型和存储各自检查领域语义。

@@ -148,10 +148,13 @@ def _instance_plugin(marker, provider, definition, exports, provider_name):
             raise StorageError('STORAGE_PROVIDER_EXPORT_MISMATCH')
         registry = ctx.require('storage.registry')
         registrations = {}
+        configuration_sha256 = _fingerprint([provider_name, definition,
+            environment_inputs(_environment_names(definition))])
         for name, export_name in exports.items():
             dispose = registry.register(name, lookup[export_name], owner_identity=ctx.identity,
                                         owner_lease=ctx.lease,
-                                        registration_id=ctx.registration_id('storage_export'))
+                                        registration_id=ctx.registration_id('storage_export'),
+                                        configuration_sha256=configuration_sha256)
             ctx.defer(dispose)
             registrations[name] = MappingProxyType(dict(registry.inspect()[name]))
         ctx.provide(marker, MappingProxyType(registrations))

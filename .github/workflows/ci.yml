@@ -139,6 +139,7 @@ jobs:
       E2E_TELEMETRY_DISABLED: '1'
       COMPOSE_PROJECT_NAME: acceptance-${{ github.run_id }}-${{ github.run_attempt }}
       KB_INTEGRATION_DSN: postgresql://kb_app:kb_local_app@127.0.0.1:55432/rust_plugin_acceptance_ci_${{ github.run_id }}_${{ github.run_attempt }}
+      KB_INTEGRATION_MIGRATION_DSN: postgresql://kb_admin:kb_local_admin@127.0.0.1:55432/rust_plugin_acceptance_ci_${{ github.run_id }}_${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -161,14 +162,12 @@ jobs:
         run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
       - name: Fetch locked Rust dependencies
         run: cargo fetch --locked
-      - name: Start isolated PostgreSQL and apply migrations
+      - name: Start isolated PostgreSQL and install provider extensions
         run: |
           docker compose up -d --build --wait postgres
           database="rust_plugin_acceptance_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           docker compose exec -T postgres createdb -U kb_admin "$database"
-          for migration in sql/*.sql; do
-            docker compose exec -T postgres psql -U kb_admin -d "$database" -v ON_ERROR_STOP=1 < "$migration"
-          done
+          docker compose exec -T postgres psql -U kb_admin -d "$database" -v ON_ERROR_STOP=1 < docker/postgres/bootstrap.sql
       - name: Prepare actual storage fixtures
         run: |
           docker pull mysql:8.4

@@ -1,4 +1,5 @@
 import argparse
+from contextlib import contextmanager
 from hashlib import sha256
 from importlib.metadata import version
 import json
@@ -30,7 +31,63 @@ def acceptance_dsn(dsn):
     return selected['dbname']
 
 
-def build_suite(dsn, output, observations):
+def acceptance_migration_dsn(dsn, migration_dsn):
+    database = acceptance_dsn(dsn)
+    selected = conninfo_to_dict(migration_dsn)
+    if (selected.get('dbname') != database or selected.get('host') != '127.0.0.1'
+            or selected.get('port') != '55432' or selected.get('hostaddr', '127.0.0.1') != '127.0.0.1'
+            or selected.get('user') != 'kb_admin'):
+        raise ValueError('Acceptance migrations require kb_admin on the same dedicated loopback database')
+    return database
+
+
+@contextmanager
+def controlled_storage(dsn, migration_dsn, directory, observations):
+    from sqlalchemy.engine import make_url
+
+    from kb_platform.database_contracts import SpaceKey
+    from kb_platform.storage_catalog import initialize_configuration
+    from .storage_integration import StorageFixtures
+
+    acceptance_migration_dsn(dsn, migration_dsn)
+    credentials = {'KB_ACCEPTANCE_SQL_URL': dsn, 'KB_ACCEPTANCE_SQL_MIGRATION_URL': migration_dsn}
+    with patch.dict(os.environ, credentials):
+        fixtures = StorageFixtures({'postgresql': make_url(migration_dsn)}, directory, observations)
+        application = 'runtime-acceptance-' + fixtures.run_id
+        definition = {'version': 2, 'application_id': application, 'instances': {
+            'sql': {'provider': 'postgresql', 'config': {'url_env': 'KB_ACCEPTANCE_SQL_URL',
+                'migration_url_env': 'KB_ACCEPTANCE_SQL_MIGRATION_URL'}},
+            'documents': {'provider': 'sqlite', 'config': {'root': str(fixtures.resource_root / 'documents')}},
+            'originals': {'provider': 'files', 'config': {'root': str(fixtures.resource_root / 'originals')}},
+        }, 'services': {
+            'authority': {'instance': 'sql', 'export': 'structured'},
+            'lexical': {'instance': 'sql', 'export': 'lexical'},
+            'vector': {'instance': 'sql', 'export': 'vector'},
+            'evidence': {'instance': 'documents', 'export': 'document'},
+            'originals': {'instance': 'originals', 'export': 'object'},
+        }, 'bindings': {
+            'repository': {'primary': {'service': 'authority', 'owner': 'knowledge', 'space': 'content'}},
+            'search': {name: {'service': service, 'owner': 'knowledge', 'space': name}
+                       for name, service in (('bm25', 'lexical'), ('dense', 'vector'), ('source', 'evidence'))},
+            'originals': {'objects': {'service': 'originals', 'owner': 'knowledge', 'space': 'originals'}},
+        }}
+        for consumer, slots in definition['bindings'].items():
+            for binding in slots.values():
+                if definition['services'][binding['service']]['instance'] == 'sql':
+                    space = SpaceKey(application, binding['owner'], binding['space'])
+                    fixtures.spaces.append(('postgresql', 'kb_' + space.digest[:24]))
+        path = directory / 'storage.json'
+        try:
+            write_json(path, initialize_configuration(definition))
+            observations['storage_configuration'] = {'version': 2, 'application_id': application,
+                'authority_contract': 'storage.relational.structured/v1',
+                'search_contracts': ['storage.lexical.bm25/v1', 'storage.vector/v1', 'storage.document/v1']}
+            yield path, credentials
+        finally:
+            fixtures.close()
+
+
+def build_suite(dsn, output, observations, *, migration_dsn=None):
     class RuntimeIntegration(unittest.TestCase):
         def setUp(self):
             from kb_platform.api import create_app
@@ -48,7 +105,10 @@ def build_suite(dsn, output, observations):
                 self.denied_token: {'tenant_id': self.tenant, 'principal_id': 'denied'},
                 self.other_token: {'tenant_id': self.tenant + '-other', 'principal_id': 'owner'},
             }), encoding='utf-8')
-            settings = Settings(dsn, '', self.directory / 'originals', identities, 'postgres')
+            self.storage_context = controlled_storage(dsn, migration_dsn, self.directory, observations)
+            storage_file, _ = self.storage_context.__enter__()
+            self.addCleanup(self.storage_context.__exit__, None, None, None)
+            settings = Settings(self.directory / 'originals', identities, storage_file)
             self.app = create_app(settings)
             self.host = self.app.state.root_plugins
             self.runtime = self.host.runtime_id
@@ -178,16 +238,21 @@ def build_suite(dsn, output, observations):
                 'parser_subprocesses': 1, 'denied_parser_subprocesses': 0, 'acl_denial_status': denied.status_code,
                 'cross_tenant_rows': 0, 'runtime': self.runtime, 'new_remote_calls': 0}
 
-    return unittest.defaultTestLoader.loadTestsFromTestCase(RuntimeIntegration)
+    from .embedding_jobs_contracts import live_contract_suite as embedding_jobs
+    from .model_review_contracts import live_contract_suite as model_review
+    from .model_embedding_review_contracts import live_contract_suite as embedding_review
+
+    return unittest.TestSuite((unittest.defaultTestLoader.loadTestsFromTestCase(RuntimeIntegration),
+                               embedding_jobs(dsn), model_review(dsn), embedding_review(dsn)))
 
 
 def main():
     parser = argparse.ArgumentParser(description='Opt-in loopback HTTP, native parser subprocess, and isolated PostgreSQL integration; no provider calls.')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    dsn = os.environ['KB_DSN']
+    dsn, migration_dsn = os.environ['KB_INTEGRATION_DSN'], os.environ['KB_INTEGRATION_MIGRATION_DSN']
     try:
-        acceptance_dsn(dsn)
+        acceptance_migration_dsn(dsn, migration_dsn)
     except ValueError as error:
         parser.error(str(error))
     os.environ['PGHOSTADDR'] = '127.0.0.1'
@@ -196,7 +261,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     observations = {}
     with (args.output / 'checks.log').open('w', encoding='utf-8') as stream:
-        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(build_suite(dsn, args.output, observations))
+        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(
+            build_suite(dsn, args.output, observations, migration_dsn=migration_dsn))
     with psycopg.connect(dsn) as connection:
         database = connection.execute('SELECT current_database(), version()').fetchone()
         extensions = connection.execute("SELECT extname,extversion FROM pg_extension WHERE extname IN ('vector','pg_textsearch') ORDER BY extname").fetchall()
