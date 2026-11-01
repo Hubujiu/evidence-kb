@@ -1,15 +1,17 @@
 from copy import deepcopy
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import json
 from pathlib import Path
-import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from kb_platform.database_contracts import DatabaseError
 from kb_platform.storage_catalog import default_storage_providers, initialize_configuration
-from kb_platform.storage_configuration import convert_database_configuration
+from kb_platform.storage_configuration import convert_database_configuration, main
 from kb_platform.storage_sdk import (
     EphemeralCacheSpace, ExistingDataset, KV_EXPIRING_V1, SpaceKey, StorageError, StorageProvider,
 )
@@ -43,12 +45,15 @@ def sqlite_configuration(root, *, export='document'):
 
 
 def run_configuration_cli(operation, source, target):
-    return subprocess.run(
-        [sys.executable, '-m', 'kb_platform.storage_configuration', operation,
-         '--input', str(source), '--output', str(target)],
-        cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, encoding='utf-8',
-        timeout=30, check=False,
-    )
+    stdout, stderr = StringIO(), StringIO()
+    arguments = ['storage_configuration', operation, '--input', str(source), '--output', str(target)]
+    code = 0
+    with patch.object(sys, 'argv', arguments), redirect_stdout(stdout), redirect_stderr(stderr):
+        try:
+            main()
+        except SystemExit as error:
+            code = error.code
+    return SimpleNamespace(returncode=code, stdout=stdout.getvalue(), stderr=stderr.getvalue())
 
 
 class StorageConfigurationConversionContracts(unittest.TestCase):

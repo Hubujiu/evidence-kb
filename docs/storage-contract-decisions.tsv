@@ -4,3 +4,13 @@ ts	phase	decision	why	evidence	result
 2026-11-01T06:42:00Z	baseline	合并期间误启动的检查保留为失败记录并重新运行	冲突文本使首次结果不能代表代码基线	.local/checks/storage-contract-baseline-20261101-01/summary.json	invalidated by unresolved merge
 2026-11-01T06:44:00Z	baseline	解决冲突后运行统一入口，622个合同全部通过	建立本次修改前可核对基线	.local/checks/storage-contract-baseline-20261101-02/summary.json	PASS
 2026-11-01T06:45:00Z	contracts	共用SDK先提交，三个工作区分别实现绑定、值存储与检索	先固定接口并消除并发写同一源码的风险	0cd0710	committed
+2026-11-01T07:28:01Z	implementation	六类SDK、配置编译、授权租约和消费者迁移完成；删除旧公共database/blob注册器	仅复用Rust生命周期且公共服务保持可选	0cd0710;edb1fbb;8f3228a;a60462d	committed
+2026-11-01T07:28:01Z	values	实现文档双库、持久KV三库、Redis易失KV及真实StageCache消费	持久身份和缓存身份分离，不按数据库品牌推导能力	31b9275;04354a5;a719883	committed
+2026-11-01T07:28:01Z	search	拆分lexical、vector和权威原文，真实执行五组检索组合及发布失败恢复	向量提供商不必提供文档或词法能力；所有通道封存后才发布	924b54b;5a55a78;3de8490;.local/storage-contract-search-debug-20261101-01/report.json	9 test groups PASS
+2026-11-01T07:28:01Z	transfer	files与S3显式复制返回新引用映射，源对象及业务引用不自动删除或改写	验证身份、tenant与全部源内容后才复制，重复执行读回校验	1430f1b	committed
+2026-11-01T07:28:01Z	review	跨家族Gemini审查后端拒绝封存任务，采用独立GPT审查且明确限制	不冒称已完成跨家族审查	独立审查发现ABA、进程写后结果超限及get_many参数名不一致	3 findings accepted
+2026-11-01T07:28:01Z	repair	删除保留tombstone并递增revision，快照v2携带删除历史；进程预检回执且报告COMPLETED	阻断过期CAS跨删除重建覆盖，避免把已完成写误报为未写入	1c2f9be;a1a8c49;修复前两条ABA回归真实FAIL	28 values contracts PASS
+2026-11-01T07:28:01Z	independent	独立执行初始化、重启、CAS、快照迁移和真实进程worker	验收者不参与实现，临时资源用后删除	.local/storage-final-independent-20261101-01/report.json	61 contracts and actual user flows PASS; 0 paid calls
+2026-11-01T07:28:01Z	final-check	保留第一轮final失败并修正边界声明、CI必需命令和运行时非特权身份	新增中立SQL桥需明确声明，运行时不能误用管理员账号	.local/checks/storage-contract-final-20261101-01/architecture.json;2e60f1a	FAIL retained; rerun required
+2026-11-01T07:31:00Z	test-boundary	配置CLI合同直接调用真实main并捕获argv/stdout退出码，不在离线合同中启动进程	第一轮4个错误来自离线审计正确阻止subprocess；外部进程行为由受控E2E独立核验	.local/checks/storage-contract-final-20261101-01/contracts.json;storage_configuration_contracts.py	12 contracts PASS without subprocess; no gate relaxed
+2026-11-01T07:31:00Z	actual-matrix	本轮首次完整30组真实存储矩阵通过，保留对应冻结plan和测试分母	包括文档删除历史迁移、Redis缓存、五组检索组合、files/S3与Rust HTTP/browser	.local/checks/storage-contract-final-20261101-01/storage-integration/report.json	30 PASS; 0 FAIL/ERROR/SKIP/NOT_RUN; 0 paid calls
