@@ -1,0 +1,69 @@
+{
+	"version": 2,
+	"application_id": "knowledge-production",
+	"instances": {
+		"content": {
+			"provider": "postgresql",
+			"config": {
+				"url_env": "KB_CONTENT_DATABASE_URL",
+				"migration_url_env": "KB_CONTENT_MIGRATION_URL"
+			}
+		},
+		"vectors": {
+			"provider": "postgresql",
+			"config": {
+				"url_env": "KB_VECTOR_DATABASE_URL",
+				"migration_url_env": "KB_VECTOR_MIGRATION_URL"
+			}
+		},
+		"documents": {
+			"provider": "sqlite",
+			"config": {"root": ".local/storage/documents"}
+		},
+		"conversations": {
+			"provider": "mysql",
+			"config": {
+				"url_env": "KB_SESSION_DATABASE_URL",
+				"migration_url_env": "KB_SESSION_MIGRATION_URL"
+			}
+		},
+		"originals": {
+			"provider": "files",
+			"config": {"root": ".local/storage/originals"}
+		},
+		"cache": {
+			"provider": "redis",
+			"config": {"url_env": "KB_CACHE_REDIS_URL"}
+		}
+	},
+	"services": {
+		"content.sql": {"instance": "content", "export": "relational"},
+		"content.bm25": {"instance": "content", "export": "lexical"},
+		"vectors.dense": {"instance": "vectors", "export": "vector"},
+		"documents.source": {"instance": "documents", "export": "document"},
+		"documents.cache-index": {"instance": "documents", "export": "relational"},
+		"conversations.sql": {"instance": "conversations", "export": "relational"},
+		"originals.objects": {"instance": "originals", "export": "object"},
+		"cache.payload": {"instance": "cache", "export": "kv"}
+	},
+	"bindings": {
+		"repository": {
+			"primary": {"service": "content.sql", "owner": "knowledge", "space": "content"}
+		},
+		"search": {
+			"bm25": {"service": "content.bm25", "owner": "knowledge", "space": "content"},
+			"dense": {"service": "vectors.dense", "owner": "knowledge-search", "space": "vectors"},
+			"source": {"service": "documents.source", "owner": "knowledge-search", "space": "source"}
+		},
+		"originals": {
+			"objects": {"service": "originals.objects", "owner": "knowledge", "space": "originals"}
+		},
+		"store": {
+			"primary": {"service": "conversations.sql", "owner": "conversations", "space": "history"}
+		},
+		"cache": {
+			"index": {"service": "documents.cache-index", "owner": "stage-cache", "space": "index"},
+			"payload": {"service": "cache.payload", "owner": "stage-cache", "space": "payload", "cache_id": "rag-stage-payload-v1"}
+		}
+	}
+}

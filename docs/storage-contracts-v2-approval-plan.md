@@ -229,7 +229,7 @@ P3 中真实文档消费路径优先采用检索原文读取的独立适配，�
 
 **十、现状依据与文档修正**
 
-- 当前槽位及版本：[plugin_host.py](../kb_platform/plugin_host.py)，数据库编译与绑定：[database_plugins.py](../kb_platform/database_plugins.py)、[database_service.py](../kb_platform/database_service.py)。
+- 当前槽位及版本：[plugin_host.py](../kb_platform/plugin_host.py)、[storage_sdk](../kb_platform/storage_sdk/__init__.py)，公共存储编译与绑定：[storage_plugins.py](../kb_platform/storage_plugins.py)、[storage_service.py](../kb_platform/storage_service.py)。审批时的 SQL 基础实现保留在 [database_service.py](../kb_platform/database_service.py) 内部复用，旧公共 `database_plugins` 入口已删除；旧验收结果只作为前序基线。
 - 当前知识库与检索：[knowledge_storage.py](../kb_platform/knowledge_storage.py)、[search_router.py](../kb_platform/search_router.py)、[postgres_search.py](../kb_platform/postgres_search.py)、[embedded_search.py](../kb_platform/embedded_search.py)。
 - 必须保留的约束：[架构](architecture.md)、[开发约定](development.md)、[现有存储设计](storage-plugins-design.md)、[现有验收及迁移](storage-plugins-execution-plan.md)。
 - 实施时修正 [search-storage.md](search-storage.md) 中与 development.md 冲突的历史 hash 兼容放行表述，当前严格规则优先，不恢复兼容放行。
