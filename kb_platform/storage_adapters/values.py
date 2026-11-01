@@ -15,6 +15,7 @@ MAX_BATCH_BYTES = 8 * 1024 * 1024
 MAX_SNAPSHOT_ITEMS = 10000
 MAX_SNAPSHOT_BYTES = 64 * 1024 * 1024
 MAX_REVISION = 2**63 - 1
+_DOCUMENT_COLUMNS = 'key_hash,item_key,payload,revision,deleted'
 
 
 def validate_key(key):
@@ -74,24 +75,30 @@ def _key_hash(key):
     return sha256(validate_key(key).encode('utf-8')).hexdigest()
 
 
-def _document(row, expected_key=None):
+def _document_state(row, expected_key=None):
     if row is None:
         return None
     try:
-        key, payload, revision = row['item_key'], row['payload'], row['revision']
+        key, payload, revision, deleted = row['item_key'], row['payload'], row['revision'], row['deleted']
         validate_key(key)
         _revision(revision, optional=False)
         value = json.loads(payload)
-        if (revision < 1 or _document_json(value) != payload or
+        if (revision < 1 or type(deleted) is not int or deleted not in (0, 1) or
+                deleted and payload != '{}' or _document_json(value) != payload or
                 row['key_hash'] != _key_hash(key) or expected_key is not None and key != expected_key):
             raise ValueError('INVALID_RECORD')
-        return Document(key, value, revision)
+        return Document(key, value, revision), bool(deleted)
     except (KeyError, TypeError, ValueError, RecursionError, StorageError):
         raise StorageError('STORAGE_DATA_CORRUPT') from None
 
 
+def _document(row, expected_key=None):
+    state = _document_state(row, expected_key)
+    return None if state is None or state[1] else state[0]
+
+
 class _SqlStore:
-    def __init__(self, database, *, table, fields):
+    def __init__(self, database, *, table, fields, migrations=()):
         self._database = database
         self.identity = database.identity
         self._engine = database.info.engine
@@ -100,7 +107,7 @@ class _SqlStore:
         self._table = table
         database.prepare(SchemaPackage(self.identity.space.owner_id, (Migration(1, (
             'CREATE TABLE ' + table + '(key_hash VARCHAR(64) PRIMARY KEY,item_key TEXT NOT NULL,' + fields + ')',
-        )),)))
+        )), *migrations)))
         database.seal()
 
     @contextmanager
@@ -125,7 +132,9 @@ class SqlDocumentStore(_SqlStore):
         if database.info.engine not in {'sqlite', 'postgresql'}:
             raise StorageError('STORAGE_BACKEND_UNSUPPORTED')
         super().__init__(database, table='kb_storage_documents', fields='payload TEXT NOT NULL,revision BIGINT NOT NULL '
-                         'CHECK(revision>0 AND revision<=' + str(MAX_REVISION) + '),UNIQUE(item_key)')
+                         'CHECK(revision>0 AND revision<=' + str(MAX_REVISION) + '),UNIQUE(item_key)',
+                         migrations=(Migration(2, ('ALTER TABLE kb_storage_documents '
+                             'ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1))',)),))
 
     def _lock_writes(self, tx):
         if self._engine == 'postgresql':
@@ -134,7 +143,7 @@ class SqlDocumentStore(_SqlStore):
     def get(self, document_id):
         key_hash = _key_hash(document_id)
         with self._transaction() as tx:
-            row = tx.execute('SELECT key_hash,item_key,payload,revision FROM kb_storage_documents WHERE key_hash=:key',
+            row = tx.execute('SELECT ' + _DOCUMENT_COLUMNS + ' FROM kb_storage_documents WHERE key_hash=:key',
                              {'key': key_hash}).first()
             return _document(row, document_id)
 
@@ -145,34 +154,36 @@ class SqlDocumentStore(_SqlStore):
         limits = QueryLimits(max_rows=MAX_BATCH_ITEMS, max_bytes=MAX_BATCH_BYTES, max_statements=MAX_BATCH_ITEMS)
         with self._transaction(limits=limits) as tx:
             return tuple(_document(tx.execute(
-                'SELECT key_hash,item_key,payload,revision FROM kb_storage_documents WHERE key_hash=:key',
+                'SELECT ' + _DOCUMENT_COLUMNS + ' FROM kb_storage_documents WHERE key_hash=:key',
                 {'key': key_hash}).first(), key) for key_hash, key in zip(keys, document_ids, strict=True))
 
     def put(self, document_id, value, *, expected_revision=None):
         key_hash, payload = _key_hash(document_id), _document_json(value)
         _revision(expected_revision)
-        if expected_revision == MAX_REVISION:
-            raise StorageError('STORAGE_REVISION_CONFLICT')
-        values = {'key_hash': key_hash, 'item_key': document_id, 'payload': payload, 'revision': 1}
         try:
             with self._database.transaction(write=True) as tx:
                 self._lock_writes(tx)
-                if expected_revision == 0:
-                    tx.execute('INSERT INTO kb_storage_documents(key_hash,item_key,payload,revision) '
-                               'VALUES(:key_hash,:item_key,:payload,:revision)', values)
-                elif expected_revision is not None:
-                    result = tx.execute('UPDATE kb_storage_documents SET payload=:payload,revision=revision+1 '
-                                        'WHERE key_hash=:key_hash AND item_key=:item_key AND revision=:expected',
-                                        {**values, 'expected': expected_revision})
+                row = tx.execute('SELECT ' + _DOCUMENT_COLUMNS +
+                                 ' FROM kb_storage_documents WHERE key_hash=:key', {'key': key_hash}).first()
+                state = _document_state(row, document_id)
+                exists = state is not None and not state[1]
+                if (expected_revision == 0 and exists or expected_revision not in (None, 0) and
+                        (not exists or state[0].revision != expected_revision)):
+                    raise StorageError('STORAGE_REVISION_CONFLICT')
+                revision = 1 if state is None else state[0].revision + 1
+                if revision > MAX_REVISION:
+                    raise StorageError('STORAGE_REVISION_CONFLICT')
+                values = {'key_hash': key_hash, 'item_key': document_id, 'payload': payload, 'revision': revision}
+                if state is None:
+                    tx.execute('INSERT INTO kb_storage_documents(key_hash,item_key,payload,revision,deleted) '
+                               'VALUES(:key_hash,:item_key,:payload,:revision,0)', values)
+                else:
+                    result = tx.execute('UPDATE kb_storage_documents SET payload=:payload,revision=:revision,deleted=0 '
+                                        'WHERE key_hash=:key_hash AND item_key=:item_key AND revision=:previous',
+                                        {**values, 'previous': state[0].revision})
                     if result.rowcount != 1:
                         raise StorageError('STORAGE_REVISION_CONFLICT')
-                else:
-                    sql = self._upsert(('key_hash', 'item_key', 'payload', 'revision'),
-                                       ('payload=excluded.payload', 'revision=kb_storage_documents.revision+1'))
-                    tx.execute(sql, values)
-                row = tx.execute('SELECT key_hash,item_key,payload,revision FROM kb_storage_documents WHERE key_hash=:key',
-                                 {'key': key_hash}).first()
-                return _document(row, document_id)
+                return Document(document_id, json.loads(payload), revision)
         except IntegrityError:
             raise StorageError('STORAGE_REVISION_CONFLICT') from None
         except DBAPIError:
@@ -183,17 +194,20 @@ class SqlDocumentStore(_SqlStore):
         _revision(expected_revision)
         with self._transaction(write=True) as tx:
             self._lock_writes(tx)
-            values = {'key_hash': key_hash, 'item_key': document_id}
-            sql = 'DELETE FROM kb_storage_documents WHERE key_hash=:key_hash AND item_key=:item_key'
-            if expected_revision is not None:
-                sql += ' AND revision=:expected'
-                values['expected'] = expected_revision
-            deleted = tx.execute(sql, values).rowcount == 1
-            if not deleted and expected_revision is not None:
-                row = tx.execute('SELECT item_key FROM kb_storage_documents WHERE key_hash=:key_hash', values).first()
-                if row is not None:
-                    raise StorageError('STORAGE_REVISION_CONFLICT')
-            return deleted
+            row = tx.execute('SELECT ' + _DOCUMENT_COLUMNS +
+                             ' FROM kb_storage_documents WHERE key_hash=:key', {'key': key_hash}).first()
+            state = _document_state(row, document_id)
+            if state is None or state[1]:
+                return False
+            previous = state[0].revision
+            if previous == MAX_REVISION or expected_revision is not None and previous != expected_revision:
+                raise StorageError('STORAGE_REVISION_CONFLICT')
+            result = tx.execute("UPDATE kb_storage_documents SET payload='{}',revision=revision+1,deleted=1 "
+                                'WHERE key_hash=:key_hash AND item_key=:item_key AND revision=:previous AND deleted=0',
+                                {'key_hash': key_hash, 'item_key': document_id, 'previous': previous})
+            if result.rowcount != 1:
+                raise StorageError('STORAGE_REVISION_CONFLICT')
+            return True
 
 
 class SqlKeyValueStore(_SqlStore):
@@ -228,12 +242,13 @@ class SqlKeyValueStore(_SqlStore):
                               {'key_hash': key_hash, 'item_key': key}).rowcount == 1
 
 
-def _snapshot_payload(source, documents):
-    return {'format': 'storage-document-snapshot/v1',
+def _snapshot_payload(source, documents, tombstones):
+    return {'format': 'storage-document-snapshot/v2',
             'source': {'space': [source.space.application_id, source.space.owner_id, source.space.space_id],
                        'dataset_id': source.dataset_id},
             'documents': [{'id': document.id, 'value': document.value, 'revision': document.revision}
-                          for document in documents]}
+                          for document in documents],
+            'tombstones': [{'id': document.id, 'revision': document.revision} for document in tombstones]}
 
 
 def _snapshot_bytes(payload):
@@ -276,7 +291,8 @@ def _validate_snapshot(snapshot):
     if sha256(raw).hexdigest() != snapshot.checksum:
         raise StorageError('STORAGE_INVALID_SNAPSHOT')
     payload = json.loads(raw)
-    if (set(payload) != {'format', 'source', 'documents'} or payload['format'] != 'storage-document-snapshot/v1' or
+    if (set(payload) != {'format', 'source', 'documents', 'tombstones'} or
+            payload['format'] != 'storage-document-snapshot/v2' or
             not isinstance(snapshot.checksum, str)):
         raise StorageError('STORAGE_INVALID_SNAPSHOT')
     source = payload['source']
@@ -285,8 +301,9 @@ def _validate_snapshot(snapshot):
             any(type(item) is not str or not item or len(item) > 200 for item in source['space']) or
             type(source['dataset_id']) is not str or not source['dataset_id'] or len(source['dataset_id']) > 200):
         raise StorageError('STORAGE_INVALID_SNAPSHOT')
-    documents = payload['documents']
-    if type(documents) is not list or len(documents) > MAX_SNAPSHOT_ITEMS:
+    documents, tombstones = payload['documents'], payload['tombstones']
+    if (type(documents) is not list or type(tombstones) is not list or
+            len(documents) + len(tombstones) > MAX_SNAPSHOT_ITEMS):
         raise StorageError('STORAGE_INVALID_SNAPSHOT')
     seen = set()
     for record in documents:
@@ -294,6 +311,14 @@ def _validate_snapshot(snapshot):
             raise StorageError('STORAGE_INVALID_SNAPSHOT')
         validate_key(record['id'])
         _document_json(record['value'])
+        _revision(record['revision'], optional=False)
+        if record['id'] in seen or record['revision'] < 1:
+            raise StorageError('STORAGE_INVALID_SNAPSHOT')
+        seen.add(record['id'])
+    for record in tombstones:
+        if type(record) is not dict or set(record) != {'id', 'revision'}:
+            raise StorageError('STORAGE_INVALID_SNAPSHOT')
+        validate_key(record['id'])
         _revision(record['revision'], optional=False)
         if record['id'] in seen or record['revision'] < 1:
             raise StorageError('STORAGE_INVALID_SNAPSHOT')
@@ -306,12 +331,13 @@ def export_documents(store, *, expected_dataset_id):
         raise StorageError('STORAGE_DATASET_IDENTITY_MISMATCH')
     limits = QueryLimits(max_rows=MAX_SNAPSHOT_ITEMS + 1, max_bytes=MAX_SNAPSHOT_BYTES, max_statements=1)
     with store._transaction(limits=limits) as tx:
-        rows = tx.execute('SELECT key_hash,item_key,payload,revision FROM kb_storage_documents ORDER BY key_hash '
+        rows = tx.execute('SELECT ' + _DOCUMENT_COLUMNS + ' FROM kb_storage_documents ORDER BY key_hash '
                           'LIMIT ' + str(MAX_SNAPSHOT_ITEMS + 1)).rows
         if len(rows) > MAX_SNAPSHOT_ITEMS:
             raise StorageError('STORAGE_LIMIT_EXCEEDED')
-        documents = tuple(_document(row) for row in rows)
-    payload = _snapshot_payload(store.identity, documents)
+        states = tuple(_document_state(row) for row in rows)
+    payload = _snapshot_payload(store.identity, (document for document, deleted in states if not deleted),
+                                (document for document, deleted in states if deleted))
     snapshot = DocumentSnapshot(payload, sha256(_snapshot_bytes(payload)).hexdigest())
     snapshot.to_json()
     return snapshot
@@ -320,6 +346,9 @@ def export_documents(store, *, expected_dataset_id):
 def import_documents(store, snapshot, *, expected_source_dataset_id, expected_target_dataset_id):
     payload = _validate_snapshot(snapshot)
     documents = payload['documents']
+    records = [(record, False) for record in documents]
+    records.extend(({'id': record['id'], 'value': {}, 'revision': record['revision']}, True)
+                   for record in payload['tombstones'])
     if (payload['source']['dataset_id'] != expected_source_dataset_id or
             store.identity.dataset_id != expected_target_dataset_id):
         raise StorageError('STORAGE_DATASET_IDENTITY_MISMATCH')
@@ -327,17 +356,21 @@ def import_documents(store, snapshot, *, expected_source_dataset_id, expected_ta
                          max_statements=MAX_SNAPSHOT_ITEMS + 2)
     with store._transaction(write=True, limits=limits) as tx:
         store._lock_writes(tx)
-        rows = tx.execute('SELECT key_hash,item_key,payload,revision FROM kb_storage_documents LIMIT ' +
+        rows = tx.execute('SELECT ' + _DOCUMENT_COLUMNS + ' FROM kb_storage_documents LIMIT ' +
                           str(MAX_SNAPSHOT_ITEMS + 1)).rows
         if rows:
-            actual = {row['item_key']: _document(row) for row in rows}
-            expected = {row['id']: Document(row['id'], row['value'], row['revision']) for row in documents}
+            states = tuple(_document_state(row) for row in rows)
+            actual = {document.id: (_document_json(document.value), document.revision, deleted)
+                      for document, deleted in states}
+            expected = {record['id']: (_document_json(record['value']), record['revision'], deleted)
+                        for record, deleted in records}
             if actual != expected:
                 raise StorageError('STORAGE_IMPORT_TARGET_NOT_EMPTY')
             return len(documents)
-        for record in documents:
-            tx.execute('INSERT INTO kb_storage_documents(key_hash,item_key,payload,revision) '
-                       'VALUES(:key_hash,:item_key,:payload,:revision)',
+        for record, deleted in records:
+            tx.execute('INSERT INTO kb_storage_documents(key_hash,item_key,payload,revision,deleted) '
+                       'VALUES(:key_hash,:item_key,:payload,:revision,:deleted)',
                        {'key_hash': _key_hash(record['id']), 'item_key': record['id'],
-                        'payload': _document_json(record['value']), 'revision': record['revision']})
+                        'payload': _document_json(record['value']), 'revision': record['revision'],
+                        'deleted': int(deleted)})
     return len(documents)

@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from kb_platform.database_contracts import SpaceKey
+from kb_platform.database_contracts import Migration, SchemaPackage, SpaceKey
 from kb_platform.database_providers import SQLiteProvider
 from kb_platform.database_service import DatabaseService
 from kb_platform.storage_adapters.redis_cache import RedisCacheProvider
@@ -93,6 +93,102 @@ class StorageDocumentContracts(unittest.TestCase):
             self.assertEqual(sum(item == 'STORAGE_REVISION_CONFLICT' for item in results), 5)
             self.assertEqual(store.get('record').revision, 1)
 
+    def test_delete_recreate_does_not_reuse_a_revision_or_accept_old_cas(self):
+        with TemporaryDirectory() as root, value_store(root) as store:
+            original = store.put('record', {'generation': 'original'}, expected_revision=0)
+            self.assertTrue(store.delete('record', expected_revision=original.revision))
+            self.assertIsNone(store.get('record'))
+            self.assertEqual(store.get_many(('record', 'missing')), (None, None))
+            self.assertFalse(store.delete('record', expected_revision=original.revision))
+            with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                store.put('record', {'generation': 'stale'}, expected_revision=original.revision)
+            recreated = store.put('record', {'generation': 'recreated'}, expected_revision=0)
+            self.assertEqual(recreated.revision, 3)
+            for operation in (
+                lambda: store.put('record', {'generation': 'stale'}, expected_revision=original.revision),
+                lambda: store.delete('record', expected_revision=original.revision),
+            ):
+                with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                    operation()
+                self.assertEqual(store.get('record'), recreated)
+
+    def test_concurrent_old_cas_cannot_update_or_delete_a_recreated_document(self):
+        with TemporaryDirectory() as root, value_store(root) as store:
+            original = store.put('record', {'generation': 'original'})
+            store.delete('record')
+            recreated = store.put('record', {'generation': 'recreated'}, expected_revision=0)
+
+            def stale(index):
+                try:
+                    if index % 2:
+                        store.delete('record', expected_revision=original.revision)
+                    else:
+                        store.put('record', {'stale': index}, expected_revision=original.revision)
+                    return 'UNEXPECTED_WRITE'
+                except StorageError as error:
+                    return error.code
+
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                results = tuple(pool.map(stale, range(8)))
+            self.assertEqual(results, ('STORAGE_REVISION_CONFLICT',) * 8)
+            self.assertEqual(store.get('record'), recreated)
+
+    def test_concurrent_create_after_delete_has_one_winner_and_a_new_revision(self):
+        with TemporaryDirectory() as root, value_store(root) as store:
+            store.put('record', {'generation': 'original'})
+            store.delete('record')
+
+            def create(index):
+                try:
+                    return store.put('record', {'winner': index}, expected_revision=0).revision
+                except StorageError as error:
+                    return error.code
+
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                results = tuple(pool.map(create, range(6)))
+            self.assertEqual(results.count(3), 1)
+            self.assertEqual(results.count('STORAGE_REVISION_CONFLICT'), 5)
+
+    def test_tombstone_survives_restart_and_unconditional_recreation_stays_monotonic(self):
+        with TemporaryDirectory() as root:
+            with value_store(root) as store:
+                original = store.put('record', {'generation': 'original'})
+                store.delete('record', expected_revision=original.revision)
+                dataset = store.identity.dataset_id
+            with value_store(root, dataset=dataset) as recovered:
+                self.assertIsNone(recovered.get('record'))
+                recreated = recovered.put('record', {'generation': 'after-restart'})
+                self.assertEqual(recreated.revision, 3)
+            with value_store(root, dataset=dataset) as restarted:
+                self.assertEqual(restarted.get('record'), recreated)
+                with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                    restarted.put('record', {}, expected_revision=original.revision)
+                with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                    restarted.delete('record', expected_revision=original.revision)
+
+    def test_explicit_schema_migration_preserves_existing_live_revisions(self):
+        with TemporaryDirectory() as root:
+            service = DatabaseService()
+            service.register('sqlite', SQLiteProvider(root))
+            try:
+                database = service.bind(service.grant('sqlite', SpaceKey('app', 'documents', 'main'), 'fixture'))
+                database.prepare(SchemaPackage('documents', (Migration(1, (
+                    'CREATE TABLE kb_storage_documents(key_hash VARCHAR(64) PRIMARY KEY,item_key TEXT NOT NULL,'
+                    'payload TEXT NOT NULL,revision BIGINT NOT NULL '
+                    'CHECK(revision>0 AND revision<=9223372036854775807),UNIQUE(item_key))',
+                )),)))
+                with database.transaction() as tx:
+                    tx.execute('INSERT INTO kb_storage_documents(key_hash,item_key,payload,revision) '
+                               'VALUES(:key_hash,:item_key,:payload,7)',
+                               {'key_hash': sha256(b'record').hexdigest(), 'item_key': 'record', 'payload': '{}'})
+                dataset = database.identity.dataset_id
+            finally:
+                service.close()
+            with value_store(root, dataset=dataset) as migrated:
+                self.assertEqual(migrated.get('record').revision, 7)
+                self.assertTrue(migrated.delete('record', expected_revision=7))
+                self.assertEqual(migrated.put('record', {}, expected_revision=0).revision, 9)
+
     def test_invalid_json_and_revision_inputs_fail_before_write(self):
         with TemporaryDirectory() as root, value_store(root) as store:
             invalid = ([1], {1: 'coerced'}, {'number': float('nan')}, {'number': float('inf')},
@@ -149,6 +245,74 @@ class StorageDocumentContracts(unittest.TestCase):
                                              expected_target_dataset_id=target.identity.dataset_id)
                     self.assertEqual(count, 2)
                     self.assertEqual(target.get_many(('a', 'b')), source.get_many(('a', 'b')))
+
+    def test_snapshot_migrations_preserve_deleted_revision_history(self):
+        with TemporaryDirectory() as root:
+            with value_store(Path(root) / 'source') as source, value_store(Path(root) / 'target') as target, \
+                    value_store(Path(root) / 'third') as third:
+                original = source.put('record', {'generation': 'original'})
+                source.delete('record', expected_revision=original.revision)
+                snapshot = export_documents(source, expected_dataset_id=source.identity.dataset_id)
+                self.assertEqual(snapshot.payload['format'], 'storage-document-snapshot/v2')
+                self.assertEqual(snapshot.payload['documents'], [])
+                self.assertEqual(snapshot.payload['tombstones'], [{'id': 'record', 'revision': 2}])
+                changed = json.loads(json.dumps(snapshot.payload))
+                changed['tombstones'][0]['revision'] = 1
+                with self.assertRaisesRegex(StorageError, 'STORAGE_INVALID_SNAPSHOT'):
+                    import_documents(target, replace(snapshot, payload=changed),
+                                     expected_source_dataset_id=source.identity.dataset_id,
+                                     expected_target_dataset_id=target.identity.dataset_id)
+                for _ in range(2):
+                    self.assertEqual(import_documents(target, DocumentSnapshot.from_json(snapshot.to_json()),
+                        expected_source_dataset_id=source.identity.dataset_id,
+                        expected_target_dataset_id=target.identity.dataset_id), 0)
+                self.assertIsNone(target.get('record'))
+                recreated = target.put('record', {'generation': 'recreated'}, expected_revision=0)
+                self.assertEqual(recreated.revision, 3)
+                with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                    target.delete('record', expected_revision=original.revision)
+                target.delete('record', expected_revision=recreated.revision)
+                second = export_documents(target, expected_dataset_id=target.identity.dataset_id)
+                import_documents(third, second, expected_source_dataset_id=target.identity.dataset_id,
+                                 expected_target_dataset_id=third.identity.dataset_id)
+                self.assertEqual(third.put('record', {}, expected_revision=0).revision, 5)
+                for old_revision in (original.revision, recreated.revision):
+                    with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                        third.put('record', {'stale': True}, expected_revision=old_revision)
+                    with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                        third.delete('record', expected_revision=old_revision)
+
+    def test_snapshot_requires_version_history_and_rejects_live_tombstone_overlap(self):
+        with TemporaryDirectory() as root:
+            with value_store(Path(root) / 'source') as source, value_store(Path(root) / 'target') as target:
+                source.put('record', {})
+                snapshot = export_documents(source, expected_dataset_id=source.identity.dataset_id)
+                old = json.loads(json.dumps(snapshot.payload))
+                old['format'] = 'storage-document-snapshot/v1'
+                del old['tombstones']
+                overlap = json.loads(json.dumps(snapshot.payload))
+                overlap['tombstones'] = [{'id': 'record', 'revision': 2}]
+                for payload in (old, overlap):
+                    checksum = sha256(json.dumps(payload, sort_keys=True, ensure_ascii=True,
+                                                 separators=(',', ':')).encode()).hexdigest()
+                    with self.assertRaisesRegex(StorageError, 'STORAGE_INVALID_SNAPSHOT'):
+                        import_documents(target, DocumentSnapshot(payload, checksum),
+                                         expected_source_dataset_id=source.identity.dataset_id,
+                                         expected_target_dataset_id=target.identity.dataset_id)
+                    self.assertIsNone(target.get('record'))
+
+    def test_import_cannot_erase_a_target_deleted_revision_history(self):
+        with TemporaryDirectory() as root:
+            with value_store(Path(root) / 'source') as source, value_store(Path(root) / 'target') as target:
+                source.put('shared', {'value': 1})
+                target.put('shared', {'value': 1})
+                original = target.put('deleted', {})
+                target.delete('deleted', expected_revision=original.revision)
+                snapshot = export_documents(source, expected_dataset_id=source.identity.dataset_id)
+                with self.assertRaisesRegex(StorageError, 'STORAGE_IMPORT_TARGET_NOT_EMPTY'):
+                    import_documents(target, snapshot, expected_source_dataset_id=source.identity.dataset_id,
+                                     expected_target_dataset_id=target.identity.dataset_id)
+                self.assertEqual(target.put('deleted', {}, expected_revision=0).revision, 3)
 
     def test_snapshot_corruption_and_wrong_identity_never_write(self):
         with TemporaryDirectory() as root:
