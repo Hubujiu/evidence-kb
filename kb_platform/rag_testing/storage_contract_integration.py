@@ -3,7 +3,9 @@ from dataclasses import asdict, replace
 import json
 from time import monotonic, sleep
 import unittest
+from unittest.mock import patch
 
+from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import inspect
 
 from kb_platform.storage_adapters.redis_cache import RedisCacheProvider
@@ -16,6 +18,8 @@ from kb_platform.storage_sdk import (
     KV_V1, RELATIONAL_V1, SpaceKey, StorageError,
 )
 from kb_platform.storage_service import StorageService
+from .cache import StageCache, StageKey
+from .contracts import digest
 
 
 def _sql_provider(bound):
@@ -301,5 +305,73 @@ def suite(fixtures):
             _record(fixtures, 'redis-persistent-contract-rejected-before-write', backend='redis',
                     identity=asdict(cache.identity), persistent_contract_rejected=True,
                     persistent_identity_rejected=True, invalid_ttl_rejected=True, business_keys=0)
+
+        def test_stage_cache_consumes_real_redis_with_three_actual_relational_indexes(self):
+            for engine in ('sqlite', 'postgresql', 'mysql'):
+                with self.subTest(engine=engine):
+                    name = 'volatile-stage-cache-' + engine
+                    service, database = fixtures.bind(engine, name, owner='stage-cache')
+                    provider, tracked = self.redis()
+                    space = SpaceKey('storage-acceptance-' + fixtures.run_id, 'stage-cache', name)
+                    target = EphemeralCacheSpace('stage-payload-' + fixtures.run_id)
+                    raw_cache = provider.open_space(space, target)
+                    registry = self.registry()
+                    _register(registry, 'redis.stage-payload', provider, 'kv')
+                    grant = registry.grant('redis.stage-payload', KV_EXPIRING_V1, space,
+                                           'stage-cache', target=target)
+                    payload_cache = registry.bind(grant)
+                    key = StageKey(stage='retrieval', implementation='storage-acceptance/volatile-v1',
+                        upstream=('synthetic-question', 'ordered-history'), config_hash='config',
+                        corpus_hash='corpus', index_snapshot='index', principal='alice',
+                        acl_revision='acl-1', model_revision='local-fixture', sample_id=engine)
+                    payload = {'evidence': '不可变合成证据', 'source': 'synthetic', 'offsets': [4, 12]}
+                    content_hash = digest(payload)
+                    tracked.append((raw_cache, (content_hash, digest({'evidence': 'changed'}))))
+                    cache = StageCache(database=database, payload_cache=payload_cache, payload_ttl_seconds=30)
+                    cache.put(key, payload)
+                    self.assertEqual(cache.get(key, authorize=lambda: True), payload)
+                    with self.assertRaises(PermissionError):
+                        cache.get(key, authorize=lambda: False)
+                    self.assertIsNone(cache.get(key, authorize=lambda: True, mode='cold'))
+                    self.assertIsNone(cache.get(key, authorize=lambda: True, mode='live', under_test=True))
+                    self.assertIsNone(cache.get(key.model_copy(update={'principal': 'bob'}), authorize=lambda: True))
+                    raw_cache.set(content_hash, b'{"evidence":"forged"}')
+                    with self.assertRaisesRegex(ValueError, 'cache object integrity failure'):
+                        cache.get(key, authorize=lambda: True)
+                    cache.put(key, payload)
+                    with patch.object(provider._client, 'get', side_effect=RedisConnectionError('injected outage')):
+                        self.assertIsNone(cache.get(key, authorize=lambda: True))
+                    with patch.object(provider._client, 'set', side_effect=RedisConnectionError('injected outage')):
+                        cache.put(key, payload)
+                    provider._client.connection_pool.disconnect()
+                    self.assertEqual(cache.get(key, authorize=lambda: True), payload)
+                    raw_cache.put_expiring(content_hash, raw_cache.get(content_hash), ttl_seconds=0.05)
+                    deadline = monotonic() + 10
+                    while raw_cache.get(content_hash) is not None and monotonic() < deadline:
+                        sleep(0.02)
+                    self.assertIsNone(cache.get(key, authorize=lambda: True))
+                    with self.assertRaisesRegex(ValueError, 'stage output changed'):
+                        cache.put(key, {'evidence': 'changed'})
+                    self.assertIsNone(raw_cache.get(digest({'evidence': 'changed'})))
+                    cache.put(key, payload)
+                    self.assertTrue(raw_cache.delete(content_hash))
+                    self.assertIsNone(cache.get(key, authorize=lambda: True))
+                    service.close()
+                    with self.assertRaises(RuntimeError):
+                        cache.get(key, authorize=lambda: True)
+                    _, recovered_database = fixtures.bind(engine, name, owner='stage-cache')
+                    recovered = StageCache(database=recovered_database, payload_cache=payload_cache,
+                                           payload_ttl_seconds=30)
+                    self.assertIsNone(recovered.get(key, authorize=lambda: True))
+                    recovered.put(key, payload)
+                    recovered.close()
+                    self.assertEqual(recovered.get(key, authorize=lambda: True), payload)
+                    _record(fixtures, 'volatile-stage-cache-real-redis', index_backend=engine,
+                            index_identity=asdict(recovered_database.identity),
+                            cache_identity=asdict(raw_cache.identity), ttl_expired=True,
+                            injected_transport_outage_returns_miss=True, dirty_payload_rejected=True,
+                            same_output_rebuilt=True, changed_output_rejected=True,
+                            stale_index_rejected=True, payload_lifecycle_owned_by_provider=True,
+                            model_calls=0, embedding_calls=0, judge_calls=0)
 
     return unittest.defaultTestLoader.loadTestsFromTestCase(StorageContractIntegration)
