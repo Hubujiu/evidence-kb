@@ -32,7 +32,7 @@ from .session_database_contracts import exercise_session_database
 
 VARIABLES = ('KB_STORAGE_TEST_POSTGRES_URL', 'KB_STORAGE_TEST_DENSE_POSTGRES_URL',
              'KB_STORAGE_TEST_MYSQL_URL', 'KB_STORAGE_TEST_S3_ENDPOINT',
-             'KB_STORAGE_TEST_S3_ACCESS_KEY', 'KB_STORAGE_TEST_S3_SECRET_KEY')
+             'KB_STORAGE_TEST_S3_ACCESS_KEY', 'KB_STORAGE_TEST_S3_SECRET_KEY', 'KB_STORAGE_TEST_REDIS_URL')
 ROOT = Path(__file__).resolve().parents[2]
 TEXT = 'QUARTZMARKER Publication requires owner review before release.'
 
@@ -62,6 +62,10 @@ def configuration(environment):
             or endpoint.username or endpoint.password or endpoint.query or endpoint.fragment
             or endpoint.path not in ('', '/')):
         raise ValueError('S3 acceptance requires a loopback HTTP endpoint')
+    cache = urlsplit(environment['KB_STORAGE_TEST_REDIS_URL'])
+    if (cache.scheme != 'redis' or cache.hostname != '127.0.0.1' or not cache.port
+            or cache.username or cache.password or cache.query or cache.fragment or cache.path != '/0'):
+        raise ValueError('Redis acceptance requires a dedicated loopback cache')
     return {'postgresql': postgres, 'dense_postgresql': dense, 'mysql': mysql,
             's3_endpoint': environment['KB_STORAGE_TEST_S3_ENDPOINT']}
 
@@ -900,9 +904,11 @@ def run(output, environment=None):
     try:
         with (output / 'checks.log').open('w', encoding='utf-8') as stream:
             from .storage_contract_integration import suite as contract_suite
+            from .storage_search_integration import suite as search_contract_suite
 
             suite = unittest.TestSuite((foundation_suite(fixtures), session_suite(fixtures),
-                                        knowledge_suite(fixtures), contract_suite(fixtures), http_suite(fixtures)))
+                                        knowledge_suite(fixtures), contract_suite(fixtures),
+                                        search_contract_suite(fixtures), http_suite(fixtures)))
             result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
         report.update({'tests': result.testsRun, 'failures': len(result.failures),
                        'errors': len(result.errors), 'skipped': len(result.skipped),

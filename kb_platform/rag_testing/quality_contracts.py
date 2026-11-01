@@ -171,7 +171,7 @@ class ArchitectureContracts(unittest.TestCase):
         for source, path in (
             ('from .knowledge_storage import PostgresRepository', 'kb_platform/database_service.py'),
             ('from ..knowledge_service import KnowledgeService', 'kb_platform/database_providers/postgres.py'),
-            ('from ..database_plugins import require_database', 'kb_platform/rag_testing/cache.py'),
+            ('from ..storage_plugins import require_storage', 'kb_platform/rag_testing/cache.py'),
             ('from .rag_testing.runner import run', 'kb_platform/persistence_local.py'),
         ):
             with self.subTest(path=path, source=source):

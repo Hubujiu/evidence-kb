@@ -24,7 +24,7 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 SHARED = frozenset({"contracts", "cache", "budget", "budget_batches", "provider_capture"})
 FOUNDATIONS = frozenset({"contracts", "cache", "budget", "budget_batches"})
-DATABASE_FOUNDATIONS = frozenset({'database_contracts', 'database_service', 'database_migrations',
+DATABASE_FOUNDATIONS = frozenset({'database_contracts', 'database_service', 'database_migrations', 'storage_sdk',
                                  'database_providers', 'persistence_schema', 'persistence_local'})
 EXCLUDED_IMPORTS = frozenset({"output", "outputs", "reports"})
 AGENT_DEPENDENCIES = {
@@ -55,8 +55,6 @@ AGENT_DEPENDENCIES = {
     'database_migrations': frozenset({'database_contracts'}),
     'database_service': frozenset({'database_contracts', 'database_migrations', 'database_process'}),
     'database_process': frozenset({'database_contracts'}),
-    'database_plugins': frozenset({'database_contracts', 'database_providers', 'database_service',
-                                  'plugin_configuration', 'plugin_host'}),
     'storage_sdk': frozenset({'database_contracts'}),
     'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts'}),
     'storage_plugins': frozenset({'storage_sdk', 'storage_service', 'plugin_configuration', 'plugin_host'}),

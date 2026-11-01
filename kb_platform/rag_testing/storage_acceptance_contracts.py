@@ -15,6 +15,7 @@ class StorageAcceptanceContracts(unittest.TestCase):
             'KB_STORAGE_TEST_S3_ENDPOINT': 'http://127.0.0.1:59031',
             'KB_STORAGE_TEST_S3_ACCESS_KEY': 'synthetic',
             'KB_STORAGE_TEST_S3_SECRET_KEY': 'synthetic',
+            'KB_STORAGE_TEST_REDIS_URL': 'redis://127.0.0.1:56379/0',
         }
 
     def test_actual_storage_acceptance_requires_explicit_isolated_loopback_resources(self):
