@@ -56,6 +56,7 @@ class _SqlSpace:
 
     def seal(self):
         self._sealed = True
+        return self
 
     @contextmanager
     def transaction(self, *, write=True, mode=None, limits=None, operation_id=None):

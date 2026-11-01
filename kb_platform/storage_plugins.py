@@ -96,8 +96,8 @@ def compile_storage_plugins(profile, catalog, configuration, *, provider_catalog
                 raise StorageError('STORAGE_CONTRACT_MISSING', consumer=consumer, slot=name,
                                    service=service_name, required=slot.contract.key,
                                    actual=tuple(contract.key for contract in contracts))
-            previous = ownership.setdefault(space, (instance, export, target))
-            if previous != (instance, export, target):
+            previous = ownership.setdefault(space, (instance, target))
+            if previous != (instance, target):
                 raise ValueError('STORAGE_SPACE_SERVICE_CONFLICT')
             planned.append((consumer, slot, service_name, space, target))
     additions = list(storage_plugins(service))

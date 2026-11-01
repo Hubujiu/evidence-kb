@@ -169,8 +169,8 @@ class BoundStorage:
         return bound
 
     @contextmanager
-    def _lease(self):
-        consumer = self._consumer_lease() if self._consumer_lease is not None else nullcontext()
+    def _lease(self, *, include_consumer=True):
+        consumer = self._consumer_lease() if include_consumer and self._consumer_lease is not None else nullcontext()
         owner = self._owner_lease() if self._owner_lease is not None else nullcontext()
         with consumer, owner, self._service.lease(self._grant.service, self._grant.registration_id):
             yield
@@ -178,18 +178,19 @@ class BoundStorage:
     @contextmanager
     def _context(self, context):
         with self._lease(), context as value:
-            yield value
+            yield self if value is self._implementation else value
 
     def __getattr__(self, name):
         if name in {'info', 'schema', 'physical_name', 'runtime_role'} and self._grant.contract.satisfies(RELATIONAL_V1):
-            with self._lease():
-                return getattr(self._implementation, name)
+            return getattr(self._implementation, name)
         if name not in self._methods:
             raise AttributeError(name)
 
         def invoke(*args, **kwargs):
-            with self._lease():
+            with self._lease(include_consumer=name not in {'prepare', 'seal'}):
                 result = getattr(self._implementation, name)(*args, **kwargs)
+                if result is self._implementation:
+                    return self
                 if hasattr(result, '__enter__') and hasattr(result, '__exit__'):
                     return self._context(result)
                 return result
