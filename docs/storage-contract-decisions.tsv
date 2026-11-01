@@ -1,0 +1,22 @@
+ts	phase	decision	why	evidence	result
+2026-11-01T06:40:00Z	start	执行用户批准的六类合同改造、真实E2E及提交合并	用户明确批准且公共服务保持可选	docs/storage-contracts-v2-approval-plan.md	in progress
+2026-11-01T06:41:00Z	baseline	先提交前轮关系与对象基础并合入当前main	隔离新改造且保留已完成工作	db11092;9c0c5e9	committed
+2026-11-01T06:42:00Z	baseline	合并期间误启动的检查保留为失败记录并重新运行	冲突文本使首次结果不能代表代码基线	.local/checks/storage-contract-baseline-20261101-01/summary.json	invalidated by unresolved merge
+2026-11-01T06:44:00Z	baseline	解决冲突后运行统一入口，622个合同全部通过	建立本次修改前可核对基线	.local/checks/storage-contract-baseline-20261101-02/summary.json	PASS
+2026-11-01T06:45:00Z	contracts	共用SDK先提交，三个工作区分别实现绑定、值存储与检索	先固定接口并消除并发写同一源码的风险	0cd0710	committed
+2026-11-01T07:28:01Z	implementation	六类SDK、配置编译、授权租约和消费者迁移完成；删除旧公共database/blob注册器	仅复用Rust生命周期且公共服务保持可选	0cd0710;edb1fbb;8f3228a;a60462d	committed
+2026-11-01T07:28:01Z	values	实现文档双库、持久KV三库、Redis易失KV及真实StageCache消费	持久身份和缓存身份分离，不按数据库品牌推导能力	31b9275;04354a5;a719883	committed
+2026-11-01T07:28:01Z	search	拆分lexical、vector和权威原文，真实执行五组检索组合及发布失败恢复	向量提供商不必提供文档或词法能力；所有通道封存后才发布	924b54b;5a55a78;3de8490;.local/storage-contract-search-debug-20261101-01/report.json	9 test groups PASS
+2026-11-01T07:28:01Z	transfer	files与S3显式复制返回新引用映射，源对象及业务引用不自动删除或改写	验证身份、tenant与全部源内容后才复制，重复执行读回校验	1430f1b	committed
+2026-11-01T07:28:01Z	review	跨家族Gemini审查后端拒绝封存任务，采用独立GPT审查且明确限制	不冒称已完成跨家族审查	独立审查发现ABA、进程写后结果超限及get_many参数名不一致	3 findings accepted
+2026-11-01T07:28:01Z	repair	删除保留tombstone并递增revision，快照v2携带删除历史；进程预检回执且报告COMPLETED	阻断过期CAS跨删除重建覆盖，避免把已完成写误报为未写入	1c2f9be;a1a8c49;修复前两条ABA回归真实FAIL	28 values contracts PASS
+2026-11-01T07:28:01Z	independent	独立执行初始化、重启、CAS、快照迁移和真实进程worker	验收者不参与实现，临时资源用后删除	.local/storage-final-independent-20261101-01/report.json	61 contracts and actual user flows PASS; 0 paid calls
+2026-11-01T07:28:01Z	final-check	保留第一轮final失败并修正边界声明、CI必需命令和运行时非特权身份	新增中立SQL桥需明确声明，运行时不能误用管理员账号	.local/checks/storage-contract-final-20261101-01/architecture.json;2e60f1a	FAIL retained; rerun required
+2026-11-01T07:31:00Z	test-boundary	配置CLI合同直接调用真实main并捕获argv/stdout退出码，不在离线合同中启动进程	第一轮4个错误来自离线审计正确阻止subprocess；外部进程行为由受控E2E独立核验	.local/checks/storage-contract-final-20261101-01/contracts.json;storage_configuration_contracts.py	12 contracts PASS without subprocess; no gate relaxed
+2026-11-01T07:31:00Z	actual-matrix	本轮首次完整30组真实存储矩阵通过，保留对应冻结plan和测试分母	包括文档删除历史迁移、Redis缓存、五组检索组合、files/S3与Rust HTTP/browser	.local/checks/storage-contract-final-20261101-01/storage-integration/report.json	30 PASS; 0 FAIL/ERROR/SKIP/NOT_RUN; 0 paid calls
+2026-11-01T07:50:59Z	ci-resource	远端拉不到旧MinIO镜像，改从固定官方源码及Go镜像构建并验证版本	本地缓存不能替代可复现的CI资源准备	caef933;12f5ef4;.local/minio-source-build-20261101-agent/verification.json	build and LICENSE verified; source-built S3 actual matrix PASS
+2026-11-01T07:50:59Z	ci-diagnosis	Windows两版本合同超时保留诊断；两盘配对写入推翻系统盘更快假设，明确使用RUNNER_TEMP隔离目录	SQL提交与Tantivy落盘等待为主；不采用更慢或泄漏句柄的生产候选，不放宽170/180秒门槛	.local/storage-windows-io-diagnostic-20261101-01/report.json;CI 41286127808 windows313 disk probe	all original semantics and denominators retained; remote verification required
+2026-11-01T07:50:59Z	final	在固定官方源码S3资源上执行最终统一入口	当前制品、全部合同与实际矩阵必须共同通过	.local/checks/storage-contract-final-20261101-04/summary.json	12 gates PASS; 719 contracts PASS; 30 actual groups PASS; 0 skips and 0 paid calls
+2026-11-01T07:50:59Z	cleanup	仅清理四个专属容器、独立验收库、源码镜像和构建器、五个干净worktree	保留原始证据与共享服务；删除私有资源凭据文件	.local/storage-contract-resources-20261101-01/cleanup.json;runtime-cleanup.json	PASS; shared PostgreSQL and cached images retained
+2026-11-01T08:02:47Z	reader-lifecycle	远端全量执行后发现不可变索引自动刷新与目录清理竞争，创建和打开reader立即选Manual	不忽略WinError145，不增加清理重试或sleep；generation不会增量修改，不需自动刷新	CI 41286549447 windows313 contracts-0;embedded_search.py	28 targeted contracts PASS including immediate removal of 4 real generations
+2026-11-01T08:02:47Z	final-current	索引修复后执行统一离线及受控进程入口，原真实资源已清，最新真实矩阵由必需CI再次执行	保持各轮证据及观测边界，不把旧PASS冒充当前组件执行	.local/checks/storage-contract-final-20261101-05/summary.json	10 gates PASS; 720 contracts PASS; 0 FAIL/ERROR/SKIP; 0 paid calls

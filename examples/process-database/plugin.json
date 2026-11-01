@@ -1,0 +1,1 @@
+{"protocol":"evidence-plugin-process/1","name":"database","version":"1","entry":"plugin.py","services":{"external.database":["put","get","rollback_attempt"]},"requires":["shared.database"]}

@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 
@@ -72,6 +73,22 @@ class EmbeddedSearchContracts(unittest.TestCase):
         before = self.backend.search(index, *args)
         after = self.backend.search(self.index, *args)
         self.assertEqual([(h['unit_id'], h['score']) for h in before], [(h['unit_id'], h['score']) for h in after])
+
+    def test_closed_immutable_readers_release_generations_for_immediate_removal(self):
+        root = Path(self.folder.name).resolve()
+        for generation in ('4', '5', '6', '7'):
+            backend = EmbeddedSearch(root)
+            index = backend.index_name('tenant', 'scope', generation * 32)
+            backend.stage(index, self.authority.units, 3)
+            self.assertTrue(backend.search(index, 'tenant', 'scope', self.authority.rows, '权限', 20))
+            self.assertTrue(backend.search(index, 'tenant', 'scope', self.authority.rows, '权限', 20, kind='Page'))
+            self.assertTrue(backend.dense(index, 'tenant', 'scope', self.authority.rows, [1, 1, 0], 20))
+            backend.close()
+            backend.close()
+            path = (root / index).resolve()
+            self.assertEqual(path.parent, root)
+            shutil.rmtree(path)
+            self.assertFalse(path.exists())
 
     def test_old_binding_revision_cannot_match(self):
         allowed = [{**self.authority.rows[0], 'parse_snapshot_id': 'new-parse'}]

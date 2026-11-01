@@ -1,8 +1,6 @@
 from copy import deepcopy
-from contextlib import closing
 import json
 from pathlib import Path
-import sqlite3
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -462,7 +460,7 @@ class AgentGraphContracts(unittest.TestCase):
         with self.assertRaises(PlatformError) as caught:
             self.turn(case)
         self.assertEqual(caught.exception.code, 'TURN_IN_PROGRESS')
-        with closing(sqlite3.connect(case.service.store.path)) as db, db:
+        with case.service.store.database.transaction() as db:
             db.execute('UPDATE requests SET expires=0')
         with self.assertRaises(PlatformError) as caught:
             self.turn(case)

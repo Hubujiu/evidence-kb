@@ -1,0 +1,1 @@
+{"protocol":"evidence-plugin-process/1","name":"storage","version":"1","entry":"plugin.py","services":{"external.storage":["put","get","denied","oversized"]},"requires":["shared.storage"]}

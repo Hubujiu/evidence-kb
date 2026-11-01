@@ -21,7 +21,12 @@ def model_plugins(models=None, *, clients=None):
         if 'config_path' in config:
             from .model_configuration import from_config
 
-            selected = from_config(config['config_path'])
+            database = None
+            if 'database_slot' in config:
+                from .storage_plugins import require_storage
+
+                database = require_storage(ctx, config['database_slot'])
+            selected = from_config(config['config_path'], database=database, audit_root=config.get('audit_root'))
             ctx.defer(selected.close)
         if selected is None:
             from .model_service import ModelService
@@ -93,7 +98,10 @@ def model_plugins(models=None, *, clients=None):
     route_properties = {'route': TEXT, 'client': TEXT,
                         'capability': {'enum': ['chat', 'embedding']}}
     schemas = {
-        'models.service': config_schema({'config_path': TEXT, 'providers_config': TEXT}, maxProperties=1),
+        'models.service': config_schema({'config_path': TEXT, 'providers_config': TEXT,
+            'database_slot': TEXT, 'audit_root': TEXT},
+            allOf=[{'not': {'required': ['config_path', 'providers_config']}},
+                   {'if': {'required': ['database_slot']}, 'then': {'required': ['config_path', 'audit_root']}}]),
         'models.route.client': config_schema(route_properties, required=('route', 'client')),
         'models.route.generation': config_schema(
             {**route_properties, 'capability': {'const': 'chat'}}, required=('route', 'client')),

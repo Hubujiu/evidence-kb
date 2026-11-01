@@ -1,14 +1,30 @@
 # 产品模块与评测边界
 
+当前内置实现、服务依赖和公开 profile 见 [插件目录](plugin-catalog.md)。公共存储按 relational、document、kv、vector、lexical、object 六类合同连接消费插件与提供商，结构见 [存储插件设计](storage-plugins-design.md)，执行、验收和搬迁步骤见 [执行方案](storage-plugins-execution-plan.md)。会话和通用关系持久化支持 PostgreSQL、MySQL、SQLite；完整知识库数据与权限仍要求 PostgreSQL。
+
 共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由由 Rust 生命周期管理。
 
 默认入口现为 [Rust 主宿主](rust-main-host.md)：`evidence-host` 持有生命周期 coordinator、loop 和 graph，启动执行环境并监督退出。Python worker 保存业务对象，按同一 Rust 命令协议执行并回报效果；断开主宿主后不会回退到本地生命周期。`plugin-host` 是与 Agent 无关的进程监督库，业务 dispatcher 由可执行入口注入。
 
 通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/application-profiles/` 中选定的根 profile，展开 platform 与 knowledge 组合包并取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由可信 catalog 提供。Rust 拥有依赖解析、作用域、生命周期、通用 loop 和图节点推进，Python 执行服务效果与知识库路由策略。通用宿主、loop 与工具目录不导入知识库业务。
 
-默认检索由 `postgres_search.py` 提供，使用 pg_textsearch BM25 和 pgvector 精确检索。检索代际、语义页活动清单和 Embedding 恢复任务均在 PostgreSQL 中持久化。`search.py` 保留共有排序/绑定合同；`embedded_search.py` 与 OpenSearch 仅用于历史迁移和明确配置的对照。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件文件只供备份下载，证据以数据库不可变解析快照为准。持久化与切换说明见 [检索存储](search-storage.md)。
+默认检索由 `postgres_search.py` 提供，使用 pg_textsearch BM25 和 pgvector 精确检索。`platform.search.storage` 分别声明 lexical BM25、vector 和 document source 三个槽位，`search_router.SplitSearch` 核对三方身份、内容、封存和发布。BM25 与 dense 可以使用同一实例、不同 PG 数据库或 PG 与 embedded 的组合；当前 PG 搜索适配内部要求两个扩展同时存在。`KB_SEARCH_CHANNELS_CONFIG` 仍可用于领域组合。知识库正文、权限、发布状态和 Embedding 任务仍在 PostgreSQL；`search.py` 保留共有排序与绑定合同。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件通过 files 或 S3 对象接口用于下载、PDF 和图片预览；证据以不可变解析快照为准。当前配置边界见 [存储设计](storage-plugins-design.md)，检索协议见 [检索存储](search-storage.md)。
 
-产品保留一个回答方案。此次调整把交付应用的组装归入 `kb_platform/delivery.py`，不重排检索、存储或解析模块。原有 `DeliveryProfile` 仍保存配置路径、提供者路径、运行目录与冻结配置。预算 CLI 和服务启动器都调用这一实现。
+产品保留一个回答方案。`kb_platform/delivery.py` 负责交付应用的组装；`DeliveryProfile` 保存配置路径、提供者路径、运行目录与冻结配置。预算 CLI 和服务启动器都调用这一实现。
+
+## 公共存储与业务所有权
+
+`storage_sdk` 定义六类接口与扩展合同，不依赖宿主、知识库或具体驱动。`storage_plugins.compile_storage_plugins` 将实例、具名 export 和槽位配置编译为 registry、instance、bound 和消费者依赖，交给原 Rust 宿主管理。`storage_service` 负责领域合同、授权和绑定，不另建生命周期状态机。`PluginSpec.storage_slots` 允许可信插件声明所需接口，`require_storage` 返回受合同限制的句柄。根应用和独立 core 读取 `KB_STORAGE_CONFIG`，独立应用也能注入自己的 provider catalog。
+
+公共模型和公共存储都是可选基础服务。第三方可直接声明依赖自己的适配器或服务；Rust 宿主仍检查一般依赖和生命周期。一个 PostgreSQL 提供商可以导出多个合同，Redis 只导出基础 KV 与 TTL 扩展。合同缺失或版本不符拒绝绑定，不能按数据库品牌推测能力。
+
+PostgreSQL、MySQL、SQLite 提供商管理连接、受限运行权限和事务。适配器管理实现公共合同需要的内部结构，业务插件拥有领域 schema、查询与迁移。`SpaceKey(application_id, owner_id, space_id)` 加显式初始化的 `dataset_id` 标识持久数据，运行注册代次管理当前句柄。正常启动核对现有身份，错误身份或误指空库拒绝，不自动创建替代数据集。Redis 缓存使用明确的 `cache_id`。多个项目可以共用服务器并保持空间独立，多个宿主各有自己的连接池。旧配置只能离线转换，运行时不回退到 `KB_DATABASES_CONFIG`。
+
+`harness.store.database` 支持三种数据库，`SessionStore` 继续唯一拥有会话规则。知识库 schema 与查询位于 `knowledge_storage.py` 和 `knowledge_queries.py`，通过 PG 专用事务入口设置局部 tenant、kb 和 search_path。其正文、RLS、构建和任务仍要求 PostgreSQL；公共 MySQL 或 SQLite 提供商存在不代表完整知识库已经可换库。
+
+`storage_adapters.objects` 将 files 与 S3 接入 object 合同，`storage` 提供原件业务接口。BlobRef 绑定空间、租户、SHA-256 和长度，API 经对象接口读取，不以外部传入路径读取原件。当前是完整 bytes 读取，未提供端到端流式下载。对象存储和数据库引用没有分布式事务，复制对象后需显式核验和切换业务引用。
+
+`storage.cache.volatile` 将关系索引和 Redis payload 绑定到同一 `StageCache` 实现。Redis 是文件或对象 payload 后端的显式替代，允许 TTL、断线和丢失触发未命中；精确依赖、当前授权、内容校验与预算仍由原实现负责。`BudgetLedger` 不可绑定到缓存合同，历史费用和 UNKNOWN 不因换库清零。
 
 ## 请求经过哪些模块
 
@@ -104,7 +120,9 @@ Markdown/TXT 的新快照使用 `native-text/0.3.0-markdown-it`，快照哈希�
 
 `contracts`、`cache`、`budget`、`budget_batches` 是基础层，不能依赖产品执行模块。`provider_capture` 是产品适配层，允许使用提供者和请求消息工具。它不拥有评分规则。
 
-缓存和账本保持单一实现。SQLite 连接显式关闭，事务提交或回滚之后不会继续占用数据库文件。未知请求和缺失 token 的预留不因关闭连接而清零。
+缓存和账本保持单一实现。`StageCache` 的索引、`BudgetLedger` 与数据库请求回执可注入三种关系后端，缓存对象通过独立对象接口保存。共享模块依赖中立数据库合同，不反向导入插件宿主或知识库业务。未知请求和缺失 token 的预留不因换库、关闭连接或重新绑定而清零。
+
+冻结 `budget_batches` 的前序 SQLite 文件与 hash 保持只读。`producer_guard` 专用 SQLite sidecar 继续承担跨进程互斥和封存；`model_http` 的 JSON capture 仍使用独立 `audit_root`。LunaClient 响应缓存与默认文件回执保留旧路径；`RequestReceipts` 已支持数据库注入，但 LunaClient 没有新增 slot。`ProviderAdmission.from_directory` 保留不可变历史读取入口。不能把已接入的消费者描述成全部本地审计文件都已迁走。
 
 ## 哪些目录不参与运行
 

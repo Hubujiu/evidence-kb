@@ -44,11 +44,37 @@ def backend_dependencies(backend):
     if type(backend).__name__ == 'PostgresSearch':
         files += [Path(__file__).with_name(name) for name in ('postgres_search.py', 'search_tokens.py')]
         packages = ['psycopg', 'regex']
-    return {'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
-            'packages': {name: importlib.metadata.version(name) for name in packages}}
+    dependencies = {'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
+                    'packages': {name: importlib.metadata.version(name) for name in packages}}
+    if type(backend).__name__ == 'SplitSearch':
+        file = Path(__file__).with_name('search_router.py')
+        dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
+        dependencies['channels'] = {'bm25': backend_dependencies(backend.bm25),
+                                    'dense': backend_dependencies(backend.vector)}
+        dependencies['source'] = backend_dependencies(backend.source)
+    elif type(backend).__name__ in ('SearchVectorAdapter', 'SearchLexicalAdapter'):
+        file = Path(__file__).with_name('search_channels.py')
+        dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
+        dependencies['backend'] = backend_dependencies(backend.backend)
+        dependencies['storage'] = backend.storage_identity()
+    elif type(backend).__name__ == 'DocumentEvidenceSource':
+        file = Path(__file__).with_name('search_evidence.py')
+        dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
+        dependencies['storage'] = backend.storage_identity()
+    elif type(backend).__name__ == 'PostgresSearch':
+        dependencies['storage'] = backend.storage_identity()
+    elif type(backend).__name__ == 'EmbeddedSearch':
+        dependencies['storage'] = {'root_sha256': hashlib.sha256(str(backend.root).encode()).hexdigest()}
+    elif type(backend).__name__ == 'OpenSearch':
+        dependencies['storage'] = {'url_sha256': hashlib.sha256(backend.url.encode()).hexdigest()}
+    return dependencies
 
 
 class SearchUnavailable(RuntimeError):
+    pass
+
+
+class SearchGenerationIncomplete(SearchUnavailable):
     pass
 
 

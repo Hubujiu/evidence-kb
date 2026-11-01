@@ -125,6 +125,11 @@ class HostIntegration(unittest.TestCase):
         self.assertEqual(document['application'], result['result']['echo'])
         self.assertNotEqual(result['runtime_owner_pid'], result['result']['worker_pid'])
 
+    def test_native_extension_import_during_boot_with_open_protocol_stdin(self):
+        document = self.successful(self.launch('native_array_import', no_library=True))
+        self.assertEqual(document['result']['values'], [0, 1, 2, 3])
+        self.assertTrue(document['result']['library'])
+
     def test_agent_tool_history_and_idempotent_session_replay(self):
         document = self.successful(self.launch('agent', store=str(self.directory / 'sessions')))
         result = document['result']

@@ -158,11 +158,48 @@ class ArchitectureContracts(unittest.TestCase):
             "from .contracts import Trace", "kb_platform/rag_testing/cache.py"
         ))
 
+    def test_database_foundations_accept_neutral_storage_and_reject_business_execution(self):
+        for source, path in (
+            ('from .database_contracts import SpaceKey', 'kb_platform/database_service.py'),
+            ('from .database_process import query_json', 'kb_platform/database_service.py'),
+            ('from ..database_contracts import SchemaPackage', 'kb_platform/database_providers/postgres.py'),
+            ('from ..persistence_local import local_database', 'kb_platform/rag_testing/cache.py'),
+            ('from ..database_contracts import SchemaPackage', 'kb_platform/rag_testing/budget.py'),
+        ):
+            with self.subTest(path=path, source=source):
+                self.assertEqual([], self.check_source(source, path))
+        for source, path in (
+            ('from .knowledge_storage import PostgresRepository', 'kb_platform/database_service.py'),
+            ('from ..knowledge_service import KnowledgeService', 'kb_platform/database_providers/postgres.py'),
+            ('from ..storage_plugins import require_storage', 'kb_platform/rag_testing/cache.py'),
+            ('from .rag_testing.runner import run', 'kb_platform/persistence_local.py'),
+        ):
+            with self.subTest(path=path, source=source):
+                self.assertTrue(self.check_source(source, path))
+
     def test_shared_capture_cannot_import_evaluation(self):
         for source in ("from .scoring import evaluate", "from scripts.rag_test import main",
                        "import sys\nsys.path.append('output')"):
             with self.subTest(source=source):
                 self.assertTrue(self.check_source(source, "kb_platform/rag_testing/provider_capture.py"))
+
+    def test_storage_sdk_and_adapters_do_not_depend_on_business_or_host(self):
+        for path, source in (
+            ('kb_platform/storage_sdk/__init__.py', 'from ..database_contracts import SpaceKey'),
+            ('kb_platform/storage_adapters/values.py', 'from ..storage_sdk import Document'),
+            ('kb_platform/rag_testing/cache.py', 'from ..storage_sdk import StorageError'),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual([], self.check_source(source, path))
+        for path, source in (
+            ('kb_platform/storage_sdk/__init__.py', 'from ..plugin_host import PluginHost'),
+            ('kb_platform/storage_sdk/types.py', 'from ..core import Platform'),
+            ('kb_platform/storage_adapters/values.py', 'from ..knowledge_service import KnowledgeService'),
+            ('kb_platform/storage_service.py', 'from .knowledge_storage import PostgresRepository'),
+            ('kb_platform/storage_plugins.py', 'from .core import Platform'),
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(self.check_source(source, path))
 
     def test_package_relative_imports_preserve_boundary(self):
         self.assertTrue(self.check_source(

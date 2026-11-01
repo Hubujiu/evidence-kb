@@ -25,6 +25,10 @@ dependencies = [
   "openai>=2,<3",
   "markdown-it-py>=4,<5",
   "tenacity>=9,<10",
+  "sqlalchemy>=2.0,<3",
+  "pymysql>=1.1,<2",
+  "boto3>=1.40,<2",
+  "redis>=6,<7",
 ]
 
 [project.optional-dependencies]

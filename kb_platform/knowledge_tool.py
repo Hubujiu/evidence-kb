@@ -26,6 +26,6 @@ def query_tool(service, session_id):
     return ToolPlugin('kb_query', 'Answer a question using the authorized knowledge session and verified sources.',
         {'type': 'object', 'properties': {'question': {'type': 'string', 'minLength': 1, 'maxLength': 20000}},
          'required': ['question'], 'additionalProperties': False}, query,
-        version='1:' + sha256(json.dumps([str(service.store.root), session_id], ensure_ascii=False,
+        version='2:' + sha256(json.dumps([service.store.identity.dataset_id, session_id], ensure_ascii=False,
                                         separators=(',', ':')).encode('utf-8')).hexdigest(),
         mutates_data=True, incurs_cost=True, direct_return=True)

@@ -12,6 +12,7 @@ from kb_platform.embedding_jobs import (EmbeddingJobError, EmbeddingJobs, digest
                                         recovered_vectors, retry_delay, validate_vectors,
                                         EmbeddingPreflightError, classify_provider_failure)
 from kb_platform.rag_testing.contracts import digest as semantic_digest
+from kb_platform.rag_testing.budget import BudgetLedger
 
 
 @contextmanager
@@ -247,10 +248,11 @@ class EmbeddingJobsContracts(unittest.TestCase):
         with TemporaryDirectory() as directory:
             folder = Path(directory)
             ledger = folder / 'ledger.sqlite'
-            with closing(sqlite3.connect(ledger)) as conn, conn:
-                conn.execute('CREATE TABLE calls (id TEXT, status TEXT, usage TEXT)')
-                conn.execute("INSERT INTO calls VALUES ('r','UNKNOWN',?)", (json.dumps({'calls': 1}),))
-            provider = SimpleNamespace(audit_dir=folder, ledger=SimpleNamespace(path=ledger),
+            physical = BudgetLedger(ledger, {'calls': 1})
+            self.addCleanup(physical.close)
+            physical.reserve('r', {'calls': 1})
+            physical.finish('r', status='UNKNOWN', usage={'calls': 1})
+            provider = SimpleNamespace(audit_dir=folder, ledger=physical,
                                        manifest={'model': 'frozen'}, dimension=2)
             row = {'request_id': 'r', 'payload': {'units': [{'text': 'hello'}],
                    'manifest': provider.manifest, 'audit_context': {'acl': 2}}}
@@ -412,7 +414,8 @@ def live_contract_suite(dsn):
             with TemporaryDirectory() as directory:
                 self.provider.audit_dir = Path(directory)
                 ledger = Path(directory) / 'physical.sqlite'
-                self.provider.ledger = SimpleNamespace(path=ledger)
+                self.provider.ledger = BudgetLedger(ledger, {'calls': 1})
+                self.addCleanup(self.provider.ledger.close)
                 _, dependency = self.jobs._prepare(*self.scope, self.provider, [self.units[0]], self.audit)
                 row = self.jobs._claim(*self.scope, 0, dependency)
                 record = {'status': 'ERROR', 'request_id': row['request_id'],
@@ -420,10 +423,8 @@ def live_contract_suite(dsn):
                     'provider_manifest': self.provider.manifest, 'audit_context': self.audit,
                     'reserved': {'calls': 1}, 'usage': {'calls': 0}, 'physical_embedding_attempts': 0}
                 target = Path(directory) / (row['request_id'] + '.json')
-                with closing(sqlite3.connect(ledger)) as conn, conn:
-                    conn.execute('CREATE TABLE calls(id TEXT,status TEXT,usage TEXT)')
-                    conn.execute('INSERT INTO calls VALUES (?,?,?)',
-                                 (row['request_id'], 'UNKNOWN', json.dumps({'calls': 0})))
+                self.provider.ledger.reserve(row['request_id'], {'calls': 1})
+                self.provider.ledger.finish(row['request_id'], status='UNKNOWN', usage={'calls': 0})
                 with self.jobs._tx(*self.scope[:2]) as conn:
                     conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
                 target.write_text(json.dumps(record), 'utf-8')
@@ -592,13 +593,13 @@ def live_contract_suite(dsn):
             with TemporaryDirectory() as folder:
                 self.provider.audit_dir = Path(folder)
                 ledger = Path(folder) / 'ledger.sqlite'
-                self.provider.ledger = SimpleNamespace(path=ledger)
+                self.provider.ledger = BudgetLedger(ledger, {'calls': 1})
+                self.addCleanup(self.provider.ledger.close)
                 _, dependency = self.jobs._prepare(*self.scope, self.provider, self.units, self.audit)
                 row = self.jobs._claim(*self.scope, 0, dependency)
                 request_id = row['request_id']
-                with closing(sqlite3.connect(ledger)) as conn, conn:
-                    conn.execute('CREATE TABLE calls(id TEXT,status TEXT,usage TEXT)')
-                    conn.execute("INSERT INTO calls VALUES (?,'COMPLETE',?)", (request_id, json.dumps({'calls': 1})))
+                self.provider.ledger.reserve(request_id, {'calls': 1})
+                self.provider.ledger.finish(request_id, status='COMPLETE', usage={'calls': 1})
                 record = {'status': 'COMPLETE', 'request_id': request_id, 'physical_request_id': request_id,
                           'task': 'document', 'texts': ['one'], 'provider_manifest': self.provider.manifest,
                           'audit_context': self.audit, 'vectors': [[1., 0.]], 'usage': {'calls': 1},

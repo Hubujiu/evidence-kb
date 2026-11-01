@@ -61,12 +61,27 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
     def repository(ctx, config):
         from .platform_ports import PostgresRepository
 
-        ctx.provide('platform.repository', PostgresRepository(config.get('dsn', settings.dsn)))
+        if 'database_slot' in config:
+            from .storage_plugins import require_storage
+
+            value = PostgresRepository(database=require_storage(ctx, config['database_slot']))
+        else:
+            value = PostgresRepository(config.get('dsn', settings.dsn))
+        ctx.defer(value.close)
+        ctx.provide('platform.repository', value)
 
     def originals(ctx, config):
         from .storage import OriginalStore
 
-        ctx.provide('platform.originals', OriginalStore(config.get('root', settings.storage_root)))
+        value = OriginalStore(config.get('root', settings.storage_root))
+        ctx.defer(value.close)
+        ctx.provide('platform.originals', value)
+
+    def bound_originals(ctx, config):
+        from .storage import OriginalStore
+        from .storage_plugins import require_storage
+
+        ctx.provide('platform.originals', OriginalStore(bound=require_storage(ctx, 'objects')))
 
     def parser(ctx, config):
         from .document_parser import parse
@@ -76,21 +91,63 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
     def jobs(ctx, config):
         from .embedding_jobs import EmbeddingJobs
 
-        ctx.provide('platform.embedding_jobs', EmbeddingJobs(ctx.require('platform.repository').dsn, **config))
+        ctx.provide('platform.embedding_jobs', EmbeddingJobs(ctx.require('platform.repository'), **config))
 
-    def postgres(ctx, config):
-        from .postgres_search import PostgresSearch
+    def postgres_channel(service_name, *, repository_fallback=False):
+        def mount(ctx, config):
+            from .postgres_search import PostgresSearch
 
-        service = PostgresSearch(ctx.require('platform.repository').dsn)
-        ctx.defer(service.close)
-        ctx.provide('platform.search', service)
+            if 'database_slot' in config:
+                from .storage_plugins import require_storage
+                from .knowledge_storage import knowledge_schema
 
-    def embedded(ctx, config):
-        from .embedded_search import EmbeddedSearch
+                database = require_storage(ctx, config['database_slot'])
+                database.prepare(knowledge_schema(database.identity.space.owner_id))
+                database.seal()
+                service = PostgresSearch(database=database)
+            elif repository_fallback and 'dsn' not in config:
+                selected = ctx.require('platform.repository')
+                service = (PostgresSearch(database=selected.database) if getattr(selected, 'database', None) is not None
+                           else PostgresSearch(selected.dsn))
+            else:
+                service = PostgresSearch(config.get('dsn', settings.dsn))
+            ctx.defer(service.close)
+            if service_name in ('platform.search.bm25', 'platform.search.dense'):
+                from .search_channels import SearchLexicalAdapter, SearchVectorAdapter
 
-        service = EmbeddedSearch(config.get('root', Path(settings.storage_root) / '.search-indexes'))
-        ctx.defer(service.close)
-        ctx.provide('platform.search', service)
+                adapter = SearchLexicalAdapter if service_name.endswith('bm25') else SearchVectorAdapter
+                service = adapter(service, identity=database.identity if 'database_slot' in config else None)
+            ctx.provide(service_name, service)
+        return mount
+
+    def embedded_channel(service_name):
+        def mount(ctx, config):
+            from .embedded_search import EmbeddedSearch
+
+            service = EmbeddedSearch(config.get('root', Path(settings.storage_root) / '.search-indexes'))
+            ctx.defer(service.close)
+            if service_name in ('platform.search.bm25', 'platform.search.dense'):
+                from .search_channels import SearchLexicalAdapter, SearchVectorAdapter
+
+                adapter = SearchLexicalAdapter if service_name.endswith('bm25') else SearchVectorAdapter
+                service = adapter(service)
+            ctx.provide(service_name, service)
+        return mount
+
+    def split(ctx, config):
+        from .search_router import SplitSearch
+
+        ctx.provide('platform.search', SplitSearch(ctx.require('platform.search.bm25'),
+                                                   ctx.require('platform.search.dense'),
+                                                   ctx.require('platform.search.source')))
+
+    def stored_search(ctx, config):
+        from .search_router import SplitSearch
+        from .search_evidence import DocumentEvidenceSource
+        from .storage_plugins import require_storage
+
+        ctx.provide('platform.search', SplitSearch(require_storage(ctx, 'bm25'),
+            require_storage(ctx, 'dense'), DocumentEvidenceSource(require_storage(ctx, 'source'))))
 
     def opensearch(ctx, config):
         from .search import OpenSearch
@@ -146,14 +203,20 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
             {'providers_config': TEXT, 'generation_config': TEXT}, required=('providers_config',)),
         'platform.embedding.client': config_schema({'route': TEXT, 'client': TEXT}),
         'platform.ocr.client': config_schema({'route': TEXT, 'client': TEXT}),
-        'platform.repository.postgres': config_schema({'dsn': {'type': 'string'}}),
+        'platform.repository.postgres': config_schema({'dsn': {'type': 'string'}, 'database_slot': TEXT}),
         'platform.originals.files': config_schema({'root': TEXT}),
         'platform.embedding_jobs': config_schema({key: POSITIVE for key in
             ('lease_seconds', 'max_attempts', 'circuit_threshold', 'circuit_seconds')}),
-        'platform.search.embedded': config_schema({'root': TEXT}),
+        **{key: config_schema({'dsn': {'type': 'string'}, 'database_slot': TEXT}) for key in
+           ('platform.search.postgres', 'platform.search.bm25.postgres', 'platform.search.dense.postgres')},
+        **{key: config_schema({'root': TEXT}) for key in
+           ('platform.search.embedded', 'platform.search.bm25.embedded', 'platform.search.dense.embedded')},
         'platform.search.opensearch': config_schema({'url': {'type': 'string', 'pattern': '^https?://'}}),
         'platform.research': config_schema({'root': TEXT, 'route': TEXT}),
     }
+    from .storage_sdk import DOCUMENT_V1, LEXICAL_BM25_V1, OBJECT_V1, StorageSlot, VECTOR_V1
+
+    schemas['platform.search.source.postgres'] = schemas['platform.repository.postgres']
     checks = {'platform.model_clients.remote': lambda config: client_inputs(config)}
     return configured_plugins((
         PluginSpec('platform.model_clients.remote', ('model.clients',), (), clients),
@@ -161,10 +224,24 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
         PluginSpec('platform.ocr.client', ('ocr',), ('models', 'model.clients', 'models.route.generation'), ocr_client),
         PluginSpec('platform.repository.postgres', ('platform.repository',), (), repository),
         PluginSpec('platform.originals.files', ('platform.originals',), (), originals),
+        PluginSpec('platform.originals.storage', ('platform.originals',), (), bound_originals,
+                   storage_slots=(StorageSlot('objects', OBJECT_V1),)),
         PluginSpec('platform.parser.native', ('platform.parser',), (), parser),
         PluginSpec('platform.embedding_jobs', ('platform.embedding_jobs',), ('platform.repository',), jobs),
-        PluginSpec('platform.search.postgres', ('platform.search',), ('platform.repository',), postgres),
-        PluginSpec('platform.search.embedded', ('platform.search',), (), embedded),
+        PluginSpec('platform.search.postgres', ('platform.search',), ('platform.repository',),
+                   postgres_channel('platform.search', repository_fallback=True)),
+        PluginSpec('platform.search.embedded', ('platform.search',), (), embedded_channel('platform.search')),
+        PluginSpec('platform.search.source.postgres', ('platform.search.source',), ('platform.repository',),
+                   postgres_channel('platform.search.source', repository_fallback=True)),
+        *(PluginSpec('platform.search.' + channel + '.' + backend, ('platform.search.' + channel,), (),
+                     postgres_channel('platform.search.' + channel) if backend == 'postgres'
+                     else embedded_channel('platform.search.' + channel))
+          for channel in ('bm25', 'dense') for backend in ('postgres', 'embedded')),
+        PluginSpec('platform.search.split', ('platform.search',),
+                   ('platform.search.bm25', 'platform.search.dense', 'platform.search.source'), split),
+        PluginSpec('platform.search.storage', ('platform.search',), (), stored_search,
+                   storage_slots=(StorageSlot('bm25', LEXICAL_BM25_V1), StorageSlot('dense', VECTOR_V1),
+                                  StorageSlot('source', DOCUMENT_V1))),
         PluginSpec('platform.search.opensearch', ('platform.search',), (), opensearch),
         *(PluginSpec('platform.capabilities.' + key, ('platform.embedding', 'platform.ocr'), names,
                      capabilities(*names)) for key, names in (

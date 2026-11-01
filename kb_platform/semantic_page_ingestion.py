@@ -5,7 +5,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import sqlite3
 from uuid import uuid4
 
 from .core import PlatformError
@@ -28,21 +27,14 @@ def _write(path, value):
 
 
 def _ledger_row(ledger, request_id):
-    with sqlite3.connect(Path(ledger.path).resolve().as_uri() + "?mode=ro", uri=True) as conn:
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM calls WHERE id=?", (request_id,)).fetchone()
+    row = ledger.entry(request_id)
     if row is None:
         raise PlatformError("DOCUMENT_EMBEDDING_RECEIPT_INVALID", "Physical ledger row is required", 503)
-    result = dict(row)
-    for key in ("reserved", "usage"):
-        result[key] = json.loads(result[key]) if result[key] is not None else None
-    return result
+    return row
 
 
 def _registered(ledger, attempts):
-    with sqlite3.connect(Path(ledger.path).resolve().as_uri() + "?mode=ro", uri=True) as conn:
-        ids = {row[0] for row in conn.execute("SELECT id FROM calls")}
-    return [rid for rid in attempts if rid in ids]
+    return ledger.registered(attempts)
 
 
 def _remote_calls(ledger, attempts):
@@ -187,7 +179,9 @@ class CanonicalPageIngestion:
                 "dimension": self.provider.dimension,
                 "batch_size": batch_size,
                 "caps": self.ledger.caps,
-                "ledger_path": str(self.ledger.path),
+                "ledger_path": None if self.ledger.path is None else str(self.ledger.path),
+                "ledger_dataset_id": (None if self.ledger.database is None else
+                                      self.ledger.database.identity.dataset_id),
                 "automatic_retries": 0,
                 "new_query_embedding_calls": 0,
                 "remote_calls": 0,

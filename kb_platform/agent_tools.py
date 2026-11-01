@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .knowledge_queries import KnowledgeQuery
+
 import ast
 from decimal import Decimal, DecimalException, Subnormal, Underflow, localcontext
 from hashlib import sha256
@@ -107,17 +109,11 @@ class EvidenceGateway:
             rows = []
             if with_bindings:
                 rows = conn.execute(
-                    "SELECT b.*,s.owner_id,s.readers,s.policy,v.filename,"
-                    "jsonb_build_object('processing_policy',p.document->'processing_policy') AS document "
-                    'FROM bindings b JOIN sources s USING (tenant_id,source_id) '
-                    'JOIN parse_snapshots p USING (tenant_id,source_id,source_version_id,parse_snapshot_id) '
-                    'JOIN source_versions v USING (tenant_id,source_id,source_version_id) '
-                    "WHERE b.tenant_id=%s AND b.kb_id=%s AND b.status='ACTIVE' ORDER BY b.binding_id",
+                    KnowledgeQuery.AGENT_TOOLS_STATE_1,
                     (actor.tenant_id, scope_id)).fetchall()
             build = None
             if with_build:
-                build = conn.execute('SELECT * FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s '
-                                     "AND status='PUBLISHED'", (actor.tenant_id, scope_id,
+                build = conn.execute(KnowledgeQuery.AGENT_TOOLS_STATE_2, (actor.tenant_id, scope_id,
                                                                state['manifest_id'])).fetchone()
                 if not build:
                     raise PlatformError('INVALID_MANIFEST', 'Published index unavailable', 503)
@@ -198,10 +194,7 @@ class EvidenceGateway:
             return {}
         with self.platform._tx(actor, scope_id) as conn:
             self.platform._auth(conn, actor, scope_id)
-            proof = conn.execute('SELECT c.element_id,p.document FROM citations c JOIN parse_snapshots p '
-                'USING (tenant_id,source_id,source_version_id,parse_snapshot_id) '
-                'WHERE c.tenant_id=%s AND c.kb_id=%s AND c.citation_id=%s AND c.build_id=%s '
-                'AND c.source_id=%s AND c.source_version_id=%s AND c.parse_snapshot_id=%s',
+            proof = conn.execute(KnowledgeQuery.AGENT_TOOLS_CANONICAL_METADATA_1,
                 (actor.tenant_id, scope_id, record['citation_id'], record['build_id'], record['source_id'],
                  record['source_version_id'], record['parse_snapshot_id'])).fetchone()
         return canonical_span_metadata(record, proof['document'], proof['element_id']) if proof is not None else {}

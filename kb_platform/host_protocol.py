@@ -2,6 +2,7 @@ from concurrent.futures import Future
 import json
 import os
 from threading import Lock
+import time
 
 
 PROTOCOL = 'plugin-host/1'
@@ -12,6 +13,7 @@ class PipeReader:
     def __init__(self, descriptor):
         self.descriptor = descriptor
         self._buffer = bytearray()
+        self._available = _windows_pipe_available(descriptor) if os.name == 'nt' else None
 
     def readline(self, limit):
         while True:
@@ -21,11 +23,50 @@ class PipeReader:
                 result = bytes(self._buffer[:size])
                 del self._buffer[:size]
                 return result
-            chunk = os.read(self.descriptor, min(65536, limit - len(self._buffer)))
+            size = min(65536, limit - len(self._buffer))
+            if self._available is not None:
+                available = self._available()
+                if available is None:
+                    chunk = b''
+                elif not available:
+                    time.sleep(0.002)
+                    continue
+                else:
+                    chunk = os.read(self.descriptor, min(size, available))
+            else:
+                chunk = os.read(self.descriptor, size)
             if not chunk:
                 result, self._buffer = bytes(self._buffer), bytearray()
                 return result
             self._buffer.extend(chunk)
+
+
+def _windows_pipe_available(descriptor):
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.GetFileType.argtypes = [wintypes.HANDLE]
+    kernel.GetFileType.restype = wintypes.DWORD
+    peek = kernel.PeekNamedPipe
+    peek.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD, wintypes.LPVOID,
+                     ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID]
+    peek.restype = wintypes.BOOL
+    handle = msvcrt.get_osfhandle(descriptor)
+    if kernel.GetFileType(handle) != 3:
+        return None
+
+    def available():
+        count = wintypes.DWORD()
+        if not peek(handle, None, 0, None, ctypes.byref(count), None):
+            error = ctypes.get_last_error()
+            if error in (6, 109, 232, 233):
+                return None
+            raise ctypes.WinError(error)
+        return count.value
+
+    return available
 
 
 class HostProtocolError(OSError):

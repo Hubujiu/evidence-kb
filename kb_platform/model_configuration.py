@@ -74,13 +74,18 @@ def read_model_config(path):
     return config
 
 
-def from_config(path):
+def from_config(path, *, database=None, audit_root=None, admission_factory=None):
     from .model_http import AnthropicAdapter, OpenAICompatibleAdapter
     from .rag_testing.budget import BudgetLedger
 
     config = read_model_config(path)
     budget = config['budget']
-    ledger = BudgetLedger(Path(budget['path']), budget['caps'])
+    ledger = (BudgetLedger(Path(budget['path']), budget['caps']) if database is None else
+              BudgetLedger(caps=budget['caps'], database=database))
+    if database is not None and Path(budget['path']).exists():
+        from .persistence_migration import validate_ledger_binding
+
+        validate_ledger_binding(ledger, Path(budget['path']))
     service = ModelService()
     try:
         for name, row in config['models'].items():
@@ -89,7 +94,8 @@ def from_config(path):
             adapter = adapters[provider['adapter']](provider=row['provider'], model=row['model'],
                 endpoint=provider['base_url'], api_key=os.environ[provider['api_key_env']],
                 capabilities=row['capabilities'], ledger=ledger, reservation=row['reservation'],
-                timeout=provider.get('timeout_seconds', 120), preferred_batch_size=row.get('batch_size', 1))
+                timeout=provider.get('timeout_seconds', 120), preferred_batch_size=row.get('batch_size', 1),
+                audit_root=audit_root, admission_factory=admission_factory)
             try:
                 service.register(name, adapter, owned=True)
             except BaseException:

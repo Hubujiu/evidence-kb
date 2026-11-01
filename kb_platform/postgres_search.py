@@ -32,14 +32,40 @@ def validate_vector(vector, dimension):
 class PostgresSearch:
     index_name = staticmethod(OpenSearch.index_name)
     _index = staticmethod(OpenSearch._index)
+    supports_resume_build = True
+    supports_manifest_storage = True
 
-    def __init__(self, dsn):
-        self.dsn = dsn
-        self.pool = ConnectionPool(dsn, min_size=0, max_size=8, timeout=5, open=False,
-                                   kwargs={'row_factory': dict_row, 'connect_timeout': 5})
+    def __init__(self, dsn=None, *, database=None):
+        if (dsn is None) == (database is None):
+            raise ValueError('Exactly one PostgreSQL database binding or DSN is required')
+        self.dsn, self.database = dsn, database
+        self.schema = database.physical_name if database is not None else 'public'
+        self.table_schema = self.schema if database is not None else 'kb_search'
+        self.pool = None if database is not None else ConnectionPool(
+            dsn, min_size=0, max_size=8, timeout=5, open=False,
+            kwargs={'row_factory': dict_row, 'connect_timeout': 5})
 
     def close(self):
-        self.pool.close()
+        if self.pool is not None:
+            self.pool.close()
+
+    def storage_identity(self):
+        if self.database is not None:
+            identity = self.database.identity
+            return {'database': str(identity)}
+        return {'dsn_sha256': hashlib.sha256(self.dsn.encode()).hexdigest()}
+
+    @contextmanager
+    def _connection(self, tenant=None, kb=None):
+        if getattr(self, 'database', None) is not None:
+            from .database_providers.postgres import pg_transaction
+
+            with pg_transaction(self.database, tenant or '', kb or '') as connection:
+                yield connection
+        else:
+            self.pool.open()
+            with self.pool.connection() as connection:
+                yield connection
 
     @staticmethod
     def _table(index, page=False):
@@ -50,10 +76,10 @@ class PostgresSearch:
     def _tx(self, index, tenant=None, kb=None):
         self._index(index)
         try:
-            self.pool.open()
-            with self.pool.connection() as conn:
+            with self._connection(tenant, kb) as conn:
                 if tenant is None:
-                    scope = conn.execute('SELECT * FROM public.search_scope(%s)', (index,)).fetchone()
+                    scope = conn.execute(sql.SQL('SELECT * FROM {}(%s)').format(
+                        sql.Identifier(self.schema, 'search_scope')), (index,)).fetchone()
                     if not scope:
                         raise SearchUnavailable('Search generation not found')
                     tenant, kb = scope['tenant_id'], scope['kb_id']
@@ -72,9 +98,10 @@ class PostgresSearch:
         checksum = hashlib.sha256(json.dumps(ordered, sort_keys=True, ensure_ascii=False,
             separators=(',', ':'), allow_nan=False).encode()).hexdigest()
         with self._tx(index, tenant, kb) as conn:
-            conn.execute('SELECT public.create_search_generation(%s,%s,%s,%s)', (index, vector_dimension, len(ordered), checksum))
+            conn.execute(sql.SQL('SELECT {}(%s,%s,%s,%s)').format(sql.Identifier(self.schema, 'create_search_generation')),
+                         (index, vector_dimension, len(ordered), checksum))
             for page in (False, True):
-                table = sql.Identifier('kb_search', self._table(index, page))
+                table = sql.Identifier(self.table_schema, self._table(index, page))
                 query = sql.SQL('INSERT INTO {} VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::vector,%s,%s,%s)').format(table)
                 rows = []
                 for i, unit in enumerate(ordered):
@@ -86,11 +113,12 @@ class PostgresSearch:
                         lexical_text(unit.get('heading_text', ''))))
                 with conn.cursor() as cursor:
                     cursor.executemany(query, rows)
-            conn.execute('SELECT public.finish_search_generation(%s)', (index,))
+            conn.execute(sql.SQL('SELECT {}(%s)').format(sql.Identifier(self.schema, 'finish_search_generation')), (index,))
 
     def verify(self, index):
         with self._tx(index) as conn:
-            result = conn.execute('SELECT * FROM public.search_generations WHERE index_name=%s AND ready', (index,)).fetchone()
+            result = conn.execute(sql.SQL('SELECT * FROM {} WHERE index_name=%s AND ready').format(
+                sql.Identifier(self.schema, 'search_generations')), (index,)).fetchone()
             if not result:
                 raise SearchUnavailable('Search generation is not ready')
             return result
@@ -99,7 +127,7 @@ class PostgresSearch:
         with self._tx(index) as conn:
             rows = []
             for page in (False, True):
-                query = sql.SQL('SELECT rowid,data FROM {}').format(sql.Identifier('kb_search', self._table(index, page)))
+                query = sql.SQL('SELECT rowid,data FROM {}').format(sql.Identifier(self.table_schema, self._table(index, page)))
                 rows.extend(conn.execute(query if ids is None else query + sql.SQL(' WHERE unit_id=ANY(%s)'),
                                          None if ids is None else (list(ids),)).fetchall())
             ordered = [r['data'] for r in sorted(rows, key=lambda r: r['rowid'])]
@@ -110,23 +138,25 @@ class PostgresSearch:
 
     def seal(self, index, checksum):
         with self._tx(index) as conn:
-            conn.execute('SELECT public.seal_search_generation(%s,%s)', (index, checksum))
+            conn.execute(sql.SQL('SELECT {}(%s,%s)').format(sql.Identifier(self.schema, 'seal_search_generation')), (index, checksum))
 
     def is_sealed(self, index, checksum):
         return self.verify(index)['seal'] == checksum
 
-    def publish_manifest(self, manifest, checksum):
-        with self._tx(manifest['index_name'], manifest['tenant_id'], manifest['kb_id']) as conn:
-            conn.execute('SELECT public.seal_search_generation(%s,%s)', (manifest['index_name'], checksum))
-            conn.execute('INSERT INTO public.search_manifests VALUES (%s,%s,%s,%s) '
-                'ON CONFLICT (tenant_id,kb_id) DO UPDATE SET manifest=excluded.manifest,checksum=excluded.checksum',
+    def publish_manifest(self, manifest, checksum, *, index=None):
+        target = manifest['index_name'] if index is None else self._index(index)
+        with self._tx(target, manifest['tenant_id'], manifest['kb_id']) as conn:
+            conn.execute(sql.SQL('SELECT {}(%s,%s)').format(sql.Identifier(self.schema, 'seal_search_generation')), (target, checksum))
+            conn.execute(sql.SQL('INSERT INTO {} VALUES (%s,%s,%s,%s) '
+                'ON CONFLICT (tenant_id,kb_id) DO UPDATE SET manifest=excluded.manifest,checksum=excluded.checksum').format(
+                    sql.Identifier(self.schema, 'search_manifests')),
                 (manifest['tenant_id'], manifest['kb_id'], Jsonb(manifest), checksum))
 
     def current_manifest(self, tenant_id, kb_id):
-        self.pool.open()
-        with self.pool.connection() as conn:
+        with self._connection(tenant_id, kb_id) as conn:
             conn.execute("SELECT set_config('app.tenant_id',%s,true),set_config('app.kb_id',%s,true)", (tenant_id, kb_id))
-            row = conn.execute('SELECT manifest,checksum FROM public.search_manifests WHERE tenant_id=%s AND kb_id=%s',
+            row = conn.execute(sql.SQL('SELECT manifest,checksum FROM {} WHERE tenant_id=%s AND kb_id=%s').format(
+                sql.Identifier(getattr(self, 'schema', 'public'), 'search_manifests')),
                                (tenant_id, kb_id)).fetchone()
         if not row:
             raise FileNotFoundError('No published semantic manifest')
@@ -143,7 +173,7 @@ class PostgresSearch:
             if not field_query:
                 continue
             predicate = sql.SQL('binding_key=ANY(%s) AND NOT(citation_id=ANY(%s))')
-            params += [weight, field_query, 'kb_search.' + table + '_' + field,
+            params += [weight, field_query, self.table_schema + '.' + table + '_' + field,
                        sorted({binding_key(a) for a in allowed}), list(exclude_citation_ids)]
             if kind:
                 predicate += sql.SQL(' AND kind=%s')
@@ -152,14 +182,14 @@ class PostgresSearch:
             expressions.append(sql.SQL('(SELECT rowid,-distance*%s AS score FROM '
                 '(SELECT rowid,{} <@> to_bm25query(%s,%s) AS distance FROM {} WHERE {} '
                 'ORDER BY distance,rowid LIMIT %s) field_hits)').format(
-                    sql.Identifier(field), sql.Identifier('kb_search', table), predicate))
+                    sql.Identifier(field), sql.Identifier(self.table_schema, table), predicate))
         if not expressions:
             return []
 
         statement = sql.SQL('WITH ranked AS (SELECT rowid,max(score) AS score FROM ({}) fields '
             'WHERE score>0 GROUP BY rowid ORDER BY score DESC,rowid LIMIT %s) '
             "SELECT u.data - 'vector' AS data,r.score FROM ranked r JOIN {} u USING(rowid) ORDER BY r.score DESC,r.rowid").format(
-                sql.SQL(' UNION ALL ').join(expressions), sql.Identifier('kb_search', table))
+                sql.SQL(' UNION ALL ').join(expressions), sql.Identifier(self.table_schema, table))
         params.append(size)
         with self._tx(index, tenant_id, kb_id) as conn:
             rows = conn.execute(statement, params).fetchall()
@@ -176,7 +206,7 @@ class PostgresSearch:
         for table in tables:
             queries.append(sql.SQL("SELECT data - 'vector' AS data,rowid,embedding <=> %s::vector AS distance FROM {} "
                 'WHERE embedding IS NOT NULL AND binding_key=ANY(%s) AND NOT(citation_id=ANY(%s))'
-                + (' AND data->>\'build_id\'=%s' if build else '')).format(sql.Identifier('kb_search', table)))
+                + (' AND data->>\'build_id\'=%s' if build else '')).format(sql.Identifier(self.table_schema, table)))
             params.extend([query, sorted({binding_key(a) for a in allowed}), list(excluded)])
             if build:
                 params.append(build)
@@ -197,5 +227,5 @@ class PostgresSearch:
         with self._tx(index, tenant_id, kb_id) as conn:
             rows = conn.execute(sql.SQL("SELECT data - 'vector' AS data FROM {} WHERE binding_key=%s "
                 "AND (data->>'parent_id'=%s OR unit_id=ANY(%s)) ORDER BY (data->>'ordinal')::integer,rowid LIMIT %s").format(
-                    sql.Identifier('kb_search', self._table(index))), (binding_key(hit), parent, [parent, hit['unit_id']], limit)).fetchall()
+                    sql.Identifier(self.table_schema, self._table(index))), (binding_key(hit), parent, [parent, hit['unit_id']], limit)).fetchall()
         return [{**r['data'], 'score': hit['score']} for r in rows]

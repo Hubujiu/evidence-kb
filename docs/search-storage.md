@@ -29,7 +29,7 @@
 
 语义页使用 `scripts/rebuild_postgres_semantic.py` 从已验证 capsule 重建。只复用与当前 embedding manifest、原文版本和逐页文本完全一致的 capsule。
 
-这次查询修复变更了 PostgreSQL 后端源码指纹。升级后，旧版 STAGING 构建可通过仅匹配已审查源码哈希的兼容检查续跑；其他检索、分块、模型及权限依赖仍须完全一致。已有语义页 manifest 绑定旧后端源码，升级后需使用经过验证的原有 capsule 显式重建 manifest；该步骤不需要重新请求 Embedding。升级前保留数据库备份和 capsule，禁止直接改写旧 manifest 或跳过依赖校验。
+构建恢复严格核对冻结实现、原文、模型和权限依赖。后端源码指纹改变时拒绝继续旧 STAGING 构建，不使用历史源码哈希白名单放行。创建新构建时，只能按精确依赖规则复用已验证的上游产物。已有语义页 manifest 绑定旧后端源码时，可在验证当前 embedding manifest、原文版本和逐页文本后，使用原有 capsule 显式重建 manifest；是否需要新增 Embedding 调用取决于这些依赖是否一致。升级前保留数据库备份和 capsule，不直接改写旧 manifest 或跳过依赖校验。
 
 ## 备份、恢复与容灾边界
 

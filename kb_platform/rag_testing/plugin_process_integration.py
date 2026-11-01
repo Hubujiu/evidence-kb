@@ -13,6 +13,12 @@ import tempfile
 from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
 from kb_platform.plugin_process import PROTOCOL, PROCESS_LAUNCHER, ProcessPackages, ProcessTransport
+from kb_platform.database_contracts import Migration, SchemaPackage
+from kb_platform.database_providers import SQLiteProvider
+from kb_platform.storage_adapters.sql import SqlStorageProvider
+from kb_platform.storage_adapters.values import SqlKeyValueStore
+from kb_platform.storage_plugins import compile_storage_plugins, require_storage
+from kb_platform.storage_sdk import KV_DURABLE_V1, RELATIONAL_V1, SpaceKey, StorageProvider, StorageSlot
 
 
 def wait_until(predicate, seconds):
@@ -354,6 +360,143 @@ def dependency_calls_case(manager, installed, root):
         'remaining_leases': leases, 'malformed_callbacks': malformed}
 
 
+def database_dependency_case(manager, installed, root):
+    journal = root / 'database-dependency-journal'
+    process = manager.catalog(installed['package'], journal=journal, timeout=5)
+
+    def mount(ctx, config):
+        database = require_storage(ctx, 'primary')
+        database.prepare(SchemaPackage(database.identity.space.owner_id, (Migration(1, (
+            'CREATE TABLE tasks(task_id VARCHAR(64) PRIMARY KEY,value TEXT NOT NULL)',
+        )),)))
+        database.seal()
+        ctx.provide('shared.database', database)
+
+    storage = PluginSpec('fixture.process-storage', ('shared.database',), (), mount,
+                         storage_slots=(StorageSlot('primary', RELATIONAL_V1),))
+    profile = {'version': 1, 'plugins': [
+        {'id': 'storage', 'use': storage.key}, {'id': 'consumer', 'use': process.key}]}
+    database_root = root / 'database-spaces'
+    initializer = SqlStorageProvider(SQLiteProvider(database_root))
+    identity = initializer.initialize('relational', SpaceKey('process-database-fixture', 'tasks', 'records'))
+    initializer.close()
+    configuration = {'version': 2, 'application_id': 'process-database-fixture',
+        'instances': {'local': {'provider': 'sqlite', 'config': {'root': str(database_root)}}},
+        'services': {'local.sql': {'instance': 'local', 'export': 'relational'}},
+        'bindings': {'storage': {'primary': {'service': 'local.sql', 'owner': 'tasks', 'space': 'records',
+                                             'dataset_id': identity.dataset_id}}}}
+    providers = {'sqlite': StorageProvider(lambda config: SqlStorageProvider(SQLiteProvider(config['root'])),
+                                          {'relational': (RELATIONAL_V1,)})}
+    profile, catalog = compile_storage_plugins(profile, (storage, process), configuration, provider_catalog=providers)
+    with process_host(profile, catalog) as host:
+        database = host.service('shared.database')
+        identity = database.identity
+        old = host.service('external.database').transport
+        written = host.call('external.database', 'put', 'persistent-task', 'stored through JSON callback')
+        initial = host.call('external.database', 'get', 'persistent-task')
+        rejected = host.call('external.database', 'rollback_attempt', 'rolled-back-task', 'must disappear')
+        rolled_back = host.call('external.database', 'get', 'rolled-back-task')
+        host.update('consumer', config={'timeout': 4})
+        current = host.service('external.database').transport
+        restored = host.call('external.database', 'get', 'persistent-task')
+        leases = host.inspect()['leases']
+        stable_identity = host.service('shared.database').identity == identity
+        observed = {'old_pid': old._process.pid, 'current_pid': current._process.pid,
+            'old_generation': old.identity['generation'], 'current_generation': current.identity['generation']}
+    final = host.inspect()
+    rows = [json.loads(path.read_text('utf-8')) for path in journal.glob('*.json')]
+    callbacks = [row['request']['method'] for row in rows if row['status'] == 'COMPLETE'
+        and row['request'].get('kind') == 'dependency_response']
+    callback_errors = [row['request']['method'] for row in rows if row['status'] == 'ERROR'
+        and row['request'].get('kind') == 'dependency_response']
+    expected = [{'task_id': 'persistent-task', 'value': 'stored through JSON callback'}]
+    accepted = (written.get('ok') and written['result']['status'] == 'COMMITTED'
+        and initial.get('ok') and initial['result']['rows'] == expected
+        and not rejected.get('ok') and rejected['error']['code'] == 'DATABASE_RUNTIME_STATEMENT_REQUIRED'
+        and rolled_back.get('ok') and rolled_back['result']['rows'] == []
+        and restored.get('ok') and restored['result']['rows'] == expected and stable_identity
+        and observed['old_pid'] != observed['current_pid']
+        and observed['old_generation'] != observed['current_generation']
+        and not leases and not final['leases'] and final['state'] == 'disposed'
+        and final['counts']['resources'] == 0 and old._process.poll() is not None
+        and current._process.poll() is not None and not old._reader.is_alive() and not old._writer.is_alive()
+        and not current._reader.is_alive() and not current._writer.is_alive()
+        and callbacks.count('batch_json') == 1 and callbacks.count('query_json') == 3
+        and callback_errors == ['batch_json'] and not any(row['status'] == 'UNKNOWN' for row in rows))
+    return {'decision': 'PASS' if accepted else 'FAIL', 'runtime': old.runtime_info,
+        'dataset_id': identity.dataset_id, 'stable_storage_identity': stable_identity,
+        'write': written, 'initial_read': initial, 'rejected_batch': rejected,
+        'rolled_back_read': rolled_back, 'read_after_worker_restart': restored,
+        'worker_replacement': observed, 'completed_callbacks': callbacks, 'failed_callbacks': callback_errors,
+        'remaining_leases': leases, 'closed_runtime_leases': final['leases'],
+        'closed_runtime_state': final['state'], 'closed_resources': final['counts']['resources'],
+        'all_workers_stopped': old._process.poll() is not None and current._process.poll() is not None}
+
+
+def storage_dependency_case(manager, installed, root):
+    journal = root / 'storage-dependency-journal'
+    process = manager.catalog(installed['package'], journal=journal, timeout=5)
+    slot = StorageSlot('cache', KV_DURABLE_V1)
+
+    def mount(ctx, config):
+        ctx.provide('shared.storage', require_storage(ctx, slot))
+
+    storage = PluginSpec('fixture.process-kv', ('shared.storage',), (), mount, storage_slots=(slot,))
+    profile = {'version': 1, 'plugins': [
+        {'id': 'storage', 'use': storage.key}, {'id': 'consumer', 'use': process.key}]}
+    database_root = root / 'kv-spaces'
+    adapters = {'kv': ((KV_DURABLE_V1,), SqlKeyValueStore)}
+    initializer = SqlStorageProvider(SQLiteProvider(database_root), adapters=adapters)
+    identity = initializer.initialize('kv', SpaceKey('process-storage-fixture', 'consumer', 'records'))
+    initializer.close()
+    configuration = {'version': 2, 'application_id': 'process-storage-fixture',
+        'instances': {'local': {'provider': 'sqlite', 'config': {'root': str(database_root)}}},
+        'services': {'local.kv': {'instance': 'local', 'export': 'kv'}},
+        'bindings': {'storage': {'cache': {'service': 'local.kv', 'owner': 'consumer', 'space': 'records',
+                                           'dataset_id': identity.dataset_id}}}}
+    providers = {'sqlite': StorageProvider(
+        lambda config: SqlStorageProvider(SQLiteProvider(config['root']), adapters=adapters),
+        {'relational': (RELATIONAL_V1,), 'kv': (KV_DURABLE_V1,)})}
+    profile, catalog = compile_storage_plugins(profile, (storage, process), configuration, provider_catalog=providers)
+    with process_host(profile, catalog) as host:
+        old = host.service('external.storage').transport
+        written = host.call('external.storage', 'put', 'binary-key', 'binary\x00value')
+        initial = host.call('external.storage', 'get', 'binary-key')
+        rejected = host.call('external.storage', 'denied', 'binary-key')
+        oversized = host.call('external.storage', 'oversized', 'binary-key')
+        host.update('consumer', config={'timeout': 4})
+        current = host.service('external.storage').transport
+        recovered = host.call('external.storage', 'get', 'binary-key')
+        stable_identity = host.service('shared.storage').identity == identity
+        leases = host.inspect()['leases']
+    final = host.inspect()
+    rows = [json.loads(path.read_text('utf-8')) for path in journal.glob('*.json')]
+    callbacks = [row for row in rows if row['request'].get('kind') == 'dependency_response']
+    expected = {'type': 'bytes', 'value': 'YmluYXJ5AHZhbHVl'}
+    accepted = (written.get('ok') and written['result'] == {'type': 'json', 'value': None}
+        and initial.get('ok') and initial['result'] == expected
+        and recovered.get('ok') and recovered['result'] == expected
+        and not rejected.get('ok') and rejected['error']['code'] == 'STORAGE_PROCESS_METHOD_REJECTED'
+        and not oversized.get('ok') and oversized['error']['code'] == 'STORAGE_PROCESS_LIMIT'
+        and stable_identity and old.identity['generation'] != current.identity['generation']
+        and old._process.pid != current._process.pid
+        and len([row for row in callbacks if row['status'] == 'COMPLETE']) == 3
+        and len([row for row in callbacks if row['status'] == 'ERROR']) == 2
+        and not leases and final['state'] == 'disposed' and not final['leases']
+        and not final['counts']['resources'] and not any(row['status'] == 'UNKNOWN' for row in rows)
+        and old._process.poll() is not None and current._process.poll() is not None
+        and not old._reader.is_alive() and not old._writer.is_alive()
+        and not current._reader.is_alive() and not current._writer.is_alive())
+    return {'decision': 'PASS' if accepted else 'FAIL', 'dataset_id': identity.dataset_id,
+        'stable_storage_identity': stable_identity, 'write': written, 'initial_read': initial,
+        'rejected_private_method': rejected, 'rejected_oversized_request': oversized,
+        'read_after_worker_restart': recovered, 'completed_callbacks': sum(
+            row['status'] == 'COMPLETE' for row in callbacks), 'failed_callbacks': sum(
+            row['status'] == 'ERROR' for row in callbacks), 'remaining_leases': leases,
+        'closed_runtime_state': final['state'], 'closed_resources': final['counts']['resources'],
+        'all_workers_stopped': old._process.poll() is not None and current._process.poll() is not None}
+
+
 def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, supervision_only=False):
     examples = Path(__file__).resolve().parents[2] / 'examples'
     with tempfile.TemporaryDirectory(prefix='kb-process-integration-') as temporary:
@@ -363,7 +506,8 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
             raise RuntimeError('PROCESS_COMMAND_LAUNCH_CONTRACT_FAILED')
         manager = ProcessPackages(root / 'installed')
         packages = {}
-        for name in ('process-echo', 'process-blocked-pipe', 'process-supervision', 'process-dependency'):
+        for name in ('process-echo', 'process-blocked-pipe', 'process-supervision', 'process-dependency',
+                     'process-database', 'process-storage'):
             source = examples / name
             if plugin_python is not None or plugin_node is not None and name in {'process-echo', 'process-dependency'}:
                 copied = root / name
@@ -395,6 +539,14 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
             manager, packages['process-dependency'], root)
         if dependencies is not None and dependencies['decision'] != 'PASS':
             raise RuntimeError('PROCESS_DEPENDENCY_CALL_CONTRACT_FAILED')
+        database_dependencies = None if blocked_only or supervision_only else database_dependency_case(
+            manager, packages['process-database'], root)
+        if database_dependencies is not None and database_dependencies['decision'] != 'PASS':
+            raise RuntimeError('PROCESS_DATABASE_DEPENDENCY_CONTRACT_FAILED')
+        storage_dependencies = None if blocked_only or supervision_only else storage_dependency_case(
+            manager, packages['process-storage'], root)
+        if storage_dependencies is not None and storage_dependencies['decision'] != 'PASS':
+            raise RuntimeError('PROCESS_STORAGE_DEPENDENCY_CONTRACT_FAILED')
         blocked = [] if supervision_only else blocked_pipe_cases(manager, packages['process-blocked-pipe'], root)
         supervision = [] if blocked_only else [
             idle_exit_case(manager, packages['process-supervision'], root),
@@ -548,6 +700,8 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
             'large_echo_bytes': len(large_payload),
             'plugin_runtime': runtime_info,
             'dependency_calls': dependencies,
+            'database_dependency': database_dependencies,
+            'storage_dependency': storage_dependencies,
             'command_launch': command_case,
             'unknown': unknown, 'cancel_and_deadline': 'completion or process termination observed before lease release',
             'deadline_outcome': deadline_outcome,

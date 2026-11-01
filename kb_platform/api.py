@@ -242,9 +242,7 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
 
     @app.get("/knowledge-bases/{kb_id}/citations/{citation_id}/original")
     def original(kb_id: str, citation_id: str, actor: principal):
-        target = service.resolve_citation(actor, kb_id, citation_id, purpose="download")
-        content = Path(target["original_path"]).read_bytes()
-        service.resolve_citation(actor, kb_id, citation_id, purpose="download")
+        content = service.read_original(actor, kb_id, citation_id, purpose="download")
         return Response(content, media_type="application/octet-stream",
                         headers={"Content-Disposition": "attachment"})
 
@@ -252,13 +250,15 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     def preview(kb_id: str, citation_id: str, actor: principal):
         target = service.resolve_citation(actor, kb_id, citation_id)
         if target["media_type"] == "application/pdf":
-            data = render_pdf_preview(Path(target["original_path"]).read_bytes(), target["anchors"][0])
+            data = render_pdf_preview(service.read_original(actor, kb_id, citation_id, purpose="preview"),
+                                      target["anchors"][0])
             service.resolve_citation(actor, kb_id, citation_id)
             return Response(data, media_type="image/png")
         if target['media_type'].startswith('image/') and target['anchors'][0].get('selector_type') == 'image_region':
             from .ocr import render_image_preview
 
-            data = render_image_preview(Path(target['original_path']).read_bytes(), target['anchors'][0])
+            data = render_image_preview(service.read_original(actor, kb_id, citation_id, purpose='preview'),
+                                        target['anchors'][0])
             service.resolve_citation(actor, kb_id, citation_id)
             return Response(data, media_type='image/png')
         excerpt = html.escape(target["text"])

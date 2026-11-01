@@ -24,6 +24,8 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 SHARED = frozenset({"contracts", "cache", "budget", "budget_batches", "provider_capture"})
 FOUNDATIONS = frozenset({"contracts", "cache", "budget", "budget_batches"})
+DATABASE_FOUNDATIONS = frozenset({'database_contracts', 'database_service', 'database_migrations', 'storage_sdk',
+                                 'database_providers', 'persistence_schema', 'persistence_local'})
 EXCLUDED_IMPORTS = frozenset({"output", "outputs", "reports"})
 AGENT_DEPENDENCIES = {
     'agent_provider': frozenset(),
@@ -37,23 +39,38 @@ AGENT_DEPENDENCIES = {
     'plugin_native': frozenset({'agent_native'}),
     'host_protocol': frozenset(),
     'host_worker': frozenset({'host_protocol', 'plugin_native'}),
-    'plugin_host': frozenset({'plugin_native'}),
+    'plugin_host': frozenset({'plugin_native', 'storage_sdk'}),
     'harness_sessions': frozenset({'agent_engine', 'agent_plugins', 'session_identity', 'session_store'}),
     'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host', 'session_identity'}),
     'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
                                   'harness_loop', 'plugin_host', 'harness_application', 'harness_context',
-                                  'harness_model', 'context_budget', 'session_store', 'plugin_configuration'}),
+                                  'harness_model', 'context_budget', 'session_store', 'plugin_configuration',
+                                  'storage_plugins'}),
     'plugin_configuration': frozenset({'context_budget'}),
     'context_budget': frozenset(),
     'session_identity': frozenset(),
-    'session_store': frozenset({'session_identity'}),
+    'session_store': frozenset({'session_identity', 'session_storage', 'database_contracts',
+                                'database_providers', 'database_service'}),
+    'database_contracts': frozenset(),
+    'database_migrations': frozenset({'database_contracts'}),
+    'database_service': frozenset({'database_contracts', 'database_migrations', 'database_process'}),
+    'database_process': frozenset({'database_contracts'}),
+    'storage_sdk': frozenset({'database_contracts'}),
+    'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts'}),
+    'storage_plugins': frozenset({'storage_sdk', 'storage_service', 'plugin_configuration', 'plugin_host'}),
+    'storage_process': frozenset({'storage_sdk', 'blob_service', 'database_contracts'}),
+    'storage_cache_plugins': frozenset({'storage_sdk', 'storage_plugins', 'plugin_host',
+                                       'plugin_configuration', 'rag_testing'}),
+    'persistence_schema': frozenset({'database_contracts'}),
+    'persistence_local': frozenset({'database_contracts', 'database_providers', 'database_service', 'persistence_schema'}),
     'plugin_profiles': frozenset({'plugin_native'}),
     'harness_graph': frozenset({'agent_engine', 'plugin_native'}),
     'harness_context': frozenset({'context_budget'}),
     'harness_model': frozenset({'agent_decisions', 'agent_engine', 'agent_model', 'agent_schema', 'context_budget'}),
     'harness_application': frozenset({'harness_sessions'}),
     'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles',
-                                  'model_plugins'}),
+                                  'model_plugins', 'storage_catalog', 'storage_plugins', 'storage_sdk',
+                                  'storage_cache_plugins'}),
     'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
     'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
@@ -237,7 +254,7 @@ def workflow_violations(workflow):
     commands = [step.get('run', '') for step in integration.get('steps', [])
                 if 'if' not in step and not step.get('continue-on-error', False)]
     for command in (
-            'uv run --no-sync python scripts/check_project.py --local-integration --output reports/ci/integration-check',
+            'uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --output reports/ci/integration-check',
             'uv run --no-sync python -m kb_platform.rag_testing.browser_integration --checker-summary reports/ci/integration-check/summary.json --output reports/ci/browser'):
         if command not in commands:
             errors.append('integration must run required command: ' + command)
@@ -278,6 +295,16 @@ def architecture_violations(root: Path) -> list[str]:
             top = target.split(".")[0]
             reason = None
             layer = AGENT_DEPENDENCIES.get(path.stem) if not evaluation else None
+            if module.startswith('kb_platform.storage_sdk.'):
+                layer = frozenset({'storage_sdk', 'database_contracts'})
+            elif module.startswith('kb_platform.storage_adapters.'):
+                layer = frozenset({'storage_sdk', 'storage_adapters', 'database_contracts',
+                                   'database_migrations', 'database_providers', 'database_process',
+                                   'blob_service', 'storage'})
+            elif module.startswith('kb_platform.database_providers.'):
+                layer = frozenset({'database_contracts', 'database_providers'})
+            elif module.startswith('kb_platform.session_storage.'):
+                layer = frozenset({'database_contracts', 'session_storage'})
             if layer is not None and target.startswith('kb_platform.') and target.split('.')[1] not in layer:
                 reason = 'agent boundary cannot depend on this implementation; inject its port at composition'
             if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider'}
@@ -292,6 +319,8 @@ def architecture_violations(root: Path) -> list[str]:
                     reason = "product code can only use shared RAG contracts, cache, budget, and capture"
             if foundation and not reason and target.startswith("kb_platform."):
                 parts = target.split(".")
+                if len(parts) >= 2 and parts[1] in DATABASE_FOUNDATIONS:
+                    continue
                 if len(parts) >= 3 and parts[1] == "rag_testing" and parts[2] in FOUNDATIONS:
                     continue
                 if target != "kb_platform.rag_testing":
@@ -543,10 +572,13 @@ def main() -> int:
     parser.add_argument('--contract-shard', type=int, choices=range(4), help=argparse.SUPPRESS)
     parser.add_argument('--local-integration', action='store_true',
                         help='Run controlled loopback HTTP/parser/PostgreSQL checks using KB_INTEGRATION_DSN.')
+    parser.add_argument('--storage-integration', action='store_true',
+                        help='Run controlled actual PostgreSQL/MySQL/SQLite/S3 storage acceptance using KB_STORAGE_TEST_* variables.')
     args = parser.parse_args()
     integration_dsn = os.environ.get('KB_INTEGRATION_DSN') if args.local_integration else None
     if args.local_integration and not integration_dsn:
         parser.error('--local-integration requires KB_INTEGRATION_DSN for a dedicated acceptance database')
+    storage_env = {key: value for key, value in os.environ.items() if key.startswith('KB_STORAGE_TEST_')}
     output = args.output.resolve()
     if args.worker:
         return run_worker(args.worker, output, args.contract_shard)
@@ -621,6 +653,14 @@ def main() -> int:
                 results.append(run_check('runtime-integration',
                     [sys.executable, '-B', '-m', 'kb_platform.rag_testing.runtime_integration',
                      '--output', str(output / 'runtime-integration')], output, integration_env))
+        if args.storage_integration:
+            if native_library is None or host_binary is None:
+                results.append(run_check('storage-integration', [sys.executable, '-c',
+                    'raise RuntimeError("current native and Rust host build is required for storage acceptance")'], output, env))
+            else:
+                results.append(run_check('storage-integration',
+                    [sys.executable, '-B', '-m', 'kb_platform.rag_testing.storage_integration',
+                     '--output', str(output / 'storage-integration')], output, {**env, **storage_env}, timeout=600))
         results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts"], output, env))
         for kind in ("contracts", "scorer"):
             if kind == "contracts" and native_library is None:
@@ -636,6 +676,7 @@ def main() -> int:
         "host_binary": str(host_binary) if host_binary is not None else None,
         "native_worker": str(native_worker) if native_worker is not None else None,
         "controlled_local_integration": args.local_integration,
+        "controlled_storage_integration": args.storage_integration,
         "scope": ("offline gates plus controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
                   if args.local_integration else
                   "offline contracts plus controlled localhost host smoke; component checks and scorer controls reported separately")})
