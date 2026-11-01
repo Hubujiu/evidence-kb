@@ -58,6 +58,7 @@ class EmbeddedSearch:
                              np.load(path / 'vector_ids.npy', allow_pickle=False).tolist())
                 else:
                     value = tv.Index.open(str(path / channel))
+                    value.config_reader(reload_policy='Manual')
                 self._readers[key] = value
                 if len(self._readers) > 32:
                     self._readers.popitem(last=False)
@@ -99,6 +100,7 @@ class EmbeddedSearch:
             lexical = path / name
             lexical.mkdir()
             idx = tv.Index(built_schema, path=str(lexical))
+            idx.config_reader(reload_policy='Manual')
             writers[name] = idx.writer(heap_size=16_000_000, num_threads=1)
         vectors, ids = [], []
         with closing(sqlite3.connect(path / 'units.sqlite')) as db:
