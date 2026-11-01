@@ -254,7 +254,7 @@ def workflow_violations(workflow):
     commands = [step.get('run', '') for step in integration.get('steps', [])
                 if 'if' not in step and not step.get('continue-on-error', False)]
     for command in (
-            'uv run --no-sync python scripts/check_project.py --local-integration --output reports/ci/integration-check',
+            'uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --output reports/ci/integration-check',
             'uv run --no-sync python -m kb_platform.rag_testing.browser_integration --checker-summary reports/ci/integration-check/summary.json --output reports/ci/browser'):
         if command not in commands:
             errors.append('integration must run required command: ' + command)
@@ -299,7 +299,8 @@ def architecture_violations(root: Path) -> list[str]:
                 layer = frozenset({'storage_sdk', 'database_contracts'})
             elif module.startswith('kb_platform.storage_adapters.'):
                 layer = frozenset({'storage_sdk', 'storage_adapters', 'database_contracts',
-                                   'database_migrations', 'database_providers', 'blob_service', 'storage'})
+                                   'database_migrations', 'database_providers', 'database_process',
+                                   'blob_service', 'storage'})
             elif module.startswith('kb_platform.database_providers.'):
                 layer = frozenset({'database_contracts', 'database_providers'})
             elif module.startswith('kb_platform.session_storage.'):

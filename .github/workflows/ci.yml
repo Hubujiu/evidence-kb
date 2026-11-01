@@ -110,13 +110,15 @@ jobs:
           for migration in sql/*.sql; do
             docker compose exec -T postgres psql -U kb_admin -d "$database" -v ON_ERROR_STOP=1 < "$migration"
           done
-      - name: Run project and database integration gates
+      - name: Prepare actual storage fixtures
         run: |
           docker pull mysql:8.4
           docker pull redis:8.2.10
           docker pull docweave/minio:RELEASE.2025-10-15T17-29-55Z
           uv run --no-sync python -m kb_platform.rag_testing.storage_resources prepare --output .local/ci-storage-resources
-          uv run --no-sync python -c 'import json, os, subprocess, sys; from pathlib import Path; state=json.loads(Path(".local/ci-storage-resources/resources-private.json").read_text("utf-8")); os.environ.update({k:v for k,v in state["environment"].items() if k.startswith("KB_STORAGE_TEST_")}); sys.exit(subprocess.call([sys.executable,"scripts/check_project.py","--local-integration","--storage-integration","--output","reports/ci/integration-check"]))'
+          uv run --no-sync python -c 'import json, os; from pathlib import Path; state=json.loads(Path(".local/ci-storage-resources/resources-private.json").read_text("utf-8")); selected={k:v for k,v in state["environment"].items() if k.startswith("KB_STORAGE_TEST_")}; [print("::add-mask::"+v) for v in selected.values()]; Path(os.environ["GITHUB_ENV"]).open("a").write("".join(k+"="+v+"\n" for k,v in selected.items()))'
+      - name: Run project and database integration gates
+        run: uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --output reports/ci/integration-check
       - name: Run browser acceptance through Rust host
         run: uv run --no-sync python -m kb_platform.rag_testing.browser_integration --checker-summary reports/ci/integration-check/summary.json --output reports/ci/browser
       - name: Capture database logs

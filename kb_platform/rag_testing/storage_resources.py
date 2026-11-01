@@ -119,7 +119,7 @@ def prepare(output):
             'KB_STORAGE_TEST_S3_ENDPOINT': s3,
             'KB_STORAGE_TEST_S3_ACCESS_KEY': 'storage_acceptance',
             'KB_STORAGE_TEST_S3_SECRET_KEY': password,
-            'KB_INTEGRATION_DSN': pg,
+            'KB_INTEGRATION_DSN': pg.replace('kb_admin:' + password + '@', 'kb_app:kb_local_app@'),
         }
         write_json(private, document)
         write_json(output / 'resources.json', {key: value for key, value in document.items() if key != 'environment'})

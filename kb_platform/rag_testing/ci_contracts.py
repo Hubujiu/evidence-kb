@@ -56,6 +56,13 @@ class CiContracts(unittest.TestCase):
         changed['jobs']['required']['steps'][0]['run'] = 'true'
         self.assertTrue(workflow_violations(changed))
 
+    def test_actual_storage_gate_cannot_be_removed_from_required_command(self):
+        changed = deepcopy(self.workflow)
+        step = next(step for step in changed['jobs']['integration']['steps']
+                    if 'scripts/check_project.py' in step.get('run', ''))
+        step['run'] = step['run'].replace(' --storage-integration', '')
+        self.assertTrue(workflow_violations(changed))
+
     def test_required_cannot_replace_quality_or_secrets_with_literal_success(self):
         changed = deepcopy(self.workflow)
         changed['jobs']['required']['needs'] = ['integration']
