@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+from kb_platform.knowledge_queries import KnowledgeQuery
 import base64
 import json
 from pathlib import Path
@@ -359,7 +361,8 @@ class ModelServiceContracts(unittest.TestCase):
                 row = dict(tenant_id='t', kb_id='k', build_id='b', batch_no=0, request_id='attempt-1',
                            provider_hash='p', attempt=1, status='RUNNING', payload={'units': [{'text': 'one'}]})
                 conn = Mock()
-                conn.execute.return_value.fetchone.return_value = {'retry_at': None}
+                conn.execute.side_effect = lambda query, params=(): Mock(fetchone=lambda: {
+                    'db_now': datetime.now(timezone.utc)} if query == KnowledgeQuery.JOB_CLOCK else {'retry_at': None})
                 @contextmanager
                 def tx(*args):
                     yield conn
@@ -372,11 +375,11 @@ class ModelServiceContracts(unittest.TestCase):
                     expected = 'EMBEDDING_LEDGER_BLOCKED' if scenario == 'pending' else 'EMBEDDING_BUDGET_INSUFFICIENT'
                     with self.assertRaisesRegex(EmbeddingJobError, expected):
                         jobs.run('t', 'k', 'b', view, [{'text': 'one'}], lambda: True, {})
-                    calls = conn.execute.call_args_list
+                    calls = [call for call in conn.execute.call_args_list if call.args[0] != KnowledgeQuery.JOB_CLOCK]
                     self.assertEqual(calls[0].args[1][0], 'RETRY')
                     self.assertEqual(calls[0].args[1][3], expected)
                     self.assertTrue(calls[0].args[1][4])
-                    self.assertFalse(any('UPDATE embedding_circuits' in c.args[0] for c in calls))
+                    self.assertFalse(any(c.args[0] == KnowledgeQuery.CIRCUIT_FAILURE for c in calls))
                     self.assertEqual(len(self.sent), before)
                     self.assertEqual(ledger.summary(), summary)
                     if scenario == 'pending':
@@ -449,8 +452,6 @@ class ModelServiceContracts(unittest.TestCase):
 
         config_path = self.root / 'application.json'
         config_path.write_text(json.dumps(self.configuration(('generation',))))
-        models = ModelService()
-        models.register('generation', self.adapter({}))
         settings = SimpleNamespace(identities=lambda: {}, dsn='', search_url='', storage_root=self.root,
                                    search_backend='postgres')
         fake_platform = SimpleNamespace(embedding_provider=None, ocr_client=None)
@@ -458,9 +459,9 @@ class ModelServiceContracts(unittest.TestCase):
                         'KB_MODELS_CONFIG': str(config_path), 'KB_AGENT_ROOT': str(self.root / 'app-sessions'),
                         'SYNTH_KEY': 'synthetic'}):
             from kb_platform.api import create_app
-            with patch('kb_platform.core.Platform', return_value=fake_platform), \
-                    patch('kb_platform.model_configuration.from_config', return_value=models):
+            with patch('kb_platform.core.Platform', return_value=fake_platform):
                 app = create_app(settings, agent_factory=_KnowledgeFixture)
+        models = app.state.models
         try:
             endpoint = next(route.endpoint for route in app.routes if route.path == '/capabilities')
             result = endpoint(Actor('t', 'u'))
@@ -468,7 +469,7 @@ class ModelServiceContracts(unittest.TestCase):
             self.assertIs(app.state.models, models)
             self.assertIs(app.state.root_plugins, app.state.agent_plugins)
             self.assertIs(app.state.root_plugins.service('models'), models)
-            self.assertEqual(app.state.agent_plugins.service('knowledge.gateway').provider_id, 'vendor-a')
+            self.assertEqual(app.state.agent_plugins.service('knowledge.gateway').provider_id, 'fixture')
             self.assertIs(app.state.research.luna.structured, app.state.agent.model)
         finally:
             for shutdown in app.router.on_shutdown:
@@ -610,10 +611,7 @@ class ModelServiceContracts(unittest.TestCase):
                                    search_backend='postgres')
         for routes in [('embedding',), ('ocr',), ('embedding', 'ocr')]:
             with self.subTest(routes=routes):
-                models = ModelService()
                 config_path.write_text(json.dumps(self.configuration(routes)))
-                for route in routes:
-                    models.register(route, self.adapter({}, capabilities=[C(route)]))
                 def platform(**ports):
                     return SimpleNamespace(embedding_provider=ports["embedding_provider"],
                                            ocr_client=ports["ocr_client"])
@@ -621,9 +619,9 @@ class ModelServiceContracts(unittest.TestCase):
                                                'KB_MODELS_CONFIG': str(config_path), 'SYNTH_KEY': 'synthetic'}):
                     from kb_platform.api import create_app
                     with patch('kb_platform.core.Platform', side_effect=platform), \
-                            patch('kb_platform.model_configuration.from_config', return_value=models), \
                             patch('kb_platform.remote.LunaClient', side_effect=AssertionError('unexpected generation')):
                         app = create_app(settings)
+                models = app.state.models
                 try:
                     self.assertIsNone(app.state.agent)
                     self.assertIsNone(app.state.research)

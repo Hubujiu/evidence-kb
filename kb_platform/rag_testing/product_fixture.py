@@ -74,8 +74,6 @@ class Authority:
                         'source_version_id', 'parse_snapshot_id', 'element_id', 'text',
                         'evidence_ids', 'anchors', 'table_data')
                 record = dict(zip(keys, citation, strict=True))
-                for key in ('evidence_ids', 'anchors', 'table_data'):
-                    record[key] = record[key].obj
                 self.records[record['citation_id']] = {**record, 'policy': row['policy'],
                     'original_sha256': row['source_version_id']}
         self.calls = []

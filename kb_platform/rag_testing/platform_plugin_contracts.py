@@ -10,7 +10,10 @@ from unittest.mock import Mock, patch
 from kb_platform.application_composition import create_root_application, load_application_profile
 from kb_platform.core import Actor, Platform, PlatformError
 from kb_platform.documents import parse_native_document
-from kb_platform.platform_ports import PostgresRepository
+from kb_platform.platform_ports import KnowledgeRepository
+from kb_platform.database_contracts import SpaceKey, StorageIdentity
+from kb_platform.knowledge_queries import KnowledgeQuery
+from kb_platform.knowledge_storage import KNOWLEDGE_TRANSACTION_LIMITS
 from kb_platform.plugin_host import PluginSpec
 from kb_platform.settings import Settings
 
@@ -25,7 +28,8 @@ class PlatformPluginContracts(unittest.TestCase):
                      embedding_jobs=object(), embedding_provider=object(), ocr_client=object())
         with patch('os.getenv', side_effect=AssertionError('constructor configuration must be explicit')):
             platform = Platform(**ports)
-        self.assertEqual(platform.dsn, 'fixture')
+        self.assertIs(platform.repository, repository)
+        self.assertFalse(hasattr(platform, 'dsn'))
         self.assertIs(platform.backend, ports['search'])
         self.assertIs(platform.store, ports['store'])
         self.assertIs(platform.parser, ports['parser'])
@@ -35,14 +39,17 @@ class PlatformPluginContracts(unittest.TestCase):
 
     def test_repository_preserves_tenant_transaction_and_closes_only_own_connection(self):
         connection = Mock()
-        connect = Mock(return_value=nullcontext(connection))
-        repository = PostgresRepository('fixture-dsn', connect=connect)
+        database = SimpleNamespace(info=SimpleNamespace(engine='postgresql'),
+            identity=StorageIdentity(SpaceKey('app', 'knowledge', 'content'), 'dataset'),
+            transaction=Mock(return_value=nullcontext(connection)), close=Mock())
+        repository = KnowledgeRepository(database=database, prepare=False)
         with repository.transaction(Actor('tenant', 'reader'), 'scope') as current:
-            self.assertIs(current, connection)
-        connect.assert_called_once()
-        connection.execute.assert_called_once_with(
-            "SELECT set_config('app.tenant_id', %s, true), set_config('app.kb_id', %s, true)",
-            ('tenant', 'scope'))
+            self.assertIsNot(current, connection)
+        database.transaction.assert_called_once_with(write=True, limits=KNOWLEDGE_TRANSACTION_LIMITS)
+        statement = connection.execute.call_args.args[0]
+        self.assertEqual(dict(statement.params), {'tenant': 'tenant', 'kb': 'scope'})
+        repository.close()
+        database.close.assert_not_called()
 
     def test_ingest_checks_authority_before_parser_and_rechecks_after_parser(self):
         data = b'Synthetic source with an immutable version.'
@@ -105,7 +112,7 @@ class PlatformPluginContracts(unittest.TestCase):
                 connection = Mock()
                 build = {'build_id': 'build', 'index_name': index, 'inputs': {'channels': ['bm25']}}
                 connection.execute.side_effect = lambda sql, *args: SimpleNamespace(
-                    fetchone=lambda: record if 'FROM citations' in sql else build)
+                    fetchone=lambda: record if sql == KnowledgeQuery.CITATION_GET else build)
                 platform.repository = SimpleNamespace(transaction=lambda *args: nullcontext(connection))
                 platform._auth = lambda *args: {'manifest_id': 'build'}
                 platform._revision = lambda *args: 1

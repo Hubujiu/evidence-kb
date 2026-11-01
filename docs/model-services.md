@@ -7,6 +7,16 @@
 参考 DSH 固定提交 [f3803c9 的 LLM 注册与调用边界](https://github.com/deepseek-ai/deepseek-harness/blob/f3803c96974ad4a94195fb97e5c637e9c2a3afe3/packages/llm/llm/src/index.ts)。
 本实现借鉴其注册、绑定和共享服务方式，不依赖 Cordis，也不声称兼容 DSH 插件或流式协议。
 
+## 实例与生命周期
+
+`compile_model_plugins` 在启动前把模型配置展开为普通 Rust 插件节点。`models.service` 只提供中立注册表，`models.budget` 拥有唯一共享物理账本，每个配置的提供商 endpoint 对应一个实例插件，拥有自己的 HTTP 客户端和多个模型路由。消费方通过路由标记声明真实依赖，提供商替换会重建受影响的消费方，其他提供商和预算资源保持原代次。提供商的路由注册使用自身 Rust 身份与租约；卸载先排空调用，再移除路由和关闭客户端。
+
+原配置中的服务实例 ID 留给预算节点，因此现有 `KB_STORAGE_CONFIG` 的预算消费绑定不变；注册表使用派生 ID。独立使用 `PluginHost` 时，先调用 `compile_model_plugins(profile, catalog)` 再构造宿主。直接注入借用服务或客户端仍受支持。`from_config` 和 `from_clients` 是显式独立构造入口，不再由已托管的公共服务内部调用。
+
+保持依赖图形状的凭据、端点和模型配置变更可替换相应实例。增删提供商或路由、更改 Embedding 维度需要重新编译组合并启动，原图会明确返回 `MODEL_PROVIDER_GRAPH_RECOMPILE_REQUIRED`。
+
+`requires: ["models"]` 取得注册表，提供商本身也使用这个依赖注册路由。在挂载函数中立即绑定路由的第三方插件，还须声明相应的 `models.route.generation`、`models.route.embedding` 或 `model_route_marker(name)` 返回的具名路由依赖。这样 Rust 在目标提供商就绪后才挂载消费方，并只在该提供商变更时重建它。只需在应用启动后动态查询注册表的插件可以仅依赖 `models`。内置视图由配置编译器添加对应路由依赖。
+
 ## 内部合同
 
 `ModelInfo` 声明 provider、model、能力、输入模态和实现/端点修订；`ModelRequest` 包含能力、

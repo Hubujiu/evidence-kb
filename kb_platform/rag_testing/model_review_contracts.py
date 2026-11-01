@@ -1,3 +1,6 @@
+from .knowledge_persistence_contracts import postgres_repository, raw_job_transaction
+from datetime import datetime, timezone
+from kb_platform.knowledge_queries import KnowledgeQuery
 from contextlib import closing, contextmanager, nullcontext
 from copy import deepcopy
 import json
@@ -141,7 +144,8 @@ class ModelReviewContracts(ModelFixtures, unittest.TestCase):
                 row = dict(tenant_id='t', kb_id='k', build_id='b', batch_no=0, request_id='attempt-1',
                            provider_hash='p', attempt=1, status='RUNNING', payload={'units': [{'text': 'one'}]})
                 connection = Mock()
-                connection.execute.return_value.fetchone.return_value = {'retry_at': None}
+                connection.execute.side_effect = lambda query, params=(): Mock(fetchone=lambda: {
+                    'db_now': datetime.now(timezone.utc)} if query == KnowledgeQuery.JOB_CLOCK else {'retry_at': None})
                 @contextmanager
                 def transaction(*args):
                     yield connection
@@ -152,10 +156,10 @@ class ModelReviewContracts(ModelFixtures, unittest.TestCase):
                         patch.object(jobs, 'status', return_value=[row]):
                     with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY' if unsent else 'EMBEDDING_UNKNOWN'):
                         jobs.run('t', 'k', 'b', view, [{'text': 'one'}], lambda: True, {})
-                statements = connection.execute.call_args_list
+                statements = [call for call in connection.execute.call_args_list if call.args[0] != KnowledgeQuery.JOB_CLOCK]
                 self.assertEqual(statements[0].args[1][0], 'RETRY' if unsent else 'UNKNOWN')
                 self.assertEqual(statements[0].args[1][4], unsent)
-                self.assertEqual(any('UPDATE embedding_circuits' in call.args[0] for call in statements), not unsent)
+                self.assertEqual(any(call.args[0] == KnowledgeQuery.CIRCUIT_FAILURE for call in statements), not unsent)
                 self.assertEqual(adapter.ledger.summary()['pending_or_unknown'], 0 if unsent else 1)
                 self.assertEqual(adapter.ledger.summary()['effective_usage_or_reserved'], {'requests': 0 if unsent else 1})
 
@@ -372,7 +376,9 @@ def live_contract_suite(dsn):
         def setUp(self):
             super().setUp()
             self.scope = ('model-review-' + uuid4().hex, 'kb', 'build')
-            self.jobs = EmbeddingJobs(dsn)
+            self.repository, owner = postgres_repository(dsn)
+            self.addCleanup(owner.close)
+            self.jobs = EmbeddingJobs(self.repository)
 
         def audit(self):
             return {**super().audit(), 'tenant_id': self.scope[0], 'kb_id': self.scope[1], 'build_id': self.scope[2]}
@@ -381,7 +387,7 @@ def live_contract_suite(dsn):
             for transport_error in (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout):
                 with self.subTest(error=transport_error.__name__):
                     self.scope = ('model-review-' + uuid4().hex, 'kb', 'build')
-                    self.jobs = EmbeddingJobs(dsn, max_attempts=1, circuit_threshold=1)
+                    self.jobs = EmbeddingJobs(self.repository, max_attempts=1, circuit_threshold=1)
                     failing = [True]
                     def respond(request):
                         if failing[0]:
@@ -396,7 +402,7 @@ def live_contract_suite(dsn):
                         row = self.jobs.status(*self.scope)[0]
                         self.assertEqual((row['status'], row['attempt']), ('RETRY', 0))
                         requests.append(row['request_id'])
-                        with self.jobs._tx(*self.scope[:2]) as connection:
+                        with raw_job_transaction(self.jobs, *self.scope[:2]) as connection:
                             circuit = connection.execute('SELECT failures,open_until FROM embedding_circuits '
                                 'WHERE tenant_id=%s AND kb_id=%s', self.scope[:2]).fetchone()
                             attempts = connection.execute('SELECT status FROM embedding_attempts '
@@ -424,7 +430,7 @@ def live_contract_suite(dsn):
                     self.jobs.run(*self.scope, view, [{'text': 'one'}], lambda: True, self.audit())
             row = self.jobs.status(*self.scope)[0]
             self.assertEqual((row['status'], row['attempt']), ('UNKNOWN', 1))
-            with self.jobs._tx(*self.scope[:2]) as connection:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as connection:
                 attempts = connection.execute('SELECT status FROM embedding_attempts WHERE tenant_id=%s AND kb_id=%s',
                                               self.scope[:2]).fetchall()
                 circuit = connection.execute('SELECT failures FROM embedding_circuits WHERE tenant_id=%s AND kb_id=%s',
@@ -442,7 +448,7 @@ def live_contract_suite(dsn):
                     self.jobs.run(*self.scope, view, [{'text': 'one'}], lambda: True, self.audit())
             row = self.jobs.status(*self.scope)[0]
             self.assertEqual((row['status'], row['attempt'], row['error']), ('RETRY', 0, 'EMBEDDING_LEDGER_BLOCKED'))
-            with self.jobs._tx(*self.scope[:2]) as connection:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as connection:
                 self.assertEqual(connection.execute('SELECT failures FROM embedding_circuits').fetchone()['failures'], 0)
             self.assertEqual(adapter.ledger.summary()['physical_requests'], 0)
             self.assertEqual(self.sent, [])
@@ -460,7 +466,7 @@ def live_contract_suite(dsn):
                     self.jobs.run(*self.scope, view, [{'text': 'one'}], lambda: True, self.audit())
                 row = self.jobs.status(*self.scope)[0]
                 self.assertEqual((row['status'], row['attempt']), ('RETRY', 0))
-            with self.jobs._tx(*self.scope[:2]) as connection:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as connection:
                 self.assertEqual(connection.execute('SELECT failures FROM embedding_circuits').fetchone()['failures'], 0)
             self.assertEqual(adapter.ledger.summary()['physical_requests'], 0)
             self.assertEqual(self.sent, [])
@@ -471,7 +477,7 @@ def live_contract_suite(dsn):
             _, dependency = self.jobs._prepare(*self.scope, view, [{'text': 'one'}], self.audit())
             row = self.jobs._claim(*self.scope, 0, dependency)
             view.documents(['one'], request_id=row['request_id'], audit_context=self.audit(), authorize=lambda: True)
-            with self.jobs._tx(*self.scope[:2]) as connection:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as connection:
                 connection.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
             with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_AUTHORIZATION_FAILED'):
                 self.jobs.reconcile(*self.scope, view, lambda: False)

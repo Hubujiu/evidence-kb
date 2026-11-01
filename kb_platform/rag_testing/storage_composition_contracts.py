@@ -8,7 +8,6 @@ from kb_platform.application_composition import create_root_application
 from kb_platform.database_contracts import Migration, SchemaPackage, SpaceKey
 from kb_platform.database_providers import SQLiteProvider
 from kb_platform.harness_profile import create_agent_application
-from kb_platform.model_service import ModelService
 from kb_platform.plugin_host import PluginSpec
 from kb_platform.session_identity import Actor
 from kb_platform.settings import Settings
@@ -87,19 +86,24 @@ class StorageCompositionContracts(unittest.TestCase):
             path.write_text(json.dumps(configuration), encoding='utf-8')
             profile = {'version': 1, 'plugins': [{'id': 'provider', 'use': 'models.service',
                 'config': {'config_path': str(root / 'models.json'), 'audit_root': str(root / 'audit')}}]}
-            models = ModelService()
-            self.addCleanup(models.close)
+            caps = {'model': 2, 'input_tokens': 100, 'output_tokens': 100}
+            (root / 'models.json').write_text(json.dumps({'version': 1,
+                'budget': {'path': str(root / 'unused.sqlite3'), 'caps': caps},
+                'providers': {'local': {'adapter': 'openai-compatible',
+                    'base_url': 'https://models.invalid/v1', 'api_key_env': 'KB_COMPOSITION_MODEL_KEY'}},
+                'models': {'generation': {'provider': 'local', 'model': 'fixture',
+                    'capabilities': ['chat'], 'reservation': caps}}}), encoding='utf-8')
             settings = Settings('', '', root / 'originals', root / 'identities.json', 'postgres')
-            with patch('kb_platform.model_configuration.read_model_config', return_value={'providers': {}}), \
-                    patch('kb_platform.model_plugins.file_inputs', return_value={}), \
-                    patch('kb_platform.model_configuration.from_config', return_value=models) as factory:
+            with patch.dict('os.environ', {'KB_COMPOSITION_MODEL_KEY': 'synthetic-test-key'}):
                 composition = create_root_application(settings, profile=profile,
                     environment={'KB_STORAGE_CONFIG': str(path)})
                 try:
-                    self.assertIs(composition.models, models)
-                    self.assertEqual(factory.call_args.kwargs['audit_root'], str(root / 'audit'))
-                    database = factory.call_args.kwargs['database']
-                    self.assertEqual(database.identity.space.owner_id, 'model-budget')
-                    self.assertEqual(database.info.engine, 'sqlite')
+                    ledger = composition.host.service('models.budget')
+                    self.assertEqual(ledger.database.identity.space.owner_id, 'model-budget')
+                    self.assertEqual(ledger.database.info.engine, 'sqlite')
+                    self.assertEqual(ledger.caps, caps)
+                    self.assertFalse((root / 'unused.sqlite3').exists())
+                    self.assertTrue((root / 'audit').is_dir())
+                    self.assertEqual(set(composition.models.catalog()), {'generation'})
                 finally:
                     composition.close()

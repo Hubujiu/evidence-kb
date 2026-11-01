@@ -93,10 +93,12 @@ def _storage(selected, catalog, settings, environment):
         if use in ('harness.store.sqlite', 'harness.store.database'):
             row.update(use='harness.store.database', config={})
             changes[row['use']] = (StorageSlot('primary', RELATIONAL_V1),)
-        elif use == 'models.service':
+        elif use == 'models.budget':
             row.setdefault('config', {})['database_slot'] = 'budget'
             changes[use] = (StorageSlot('budget', RELATIONAL_V1),)
-        elif use in ('platform.repository.postgres', 'platform.search.postgres',
+        elif use in ('platform.repository.postgres', 'platform.repository.storage'):
+            row.update(use='platform.repository.storage', config={'database_slot': 'primary'})
+        elif use in ('platform.search.postgres',
                      'platform.search.bm25.postgres', 'platform.search.dense.postgres',
                      'platform.search.source.postgres'):
             row.setdefault('config', {})['database_slot'] = 'primary'
@@ -179,6 +181,9 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
     catalog = (*builtin_plugins(), *model_plugins(models), *stage_cache_plugins(),
                *platform_plugins(settings, platform=platform, research=research, model_clients=model_clients),
                *knowledge_plugins(platform, research, service_factory=service_factory), *installed, *extra_plugins)
+    from .model_provider_plugins import compile_model_plugins
+
+    selected, catalog = compile_model_plugins(selected, catalog)
     selected, catalog = _storage(selected, catalog, settings, selected_environment)
     host = PluginHost(selected, catalog)
     try:
@@ -219,6 +224,9 @@ def create_borrowed_knowledge(platform, research, *, profile=None, service_facto
     catalog = (*builtin_plugins(), *model_plugins(models, clients=clients), *stage_cache_plugins(),
                *platform_plugins(Settings.from_environment(), platform=platform, research=research),
                *knowledge_plugins(platform, research, service_factory=service_factory), *extra_plugins)
+    from .model_provider_plugins import compile_model_plugins
+
+    selected, catalog = compile_model_plugins(selected, catalog)
     if selected_environment.get('KB_STORAGE_CONFIG'):
         selected, catalog = _storage(selected, catalog, None, selected_environment)
     host = PluginHost(deepcopy(selected), catalog)

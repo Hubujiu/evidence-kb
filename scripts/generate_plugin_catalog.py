@@ -25,7 +25,7 @@ def render():
     lines = ['# 当前插件目录', '',
         '本文件由 `uv run --no-sync python -m scripts.generate_plugin_catalog --output docs/plugin-catalog.md` 生成。', '',
         f'当前共有 {count} 个静态内置实现键。统计只构造 PluginSpec，不挂载宿主、不连接后端、不调用模型。', '',
-        '实例、授权绑定和消费方包装按配置动态生成；外部安装的进程插件另计。公共服务可选，第三方可以自建服务和适配器。', '',
+        '模型提供商实例、存储实例、授权绑定和消费方包装按配置动态生成；外部安装的进程插件另计。公共服务可选，第三方可以自建服务和适配器。', '',
         '| 类别 | 数量 | 源码 |', '| --- | ---: | --- |']
     for group, module, specs in groups:
         lines.append(f'| {group} | {len(specs)} | [{module}](../kb_platform/{module}) |')

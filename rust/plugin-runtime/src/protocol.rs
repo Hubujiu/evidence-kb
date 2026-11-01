@@ -129,6 +129,8 @@ pub enum Command {
         #[serde(default)]
         generation: Option<u64>,
         #[serde(default)]
+        initialization: Option<u64>,
+        #[serde(default)]
         parent_lease: Option<u64>,
         #[serde(default)]
         deadline: Option<u64>,

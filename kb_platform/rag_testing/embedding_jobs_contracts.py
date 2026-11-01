@@ -1,3 +1,4 @@
+from .knowledge_persistence_contracts import postgres_repository, raw_job_transaction
 import json
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -277,7 +278,9 @@ def live_contract_suite(dsn):
     class LiveEmbeddingJobsContracts(unittest.TestCase):
         def setUp(self):
             self.scope = ('jobs-contract-' + uuid4().hex, 'kb', 'build')
-            self.jobs = EmbeddingJobs(dsn)
+            self.repository, owner = postgres_repository(dsn)
+            self.addCleanup(owner.close)
+            self.jobs = EmbeddingJobs(self.repository)
             self.units = [{'text': 'one', 'source_id': 'source'}, {'text': 'two', 'source_id': 'source'}]
             self.audit = {'principal': 'owner', 'acl_revision': '0'}
             self.calls = []
@@ -318,13 +321,13 @@ def live_contract_suite(dsn):
                     rows = self.jobs.status(*scope)
                     self.assertEqual([(r['status'], r['attempt']) for r in rows], [('COMPLETE', 1), ('RETRY', 0)])
                     self.assertEqual(len(f.sent), 1)
-                    with self.jobs._tx(*scope[:2]) as conn:
+                    with raw_job_transaction(self.jobs, *scope[:2]) as conn:
                         self.assertEqual(conn.execute('SELECT max(failures) n FROM embedding_circuits').fetchone()['n'], 0)
                     before = freeze_predecessor(f.ledger.path)
                     next_ledger = LinkedBudgetLedger(f.root / 'next.sqlite', f.ledger.caps, predecessors=[before])
                     observe_client(f.provider, next_ledger, f.root / 'next-capture', category='synthetic-resume',
                                    inner=httpx.MockTransport(f.respond))
-                    restarted = EmbeddingJobs(dsn)
+                    restarted = EmbeddingJobs(self.repository)
                     result = restarted.run(*scope, f.provider, units, lambda: True, self.audit)
                     self.assertEqual(len(result), len(units))
                     self.assertEqual(len(f.sent), 2)
@@ -349,7 +352,7 @@ def live_contract_suite(dsn):
                 self.assertFalse((provider.audit_dir / (row['request_id'] + '.json')).exists())
                 with closing(sqlite3.connect(provider.ledger.path)) as database:
                     self.assertEqual(database.execute('SELECT id,status FROM calls').fetchall(), [('B', 'COMPLETE')])
-                with self.jobs._tx(*self.scope[:2]) as conn:
+                with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                     self.assertEqual(conn.execute('SELECT failures FROM embedding_circuits').fetchone()['failures'], 0)
                     attempt = conn.execute('SELECT status,diagnostic FROM embedding_attempts').fetchone()
                     self.assertEqual((attempt['status'], attempt['diagnostic']), ('ERROR', 'EMBEDDING_LEDGER_BLOCKED'))
@@ -364,11 +367,11 @@ def live_contract_suite(dsn):
             for reconcile_first in (False, True):
                 with self.subTest(reconcile_first=reconcile_first):
                     self.scope = ('late-unsent-' + uuid4().hex, 'kb', 'build')
-                    self.jobs = EmbeddingJobs(dsn, lease_seconds=1, max_attempts=1)
+                    self.jobs = EmbeddingJobs(self.repository, lease_seconds=1, max_attempts=1)
                     original = self.provider.documents
 
                     def unsent(texts):
-                        with self.jobs._tx(*self.scope[:2]) as conn:
+                        with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                             conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
                         if reconcile_first:
                             self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'],
@@ -382,7 +385,7 @@ def live_contract_suite(dsn):
                         self.run_jobs(units=[self.units[0]])
                     row = self.jobs.status(*self.scope)[0]
                     self.assertEqual((row['status'], row['attempt']), ('RETRY', 0))
-                    with self.jobs._tx(*self.scope[:2]) as conn:
+                    with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                         self.assertEqual(conn.execute('SELECT failures FROM embedding_circuits').fetchone()['failures'], 0)
                         self.assertEqual(conn.execute('SELECT status FROM embedding_attempts').fetchone()['status'], 'ERROR')
                     self.provider.documents = original
@@ -394,7 +397,7 @@ def live_contract_suite(dsn):
         def test_late_old_request_cannot_rewrite_new_claim_or_ambiguous_outcome(self):
             _, dependency = self.jobs._prepare(*self.scope, self.provider, [self.units[0]], self.audit)
             old = self.jobs._claim(*self.scope, 0, dependency)
-            with self.jobs._tx(*self.scope[:2]) as conn:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                 conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
             with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_LEASE_LOST'):
                 self.jobs._finish(old, error=TimeoutError('sent outcome unknown'))
@@ -425,7 +428,7 @@ def live_contract_suite(dsn):
                 target = Path(directory) / (row['request_id'] + '.json')
                 self.provider.ledger.reserve(row['request_id'], {'calls': 1})
                 self.provider.ledger.finish(row['request_id'], status='UNKNOWN', usage={'calls': 0})
-                with self.jobs._tx(*self.scope[:2]) as conn:
+                with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                     conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second'")
                 target.write_text(json.dumps(record), 'utf-8')
                 self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'], 'UNKNOWN')
@@ -445,14 +448,14 @@ def live_contract_suite(dsn):
             with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_RETRY'):
                 self.run_jobs()
             self.assertEqual([r['status'] for r in self.jobs.status(*self.scope)], ['COMPLETE', 'RETRY'])
-            with self.jobs._tx(*self.scope[:2]) as conn:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                 conn.execute("UPDATE embedding_jobs SET retry_at=clock_timestamp() WHERE status='RETRY'")
             self.provider.error_on = None
             self.assertEqual(len(self.run_jobs()), 2)
             self.assertEqual(self.calls, [['one'], ['two'], ['two']])
             self.assertEqual(len(self.run_jobs()), 2)
             self.assertEqual(len(self.calls), 3)
-            with self.jobs._tx(*self.scope[:2]) as conn:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                 self.assertEqual(conn.execute('SELECT count(DISTINCT request_id) n FROM embedding_attempts').fetchone()['n'], 3)
 
         def test_google_preflight_is_terminal_diagnostic_not_unknown(self):
@@ -517,7 +520,7 @@ def live_contract_suite(dsn):
                     row = self.jobs.status(*scope)[0]
                     self.assertEqual((row['status'], row['error'], row['attempt']), ('RETRY', code, 0))
 
-                    with self.jobs._tx(*scope[:2]) as conn:
+                    with raw_job_transaction(self.jobs, *scope[:2]) as conn:
                         conn.execute("UPDATE embedding_jobs SET status='ERROR' WHERE build_id=%s", (scope[2],))
                     with patch.object(provider, 'documents', return_value=[[1., 0.]]) as documents:
                         self.assertEqual(len(self.jobs.run(*scope, provider, self.units[:1], lambda: True, google_audit())), 1)
@@ -529,7 +532,7 @@ def live_contract_suite(dsn):
         def test_expired_owner_is_fenced_and_unknown_never_resent(self):
             _, dependency = self.jobs._prepare(*self.scope, self.provider, self.units, self.audit)
             row = self.jobs._claim(*self.scope, 0, dependency)
-            with self.jobs._tx(*self.scope[:2]) as conn:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                 conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE batch_no=0")
             with self.assertRaisesRegex(EmbeddingJobError, 'LEASE_LOST'):
                 self.jobs._finish(row, vectors=[[1., 0.]])
@@ -537,25 +540,25 @@ def live_contract_suite(dsn):
                 self.run_jobs()
             self.assertEqual(self.calls, [])
             self.assertEqual(self.jobs.status(*self.scope)[0]['status'], 'UNKNOWN')
-            with self.jobs._tx(*self.scope[:2]) as conn:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                 self.assertEqual(conn.execute('SELECT status FROM embedding_attempts').fetchone()['status'], 'UNKNOWN')
 
         def test_circuit_is_durable_across_job_instances(self):
-            self.jobs = EmbeddingJobs(dsn, circuit_threshold=1)
+            self.jobs = EmbeddingJobs(self.repository, circuit_threshold=1)
             self.provider.error_on = 'one'
             with self.assertRaisesRegex(EmbeddingJobError, 'RETRY'):
                 self.run_jobs()
-            self.jobs = EmbeddingJobs(dsn, circuit_threshold=1)
+            self.jobs = EmbeddingJobs(self.repository, circuit_threshold=1)
             with self.assertRaisesRegex(EmbeddingJobError, 'CIRCUIT_OPEN'):
                 self.run_jobs(build='another-build')
             self.assertEqual(self.calls, [['one']])
 
         def test_retries_have_finite_attempt_limit(self):
-            self.jobs = EmbeddingJobs(dsn, max_attempts=2, circuit_threshold=5)
+            self.jobs = EmbeddingJobs(self.repository, max_attempts=2, circuit_threshold=5)
             self.provider.error_on = 'one'
             with self.assertRaisesRegex(EmbeddingJobError, 'RETRY'):
                 self.run_jobs()
-            with self.jobs._tx(*self.scope[:2]) as conn:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                 conn.execute("UPDATE embedding_jobs SET retry_at=clock_timestamp() WHERE status='RETRY'")
             with self.assertRaisesRegex(EmbeddingJobError, 'ERROR'):
                 self.run_jobs()
@@ -568,7 +571,7 @@ def live_contract_suite(dsn):
             with self.assertRaisesRegex(EmbeddingJobError, 'DEPENDENCY_CHANGED'):
                 self.run_jobs(units=list(reversed(self.units)))
             self.assertEqual(self.jobs.status('other-tenant', self.scope[1], self.scope[2]), [])
-            with self.jobs._tx('other-tenant', self.scope[1]) as conn:
+            with raw_job_transaction(self.jobs, 'other-tenant', self.scope[1]) as conn:
                 self.assertEqual(conn.execute('SELECT count(*) n FROM embedding_jobs').fetchone()['n'], 0)
 
         def test_concurrent_different_dependencies_cannot_share_build(self):
@@ -605,7 +608,7 @@ def live_contract_suite(dsn):
                           'audit_context': self.audit, 'vectors': [[1., 0.]], 'usage': {'calls': 1},
                           'vectors_sha256': semantic_digest([[1., 0.]])}
                 (Path(folder) / (request_id + '.json')).write_text(json.dumps(record), 'utf-8')
-                with self.jobs._tx(*self.scope[:2]) as conn:
+                with raw_job_transaction(self.jobs, *self.scope[:2]) as conn:
                     conn.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE batch_no=0")
                 self.assertEqual(self.jobs.reconcile(*self.scope, self.provider, lambda: True)[0]['status'], 'COMPLETE')
                 self.assertEqual(len(self.run_jobs()), 2)

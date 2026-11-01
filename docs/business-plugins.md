@@ -4,7 +4,7 @@
 
 ## 显式构造端口
 
-Platform 接收 `repository`、`search`、`store`、`parser`、`embedding_jobs`、`embedding_provider` 和 `ocr_client`。PostgresRepository 管理每次领域事务的连接。Platform 保留权限检查、authority 锁、revision 复查和 snapshot 提交。
+Platform 接收 `repository`、`search`、`store`、`parser`、`embedding_jobs`、`embedding_provider` 和 `ocr_client`。KnowledgeRepository 管理每次领域事务的可信作用域与封闭操作，私有持久化实现支持 PostgreSQL 和 SQLite。Platform 保留权限检查、authority 锁、revision 复查和 snapshot 提交。
 
 KnowledgeService 接收显式会话存储、gateway、model、context policy、context manager、runtime、workflow factory、tool executor、semantic pages 和检索配置。它不创建第二个存储、运行时或模型实例。`create_knowledge_application()` 可借用已有 Platform、ResearchService 和模型服务，借用路径不关闭这些对象。
 

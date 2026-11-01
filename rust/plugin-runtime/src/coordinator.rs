@@ -56,6 +56,13 @@ struct Lease {
     ancestors: BTreeSet<u64>,
     deadline: Option<u64>,
     cancelled: bool,
+    initialization: Option<u64>,
+}
+
+struct OwnerAuthority {
+    instance: u64,
+    generation: Option<u64>,
+    initialization: Option<u64>,
 }
 
 struct Update {
@@ -853,22 +860,49 @@ impl Coordinator {
         &mut self,
         host: u64,
         registration: Option<u64>,
-        owner: Option<u64>,
-        generation: Option<u64>,
+        authority: Option<OwnerAuthority>,
         parent_lease: Option<u64>,
         deadline: Option<u64>,
     ) -> Result<Value, Error> {
         self.scope(host)?;
+        let owner = authority.as_ref().map(|authority| authority.instance);
+        let initialization = authority
+            .as_ref()
+            .and_then(|authority| authority.initialization);
         if let Some(owner) = owner {
             let instance = self
                 .instances
                 .get(&owner)
                 .ok_or_else(|| Error::new("unknown_instance", "unknown lease owner"))?;
-            if generation != Some(instance.generation) {
+            if authority
+                .as_ref()
+                .and_then(|authority| authority.generation)
+                != Some(instance.generation)
+            {
                 return Err(Error::new(
                     "stale_generation",
                     "owner generation is not current",
                 ));
+            }
+            if let Some(operation) = initialization {
+                let valid = registration.is_none()
+                    && instance.host == host
+                    && instance.phase == Phase::Starting
+                    && instance.init == Some(operation)
+                    && self.operations.get(&operation).is_some_and(|record| {
+                        record.claimed
+                            && record.completion.is_none()
+                            && record.action.kind == "init"
+                            && record.action.host == host
+                            && record.action.instance == owner
+                            && record.action.generation == instance.generation
+                    });
+                if !valid {
+                    return Err(Error::new(
+                        "invalid_initialization",
+                        "lease requires the current initialization action",
+                    ));
+                }
             }
         }
         let parent = if let Some(parent) = parent_lease {
@@ -876,6 +910,16 @@ impl Coordinator {
                 .leases
                 .get(&parent)
                 .ok_or_else(|| Error::new("unknown_lease", "parent lease is no longer live"))?;
+            if lease.initialization.is_some_and(|operation| {
+                self.operations
+                    .get(&operation)
+                    .is_none_or(|record| record.completion.is_some())
+            }) {
+                return Err(Error::new(
+                    "initialization_closed",
+                    "initialization authority has completed",
+                ));
+            }
             if lease.host != host
                 && !(registration.is_none()
                     && owner.is_some_and(|owner| lease.owners.contains(&owner))
@@ -968,7 +1012,10 @@ impl Coordinator {
                 }
                 registrations.insert(registration);
             }
-            if instance.phase != Phase::Active && !owners.contains(&owner) {
+            if instance.phase != Phase::Active
+                && !owners.contains(&owner)
+                && initialization.is_none()
+            {
                 return Err(Error::new(
                     "service_inactive",
                     "service no longer accepts calls",
@@ -1015,6 +1062,8 @@ impl Coordinator {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
+        let initialization =
+            initialization.or_else(|| parent.and_then(|lease| lease.initialization));
         if deadline.is_some_and(|deadline| deadline <= self.now) {
             return Err(Error::new("deadline", "deadline already elapsed"));
         }
@@ -1029,6 +1078,7 @@ impl Coordinator {
                 ancestors,
                 deadline,
                 cancelled: false,
+                initialization,
             },
         );
         Ok(json!({"lease":lease,"deadline":deadline}))
@@ -1056,8 +1106,7 @@ impl Coordinator {
             })
             .ok_or_else(|| Error::new("stale_binding", "service registration no longer exists"))?
             .id;
-        let admitted =
-            self.acquire(host, Some(registration), None, None, parent_lease, deadline)?;
+        let admitted = self.acquire(host, Some(registration), None, parent_lease, deadline)?;
         let lease = admitted["lease"].as_u64().unwrap();
         let mut action = self.action(id, "invoke", None, Some(lease), Some(method))?;
         action.host = host;
@@ -1511,16 +1560,28 @@ impl Coordinator {
                 registration,
                 instance,
                 generation,
+                initialization,
                 parent_lease,
                 deadline,
-            } => self.acquire(
-                host,
-                registration,
-                instance,
-                generation,
-                parent_lease,
-                deadline,
-            ),
+            } => {
+                if initialization.is_some() && instance.is_none() {
+                    return Err(Error::new(
+                        "invalid_initialization",
+                        "initialization requires an instance owner",
+                    ));
+                }
+                self.acquire(
+                    host,
+                    registration,
+                    instance.map(|instance| OwnerAuthority {
+                        instance,
+                        generation,
+                        initialization,
+                    }),
+                    parent_lease,
+                    deadline,
+                )
+            }
             Command::RuntimeInvoke {
                 host,
                 registration,

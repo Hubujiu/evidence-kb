@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+from kb_platform.knowledge_queries import KnowledgeQuery
 from contextlib import closing, contextmanager
 from pathlib import Path
 import sqlite3
@@ -90,7 +92,9 @@ class EmbeddingAdmissionContracts(unittest.TestCase):
             statements = []
 
             class Port:
-                def execute(self, query, parameters):
+                def execute(self, query, parameters=()):
+                    if query == KnowledgeQuery.JOB_CLOCK:
+                        return SimpleNamespace(fetchone=lambda: {'db_now': datetime.now(timezone.utc)})
                     statements.append((query, parameters))
                     return SimpleNamespace(fetchone=lambda: {'retry_at': None})
 
@@ -104,9 +108,9 @@ class EmbeddingAdmissionContracts(unittest.TestCase):
                     jobs._finish(row, error=error)
             update, parameters = statements[0]
             self.assertEqual(parameters[0], 'RETRY')
-            self.assertIn('attempt=attempt-CASE WHEN %s AND attempt>0 THEN 1 ELSE 0 END', update)
+            self.assertEqual(update, KnowledgeQuery.JOB_FINISH)
             self.assertIs(parameters[4], True)
-            self.assertFalse(any('failures=failures+1' in query for query, _ in statements))
+            self.assertFalse(any(query == KnowledgeQuery.CIRCUIT_FAILURE for query, _ in statements))
             self.assertEqual(finished.exception.code, 'EMBEDDING_LEDGER_BLOCKED')
             self.assertIsInstance(errors['A'], EmbeddingCallError)
             self.assertEqual(errors['A'].preflight_code, 'UNRESOLVED_PHYSICAL_REQUEST')

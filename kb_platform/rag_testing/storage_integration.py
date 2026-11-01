@@ -378,8 +378,11 @@ def http_configuration(fixtures, engine):
                   if engine == 'postgres' else
                   {'provider': 'embedded', 'config': {'root': str(fixtures.resource_root / 'dense-indexes')}}),
     }
+    if engine == 'sqlite':
+        instances['authority'] = {'provider': 'sqlite', 'config': {
+            'root': str(fixtures.resource_root / 'sqlite-authority')}}
     services = {
-        'main.sql': {'instance': 'main', 'export': 'relational'},
+        'main.sql': {'instance': 'authority' if engine == 'sqlite' else 'main', 'export': 'relational'},
         'main.lexical': {'instance': 'main', 'export': 'lexical'},
         'dense.vector': {'instance': 'dense', 'export': 'vector'},
         'documents.records': {'instance': 'documents', 'export': 'document'},
@@ -551,7 +554,7 @@ def deny_dense_generation(fixtures, directory):
         for channel, engine in engines.items():
             with engine.connect() as connection:
                 schema = connection.dialect.identifier_preparer.quote(schemas[channel])
-                result[channel] = connection.exec_driver_sql('SELECT COUNT(*) FROM ' + schema + '.search_generations').scalar()
+                result[channel] = connection.exec_driver_sql('SELECT COUNT(*) FROM ' + schema + '._storage_search_generations').scalar()
         return result
 
     role = None
@@ -564,14 +567,14 @@ def deny_dense_generation(fixtures, directory):
                 raise ValueError('Expected exactly one controlled dense runtime role')
             role = roles[0]
             quote = connection.dialect.identifier_preparer.quote
-            function = quote(schemas['dense']) + '.create_search_generation(text,integer,integer,text)'
+            function = quote(schemas['dense']) + '.storage_search_build(text,text,jsonb,integer,text)'
             connection.exec_driver_sql('REVOKE EXECUTE ON FUNCTION ' + function + ' FROM ' + quote(role))
         yield counts
     finally:
         if role is not None:
             with engines['dense'].begin() as connection:
                 quote = connection.dialect.identifier_preparer.quote
-                function = quote(schemas['dense']) + '.create_search_generation(text,integer,integer,text)'
+                function = quote(schemas['dense']) + '.storage_search_build(text,text,jsonb,integer,text)'
                 connection.exec_driver_sql('GRANT EXECUTE ON FUNCTION ' + function + ' TO ' + quote(role))
         for engine in engines.values():
             engine.dispose()
@@ -599,7 +602,7 @@ def staged_build_id(fixtures, directory, kb_id):
 def http_suite(fixtures):
     class HttpStorageIntegration(unittest.TestCase):
         def test_real_rust_http_split_channels_restart_and_failed_build(self):
-            for engine in ('postgres', 'embedded'):
+            for engine in ('postgres', 'embedded', 'sqlite'):
                 with self.subTest(dense_backend=engine):
                     directory, profile, environment, tokens = http_configuration(fixtures, engine)
                     owner = {'Authorization': 'Bearer ' + tokens['owner']}
@@ -626,8 +629,10 @@ def http_suite(fixtures):
                         score = score_http_evidence(client, owner, kb_id, source['source_id'],
                             source['document']['source_version_id'], directory)
                         self.assertEqual(score['decision'], 'PASS', score['rows'])
-                        if engine == 'postgres':
-                            fixtures.observations['browser'] = run_browser(directory, environment, url, tokens['owner'])
+                        if engine in ('postgres', 'sqlite'):
+                            browser = run_browser(directory, environment, url, tokens['owner'])
+                            fixtures.observations.setdefault('browser_configurations', []).append({
+                                'repository': 'sqlite' if engine == 'sqlite' else 'postgresql', **browser})
                         for channel in ('bm25', 'dense', 'hybrid'):
                             denial = client.post(f'/knowledge-bases/{kb_id}/search', headers=denied,
                                 json={'query': 'QUARTZMARKER', 'channel': channel})
@@ -693,7 +698,8 @@ def http_suite(fixtures):
                         self.assertEqual(original.content, TEXT.encode())
                     fixtures.observations.setdefault('http', []).append({
                         'transport': 'Rust parent + Python worker + actual loopback TCP HTTP',
-                        'bm25': 'postgresql', 'dense': engine, 'kb_id': kb_id, 'source_id': source['source_id'],
+                        'repository': 'sqlite' if engine == 'sqlite' else 'postgresql',
+                        'bm25': 'postgresql', 'dense': 'postgresql' if engine == 'postgres' else 'embedded', 'kb_id': kb_id, 'source_id': source['source_id'],
                         'originals': 's3' if engine == 'postgres' else 'files', 'original_download_after_restart': True,
                         'build_id': build['build_id'], 'restarted_hits': True, 'failure_did_not_publish': True,
                         'source_acl_grant_and_revoke': 'both channels and hybrid before top-k=1',
@@ -704,19 +710,38 @@ def http_suite(fixtures):
 
 def knowledge_suite(fixtures):
     class KnowledgeStorageIntegration(unittest.TestCase):
+        def test_actual_job_row_and_circuit_lock_waits_preserve_lease_deadlines(self):
+            from kb_platform.knowledge_storage import KnowledgeRepository
+            from .knowledge_persistence_contracts import exercise_job_lock_deadlines
+
+            _, database = fixtures.bind('postgresql', 'job-lock-deadlines', owner='knowledge-jobs')
+            observed = exercise_job_lock_deadlines(self, KnowledgeRepository(database=database))
+            fixtures.observations['job_lock_deadlines'] = observed
+
+        def test_same_domain_behavior_on_actual_sqlite_and_postgresql(self):
+            from .knowledge_persistence_contracts import exercise_knowledge_repository
+
+            for engine in ('sqlite', 'postgresql'):
+                with self.subTest(engine=engine):
+                    _, bound = fixtures.bind(engine, 'portable-knowledge-' + engine, owner='knowledge-domain')
+                    root = fixtures.resource_root / ('portable-knowledge-' + engine)
+                    root.mkdir()
+                    observed = exercise_knowledge_repository(self, bound, root)
+                    fixtures.observations.setdefault('portable_knowledge', []).append(observed)
+
         def test_search_restart_preserves_sealed_permissions_and_supports_a_new_build(self):
             import psycopg
             from psycopg import sql
 
             from kb_platform.database_contracts import DatabaseError
             from kb_platform.database_providers.postgres import PostgresProvider, pg_transaction
-            from kb_platform.knowledge_storage import PostgresRepository
+            from kb_platform.knowledge_storage import KnowledgeRepository
             from kb_platform.postgres_search import PostgresSearch
             from .product_fixture import Authority
 
             name = 'knowledge-search-restart'
             first_service, first = fixtures.bind('postgresql', name, owner='knowledge')
-            PostgresRepository(database=first)
+            KnowledgeRepository(database=first)
             authority = Authority([('restart.txt', 'RESTARTMARKER evidence stays immutable.')])
             for unit in authority.units:
                 unit['vector'] = [1.0, 0.25, 0.125]
@@ -763,7 +788,7 @@ def knowledge_suite(fixtures):
             identity, old_role = first.identity, first.runtime_role
             first_service.close()
             _, restored = fixtures.bind('postgresql', name, owner='knowledge')
-            PostgresRepository(database=restored)
+            KnowledgeRepository(database=restored)
             search = PostgresSearch(database=restored)
             self.assertEqual(restored.identity, identity)
             self.assertNotEqual(restored.runtime_role, old_role)
@@ -807,8 +832,8 @@ def knowledge_suite(fixtures):
                 'denied_runtime_mutations': denied, 'decision': 'PASS'}
 
         def test_two_actual_knowledge_spaces_isolate_same_generation_and_rls_connection_reuse(self):
-            from kb_platform.knowledge_queries import JsonValue, KnowledgeQuery
-            from kb_platform.knowledge_storage import PostgresRepository
+            from kb_platform.knowledge_queries import KnowledgeQuery
+            from kb_platform.knowledge_storage import KnowledgeRepository
             from kb_platform.postgres_search import PostgresSearch
             from .product_fixture import Authority
 
@@ -816,7 +841,7 @@ def knowledge_suite(fixtures):
             index = PostgresSearch.index_name('tenant', 'scope', '1' * 32)
             for label in ('FIRSTSPACE', 'SECONDSPACE'):
                 _, bound = fixtures.bind('postgresql', 'knowledge-' + label, owner='knowledge')
-                repository = PostgresRepository(database=bound)
+                repository = KnowledgeRepository(database=bound)
                 search = PostgresSearch(database=bound)
                 authority = Authority([('same-name.txt', label + ' publication requires review.')])
                 for unit in authority.units:
@@ -844,7 +869,7 @@ def knowledge_suite(fixtures):
             pids = []
 
             def observe(tx, expected_tenant):
-                raw = tx._connection
+                raw = tx._transaction
                 state = raw.execute("SELECT pg_backend_pid() AS pid, current_setting('app.tenant_id',true) AS tenant, "
                                     "current_setting('app.kb_id',true) AS kb").fetchone()
                 pids.append(state['pid'])
@@ -853,22 +878,22 @@ def knowledge_suite(fixtures):
 
             with repository.transaction(Actor('actor-tenant-A', 'owner'), 'same-kb') as tx:
                 raw = observe(tx, 'actor-tenant-A')
-                tx.execute(KnowledgeQuery.CORE_CREATE_KB_1, ('actor-tenant-A',))
-                tx.execute(KnowledgeQuery.CORE_CREATE_KB_2, ('actor-tenant-A', 'same-kb', 'A-only', 'owner'))
-                tx.execute(KnowledgeQuery.CORE_CREATE_KB_3,
-                           ('actor-tenant-A', 'same-kb', 'owner', JsonValue(['kb.read'])))
-                self.assertEqual([row['name'] for row in raw.execute('SELECT name FROM knowledge_bases')], ['A-only'])
+                tx.execute(KnowledgeQuery.AUTHORITY_ENSURE, ('actor-tenant-A',))
+                tx.execute(KnowledgeQuery.KB_INSERT, ('actor-tenant-A', 'same-kb', 'A-only', 'owner'))
+                tx.execute(KnowledgeQuery.MEMBER_INSERT,
+                           ('actor-tenant-A', 'same-kb', 'owner', ['kb.read']))
+                self.assertEqual([row['name'] for row in raw.execute('SELECT name FROM knowledge_bases').fetchall()], ['A-only'])
             with self.assertRaisesRegex(RuntimeError, 'synthetic rollback'):
                 with repository.transaction(Actor('actor-tenant-B', 'owner'), 'same-kb') as tx:
                     raw = observe(tx, 'actor-tenant-B')
                     self.assertEqual(raw.execute('SELECT name FROM knowledge_bases').fetchall(), [])
-                    tx.execute(KnowledgeQuery.CORE_CREATE_KB_1, ('actor-tenant-B',))
-                    tx.execute(KnowledgeQuery.CORE_CREATE_KB_2, ('actor-tenant-B', 'same-kb', 'B-rolled-back', 'owner'))
+                    tx.execute(KnowledgeQuery.AUTHORITY_ENSURE, ('actor-tenant-B',))
+                    tx.execute(KnowledgeQuery.KB_INSERT, ('actor-tenant-B', 'same-kb', 'B-rolled-back', 'owner'))
                     raise RuntimeError('synthetic rollback')
             for tenant, expected in (('actor-tenant-A', ['A-only']), ('actor-tenant-B', [])):
                 with repository.transaction(Actor(tenant, 'owner'), 'same-kb') as tx:
                     raw = observe(tx, tenant)
-                    self.assertEqual([row['name'] for row in raw.execute('SELECT name FROM knowledge_bases')], expected)
+                    self.assertEqual([row['name'] for row in raw.execute('SELECT name FROM knowledge_bases').fetchall()], expected)
             with bound.transaction(write=False) as tx:
                 state = tx.execute("SELECT pg_backend_pid() AS pid, current_setting('app.tenant_id',true) AS tenant, "
                                    "current_setting('app.kb_id',true) AS kb").fetchone()
@@ -906,7 +931,7 @@ def run(output, environment=None):
               'planned': {'session_engines': 3, 'cross_engine_clones': 6, 'persistence_engines': 3,
                           'transaction_atomicity_probes': 78, 'nontransactional_schema_rejections': 1,
                           'knowledge_namespaces': 2, 'physical_connection_reuse': 1,
-                          'http_configurations': 2, 'synthetic_evidence_cases': 6, 'browser_cases': 1},
+                          'http_configurations': 3, 'synthetic_evidence_cases': 9, 'browser_cases': 2},
               'backends': {engine: {'host': url.host, 'port': url.port, 'database': url.database}
                            for engine, url in selected.items() if engine != 's3_endpoint'}}
     try:
@@ -914,11 +939,12 @@ def run(output, environment=None):
             from .storage_contract_integration import suite as contract_suite
             from .storage_search_integration import suite as search_contract_suite
             from .storage_object_integration import suite as object_contract_suite
+            from .model_provider_integration import suite as model_provider_suite
 
             suite = unittest.TestSuite((foundation_suite(fixtures), session_suite(fixtures),
                                         knowledge_suite(fixtures), contract_suite(fixtures),
                                         search_contract_suite(fixtures), object_contract_suite(fixtures),
-                                        http_suite(fixtures)))
+                                        http_suite(fixtures), model_provider_suite()))
             planned = tuple(planned_tests(suite))
             write_json(output / 'plan.json', {'test_ids': planned, 'total': len(planned),
                        'new_model_calls_limit': 0, 'new_embedding_calls_limit': 0, 'new_judge_calls_limit': 0})

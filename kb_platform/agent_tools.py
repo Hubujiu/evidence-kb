@@ -109,11 +109,11 @@ class EvidenceGateway:
             rows = []
             if with_bindings:
                 rows = conn.execute(
-                    KnowledgeQuery.AGENT_TOOLS_STATE_1,
+                    KnowledgeQuery.BINDINGS_PROCESSING,
                     (actor.tenant_id, scope_id)).fetchall()
             build = None
             if with_build:
-                build = conn.execute(KnowledgeQuery.AGENT_TOOLS_STATE_2, (actor.tenant_id, scope_id,
+                build = conn.execute(KnowledgeQuery.BUILD_PUBLISHED, (actor.tenant_id, scope_id,
                                                                state['manifest_id'])).fetchone()
                 if not build:
                     raise PlatformError('INVALID_MANIFEST', 'Published index unavailable', 503)
@@ -194,7 +194,7 @@ class EvidenceGateway:
             return {}
         with self.platform._tx(actor, scope_id) as conn:
             self.platform._auth(conn, actor, scope_id)
-            proof = conn.execute(KnowledgeQuery.AGENT_TOOLS_CANONICAL_METADATA_1,
+            proof = conn.execute(KnowledgeQuery.CITATION_CANONICAL,
                 (actor.tenant_id, scope_id, record['citation_id'], record['build_id'], record['source_id'],
                  record['source_version_id'], record['parse_snapshot_id'])).fetchone()
         return canonical_span_metadata(record, proof['document'], proof['element_id']) if proof is not None else {}

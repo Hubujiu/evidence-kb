@@ -1,3 +1,4 @@
+from .knowledge_persistence_contracts import postgres_repository, raw_job_transaction
 from contextlib import closing
 import json
 from pathlib import Path
@@ -242,11 +243,13 @@ def live_contract_suite(dsn):
     class LiveModelEmbeddingReviewContracts(ModelFixtures, unittest.TestCase):
         def setUp(self):
             super().setUp()
+            self.repository, owner = postgres_repository(dsn)
+            self.addCleanup(owner.close)
             self.reset_jobs()
 
         def reset_jobs(self):
             self.scope = ('model-r3-' + uuid4().hex, 'kb', 'build')
-            self.jobs = EmbeddingJobs(dsn, lease_seconds=1, max_attempts=1, circuit_threshold=1)
+            self.jobs = EmbeddingJobs(self.repository, lease_seconds=1, max_attempts=1, circuit_threshold=1)
 
         def audit(self):
             return {**super().audit(), 'tenant_id': self.scope[0], 'kb_id': self.scope[1], 'build_id': self.scope[2]}
@@ -255,14 +258,14 @@ def live_contract_suite(dsn):
             return self.jobs.run(*self.scope, view, [{'text': 'one'}], lambda: True, self.audit())
 
         def expire(self):
-            with self.jobs._tx(*self.scope[:2]) as connection:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as connection:
                 connection.execute("UPDATE embedding_jobs SET lease_until=clock_timestamp()-interval '1 second' "
                     'WHERE tenant_id=%s AND kb_id=%s AND build_id=%s', self.scope)
 
         def check_retry(self, view):
             row = self.jobs.status(*self.scope)[0]
             self.assertEqual((row['status'], row['attempt']), ('RETRY', 0))
-            with self.jobs._tx(*self.scope[:2]) as connection:
+            with raw_job_transaction(self.jobs, *self.scope[:2]) as connection:
                 circuit = connection.execute('SELECT failures,open_until FROM embedding_circuits '
                     'WHERE tenant_id=%s AND kb_id=%s', self.scope[:2]).fetchone()
                 attempts = connection.execute('SELECT status FROM embedding_attempts '

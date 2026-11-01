@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from .knowledge_storage import PostgresRepository as PostgresRepository
+from .knowledge_storage import KnowledgeRepository as KnowledgeRepository
 
 
 class DocumentParser(Protocol):

@@ -243,3 +243,28 @@ class PreparedProtocolContracts(unittest.TestCase):
                                           'file_sha256': {}}), 'utf-8')
             with self.assertRaisesRegex(ValueError, 'UNKNOWN_PREPARED_PROTOCOL'):
                 load_prepared(root)
+
+
+class MountedReadinessContracts(unittest.TestCase):
+    def test_readiness_uses_actual_mounted_repository_and_published_search(self):
+        from unittest.mock import Mock
+        from kb_platform.delivery import _dependency_probe
+        from kb_platform.session_identity import Actor
+
+        actor = Actor('tenant', 'owner')
+        backend = Mock()
+        backend.index_name.return_value = 'published-index'
+        platform = SimpleNamespace(list_kbs=Mock(return_value=[
+            {'kb_id': 'published', 'manifest_id': 'build'}, {'kb_id': 'empty', 'manifest_id': None}]),
+            backend=backend)
+        result = _dependency_probe(platform, actor)
+        self.assertTrue(result['repository']['ready'])
+        self.assertEqual(result['search']['verified_published_generations'], 1)
+        platform.list_kbs.assert_called_once_with(actor)
+        backend.index_name.assert_called_once_with('tenant', 'published', 'build')
+        backend.verify.assert_called_once_with('published-index')
+        backend.verify.side_effect = RuntimeError('mounted backend unavailable')
+        self.assertFalse(_dependency_probe(platform, actor)['search']['ready'])
+        platform.list_kbs.side_effect = RuntimeError('mounted repository unavailable')
+        self.assertEqual(_dependency_probe(platform, actor), {
+            'repository': {'ready': False, 'error': 'RuntimeError'}})

@@ -1,33 +1,13 @@
 from .plugin_host import PluginSpec
-from .plugin_configuration import configured_plugins, config_schema, TEXT, POSITIVE, CONTEXT_PROPERTIES, check_context, file_inputs, environment_inputs
+from .plugin_configuration import configured_plugins, config_schema, TEXT, POSITIVE, CONTEXT_PROPERTIES, check_context
 
 
 def model_plugins(models=None, *, clients=None):
+    from .model_provider_plugins import model_resource_plugins
+
     def service(ctx, config):
-        selected = models
-        borrowed = selected is not None and not config
-        if selected is not None and config:
-
-
-            selected = None
-        if 'providers_config' in config:
-            from .remote import LunaClient
-            from .model_configuration import from_clients
-
-            client = LunaClient(config['providers_config'])
-            ctx.defer(client.close)
-            selected = from_clients(client)
-            ctx.defer(selected.close)
-        if 'config_path' in config:
-            from .model_configuration import from_config
-
-            database = None
-            if 'database_slot' in config:
-                from .storage_plugins import require_storage
-
-                database = require_storage(ctx, config['database_slot'])
-            selected = from_config(config['config_path'], database=database, audit_root=config.get('audit_root'))
-            ctx.defer(selected.close)
+        selected = None if config.get('owned', False) else models
+        borrowed = selected is not None
         if selected is None:
             from .model_service import ModelService
 
@@ -75,33 +55,10 @@ def model_plugins(models=None, *, clients=None):
 
         ctx.provide('ocr', OCRView(ctx.require('models'), config.get('route', 'ocr')))
 
-    def check_service(config):
-        if 'config_path' in config:
-            from .model_configuration import read_model_config
-
-            read_model_config(config['config_path'])
-        if 'providers_config' in config:
-            from .remote import read_provider_config
-
-            read_provider_config(config['providers_config'], 'luna')
-
-    def service_inputs(config):
-        check_service(config)
-        inputs = file_inputs([config[key] for key in ('config_path', 'providers_config') if key in config])
-        if 'config_path' in config:
-            from .model_configuration import read_model_config
-
-            selected = read_model_config(config['config_path'])
-            inputs.update(environment_inputs({value['api_key_env'] for value in selected['providers'].values()}))
-        return inputs
-
     route_properties = {'route': TEXT, 'client': TEXT,
                         'capability': {'enum': ['chat', 'embedding']}}
     schemas = {
-        'models.service': config_schema({'config_path': TEXT, 'providers_config': TEXT,
-            'database_slot': TEXT, 'audit_root': TEXT},
-            allOf=[{'not': {'required': ['config_path', 'providers_config']}},
-                   {'if': {'required': ['database_slot']}, 'then': {'required': ['config_path', 'audit_root']}}]),
+        'models.service': config_schema({'owned': {'type': 'boolean'}}),
         'models.route.client': config_schema(route_properties, required=('route', 'client')),
         'models.route.generation': config_schema(
             {**route_properties, 'capability': {'const': 'chat'}}, required=('route', 'client')),
@@ -111,13 +68,12 @@ def model_plugins(models=None, *, clients=None):
         'models.embedding': config_schema({'route': TEXT, 'dimension': POSITIVE}, required=('dimension',)),
         'models.ocr': config_schema({'route': TEXT}),
     }
-    checks = {'models.service': check_service,
-              'models.structured': lambda config: check_context(config.get('policy', {}))}
-    return configured_plugins((PluginSpec('models.service', ('models',), (), service),
+    checks = {'models.structured': lambda config: check_context(config.get('policy', {}))}
+    return (*configured_plugins((PluginSpec('models.service', ('models',), (), service),
             PluginSpec('models.clients', ('model.clients',), (), borrowed_clients),
             PluginSpec('models.route.client', (), ('models', 'model.clients'), route),
             PluginSpec('models.route.generation', ('models.route.generation',), ('models', 'model.clients'), route),
             PluginSpec('models.route.embedding', ('models.route.embedding',), ('models', 'model.clients'), route),
             PluginSpec('models.structured', ('llm',), ('models',), structured),
             PluginSpec('models.embedding', ('embedding',), ('models',), embedding),
-            PluginSpec('models.ocr', ('ocr',), ('models',), ocr)), schemas, checks, {'models.service': service_inputs})
+            PluginSpec('models.ocr', ('ocr',), ('models',), ocr)), schemas, checks), *model_resource_plugins())
