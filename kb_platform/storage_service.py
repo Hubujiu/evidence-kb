@@ -168,6 +168,11 @@ class BoundStorage:
         bound._consumer_identity = _identity(identity)
         return bound
 
+    def call_json(self, request):
+        from .storage_process import call_json
+
+        return call_json(self, request)
+
     @contextmanager
     def _lease(self, *, include_consumer=True):
         consumer = self._consumer_lease() if include_consumer and self._consumer_lease is not None else nullcontext()

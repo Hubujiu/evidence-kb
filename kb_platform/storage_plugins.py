@@ -1,5 +1,7 @@
 from copy import deepcopy
 from dataclasses import replace
+from hashlib import sha256
+import json
 from types import MappingProxyType
 
 from .plugin_configuration import config_schema, environment_inputs
@@ -105,7 +107,8 @@ def compile_storage_plugins(profile, catalog, configuration, *, provider_catalog
     for name, (provider, config) in instances.items():
         marker = _key('storage.instance', name)
         exports = {service_name: export for service_name, (instance, export) in services.items() if instance == name}
-        additions.append(_instance_plugin(marker, provider, config, exports))
+        additions.append(_instance_plugin(marker, provider, config, exports,
+                                         configuration['instances'][name]['provider']))
         entries.append({'id': marker, 'use': marker})
     mappings = {}
     for consumer, slot, name, space, target in planned:
@@ -127,7 +130,7 @@ def compile_storage_plugins(profile, catalog, configuration, *, provider_catalog
     return selected, tuple((*specs, *additions))
 
 
-def _instance_plugin(marker, provider, definition, exports):
+def _instance_plugin(marker, provider, definition, exports, provider_name):
     def mount(ctx, config):
         try:
             instance = provider.factory(deepcopy(definition))
@@ -154,7 +157,8 @@ def _instance_plugin(marker, provider, definition, exports):
         ctx.provide(marker, MappingProxyType(registrations))
 
     def inputs(config):
-        return environment_inputs(_environment_names(definition))
+        return {**environment_inputs(_environment_names(definition)),
+                'storage.instance': _fingerprint([provider_name, definition, exports])}
 
     return PluginSpec(marker, (marker,), ('storage.registry',), mount,
                       config_schema=config_schema(), config_inputs=inputs)
@@ -185,7 +189,13 @@ def _binding_plugin(key, marker, name, slot, space, target, consumer):
         grant = registry.grant(name, slot.contract, space, consumer, target=target)
         ctx.provide(key, registry.bind(grant, owner_lease=ctx.lease))
 
-    return PluginSpec(key, (key,), ('storage.registry', marker), mount, config_schema=config_schema())
+    def inputs(config):
+        identity = target.dataset_id if isinstance(target, ExistingDataset) else target.cache_id
+        return {'storage.binding': _fingerprint([name, slot.contract.key, space.key,
+                                                type(target).__name__, identity, consumer])}
+
+    return PluginSpec(key, (key,), ('storage.registry', marker), mount,
+                      config_schema=config_schema(), config_inputs=inputs)
 
 
 def _consumer_plugin(spec, key, mapping):
@@ -200,3 +210,8 @@ def _consumer_plugin(spec, key, mapping):
 
 def _key(prefix, *parts):
     return prefix + '.' + '.'.join(part.encode('utf-8').hex() for part in parts)
+
+
+def _fingerprint(value):
+    return sha256(json.dumps(value, sort_keys=True, ensure_ascii=True, allow_nan=False,
+                             separators=(',', ':')).encode()).hexdigest()

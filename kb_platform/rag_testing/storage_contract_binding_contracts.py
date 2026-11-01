@@ -7,6 +7,7 @@ import unittest
 from kb_platform.database_contracts import Migration, SchemaPackage
 from kb_platform.database_providers import SQLiteProvider
 from kb_platform.plugin_host import PluginHost, PluginSpec
+from kb_platform.plugin_native import PluginError
 from kb_platform.storage_adapters.sql import SqlStorageProvider
 from kb_platform.storage_plugins import compile_storage_plugins, require_storage
 from kb_platform.storage_sdk import (
@@ -282,3 +283,43 @@ class StorageContractBindingContracts(unittest.TestCase):
         with PluginHost({'version': 1, 'plugins': [{'id': 'p', 'use': 'private'},
                                                 {'id': 'c', 'use': 'consumer'}]}, specs) as host:
             self.assertEqual(host.service('result'), 7)
+
+    def test_configuration_fingerprints_change_without_exposing_connection_secrets(self):
+        spec = PluginSpec('tasks', (), (), lambda ctx, config: None, storage_slots=(PRIMARY,))
+        profile = {'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]}
+        configuration = _configuration(Path('unused'), 'dataset')
+        first, catalog = compile_storage_plugins(profile, (spec,), configuration, provider_catalog=_provider_catalog())
+        initial = {item.key: item.config_inputs({}) for item in catalog if item.config_inputs is not None}
+        configuration['instances']['main']['config']['root'] = 'private-connection-secret'
+        configuration['bindings']['tasks']['primary']['dataset_id'] = 'another-dataset'
+        changed, catalog = compile_storage_plugins(profile, (spec,), configuration, provider_catalog=_provider_catalog())
+        later = {item.key: item.config_inputs({}) for item in catalog if item.config_inputs is not None}
+        self.assertEqual(first, changed)
+        self.assertTrue(all(initial[key] != later[key] for key in initial))
+        self.assertNotIn('private-connection-secret', str(later))
+        self.assertNotIn('another-dataset', str(later))
+
+    def test_rust_drain_waits_for_complete_transaction_lease(self):
+        with TemporaryDirectory() as directory:
+            initial = SqlStorageProvider(SQLiteProvider(directory))
+            identity = initial.initialize('relational', SpaceKey('independent', 'tasks', 'history'))
+            initial.close()
+            config = _configuration(Path(directory), identity.dataset_id)
+            spec = PluginSpec('tasks', ('tasks',), (), _mount_tasks, storage_slots=(PRIMARY,))
+            profile, catalog = compile_storage_plugins({'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]},
+                (spec,), config, provider_catalog=_provider_catalog())
+            host = PluginHost(profile, catalog)
+            self.addCleanup(host.close)
+            bound = host.service('tasks')
+            registry = host.service('storage.registry')
+            with bound.transaction() as tx:
+                with self.assertRaises(PluginError) as caught:
+                    host.close()
+                self.assertEqual(caught.exception.code, 'scope_busy')
+                self.assertEqual(registry.inspect()['main.sql']['active_calls'], 1)
+                tx.execute("INSERT INTO tasks VALUES('drained','completed before dispose')")
+            host.close()
+            self.assertEqual(host.inspect()['state'], 'disposed')
+            self.assertEqual(registry.catalog(), {})
+            with self.assertRaises(PluginError), bound.transaction():
+                self.fail('drained transaction accepted')
