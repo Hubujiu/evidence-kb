@@ -1,7 +1,59 @@
 from pathlib import Path
+from threading import Lock
 
 from .plugin_host import PluginSpec
 from .plugin_configuration import configured_plugins, config_schema, TEXT, POSITIVE, file_inputs
+
+
+class PostgresKnowledgeRepository:
+    def __init__(self, dsn):
+        self._dsn, self._service, self._repository = dsn, None, None
+        self._lock, self._closed = Lock(), False
+
+    @property
+    def database(self):
+        return self._repository.database if self._repository is not None else None
+
+    @property
+    def identity(self):
+        return self._get().identity
+
+    def _get(self):
+        from .database_providers.postgres import PostgresProvider
+        from .database_service import DatabaseService
+        from .knowledge_storage import DEFAULT_SPACE, KnowledgeRepository
+
+        with self._lock:
+            if self._closed:
+                raise ValueError('KNOWLEDGE_REPOSITORY_CLOSED')
+            if self._repository is None:
+                service = DatabaseService()
+                try:
+                    service.register('knowledge', PostgresProvider(self._dsn, provision=False, schema='public'))
+                    database = service.bind(service.grant('knowledge', DEFAULT_SPACE, 'knowledge-repository'))
+                    database.seal()
+                    self._repository = KnowledgeRepository(database=database, prepare=False)
+                except BaseException:
+                    service.close()
+                    raise
+                self._service = service
+            return self._repository
+
+    def transaction(self, actor, kb_id=None, *, write=True):
+        return self._get().transaction(actor, kb_id, write=write)
+
+    def job_transaction(self, tenant_id, kb_id, *, write=True):
+        return self._get().job_transaction(tenant_id, kb_id, write=write)
+
+    def probe(self):
+        return self._get().probe()
+
+    def close(self):
+        with self._lock:
+            if self._service is not None:
+                self._service.close()
+                self._service = None
+            self._closed = True
 
 
 class OwnedModelClients:
@@ -59,14 +111,14 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
                     manifest=client.manifest, stats=client.snapshot_stats))
 
     def repository(ctx, config):
-        from .platform_ports import PostgresRepository
+        from .platform_ports import KnowledgeRepository
 
         if 'database_slot' in config:
             from .storage_plugins import require_storage
 
-            value = PostgresRepository(database=require_storage(ctx, config['database_slot']))
+            value = KnowledgeRepository(database=require_storage(ctx, config['database_slot']))
         else:
-            value = PostgresRepository(config.get('dsn', settings.dsn))
+            value = PostgresKnowledgeRepository(config.get('dsn', settings.dsn))
         ctx.defer(value.close)
         ctx.provide('platform.repository', value)
 
@@ -107,8 +159,8 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
                 service = PostgresSearch(database=database)
             elif repository_fallback and 'dsn' not in config:
                 selected = ctx.require('platform.repository')
-                service = (PostgresSearch(database=selected.database) if getattr(selected, 'database', None) is not None
-                           else PostgresSearch(selected.dsn))
+                service = (PostgresSearch(database=selected.database) if selected.database is not None
+                           else PostgresSearch(config.get('dsn', settings.dsn)))
             else:
                 service = PostgresSearch(config.get('dsn', settings.dsn))
             ctx.defer(service.close)
@@ -204,6 +256,8 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
         'platform.embedding.client': config_schema({'route': TEXT, 'client': TEXT}),
         'platform.ocr.client': config_schema({'route': TEXT, 'client': TEXT}),
         'platform.repository.postgres': config_schema({'dsn': {'type': 'string'}, 'database_slot': TEXT}),
+        'platform.repository.storage': config_schema({'database_slot': {'const': 'primary'}},
+                                                    required=('database_slot',)),
         'platform.originals.files': config_schema({'root': TEXT}),
         'platform.embedding_jobs': config_schema({key: POSITIVE for key in
             ('lease_seconds', 'max_attempts', 'circuit_threshold', 'circuit_seconds')}),
@@ -214,7 +268,7 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
         'platform.search.opensearch': config_schema({'url': {'type': 'string', 'pattern': '^https?://'}}),
         'platform.research': config_schema({'root': TEXT, 'route': TEXT}),
     }
-    from .storage_sdk import DOCUMENT_V1, LEXICAL_BM25_V1, OBJECT_V1, StorageSlot, VECTOR_V1
+    from .storage_sdk import DOCUMENT_V1, LEXICAL_BM25_V1, OBJECT_V1, RELATIONAL_V1, StorageSlot, VECTOR_V1
 
     schemas['platform.search.source.postgres'] = schemas['platform.repository.postgres']
     checks = {'platform.model_clients.remote': lambda config: client_inputs(config)}
@@ -223,6 +277,8 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
         PluginSpec('platform.embedding.client', ('embedding',), ('models', 'model.clients', 'models.route.embedding'), embedding_client),
         PluginSpec('platform.ocr.client', ('ocr',), ('models', 'model.clients', 'models.route.generation'), ocr_client),
         PluginSpec('platform.repository.postgres', ('platform.repository',), (), repository),
+        PluginSpec('platform.repository.storage', ('platform.repository',), (), repository,
+                   storage_slots=(StorageSlot('primary', RELATIONAL_V1),)),
         PluginSpec('platform.originals.files', ('platform.originals',), (), originals),
         PluginSpec('platform.originals.storage', ('platform.originals',), (), bound_originals,
                    storage_slots=(StorageSlot('objects', OBJECT_V1),)),

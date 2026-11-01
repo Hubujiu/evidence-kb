@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
 import inspect
@@ -6,7 +5,7 @@ import json
 import math
 from uuid import uuid4
 
-from psycopg.types.json import Jsonb
+from .knowledge_queries import KnowledgeQuery
 
 from .embeddings import EmbeddingCallError, EmbeddingError, read_embedding_capture
 from .provider_admission import CapturePreflightError
@@ -78,22 +77,16 @@ def retry_delay(exc, attempt):
 
 
 class EmbeddingJobs:
-    def __init__(self, dsn, *, lease_seconds=300, max_attempts=3,
+    def __init__(self, repository, *, lease_seconds=300, max_attempts=3,
                  circuit_threshold=3, circuit_seconds=60):
         if min(lease_seconds, max_attempts, circuit_threshold, circuit_seconds) < 1:
             raise ValueError('positive job limits required')
-        from .knowledge_storage import PostgresRepository
-
-        self.repository = dsn if isinstance(dsn, PostgresRepository) else PostgresRepository(dsn)
+        self.repository = repository
         self.lease_seconds, self.max_attempts = lease_seconds, max_attempts
         self.circuit_threshold, self.circuit_seconds = circuit_threshold, circuit_seconds
 
-    @contextmanager
     def _tx(self, tenant_id, kb_id):
-        from .database_providers.postgres import pg_transaction
-
-        with pg_transaction(self.repository._database(), tenant_id, kb_id) as conn:
-            yield conn
+        return self.repository.job_transaction(tenant_id, kb_id)
 
     @staticmethod
     def _auth(authorize):
@@ -104,8 +97,7 @@ class EmbeddingJobs:
         manifest = deepcopy(provider.manifest)
         scope = (tenant_id, kb_id, build_id)
         with self._tx(tenant_id, kb_id) as conn:
-            existing = conn.execute('SELECT dependency_hash,payload FROM embedding_jobs WHERE '
-                                    'tenant_id=%s AND kb_id=%s AND build_id=%s', scope).fetchall()
+            existing = conn.execute(KnowledgeQuery.JOBS_INPUTS, scope).fetchall()
             size = existing[0]['payload']['batch_size'] if existing else batch_size(provider)
             if type(size) is not int or size < 1:
                 raise EmbeddingJobError('EMBEDDING_INVALID_BATCH_SIZE')
@@ -116,33 +108,27 @@ class EmbeddingJobs:
                 raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
             for number, start in enumerate(range(0, len(units), size)):
                 batch = {**payload, 'units': units[start:start + size]}
-                conn.execute('INSERT INTO embedding_jobs '
-                             '(tenant_id,kb_id,build_id,batch_no,dependency_hash,provider_hash,payload) '
-                             'VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
-                             (*scope, number, dependency, provider_hash, Jsonb(batch)))
-            current = conn.execute('SELECT dependency_hash FROM embedding_jobs WHERE '
-                                   'tenant_id=%s AND kb_id=%s AND build_id=%s', scope).fetchall()
+                conn.execute(KnowledgeQuery.JOB_INSERT,
+                             (*scope, number, dependency, provider_hash, batch))
+            current = conn.execute(KnowledgeQuery.JOBS_INPUTS, scope).fetchall()
             if any(row['dependency_hash'] != dependency for row in current):
                 raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
-            conn.execute('INSERT INTO embedding_circuits (tenant_id,kb_id,provider_hash) '
-                         'VALUES (%s,%s,%s) ON CONFLICT DO NOTHING', (tenant_id, kb_id, provider_hash))
+            conn.execute(KnowledgeQuery.CIRCUIT_ENSURE, (tenant_id, kb_id, provider_hash))
         return manifest, dependency
 
     def _claim(self, tenant_id, kb_id, build_id, number, dependency):
         scope = (tenant_id, kb_id, build_id, number)
         failure = None
         with self._tx(tenant_id, kb_id) as conn:
-            row = conn.execute('SELECT *, clock_timestamp() AS db_now FROM embedding_jobs WHERE '
-                'tenant_id=%s AND kb_id=%s AND build_id=%s AND batch_no=%s FOR UPDATE', scope).fetchone()
+            row = conn.execute(KnowledgeQuery.JOB_LOCK, scope).fetchone()
+            row['db_now'] = conn.execute(KnowledgeQuery.JOB_CLOCK).fetchone()['db_now']
             if row['dependency_hash'] != dependency:
                 raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
             if row['status'] == 'COMPLETE':
                 return row
             if row['status'] == 'RUNNING' and row['lease_until'] <= row['db_now']:
-                conn.execute("UPDATE embedding_jobs SET status='UNKNOWN',error='LEASE_EXPIRED' WHERE "
-                             'tenant_id=%s AND kb_id=%s AND build_id=%s AND batch_no=%s', scope)
-                conn.execute("UPDATE embedding_attempts SET status='UNKNOWN',diagnostic='LEASE_EXPIRED' "
-                             'WHERE tenant_id=%s AND kb_id=%s AND request_id=%s',
+                conn.execute(KnowledgeQuery.JOB_EXPIRE, scope)
+                conn.execute(KnowledgeQuery.ATTEMPT_EXPIRE,
                              (tenant_id, kb_id, row['request_id']))
                 failure = EmbeddingJobError('EMBEDDING_UNKNOWN')
             elif row['status'] in ('RUNNING', 'UNKNOWN', 'ERROR') and not (
@@ -155,21 +141,16 @@ class EmbeddingJobs:
             elif row['retry_at'] and row['retry_at'] > row['db_now']:
                 failure = EmbeddingJobError('EMBEDDING_RETRY', row['retry_at'])
             else:
-                circuit = conn.execute('SELECT * FROM embedding_circuits WHERE tenant_id=%s '
-                    'AND kb_id=%s AND provider_hash=%s FOR UPDATE',
+                circuit = conn.execute(KnowledgeQuery.CIRCUIT_LOCK,
                     (tenant_id, kb_id, row['provider_hash'])).fetchone()
                 if circuit['open_until'] and circuit['open_until'] > row['db_now']:
                     failure = EmbeddingJobError('EMBEDDING_CIRCUIT_OPEN', circuit['open_until'])
                 else:
                     request_id = 'emb_' + uuid4().hex
                     old_preflight = row['status'] == 'ERROR' and row['error'] in RECOVERABLE_PREFLIGHT
-                    row = conn.execute("UPDATE embedding_jobs SET status='RUNNING',attempt=attempt+1-"
-                        "CASE WHEN %s AND attempt>0 THEN 1 ELSE 0 END,"
-                        "request_id=%s,lease_until=clock_timestamp()+%s * interval '1 second',retry_at=NULL "
-                        'WHERE tenant_id=%s AND kb_id=%s AND build_id=%s AND batch_no=%s RETURNING *',
+                    row = conn.execute(KnowledgeQuery.JOB_CLAIM,
                         (old_preflight, request_id, self.lease_seconds, *scope)).fetchone()
-                    conn.execute('INSERT INTO embedding_attempts '
-                        "(tenant_id,kb_id,build_id,batch_no,request_id,status) VALUES (%s,%s,%s,%s,%s,'RUNNING')",
+                    conn.execute(KnowledgeQuery.ATTEMPT_INSERT,
                         (*scope, request_id))
         if failure:
             raise failure
@@ -189,31 +170,22 @@ class EmbeddingJobs:
             if delay is not None and row['attempt'] < self.max_attempts:
                 status = 'RETRY'
         with self._tx(*scope[:2]) as conn:
-            updated = conn.execute('UPDATE embedding_jobs SET status=%s,vectors=%s,vectors_hash=%s,error=%s,'
-                'attempt=attempt-CASE WHEN %s AND attempt>0 THEN 1 ELSE 0 END,'
-                "retry_at=CASE WHEN %s::double precision IS NULL THEN NULL ELSE clock_timestamp()+%s * interval '1 second' END "
-                'WHERE tenant_id=%s AND kb_id=%s AND build_id=%s AND batch_no=%s '
-                "AND request_id=%s AND status=ANY(%s) AND (%s OR lease_until>=clock_timestamp()) RETURNING retry_at",
-                (status, Jsonb(vectors) if vectors is not None else None,
-                 digest(vectors) if vectors is not None else None, diagnostic,
-                 retry_without_attempt,
-                 delay, delay, *scope, row['request_id'], ['UNKNOWN'] if recovered else
-                 ['RUNNING', 'UNKNOWN'] if retry_without_attempt else ['RUNNING'],
-                 recovered or retry_without_attempt)).fetchone()
+            expected = 'UNKNOWN' if recovered else 'RUNNING'
+            alternate = 'UNKNOWN' if retry_without_attempt else expected
+            updated = conn.execute(KnowledgeQuery.JOB_FINISH,
+                (status, vectors, digest(vectors) if vectors is not None else None, diagnostic,
+                 retry_without_attempt, delay,
+                 *scope, row['request_id'], expected, alternate, recovered or retry_without_attempt)).fetchone()
             if not updated:
                 raise EmbeddingJobError('EMBEDDING_LEASE_LOST')
-            conn.execute('UPDATE embedding_attempts SET status=%s,diagnostic=%s WHERE '
-                         'tenant_id=%s AND kb_id=%s AND request_id=%s',
+            conn.execute(KnowledgeQuery.ATTEMPT_FINISH,
                          ('ERROR' if status == 'RETRY' else status,
                           diagnostic, *scope[:2], row['request_id']))
             if error and not isinstance(error, EmbeddingPreflightError) and not retry_without_attempt:
-                conn.execute('UPDATE embedding_circuits SET failures=failures+1, '
-                    'open_until=CASE WHEN failures+1 >= %s THEN clock_timestamp()+%s * '
-                    "interval '1 second' ELSE open_until END WHERE tenant_id=%s AND kb_id=%s AND provider_hash=%s",
+                conn.execute(KnowledgeQuery.CIRCUIT_FAILURE,
                     (self.circuit_threshold, self.circuit_seconds, *scope[:2], row['provider_hash']))
             elif not error:
-                conn.execute('UPDATE embedding_circuits SET failures=0,open_until=NULL WHERE '
-                    'tenant_id=%s AND kb_id=%s AND provider_hash=%s', (*scope[:2], row['provider_hash']))
+                conn.execute(KnowledgeQuery.CIRCUIT_RESET, (*scope[:2], row['provider_hash']))
         if error:
             raise EmbeddingJobError(diagnostic if isinstance(error, EmbeddingPreflightError) else 'EMBEDDING_' + status,
                                     updated['retry_at']) from error
@@ -250,22 +222,18 @@ class EmbeddingJobs:
 
     def status(self, tenant_id, kb_id, build_id):
         with self._tx(tenant_id, kb_id) as conn:
-            return conn.execute('SELECT batch_no,status,attempt,request_id,lease_until,retry_at,error '
-                'FROM embedding_jobs WHERE tenant_id=%s AND kb_id=%s AND build_id=%s ORDER BY batch_no',
+            return conn.execute(KnowledgeQuery.JOBS_STATUS,
                 (tenant_id, kb_id, build_id)).fetchall()
 
     def reconcile(self, tenant_id, kb_id, build_id, provider, authorize):
 
         self._auth(authorize)
         with self._tx(tenant_id, kb_id) as conn:
-            conn.execute("UPDATE embedding_jobs SET status='UNKNOWN',error='LEASE_EXPIRED' WHERE "
-                "tenant_id=%s AND kb_id=%s AND build_id=%s AND status='RUNNING' AND lease_until<clock_timestamp()",
+            conn.execute(KnowledgeQuery.JOBS_EXPIRE,
                 (tenant_id, kb_id, build_id))
-            rows = conn.execute("SELECT * FROM embedding_jobs WHERE tenant_id=%s AND kb_id=%s "
-                                "AND build_id=%s AND status='UNKNOWN'", (tenant_id, kb_id, build_id)).fetchall()
+            rows = conn.execute(KnowledgeQuery.JOBS_UNKNOWN, (tenant_id, kb_id, build_id)).fetchall()
             for row in rows:
-                conn.execute("UPDATE embedding_attempts SET status='UNKNOWN',diagnostic='LEASE_EXPIRED' "
-                    "WHERE tenant_id=%s AND kb_id=%s AND request_id=%s AND status='RUNNING'",
+                conn.execute(KnowledgeQuery.ATTEMPT_EXPIRE,
                     (tenant_id, kb_id, row['request_id']))
         for row in rows:
             vectors = recovered_vectors(row, provider)

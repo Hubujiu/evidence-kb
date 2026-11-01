@@ -94,7 +94,7 @@ PLUGIN = PluginSpec("example.consumer", (), (), mount, storage_slots=(CACHE,))
 | `storage_catalog.py`、`storage_adapters/` | 提供商装配、合同实现和适配器内部表或索引 |
 | `database_providers/`、`database_migrations.py` | SQL 引擎、账号、事务、迁移锁、版本和内容哈希 |
 | `session_storage/`、`session_store.py` | 会话业务表、迁移与并发规则 |
-| `knowledge_storage.py`、`knowledge_queries.py` | 知识库 schema、受信任查询和 PG 事务身份 |
+| `knowledge_storage.py`、`knowledge_queries.py`、`knowledge_sql.py`、`knowledge_schema.py` | 知识库语义操作、可信事务身份、私有方言与领域迁移 |
 | `persistence_schema.py`、`provider_receipt_database.py` | 缓存索引、预算、请求回执的表结构 |
 
 业务插件拥有领域 schema、逻辑集合、字段和迁移。提供商管理连接、隔离和引擎差异；document、kv、vector 等适配器只管理实现其合同需要的内部结构。提供商不替业务插件定义文档表，也不自动把 PostgreSQL SQL 翻译成 MySQL SQL。
@@ -110,7 +110,7 @@ PLUGIN = PluginSpec("example.consumer", (), (), mount, storage_slots=(CACHE,))
 | 会话 `harness.store.database` | PostgreSQL、MySQL、SQLite | `SessionStore` 唯一拥有 revision、请求指纹、租约和原子完成规则 |
 | StageCache 索引、BudgetLedger、数据库回执 | 三种关系后端 | 使用同一缓存、预算及物理请求实现 |
 | 通用 JSON 文档 | PostgreSQL、SQLite | 按 ID 与 revision 访问，迁移必须保存删除历史 |
-| 完整知识库正文、ACL、构建和任务 | PostgreSQL | RLS、任务锁和受控构建函数仍为 PG 专用 |
+| 完整知识库正文、ACL、构建和任务 | PostgreSQL、SQLite | 同一领域规则；PG 保留 RLS，SQLite 使用封闭作用域操作和写事务；MySQL 领域方言尚未实现 |
 | `platform.search.storage` | BM25、dense、source 分别绑定 | 要求 lexical BM25、vector、document 三个合同 |
 | 原件 `platform.originals.storage` | files、S3 | 对象复制和数据库引用切换分别执行 |
 | `storage.cache.volatile` | 关系索引与 Redis payload | 显式使用可丢失缓存，miss 或断线返回未命中 |
@@ -140,3 +140,9 @@ BM25 与 dense 可以使用同一 PostgreSQL、两个 PostgreSQL 数据库、Pos
 - `ProviderAdmission` 支持数据库与对象注入，`from_directory` 保留不可变历史读取入口。
 
 Embedding 恢复和语义页核验通过账本接口读取物理请求，冻结前序账本保持只读。存储替换不能清零已有实际费用、UNKNOWN 或未决请求。本轮验收使用合成文档、本地模型夹具和固定向量，不新增外部模型、Embedding 或 judge 调用。
+
+## 领域仓储与通用检索边界
+
+`platform.repository.storage` 依赖 relational 合同，知识库自身拥有封闭操作、schema 和方言映射，当前实现 PostgreSQL、SQLite。通用 MySQL SQL/KV 仍可用于会话和其他插件；知识库仓储遇到尚未实现的方言会在挂载时返回 `KNOWLEDGE_SQL_DIALECT_UNAVAILABLE`。能力匹配用于确认接口合同，具体领域实现是否支持目标方言仍必须验证。
+
+PostgreSQL 的通用 vector/lexical 出口使用 `storage_adapters/postgres_search.py` 及独立 schema，记录只包含通用 ID、metadata 和相应通道数据，不要求知识库表或伪造 tenant/kb 字段。vector 只检查 pgvector，lexical 只检查 pg_textsearch。旧 PG 知识库空间的 Migration 1 不能用新搜索 Migration 1 覆盖；应绑定独立搜索空间并显式重建、核验和发布。原有知识库专用 PG 搜索入口继续作为领域实现保留。

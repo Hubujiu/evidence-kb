@@ -9,6 +9,8 @@ from unittest.mock import patch
 from kb_platform.harness_services import builtin_plugins
 from kb_platform.knowledge_profile import knowledge_plugins
 from kb_platform.model_plugins import model_plugins
+from kb_platform.model_provider_plugins import compile_model_plugins
+from kb_platform.model_service import Capability, ModelRequest
 from kb_platform.platform_plugins import platform_plugins
 from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
@@ -150,16 +152,18 @@ class PluginConfigurationContracts(unittest.TestCase):
             path.write_text(json.dumps(value), 'utf-8')
             profile = {'version': 1, 'plugins': [
                 {'id': 'models', 'use': 'models.service', 'config': {'config_path': str(path)}}]}
-            with PluginHost(profile, model_plugins()) as host:
+            profile, catalog = compile_model_plugins(profile, model_plugins())
+            with PluginHost(profile, catalog) as host:
                 before = host.bind('models')
+                old_route = host.service('models').bind('generation', Capability.CHAT)
                 value['models']['generation']['model'] = 'second'
                 path.write_text(json.dumps(value), 'utf-8')
                 host.apply(profile)
-                self.assertNotEqual(host.bind('models').identity, before.identity)
+                self.assertEqual(host.bind('models').identity, before.identity)
                 self.assertEqual(host.service('models').catalog()['generation'].model, 'second')
                 self.assertNotIn('synthetic-private', json.dumps(host.inspect()))
-                with self.assertRaises(PluginError):
-                    before.call('catalog')
+                with self.assertRaisesRegex(RuntimeError, 'MODEL_BINDING_CHANGED'):
+                    old_route.invoke(ModelRequest(Capability.CHAT, {'messages': [{'role': 'user', 'content': 'q'}]}))
 
     def test_changed_credential_reloads_same_file_and_exposes_only_credential_hash(self):
         from hashlib import sha256
@@ -176,14 +180,18 @@ class PluginConfigurationContracts(unittest.TestCase):
             path.write_text(json.dumps(self.model_config(Path(directory))), 'utf-8')
             profile = {'version': 1, 'plugins': [
                 {'id': 'models', 'use': 'models.service', 'config': {'config_path': str(path)}}]}
+            profile, catalog = compile_model_plugins(profile, model_plugins())
             with patch('kb_platform.model_http.OpenAICompatibleAdapter', side_effect=adapter):
-                with PluginHost(profile, model_plugins()) as host:
+                with PluginHost(profile, catalog) as host:
                     before = host.bind('models')
+                    old_route = host.service('models').bind('generation', Capability.CHAT)
                     host.apply(profile)
                     self.assertEqual(host.bind('models').identity, before.identity)
                     os.environ['C1_MODEL_SECRET'] = 'second-private'
                     host.apply(profile)
-                    self.assertNotEqual(host.bind('models').identity, before.identity)
+                    self.assertEqual(host.bind('models').identity, before.identity)
+                    self.assertNotEqual(host.service('models').bind('generation', Capability.CHAT).registration_id,
+                                        old_route.registration_id)
                     self.assertEqual(credentials, ['first-private', 'second-private'])
                     state = json.dumps(host.inspect())
                     self.assertIn('env:C1_MODEL_SECRET', state)

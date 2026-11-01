@@ -4,17 +4,16 @@ from dataclasses import asdict
 from hashlib import sha256
 import unittest
 
+from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
+
 from kb_platform.database_contracts import SpaceKey
-from kb_platform.database_providers import PostgresProvider, SQLiteProvider
-from kb_platform.database_service import DatabaseService
-from kb_platform.knowledge_storage import knowledge_schema
-from kb_platform.postgres_search import PostgresSearch
 from kb_platform.search import SearchUnavailable, content_order
-from kb_platform.search_channels import SearchLexicalAdapter, SearchVectorAdapter
 from kb_platform.search_evidence import DocumentEvidenceSource
 from kb_platform.search_router import SplitSearch
+from kb_platform.storage_catalog import default_storage_providers
 from kb_platform.storage_adapters.values import SqlDocumentStore
-from kb_platform.storage_sdk import ExistingDataset
+from kb_platform.storage_sdk import ExistingDataset, StorageError
 from .product_fixture import Authority
 
 
@@ -29,25 +28,28 @@ class _Database:
 
     def open(self):
         fixtures = self.fixtures
-        if self.identity is None and self.engine != 'dense_postgresql':
-            self.service, self.bound = fixtures.bind(self.engine, self.name, owner=self.owner)
+        if self.engine == 'sqlite':
+            definition = {'root': str(fixtures.resource_root / 'sqlite')}
         else:
-            self.service = DatabaseService()
-            fixtures.services.append(self.service)
-            provider = (SQLiteProvider(fixtures.resource_root / 'sqlite') if self.engine == 'sqlite'
-                        else PostgresProvider(fixtures.selected[self.engine]))
-            self.service.register('search-acceptance', provider)
-            space = (self.identity.space if self.identity is not None
-                     else SpaceKey('storage-acceptance-' + fixtures.run_id, self.owner, self.name))
-            if self.engine != 'sqlite':
-                fixtures.spaces.append((self.engine, 'kb_' + space.digest[:24]))
-            grant = self.service.grant('search-acceptance', space, 'search-integration',
-                expected_dataset_id=None if self.identity is None else self.identity.dataset_id)
-            self.bound = self.service.bind(grant)
+            definition = {'url': fixtures.selected[self.engine]}
+        provider = 'postgresql' if self.engine == 'dense_postgresql' else self.engine
+        self.service = default_storage_providers()[provider].factory(definition)
+        fixtures.services.append(self.service)
+        space = (self.identity.space if self.identity is not None
+                 else SpaceKey('storage-acceptance-' + fixtures.run_id, self.owner, self.name))
+        if self.engine != 'sqlite':
+            fixtures.spaces.append((self.engine, 'kb_' + space.digest[:24]))
+        if self.identity is None:
+            self.identity = self.service.initialize('relational', space)
+        self.bound = self.export('relational')
         if self.identity is not None and self.identity != self.bound.identity:
             raise RuntimeError('Acceptance restart changed the persistent dataset identity')
         self.identity = self.bound.identity
         return self.bound
+
+    def export(self, name):
+        export = next(item for item in self.service.exports() if item.name == name)
+        return export.open_space(self.identity.space, ExistingDataset(self.identity.dataset_id))
 
     def close(self):
         if self.service is not None:
@@ -83,13 +85,8 @@ class _Configuration:
     def open(self):
         from kb_platform.storage_catalog import EmbeddedStorageProvider
 
-        backends = {}
         for resource in dict.fromkeys(self.databases.values()):
-            database = resource.open()
-            if resource is not self.databases['source']:
-                database.prepare(knowledge_schema(database.identity.space.owner_id))
-                database.seal()
-                backends[resource] = PostgresSearch(database=database)
+            resource.open()
         if 'embedded' in self.engines.values():
             self.embedded = EmbeddedStorageProvider({'root': str(self.fixtures.resource_root / self.name / 'embedded')})
             self.fixtures.services.append(self.embedded)
@@ -104,8 +101,7 @@ class _Configuration:
                                                    ExistingDataset(self.embedded_identity.dataset_id))
             else:
                 resource = self.databases[name]
-                adapter = SearchLexicalAdapter if name == 'bm25' else SearchVectorAdapter
-                channels[name] = adapter(backends[resource], identity=resource.identity)
+                channels[name] = resource.export(kind)
         source = DocumentEvidenceSource(SqlDocumentStore(self.databases['source'].bound))
         self.router = SplitSearch(channels['bm25'], channels['dense'], source)
         return self.router
@@ -114,7 +110,7 @@ class _Configuration:
         router = self.router
         return {'name': self.name, 'index': index, 'published': published,
                 'channels': {name: {'engine': self.engines[name], 'dataset': asdict(service.identity),
-                                    'backend': type(service.backend).__name__,
+                                    'backend': type(getattr(service, 'backend', service)).__name__,
                                     'generation': service.verify(router.channel_index(index, name))['generation'],
                                     'physical': (self.databases[name].describe() if name in self.databases
                                                  else {'engine': 'embedded', 'dataset': asdict(service.identity)})}
@@ -139,7 +135,7 @@ def _deny_stage(configuration, channel):
         quote = connection.dialect.identifier_preparer.quote
         role, schema = quote(database.runtime_role), quote(database.schema)
         target = (schema + '.' + quote('kb_storage_documents') if channel == 'source'
-                  else schema + '.' + quote('create_search_generation') + '(text,integer,integer,text)')
+                  else schema + '.' + quote('storage_search_build') + '(text,text,jsonb,integer,text)')
         permission = 'INSERT ON TABLE ' if channel == 'source' else 'EXECUTE ON FUNCTION '
         connection.exec_driver_sql('REVOKE ' + permission + target + ' FROM ' + role)
     try:
@@ -160,6 +156,95 @@ def _authority():
 
 def suite(fixtures):
     class StorageSearchIntegration(unittest.TestCase):
+        def only_extension(self, channel, extension):
+            admin_url = fixtures.selected['postgresql'].set(drivername='postgresql+psycopg', database='postgres')
+            admin = create_engine(admin_url, isolation_level='AUTOCOMMIT')
+            name = 'rust_plugin_acceptance_' + fixtures.run_id[:16] + '_' + channel
+            created, provisioner, provider = False, None, None
+            try:
+                with admin.connect() as connection:
+                    quote = connection.dialect.identifier_preparer.quote
+                    connection.exec_driver_sql('CREATE DATABASE ' + quote(name))
+                created = True
+                url = admin_url.set(database=name)
+                provisioner = create_engine(url)
+                with provisioner.begin() as connection:
+                    connection.exec_driver_sql('CREATE EXTENSION ' + extension + ' WITH SCHEMA public')
+                provider = default_storage_providers()['postgresql'].factory({'url': url})
+                space = SpaceKey('storage-acceptance-' + fixtures.run_id, 'generic-search', channel)
+                identity = provider.initialize('relational', space)
+                exports = {item.name: item for item in provider.exports()}
+                selected = exports[channel].open_space(space, ExistingDataset(identity.dataset_id))
+                records = [
+                    {'id': 'product-denied', 'metadata': {'department': 'restricted'},
+                     **({'vector': [1.0, 0.0]} if channel == 'vector' else
+                        {'text': 'ORCHIDMARKER ORCHIDMARKER ORCHIDMARKER', 'heading': 'ORCHIDMARKER'})},
+                    {'id': 'product-visible', 'metadata': {'department': 'public'},
+                     **({'vector': [0.6, 0.8]} if channel == 'vector' else
+                        {'text': 'ORCHIDMARKER requires owner review.', 'heading': 'Review'})},
+                ]
+                selected.stage('products-v1', records, 2 if channel == 'vector' else None)
+                self.assertEqual(selected.read_records('products-v1'), records)
+                hits = selected.query('products-v1', [1, 0] if channel == 'vector' else 'ORCHIDMARKER', 1,
+                                      filters={'eq': {'department': 'public'}})
+                self.assertEqual([hit['id'] for hit in hits], ['product-visible'])
+                selected.seal('products-v1', 'generic-seal')
+                self.assertTrue(selected.is_sealed('products-v1', 'generic-seal'))
+                with self.assertRaises(SearchUnavailable):
+                    selected.stage('products-v1', records, 2 if channel == 'vector' else None)
+                self.assertTrue(selected.is_sealed('products-v1', 'generic-seal'))
+                with selected.database.transaction(write=False) as tx:
+                    installed = {row['extname'] for row in tx.execute('SELECT extname FROM pg_extension').fetchall()}
+                    tables = {row['tablename'] for row in tx.execute(
+                        'SELECT tablename FROM pg_tables WHERE schemaname=:schema',
+                        {'schema': selected.database.physical_name}).fetchall()}
+                self.assertIn(extension, installed)
+                missing = 'pg_textsearch' if extension == 'vector' else 'vector'
+                self.assertNotIn(missing, installed)
+                self.assertEqual(tables, {'_database_identity', '_database_migrations',
+                                          '_storage_search_generations', selected.verify('products-v1')['generation']})
+                with self.assertRaises(SQLAlchemyError):
+                    with selected.database.transaction(write=True) as tx:
+                        tx.execute('DELETE FROM ' + selected._table('products-v1'))
+                other = 'lexical' if channel == 'vector' else 'vector'
+                with self.assertRaises(StorageError) as raised:
+                    exports[other].open_space(space, ExistingDataset(identity.dataset_id))
+                self.assertEqual(raised.exception.code, 'STORAGE_EXTENSION_REQUIRED')
+                self.assertEqual(raised.exception.details['extension'], missing)
+                with provisioner.begin() as connection:
+                    mutation = "embedding='[0,1]'::public.vector" if channel == 'vector' else "body='corrupt projection'"
+                    connection.exec_driver_sql('UPDATE ' + selected._table('products-v1') + ' SET ' + mutation)
+                with self.assertRaises(SearchUnavailable):
+                    selected.query('products-v1', [1, 0] if channel == 'vector' else 'ORCHIDMARKER', 1)
+                self.assertFalse(selected.is_sealed('products-v1', 'generic-seal'))
+                fixtures.observations.setdefault('generic_search_isolation', []).append({
+                    'channel': channel, 'database': name, 'dataset': asdict(identity),
+                    'installed_extensions': sorted(installed), 'absent_extension': missing,
+                    'tables': sorted(tables), 'ordinary_records_without_knowledge_fields': True,
+                    'filter_before_top_k': True, 'sealed_runtime_write_rejected': True,
+                    'projection_corruption_rejected': True,
+                    'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0})
+            finally:
+                try:
+                    if provider is not None:
+                        provider.close()
+                finally:
+                    try:
+                        if provisioner is not None:
+                            provisioner.dispose()
+                        if created:
+                            with admin.connect() as connection:
+                                quote = connection.dialect.identifier_preparer.quote
+                                connection.exec_driver_sql('DROP DATABASE ' + quote(name) + ' WITH (FORCE)')
+                    finally:
+                        admin.dispose()
+
+        def test_generic_vector_database_has_no_knowledge_tables_or_lexical_extension(self):
+            self.only_extension('vector', 'vector')
+
+        def test_generic_lexical_database_has_no_knowledge_tables_or_vector_extension(self):
+            self.only_extension('lexical', 'pg_textsearch')
+
         def configuration(self, name, lexical, vector, *, shared=False, source='sqlite'):
             selected = _Configuration(fixtures, name, lexical, vector, shared=shared, source=source)
             self.addCleanup(selected.close)

@@ -70,7 +70,7 @@ AGENT_DEPENDENCIES = {
     'harness_application': frozenset({'harness_sessions'}),
     'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles',
                                   'model_plugins', 'storage_catalog', 'storage_plugins', 'storage_sdk',
-                                  'storage_cache_plugins'}),
+                                  'storage_cache_plugins', 'model_provider_plugins'}),
     'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
     'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
@@ -82,6 +82,7 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'plugin_profiles', 'harness_graph', 'harness_context', 'harness_model',
                            'harness_application', 'harness_profile', 'model_service', 'plugin_process',
                            'plugin_configuration', 'host_protocol', 'host_worker'})
+KNOWLEDGE_BUSINESS = frozenset({'core', 'agent_tools', 'semantic_pages_v2', 'embedding_jobs'})
 NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
                        'agent-harness': {'plugin-runtime', 'plugin-host', 'serde', 'serde_json'},
                        'plugin-host': {'serde', 'serde_json', 'libc', 'windows-sys'},
@@ -289,6 +290,14 @@ def architecture_violations(root: Path) -> list[str]:
                 if isinstance(node, ast.Assert):
                     errors.append(f"{relative.as_posix()}:{node.lineno}: use unittest assertions in contracts")
         evaluation = module.startswith("kb_platform.rag_testing.")
+        if not evaluation and path.stem in KNOWLEDGE_BUSINESS:
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == 'execute' and (not node.args
+                        or not isinstance(node.args[0], ast.Attribute)
+                        or not isinstance(node.args[0].value, ast.Name)
+                        or node.args[0].value.id != 'KnowledgeQuery')):
+                    errors.append(f'{relative.as_posix()}:{node.lineno}: knowledge business must use a declared domain operation')
         foundation = module.split(".")[-1] in FOUNDATIONS and evaluation
         shared = module.split(".")[-1] in SHARED and evaluation
         for line, target in imports(tree, module):
@@ -300,7 +309,7 @@ def architecture_violations(root: Path) -> list[str]:
             elif module.startswith('kb_platform.storage_adapters.'):
                 layer = frozenset({'storage_sdk', 'storage_adapters', 'database_contracts',
                                    'database_migrations', 'database_providers', 'database_process',
-                                   'blob_service', 'storage'})
+                                   'blob_service', 'storage', 'search_errors', 'search_tokens'})
             elif module.startswith('kb_platform.database_providers.'):
                 layer = frozenset({'database_contracts', 'database_providers'})
             elif module.startswith('kb_platform.session_storage.'):
@@ -312,6 +321,11 @@ def architecture_violations(root: Path) -> list[str]:
                 reason = 'agent contracts and model policy cannot depend on transport or API frameworks'
             if top in EXCLUDED_IMPORTS:
                 reason = "generated artifacts cannot be runtime dependencies"
+            elif (not evaluation and path.stem in KNOWLEDGE_BUSINESS
+                    and (top in {'psycopg', 'sqlalchemy', 'sqlite3'} or target.startswith(tuple(
+                        'kb_platform.' + name for name in ('database_providers', 'database_service',
+                                                         'knowledge_sql', 'knowledge_schema', 'knowledge_storage'))))):
+                reason = 'knowledge business cannot depend on database drivers or persistence implementations'
             elif (not evaluation or shared) and top == "scripts":
                 reason = "product code cannot import CLI scripts"
             elif (not evaluation or shared) and target.startswith("kb_platform.rag_testing."):

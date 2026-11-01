@@ -74,28 +74,44 @@ def read_model_config(path):
     return config
 
 
-def from_config(path, *, database=None, audit_root=None, admission_factory=None):
-    from .model_http import AnthropicAdapter, OpenAICompatibleAdapter
+def configured_budget(config, *, database=None):
     from .rag_testing.budget import BudgetLedger
 
-    config = read_model_config(path)
     budget = config['budget']
     ledger = (BudgetLedger(Path(budget['path']), budget['caps']) if database is None else
               BudgetLedger(caps=budget['caps'], database=database))
-    if database is not None and Path(budget['path']).exists():
-        from .persistence_migration import validate_ledger_binding
+    try:
+        if database is not None and Path(budget['path']).exists():
+            from .persistence_migration import validate_ledger_binding
 
-        validate_ledger_binding(ledger, Path(budget['path']))
+            validate_ledger_binding(ledger, Path(budget['path']))
+        return ledger
+    except BaseException:
+        ledger.close()
+        raise
+
+
+def configured_adapter(config, name, ledger, *, client=None, audit_root=None, admission_factory=None):
+    from .model_http import AnthropicAdapter, OpenAICompatibleAdapter
+
+    row = config['models'][name]
+    provider = config['providers'][row['provider']]
+    adapters = {'openai-compatible': OpenAICompatibleAdapter, 'anthropic': AnthropicAdapter}
+    return adapters[provider['adapter']](provider=row['provider'], model=row['model'],
+        endpoint=provider['base_url'], api_key=os.environ[provider['api_key_env']],
+        capabilities=row['capabilities'], ledger=ledger, reservation=row['reservation'],
+        timeout=provider.get('timeout_seconds', 120), preferred_batch_size=row.get('batch_size', 1),
+        audit_root=audit_root, admission_factory=admission_factory, client=client)
+
+
+def from_config(path, *, database=None, audit_root=None, admission_factory=None):
+    config = read_model_config(path)
+    ledger = configured_budget(config, database=database)
     service = ModelService()
     try:
-        for name, row in config['models'].items():
-            provider = config['providers'][row['provider']]
-            adapters = {'openai-compatible': OpenAICompatibleAdapter, 'anthropic': AnthropicAdapter}
-            adapter = adapters[provider['adapter']](provider=row['provider'], model=row['model'],
-                endpoint=provider['base_url'], api_key=os.environ[provider['api_key_env']],
-                capabilities=row['capabilities'], ledger=ledger, reservation=row['reservation'],
-                timeout=provider.get('timeout_seconds', 120), preferred_batch_size=row.get('batch_size', 1),
-                audit_root=audit_root, admission_factory=admission_factory)
+        for name in config['models']:
+            adapter = configured_adapter(config, name, ledger, audit_root=audit_root,
+                                         admission_factory=admission_factory)
             try:
                 service.register(name, adapter, owned=True)
             except BaseException:
@@ -104,6 +120,7 @@ def from_config(path, *, database=None, audit_root=None, admission_factory=None)
         return service
     except BaseException:
         service.close()
+        ledger.close()
         raise
 
 

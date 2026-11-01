@@ -36,6 +36,9 @@ def create_agent_application(*, decide=None, model=None, tools=(), profile=None,
     selected = load_agent_profile(profile, environment=environment, bundles=bundles)
     catalog = (*model_plugins(models), *stage_cache_plugins(),
                *builtin_plugins(decide=decide, model=model, tools=tools), *extra_plugins)
+    from .model_provider_plugins import compile_model_plugins
+
+    selected, catalog = compile_model_plugins(selected, catalog)
     environment = os.environ if environment is None else environment
     if environment.get('KB_DATABASES_CONFIG'):
         raise ValueError('LEGACY_STORAGE_CONFIGURATION_REQUIRES_CONVERSION')
@@ -49,7 +52,7 @@ def create_agent_application(*, decide=None, model=None, tools=(), profile=None,
             if row['use'] in ('harness.store.sqlite', 'harness.store.database'):
                 row.update(use='harness.store.database', config={})
                 changes[row['use']] = (StorageSlot('primary', RELATIONAL_V1),)
-            elif row['use'] == 'models.service':
+            elif row['use'] == 'models.budget':
                 row.setdefault('config', {})['database_slot'] = 'budget'
                 changes[row['use']] = (StorageSlot('budget', RELATIONAL_V1),)
         catalog = tuple(replace(spec, storage_slots=changes[spec.key]) if spec.key in changes else spec

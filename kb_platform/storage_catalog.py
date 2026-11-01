@@ -28,15 +28,9 @@ def resolve_inputs(config):
 
 
 def _search(database, kind):
-    from .knowledge_storage import knowledge_schema
-    from .postgres_search import PostgresSearch
-    from .search_channels import SearchLexicalAdapter, SearchVectorAdapter
+    from .storage_adapters.postgres_search import PostgresSearchStore
 
-    database.prepare(knowledge_schema(database.identity.space.owner_id))
-    database.seal()
-    backend = PostgresSearch(database=database)
-    adapter = SearchVectorAdapter if kind == 'vector' else SearchLexicalAdapter
-    return adapter(backend, identity=database.identity)
+    return PostgresSearchStore(database, kind)
 
 
 def _sql(config, engine):

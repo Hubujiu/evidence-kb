@@ -162,6 +162,89 @@ fn init_actions_publish_only_declared_completed_services_and_cleanup_reverses_de
 }
 
 #[test]
+fn initialization_lease_requires_current_owner_and_cannot_admit_calls_after_completion() {
+    let mut runtime = Coordinator::default();
+    let host = create(
+        &mut runtime,
+        vec![
+            plugin("dependency", &["database"], &[]),
+            plugin("consumer", &["ready"], &["database"]),
+        ],
+        None,
+    );
+    let dependency = poll(&mut runtime, host).remove(0);
+    complete(&mut runtime, &dependency, "ok", &["database"]);
+    let consumer = poll(&mut runtime, host).remove(0);
+    let base =
+        json!({"host":host,"instance":consumer["instance"],"generation":consumer["generation"]});
+    assert_eq!(
+        request(&mut runtime, "acquire", base.clone())
+            .unwrap_err()
+            .code,
+        "service_inactive"
+    );
+    for fields in [
+        json!({"host":host,"initialization":consumer["operation"]}),
+        json!({"host":host,"instance":dependency["instance"],"generation":dependency["generation"],
+            "initialization":consumer["operation"]}),
+        json!({"host":host,"instance":consumer["instance"],"generation":consumer["generation"],
+            "initialization":u64::MAX}),
+    ] {
+        assert_eq!(
+            request(&mut runtime, "acquire", fields).unwrap_err().code,
+            "invalid_initialization"
+        );
+    }
+    let mut fields = base.clone();
+    fields["initialization"] = consumer["operation"].clone();
+    let lease = request(&mut runtime, "acquire", fields.clone()).unwrap()["lease"].clone();
+    let child = request(
+        &mut runtime,
+        "acquire",
+        json!({"host":host,"instance":dependency["instance"],
+        "generation":dependency["generation"],"parent_lease":lease}),
+    )
+    .unwrap()["lease"]
+        .clone();
+    assert_eq!(
+        request(
+            &mut runtime,
+            "resolve",
+            json!({"host":host,"service":"ready"})
+        )
+        .unwrap_err()
+        .code,
+        "service_inactive"
+    );
+    complete(&mut runtime, &consumer, "error", &[]);
+    assert_eq!(
+        request(&mut runtime, "acquire", fields).unwrap_err().code,
+        "invalid_initialization"
+    );
+    assert_eq!(
+        request(
+            &mut runtime,
+            "acquire",
+            json!({"host":host,"instance":dependency["instance"],
+        "generation":dependency["generation"],"parent_lease":child})
+        )
+        .unwrap_err()
+        .code,
+        "initialization_closed"
+    );
+    request(&mut runtime, "release", json!({"host":host,"lease":child})).unwrap();
+    request(&mut runtime, "release", json!({"host":host,"lease":lease})).unwrap();
+    assert_eq!(inspect(&mut runtime, host)["leases"], 0);
+    assert_eq!(
+        finish_cleanup(&mut runtime, host),
+        vec![("consumer".into(), 0)]
+    );
+    request(&mut runtime, "drain", json!({"host":host})).unwrap();
+    finish_cleanup(&mut runtime, host);
+    assert_eq!(inspect(&mut runtime, host)["state"], "disposed");
+}
+
+#[test]
 fn partial_initialization_failure_owns_resources_and_retry_never_repeats_successful_cleanup() {
     let mut runtime = Coordinator::default();
     let host = create(&mut runtime, vec![plugin("p", &["service"], &[])], None);

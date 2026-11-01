@@ -229,49 +229,23 @@ def validate_semantic_runtime(config_path, *, provider_factory=None):
             provider.close()
 
 
-def _dependency_probe(settings):
-
-    import httpx
-    import psycopg
-
+def _dependency_probe(platform, actor):
     result = {}
     try:
-        with psycopg.connect(settings.dsn, connect_timeout=2, options='-c statement_timeout=2000') as connection:
-            connection.execute('SELECT 1').fetchone()
-        result['postgres'] = {'ready': True}
+        scopes = platform.list_kbs(actor)
+        result['repository'] = {'ready': True, 'visible_scopes': len(scopes)}
     except Exception as exc:
-        result['postgres'] = {'ready': False, 'error': type(exc).__name__}
-    if settings.search_backend == 'postgres':
-        try:
-            with psycopg.connect(settings.dsn, connect_timeout=2, options='-c statement_timeout=2000') as connection:
-                versions = dict(connection.execute("SELECT extname,extversion FROM pg_extension WHERE extname IN ('vector','pg_textsearch')"))
-                connection.execute('SELECT index_name FROM search_generations LIMIT 0')
-            result['search'] = {'ready': versions == {'vector': '0.8.6', 'pg_textsearch': '1.5.1'},
-                                'backend': 'postgres-bm25-exact-vector', 'extensions': versions}
-        except Exception as exc:
-            result['search'] = {'ready': False, 'error': type(exc).__name__}
-        return result
-    if settings.search_backend == 'embedded':
-        try:
-            from .embedded_search import EmbeddedSearch
-            backend = EmbeddedSearch(settings.storage_root / '.search-indexes')
-            indexes = list(backend.root.glob('kb-*'))
-            for index in indexes:
-                backend.verify(index.name)
-            result['search'] = {'ready': backend.root.parent.is_dir(), 'backend': 'tantivy-exact-vector',
-                                'verified_indexes': len(indexes)}
-        except Exception as exc:
-            result['search'] = {'ready': False, 'error': type(exc).__name__}
-        return result
+        return {'repository': {'ready': False, 'error': type(exc).__name__}}
     try:
-        with httpx.Client(timeout=2, trust_env=False) as client:
-            response = client.get(settings.search_url.rstrip('/') + '/_cluster/health')
-            response.raise_for_status()
-            cluster = response.json()
-        result['opensearch'] = {'ready': cluster.get('status') in ('green', 'yellow'),
-                                'cluster_status': cluster.get('status')}
+        checked = 0
+        for scope in scopes:
+            if scope['manifest_id'] is not None:
+                index = platform.backend.index_name(actor.tenant_id, scope['kb_id'], scope['manifest_id'])
+                platform.backend.verify(index)
+                checked += 1
+        result['search'] = {'ready': True, 'verified_published_generations': checked}
     except Exception as exc:
-        result['opensearch'] = {'ready': False, 'error': type(exc).__name__}
+        result['search'] = {'ready': False, 'error': type(exc).__name__}
     return result
 
 
@@ -423,10 +397,10 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
 
     def readiness(actor):
         require_delivery_actor(actor)
-        dependencies = (dependency_probe or _dependency_probe)(settings)
+        dependencies = dependency_probe(settings) if dependency_probe else _dependency_probe(platform, actor)
         return {'ready': bool(dependencies) and all(value['ready'] for value in dependencies.values()),
                 'dependencies': dependencies, 'process_alive': True, 'model_calls': 0,
-                'scope': 'Dependency connectivity only; published per-scope channels and answer quality not asserted'}
+                'scope': 'Mounted repository and visible published generations; empty search backends and answer quality not asserted'}
 
     app.state.delivery_status, app.state.delivery_readiness = status, readiness
 

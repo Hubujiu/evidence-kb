@@ -174,8 +174,10 @@ class PluginContext:
         if call_authority is not None and (authority is None
                 or (authority.operation or authority.parent_operation) != call_authority.operation):
             authority = call_authority
+        initialization = (self.identity['operation'] if not self._sealed
+            and _executing.get() == (self.host.runtime_id, self.identity['operation']) else None)
         acquired = native_call('runtime_acquire', host=self.host.id, instance=self.identity['instance'],
-            generation=self.identity['generation'],
+            generation=self.identity['generation'], initialization=initialization,
             parent_lease=parent_lease if parent_lease is not None else authority.identity if authority else None)
         lease = _Lease(acquired['lease'], current_thread(),
             parent_operation=(authority.operation or authority.parent_operation) if authority else None)

@@ -7,7 +7,6 @@ import math
 from pathlib import Path
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
-from .knowledge_queries import JsonValue as Jsonb
 
 from .session_identity import Actor as Actor, PlatformError as PlatformError
 
@@ -43,7 +42,6 @@ class Platform:
     def __init__(self, *, repository, search, store, parser, embedding_jobs,
                  embedding_provider=None, ocr_client=None):
         self.repository = repository
-        self.dsn = repository.dsn
         self.backend, self.store, self.parser = search, store, parser
         self.embedding_jobs = embedding_jobs
         self.embedding_provider, self.ocr_client = embedding_provider, ocr_client
@@ -54,34 +52,34 @@ class Platform:
     def _auth(self, conn, actor: Actor, kb_id: str, capability='kb.read') -> dict:
         if not kb_id:
             _deny()
-        row = conn.execute(KnowledgeQuery.CORE_AUTH_1,
+        row = conn.execute(KnowledgeQuery.KB_MEMBERSHIP,
                            (actor.tenant_id, kb_id, actor.principal_id)).fetchone()
         if not row or capability not in row['capabilities']:
             _deny()
         return row
 
     def _lock_authority(self, conn, actor: Actor) -> int:
-        row = conn.execute(KnowledgeQuery.CORE_LOCK_AUTHORITY_1,
+        row = conn.execute(KnowledgeQuery.AUTHORITY_LOCK,
                            (actor.tenant_id,)).fetchone()
         if not row:
             _deny()
         return row['revision']
 
     def _revision(self, conn, actor: Actor) -> int:
-        row = conn.execute(KnowledgeQuery.CORE_REVISION_1,
+        row = conn.execute(KnowledgeQuery.AUTHORITY_REVISION,
                            (actor.tenant_id,)).fetchone()
         if not row:
             _deny()
         return row['revision']
 
     def _bump(self, conn, actor: Actor, kb_id: str | None = None):
-        conn.execute(KnowledgeQuery.CORE_BUMP_1, (actor.tenant_id,))
+        conn.execute(KnowledgeQuery.AUTHORITY_BUMP, (actor.tenant_id,))
         if kb_id:
-            conn.execute(KnowledgeQuery.CORE_BUMP_2,
+            conn.execute(KnowledgeQuery.KB_BUMP,
                          (actor.tenant_id, kb_id))
 
     def _source(self, conn, actor: Actor, source_id: str, owner=False) -> dict:
-        row = conn.execute(KnowledgeQuery.CORE_SOURCE_1,
+        row = conn.execute(KnowledgeQuery.SOURCE_GET,
                            (actor.tenant_id, source_id)).fetchone()
         if not row or (row['owner_id'] != actor.principal_id and
                        (owner or actor.principal_id not in row['readers'])):
@@ -93,19 +91,19 @@ class Platform:
             raise PlatformError('INVALID_NAME', 'Knowledge base name is required')
         kb_id = str(uuid4())
         with self._tx(actor, kb_id) as conn:
-            conn.execute(KnowledgeQuery.CORE_CREATE_KB_1,
+            conn.execute(KnowledgeQuery.AUTHORITY_ENSURE,
                          (actor.tenant_id,))
             self._lock_authority(conn, actor)
-            conn.execute(KnowledgeQuery.CORE_CREATE_KB_2,
+            conn.execute(KnowledgeQuery.KB_INSERT,
                          (actor.tenant_id, kb_id, name, actor.principal_id))
-            conn.execute(KnowledgeQuery.CORE_CREATE_KB_3,
-                         (actor.tenant_id, kb_id, actor.principal_id, Jsonb(sorted(CAPABILITIES))))
+            conn.execute(KnowledgeQuery.MEMBER_INSERT,
+                         (actor.tenant_id, kb_id, actor.principal_id, sorted(CAPABILITIES)))
             self._bump(conn, actor)
         return {'kb_id': kb_id, 'name': name, 'tenant_id': actor.tenant_id, 'manifest_id': None}
 
     def list_kbs(self, actor: Actor) -> list[dict]:
         with self._tx(actor) as conn:
-            return conn.execute(KnowledgeQuery.CORE_LIST_KBS_1,
+            return conn.execute(KnowledgeQuery.KBS_VISIBLE,
                                 (actor.tenant_id, actor.principal_id)).fetchall()
 
     def set_member(self, actor: Actor, kb_id: str, principal_id: str, capabilities: list[str]) -> dict:
@@ -114,7 +112,7 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             kb = self._auth(conn, actor, kb_id, 'kb.manage_members')
-            previous = conn.execute(KnowledgeQuery.CORE_SET_MEMBER_2, (actor.tenant_id, kb_id, principal_id)).fetchone()
+            previous = conn.execute(KnowledgeQuery.MEMBER_GET, (actor.tenant_id, kb_id, principal_id)).fetchone()
             management = {'kb.manage', 'kb.manage_members', 'kb.manage_managers', 'kb.delete'}
             affected = set(capabilities) | set(previous['capabilities'] if previous else [])
             if (not set(capabilities).issubset(kb['capabilities']) or
@@ -122,8 +120,8 @@ class Platform:
                 _deny()
             if principal_id == kb['owner_id'] and set(capabilities) != CAPABILITIES:
                 raise PlatformError('OWNER_REQUIRED', 'Owner capabilities cannot be removed', 409)
-            conn.execute(KnowledgeQuery.CORE_SET_MEMBER_1,
-                         (actor.tenant_id, kb_id, principal_id, Jsonb(sorted(set(capabilities)))))
+            conn.execute(KnowledgeQuery.MEMBER_UPSERT,
+                         (actor.tenant_id, kb_id, principal_id, sorted(set(capabilities))))
             self._bump(conn, actor, kb_id)
         return {'principal_id': principal_id, 'capabilities': sorted(set(capabilities))}
 
@@ -164,21 +162,21 @@ class Platform:
                 if current['revision'] != existing['revision']:
                     raise PlatformError('STALE_PARSE', 'Source policy changed during parsing', 409)
                 effective_readers = readers if readers is not None else current['readers']
-                conn.execute(KnowledgeQuery.CORE_INGEST_3,
-                             (Jsonb(effective_readers), Jsonb(parse_policy), actor.tenant_id, source_id))
+                conn.execute(KnowledgeQuery.SOURCE_UPDATE,
+                             (effective_readers, parse_policy, actor.tenant_id, source_id))
             else:
-                conn.execute(KnowledgeQuery.CORE_INGEST_4,
-                             (actor.tenant_id, source_id, actor.principal_id, Jsonb(readers or []), Jsonb(parse_policy)))
-            conn.execute(KnowledgeQuery.CORE_INGEST_1,
+                conn.execute(KnowledgeQuery.SOURCE_INSERT,
+                             (actor.tenant_id, source_id, actor.principal_id, readers or [], parse_policy))
+            conn.execute(KnowledgeQuery.SOURCE_VERSION_INSERT,
                          (actor.tenant_id, source_id, digest, filename, path, digest, document['media_type']))
-            conn.execute(KnowledgeQuery.CORE_INGEST_2,
-                         (actor.tenant_id, source_id, digest, document['parse_snapshot_id'], Jsonb(document)))
+            conn.execute(KnowledgeQuery.PARSE_INSERT,
+                         (actor.tenant_id, source_id, digest, document['parse_snapshot_id'], document))
             binding = self._bind(conn, actor, kb_id, source_id, digest, document['parse_snapshot_id'])
             self._bump(conn, actor, kb_id)
         return {**binding, 'document': document}
 
     def _bind(self, conn, actor, kb_id, source_id, source_version_id, parse_id):
-        row = conn.execute(KnowledgeQuery.CORE_BIND_1,
+        row = conn.execute(KnowledgeQuery.BINDING_UPSERT,
                            (actor.tenant_id, kb_id, str(uuid4()), source_id, source_version_id, parse_id)).fetchone()
         return row
 
@@ -187,7 +185,7 @@ class Platform:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id, 'kb.write')
             self._source(conn, actor, source_id, owner=True)
-            snapshot = conn.execute(KnowledgeQuery.CORE_BIND_SOURCE_1,
+            snapshot = conn.execute(KnowledgeQuery.PARSE_FIRST,
                                     (actor.tenant_id, source_id, source_version_id)).fetchone()
             if not snapshot:
                 _deny()
@@ -199,7 +197,7 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id, 'kb.write')
-            row = conn.execute(KnowledgeQuery.CORE_REMOVE_BINDING_1,
+            row = conn.execute(KnowledgeQuery.BINDING_REMOVE,
                                (actor.tenant_id, kb_id, binding_id)).fetchone()
             if not row:
                 _deny()
@@ -212,8 +210,8 @@ class Platform:
         with self._tx(actor) as conn:
             self._lock_authority(conn, actor)
             self._source(conn, actor, source_id, owner=True)
-            conn.execute(KnowledgeQuery.CORE_SET_SOURCE_READERS_1,
-                         (Jsonb(sorted(set(readers))), actor.tenant_id, source_id))
+            conn.execute(KnowledgeQuery.SOURCE_READERS_UPDATE,
+                         (sorted(set(readers)), actor.tenant_id, source_id))
             self._bump(conn, actor)
         return {'source_id': source_id, 'readers': sorted(set(readers))}
 
@@ -222,13 +220,13 @@ class Platform:
         with self._tx(actor) as conn:
             self._lock_authority(conn, actor)
             self._source(conn, actor, source_id, owner=True)
-            conn.execute(KnowledgeQuery.CORE_SET_SOURCE_POLICY_1,
-                         (Jsonb(policy), actor.tenant_id, source_id))
+            conn.execute(KnowledgeQuery.SOURCE_POLICY_UPDATE,
+                         (policy, actor.tenant_id, source_id))
             self._bump(conn, actor)
         return {'source_id': source_id, 'policy': policy}
 
     def _bindings(self, conn, actor, kb_id):
-        return conn.execute(KnowledgeQuery.CORE_BINDINGS_1,
+        return conn.execute(KnowledgeQuery.BINDINGS_ACTIVE,
                             (actor.tenant_id, kb_id)).fetchall()
 
     def _allowed(self, rows, actor, purpose):
@@ -292,11 +290,11 @@ class Platform:
                       'excluded_vector_source_ids': sorted({row['source_id'] for row in rows} - vector_sources)
                       if model_enabled else [],
                       'model_admission': 'EXPERIMENTAL' if model_enabled else 'NOT_ENABLED'}
-            conn.execute(KnowledgeQuery.CORE_STAGE_1,
+            conn.execute(KnowledgeQuery.BUILD_INSERT,
                          (actor.tenant_id, kb_id, build_id, kb['manifest_id'], authority_revision,
-                          kb['revision'], index, Jsonb(config), len(units)))
+                          kb['revision'], index, config, len(units)))
             for citation in citations:
-                conn.execute(KnowledgeQuery.CORE_STAGE_3, citation)
+                conn.execute(KnowledgeQuery.CITATION_INSERT, citation)
         if getattr(self.backend, 'supports_resume_build', type(self.backend).__name__ == 'PostgresSearch'):
             return self.resume_build(actor, kb_id, build_id)
         try:
@@ -314,7 +312,7 @@ class Platform:
                 self.backend.stage(index, units)
         except (SearchUnavailable, EmbeddingError, PlatformError) as exc:
             with self._tx(actor, kb_id) as conn:
-                conn.execute(KnowledgeQuery.CORE_STAGE_4,
+                conn.execute(KnowledgeQuery.BUILD_FAIL,
                              (actor.tenant_id, kb_id, build_id))
             if isinstance(exc, PlatformError):
                 raise
@@ -322,7 +320,7 @@ class Platform:
                 raise PlatformError('EMBEDDING_FAILED', str(exc), 422) from exc
             raise PlatformError('SEARCH_UNAVAILABLE', str(exc), 503) from exc
         with self._tx(actor, kb_id) as conn:
-            conn.execute(KnowledgeQuery.CORE_STAGE_2,
+            conn.execute(KnowledgeQuery.BUILD_VALIDATE,
                          (actor.tenant_id, kb_id, build_id))
         return {'build_id': build_id, 'kb_id': kb_id, 'status': 'VALIDATED', 'unit_count': len(units),
                 'channels': channels, 'expected_manifest_id': kb['manifest_id'],
@@ -337,7 +335,7 @@ class Platform:
     def build_status(self, actor, kb_id, build_id):
         with self._tx(actor, kb_id) as conn:
             self._auth(conn, actor, kb_id, 'kb.manage')
-            row = conn.execute(KnowledgeQuery.CORE_BUILD_STATUS_1,
+            row = conn.execute(KnowledgeQuery.BUILD_STATUS,
                                (actor.tenant_id, kb_id, build_id)).fetchone()
             if row is None:
                 _deny()
@@ -353,7 +351,7 @@ class Platform:
             revision = self._lock_authority(conn, actor)
             kb = self._auth(conn, actor, kb_id, 'kb.manage')
             self._auth(conn, actor, kb_id, 'kb.read')
-            build = conn.execute(KnowledgeQuery.CORE_RESUME_BUILD_2,
+            build = conn.execute(KnowledgeQuery.BUILD_GET,
                                  (actor.tenant_id, kb_id, build_id)).fetchone()
             if build is None:
                 _deny()
@@ -379,8 +377,8 @@ class Platform:
             units, generated = self._units(actor, kb_id, build_id, rows)
             fields = ('tenant_id', 'kb_id', 'citation_id', 'build_id', 'binding_id', 'source_id',
                       'source_version_id', 'parse_snapshot_id', 'element_id', 'text', 'evidence_ids', 'anchors', 'table_data')
-            expected = {r[2]: dict(zip(fields, [v.obj if isinstance(v, Jsonb) else v for v in r], strict=True)) for r in generated}
-            stored = conn.execute(KnowledgeQuery.CORE_RESUME_BUILD_3,
+            expected = {r[2]: dict(zip(fields, r, strict=True)) for r in generated}
+            stored = conn.execute(KnowledgeQuery.CITATIONS_FOR_BUILD,
                                   (actor.tenant_id, kb_id, build_id)).fetchall()
             if len(units) != build['unit_count'] or expected != {r['citation_id']: r for r in stored}:
                 raise PlatformError('STALE_BUILD', 'Regenerated units differ from committed evidence', 409)
@@ -434,7 +432,7 @@ class Platform:
             current = self._auth(conn, actor, kb_id, 'kb.manage')
             if current['revision'] != build['kb_revision'] or current['manifest_id'] != build['expected_manifest_id']:
                 raise PlatformError('STALE_BUILD', 'Knowledge base changed before validation', 409)
-            conn.execute(KnowledgeQuery.CORE_RESUME_BUILD_1,
+            conn.execute(KnowledgeQuery.BUILD_VALIDATE_STAGED,
                          (actor.tenant_id, kb_id, build_id))
         return {'build_id': build_id, 'kb_id': kb_id, 'status': 'VALIDATED', 'unit_count': len(units),
                 'channels': config['channels'], 'expected_manifest_id': build['expected_manifest_id']}
@@ -474,14 +472,14 @@ class Platform:
                 units.append(unit)
                 citations.append((actor.tenant_id, kb_id, unit_id, build_id, row['binding_id'], row['source_id'],
                                   row['source_version_id'], row['parse_snapshot_id'], element['element_id'], text,
-                                  Jsonb(evidence_ids), Jsonb(unit_anchors), Jsonb(element.get('table'))))
+                                  evidence_ids, unit_anchors, element.get('table')))
         return units, citations
 
     def publish(self, actor, kb_id, build_id):
         with self._tx(actor, kb_id) as conn:
             authority_revision = self._lock_authority(conn, actor)
             kb = self._auth(conn, actor, kb_id, 'kb.manage')
-            build = conn.execute(KnowledgeQuery.CORE_PUBLISH_3,
+            build = conn.execute(KnowledgeQuery.BUILD_LOCK,
                                  (actor.tenant_id, kb_id, build_id)).fetchone()
             if not build:
                 _deny()
@@ -492,9 +490,9 @@ class Platform:
             if (build['expected_manifest_id'] != kb['manifest_id'] or
                 build['authority_revision'] != authority_revision or build['kb_revision'] != kb['revision']):
                 raise PlatformError('STALE_BUILD', 'Build inputs or authorization changed', 409)
-            conn.execute(KnowledgeQuery.CORE_PUBLISH_1,
+            conn.execute(KnowledgeQuery.MANIFEST_UPDATE,
                          (build_id, actor.tenant_id, kb_id))
-            conn.execute(KnowledgeQuery.CORE_PUBLISH_2,
+            conn.execute(KnowledgeQuery.BUILD_PUBLISH,
                          (actor.tenant_id, kb_id, build_id))
         return {'kb_id': kb_id, 'manifest_id': build_id, 'status': 'PUBLISHED', 'idempotent': False}
 
@@ -509,7 +507,7 @@ class Platform:
             allowed = self._allowed(self._bindings(conn, actor, kb_id), actor, purpose)
             if not kb['manifest_id']:
                 raise PlatformError('NO_PUBLISHED_MANIFEST', 'Knowledge base has no published index', 409)
-            build = conn.execute(KnowledgeQuery.CORE_SEARCH_1, (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
+            build = conn.execute(KnowledgeQuery.BUILD_PUBLISHED, (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
             if not build:
                 raise PlatformError('INVALID_MANIFEST', 'Published index unavailable', 503)
             config = build['inputs']
@@ -574,7 +572,7 @@ class Platform:
                     (hit.get('binding_id'), hit.get('source_id'), hit.get('source_version_id'), hit.get('parse_snapshot_id'))
                     not in allowed_keys):
                     raise PlatformError('INDEX_SCOPE_VIOLATION', 'Index scope validation failed', 503)
-                record = conn.execute(KnowledgeQuery.CORE_SEARCH_2, (actor.tenant_id, kb_id, hit.get('citation_id'),
+                record = conn.execute(KnowledgeQuery.CITATION_GET, (actor.tenant_id, kb_id, hit.get('citation_id'),
                                                          build['build_id'])).fetchone()
                 keys = ('source_id', 'binding_id', 'source_version_id', 'parse_snapshot_id',
                         'text', 'evidence_ids', 'anchors')
@@ -615,7 +613,7 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id)
-            row = conn.execute(KnowledgeQuery.CORE_RESOLVE_CITATION_1,
+            row = conn.execute(KnowledgeQuery.CITATION_RESOLVE,
                                (actor.tenant_id, kb_id, citation_id)).fetchone()
             if not row or not self._allowed([row], actor, purpose):
                 _deny()

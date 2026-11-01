@@ -1,0 +1,2 @@
+class SearchUnavailable(RuntimeError):
+    pass

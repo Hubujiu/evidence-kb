@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+from kb_platform.knowledge_queries import KnowledgeQuery
 from contextlib import closing, contextmanager
 import json
 from pathlib import Path
@@ -33,7 +35,9 @@ class LedgerRaceContracts(unittest.TestCase):
             statements = []
 
             class Port:
-                def execute(self, query, parameters):
+                def execute(self, query, parameters=()):
+                    if query == KnowledgeQuery.JOB_CLOCK:
+                        return SimpleNamespace(fetchone=lambda: {'db_now': datetime.now(timezone.utc)})
                     statements.append((query, parameters))
                     return SimpleNamespace(fetchone=lambda: {'retry_at': None})
 
@@ -51,7 +55,7 @@ class LedgerRaceContracts(unittest.TestCase):
             self.assertIs(update[4], True)
             self.assertEqual(finished.exception.code, 'EMBEDDING_LEDGER_BLOCKED')
             self.assertEqual(statements[1][1][:2], ('ERROR', 'EMBEDDING_LEDGER_BLOCKED'))
-            self.assertFalse(any('failures=failures+1' in query for query, _ in statements))
+            self.assertFalse(any(query == KnowledgeQuery.CIRCUIT_FAILURE for query, _ in statements))
 
     def test_google_atomic_admission_never_hides_existing_physical_evidence(self):
         for evidence in ('capture', 'physical-record'):

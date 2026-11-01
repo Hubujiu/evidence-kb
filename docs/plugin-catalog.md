@@ -2,15 +2,15 @@
 
 本文件由 `uv run --no-sync python -m scripts.generate_plugin_catalog --output docs/plugin-catalog.md` 生成。
 
-当前共有 70 个静态内置实现键。统计只构造 PluginSpec，不挂载宿主、不连接后端、不调用模型。
+当前共有 72 个静态内置实现键。统计只构造 PluginSpec，不挂载宿主、不连接后端、不调用模型。
 
-实例、授权绑定和消费方包装按配置动态生成；外部安装的进程插件另计。公共服务可选，第三方可以自建服务和适配器。
+模型提供商实例、存储实例、授权绑定和消费方包装按配置动态生成；外部安装的进程插件另计。公共服务可选，第三方可以自建服务和适配器。
 
 | 类别 | 数量 | 源码 |
 | --- | ---: | --- |
 | 通用 Agent | 16 | [harness_services.py](../kb_platform/harness_services.py) |
-| 公共模型服务 | 8 | [model_plugins.py](../kb_platform/model_plugins.py) |
-| 平台基础设施 | 26 | [platform_plugins.py](../kb_platform/platform_plugins.py) |
+| 公共模型服务 | 9 | [model_plugins.py](../kb_platform/model_plugins.py) |
+| 平台基础设施 | 27 | [platform_plugins.py](../kb_platform/platform_plugins.py) |
 | 知识库问答 | 18 | [knowledge_profile.py](../kb_platform/knowledge_profile.py) |
 | 公共存储服务 | 1 | [storage_plugins.py](../kb_platform/storage_plugins.py) |
 | 易失阶段缓存 | 1 | [storage_cache_plugins.py](../kb_platform/storage_cache_plugins.py) |
@@ -47,6 +47,7 @@
 | 通用 Agent | `harness.store.database` | session.store | 无 | 无 |
 | 通用 Agent | `harness.store.sqlite` | session.store | 无 | 无 |
 | 通用 Agent | `harness.tools` | tools | 无 | 无 |
+| 公共模型服务 | `models.budget` | models.budget | 无 | 无 |
 | 公共模型服务 | `models.clients` | model.clients | 无 | 无 |
 | 公共模型服务 | `models.embedding` | embedding | models | 无 |
 | 公共模型服务 | `models.ocr` | ocr | models | 无 |
@@ -68,6 +69,7 @@
 | 平台基础设施 | `platform.originals.storage` | platform.originals | 无 | objects: storage.object/v1 |
 | 平台基础设施 | `platform.parser.native` | platform.parser | 无 | 无 |
 | 平台基础设施 | `platform.repository.postgres` | platform.repository | 无 | 无 |
+| 平台基础设施 | `platform.repository.storage` | platform.repository | 无 | primary: storage.relational/v1 |
 | 平台基础设施 | `platform.research` | research | platform, platform.embedding, models, knowledge.model | 无 |
 | 平台基础设施 | `platform.research.borrowed` | research | 无 | 无 |
 | 平台基础设施 | `platform.search.bm25.embedded` | platform.search.bm25 | 无 | 无 |

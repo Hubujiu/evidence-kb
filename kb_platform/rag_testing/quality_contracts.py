@@ -169,7 +169,7 @@ class ArchitectureContracts(unittest.TestCase):
             with self.subTest(path=path, source=source):
                 self.assertEqual([], self.check_source(source, path))
         for source, path in (
-            ('from .knowledge_storage import PostgresRepository', 'kb_platform/database_service.py'),
+            ('from .knowledge_storage import KnowledgeRepository', 'kb_platform/database_service.py'),
             ('from ..knowledge_service import KnowledgeService', 'kb_platform/database_providers/postgres.py'),
             ('from ..storage_plugins import require_storage', 'kb_platform/rag_testing/cache.py'),
             ('from .rag_testing.runner import run', 'kb_platform/persistence_local.py'),
@@ -183,6 +183,18 @@ class ArchitectureContracts(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertTrue(self.check_source(source, "kb_platform/rag_testing/provider_capture.py"))
 
+    def test_knowledge_business_requires_domain_operations_and_no_database_implementation(self):
+        for module in ('core', 'agent_tools', 'semantic_pages_v2', 'embedding_jobs'):
+            path = 'kb_platform/' + module + '.py'
+            for source in ('import psycopg', 'import sqlite3', 'import sqlalchemy',
+                           'from .knowledge_sql import OPERATIONS',
+                           'from .database_providers import PostgresProvider',
+                           "tx.execute('SELECT secret FROM sources')"):
+                with self.subTest(module=module, source=source):
+                    self.assertTrue(self.check_source(source, path))
+            self.assertEqual([], self.check_source(
+                'from .knowledge_queries import KnowledgeQuery\ntx.execute(KnowledgeQuery.SOURCE_GET, values)', path))
+
     def test_storage_sdk_and_adapters_do_not_depend_on_business_or_host(self):
         for path, source in (
             ('kb_platform/storage_sdk/__init__.py', 'from ..database_contracts import SpaceKey'),
@@ -195,7 +207,7 @@ class ArchitectureContracts(unittest.TestCase):
             ('kb_platform/storage_sdk/__init__.py', 'from ..plugin_host import PluginHost'),
             ('kb_platform/storage_sdk/types.py', 'from ..core import Platform'),
             ('kb_platform/storage_adapters/values.py', 'from ..knowledge_service import KnowledgeService'),
-            ('kb_platform/storage_service.py', 'from .knowledge_storage import PostgresRepository'),
+            ('kb_platform/storage_service.py', 'from .knowledge_storage import KnowledgeRepository'),
             ('kb_platform/storage_plugins.py', 'from .core import Platform'),
         ):
             with self.subTest(path=path):
