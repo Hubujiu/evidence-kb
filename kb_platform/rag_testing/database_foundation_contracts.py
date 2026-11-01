@@ -16,11 +16,13 @@ from sqlalchemy.exc import DBAPIError, DatabaseError as DriverDatabaseError
 from kb_platform.database_contracts import (
     CommitUnknown, DatabaseError, Migration, QueryLimits, SchemaPackage, SpaceKey, SqlStatement,
 )
-from kb_platform.database_plugins import compile_database_plugins, require_database
 from kb_platform.database_process import decode_value, encode_value
 from kb_platform.database_providers import SQLiteProvider
 from kb_platform.database_service import DatabaseService
 from kb_platform.plugin_host import PluginHost, PluginSpec
+from kb_platform.storage_adapters.sql import SqlStorageProvider
+from kb_platform.storage_plugins import compile_storage_plugins, require_storage
+from kb_platform.storage_sdk import RELATIONAL_V1, StorageProvider, StorageSlot
 
 
 def task_schema(owner='tasks'):
@@ -407,22 +409,40 @@ class DatabaseFoundationContracts(unittest.TestCase):
 
 
 class DatabasePluginContracts(unittest.TestCase):
+    primary = StorageSlot('primary', RELATIONAL_V1)
+
     def configuration(self, root):
-        return {'version': 1, 'application_id': 'deployment',
-                'routes': {'main': {'provider': 'sqlite', 'root': str(root)}},
-                'bindings': {name: {'primary': {'route': 'main', 'owner': 'tasks', 'space': 'records',
-                                                'application_id': name}}
+        return {'version': 2, 'application_id': 'deployment',
+                'instances': {'main': {'provider': 'sqlite', 'config': {'root': str(root)}}},
+                'services': {'main.relational': {'instance': 'main', 'export': 'relational'}},
+                'bindings': {name: {'primary': {'service': 'main.relational', 'owner': 'tasks', 'space': 'records',
+                                                'application_id': name, 'dataset_id': 'explicit-initialized-' + name}}
                              for name in ('project-a', 'project-b')}}
+
+    def providers(self):
+        return {'sqlite': StorageProvider(lambda config: SqlStorageProvider(SQLiteProvider(config['root'])),
+                                          {'relational': (RELATIONAL_V1,)})}
+
+    def initialize(self, configuration):
+        initializer = SqlStorageProvider(SQLiteProvider(configuration['instances']['main']['config']['root']))
+        try:
+            for name, slots in configuration['bindings'].items():
+                binding = slots['primary']
+                identity = initializer.initialize('relational', SpaceKey(name, binding['owner'], binding['space']))
+                binding['dataset_id'] = identity.dataset_id
+        finally:
+            initializer.close()
+        return configuration
 
     def fixture(self):
         def mount(ctx, config):
-            database = require_database(ctx, 'primary')
+            database = require_storage(ctx, self.primary)
             database.prepare(task_schema())
             database.seal()
             ctx.provide(config['service'], database)
 
-        return (PluginSpec('fixture.tasks.a', ('tasks.a',), (), mount, storage_slots=('primary',)),
-                PluginSpec('fixture.tasks.b', ('tasks.b',), (), mount, storage_slots=('primary',)))
+        return (PluginSpec('fixture.tasks.a', ('tasks.a',), (), mount, storage_slots=(self.primary,)),
+                PluginSpec('fixture.tasks.b', ('tasks.b',), (), mount, storage_slots=(self.primary,)))
 
     def profile(self):
         return {'version': 1, 'plugins': [
@@ -430,23 +450,34 @@ class DatabasePluginContracts(unittest.TestCase):
             {'id': 'project-b', 'use': 'fixture.tasks.b', 'config': {'service': 'tasks.b'}},
         ]}
 
-    def test_compiler_builds_explicit_route_binding_consumer_dependencies_without_external_effects(self):
+    def test_compiler_builds_provider_binding_consumer_dependencies_without_external_effects(self):
         with TemporaryDirectory() as root:
-            profile, catalog = compile_database_plugins(self.profile(), self.fixture(), self.configuration(root),
-                slots={'fixture.tasks.a': ('primary',), 'fixture.tasks.b': ('primary',)})
+            profile, catalog = compile_storage_plugins(self.profile(), self.fixture(), self.configuration(root),
+                                                       provider_catalog=self.providers())
             self.assertEqual(list(Path(root).iterdir()), [])
             specs = {spec.key: spec for spec in catalog}
+            providers = {service: spec for spec in catalog for service in spec.provides}
+            instance_dependencies = set()
+            bindings = set()
             for row in profile['plugins']:
                 spec = specs[row['use']]
                 if row['id'] in ('project-a', 'project-b'):
-                    self.assertTrue(any(key.startswith('databases.bound.') for key in spec.requires))
-            routes = [spec for spec in catalog if spec.key.startswith('databases.route.')]
-            self.assertEqual(len(routes), 1)
-            self.assertEqual(routes[0].requires, ('databases.registry',))
+                    self.assertEqual(len(spec.requires), 1)
+                    binding = providers[spec.requires[0]]
+                    bindings.add(binding.key)
+                    self.assertIn('storage.registry', binding.requires)
+                    selected = tuple(name for name in binding.requires if name != 'storage.registry')
+                    self.assertEqual(len(selected), 1)
+                    instance_dependencies.update(selected)
+                    self.assertEqual(providers[selected[0]].requires, ('storage.registry',))
+            self.assertEqual(len(bindings), 2)
+            self.assertEqual(len(instance_dependencies), 1)
 
     def test_catalog_storage_slots_are_used_without_an_override_mapping(self):
         with TemporaryDirectory() as root:
-            profile, catalog = compile_database_plugins(self.profile(), self.fixture(), self.configuration(root))
+            configuration = self.initialize(self.configuration(root))
+            profile, catalog = compile_storage_plugins(self.profile(), self.fixture(), configuration,
+                                                       provider_catalog=self.providers())
             with PluginHost(profile, catalog) as host:
                 first, second = host.service('tasks.a'), host.service('tasks.b')
                 self.assertNotEqual(first.identity.dataset_id, second.identity.dataset_id)
@@ -457,33 +488,38 @@ class DatabasePluginContracts(unittest.TestCase):
                 else:
                     configuration['bindings']['project-a']['other'] = {}
                 with self.subTest(mutation=mutation), self.assertRaises(ValueError):
-                    compile_database_plugins(self.profile(), self.fixture(), configuration)
+                    compile_storage_plugins(self.profile(), self.fixture(), configuration,
+                                            provider_catalog=self.providers())
 
     def test_catalog_rejects_duplicate_and_empty_storage_slots(self):
-        for slots in (('primary', 'primary'), ('',), ('primary', None)):
+        for slots in ((self.primary, self.primary), ('primary',), (self.primary, None)):
             with self.subTest(slots=slots), self.assertRaisesRegex(ValueError, 'INVALID_PLUGIN_STORAGE_SLOTS'):
                 PluginSpec('fixture.invalid', (), (), lambda ctx, config: None, storage_slots=slots)
+        with self.assertRaisesRegex(ValueError, 'INVALID_STORAGE_SLOT'):
+            StorageSlot('', RELATIONAL_V1)
 
-    def test_unknown_or_missing_slots_and_routes_are_rejected_before_files_are_created(self):
+    def test_unknown_or_missing_slots_services_and_identities_are_rejected_before_files_are_created(self):
         with TemporaryDirectory() as root:
-            for transform in ('missing', 'unknown', 'unknown-route'):
+            for transform in ('missing', 'unknown', 'unknown-service', 'missing-dataset'):
                 configuration = self.configuration(root)
                 if transform == 'missing':
                     del configuration['bindings']['project-a']
                 elif transform == 'unknown':
                     configuration['bindings']['project-a']['unexpected'] = {}
+                elif transform == 'unknown-service':
+                    configuration['bindings']['project-a']['primary']['service'] = 'missing'
                 else:
-                    configuration['bindings']['project-a']['primary']['route'] = 'missing'
+                    del configuration['bindings']['project-a']['primary']['dataset_id']
                 with self.subTest(transform=transform), self.assertRaises(ValueError):
-                    compile_database_plugins(self.profile(), self.fixture(), configuration,
-                        slots={'fixture.tasks.a': ('primary',), 'fixture.tasks.b': ('primary',)})
+                    compile_storage_plugins(self.profile(), self.fixture(), configuration,
+                                            provider_catalog=self.providers())
             self.assertEqual(list(Path(root).iterdir()), [])
 
     def test_real_plugins_share_provider_and_keep_independent_tables_across_host_restart(self):
         with TemporaryDirectory() as root:
-            configuration = self.configuration(root)
-            profile, catalog = compile_database_plugins(self.profile(), self.fixture(), configuration,
-                slots={'fixture.tasks.a': ('primary',), 'fixture.tasks.b': ('primary',)})
+            configuration = self.initialize(self.configuration(root))
+            profile, catalog = compile_storage_plugins(self.profile(), self.fixture(), configuration,
+                                                       provider_catalog=self.providers())
             with PluginHost(profile, catalog) as host:
                 first, second = host.service('tasks.a'), host.service('tasks.b')
                 identities = first.identity, second.identity
