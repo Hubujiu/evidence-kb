@@ -1,8 +1,9 @@
 import hashlib
 import json
 import math
+import re
 
-from .search import SearchUnavailable, binding_key, content_order
+from .search import OpenSearch, SearchUnavailable, binding_key, content_order
 
 
 def canonical_records(records):
@@ -31,6 +32,13 @@ class _SearchChannel:
         if callable(getattr(self.backend, 'storage_identity', None)):
             return {**self.backend.storage_identity(), 'channel': self.channel}
         return {'root_sha256': _digest(str(self.backend.root)), 'channel': self.channel}
+
+    def _native_index(self, index):
+        if not isinstance(index, str) or re.fullmatch(r'[\w][\w.-]{0,127}', index) is None:
+            raise ValueError('Invalid bounded storage collection name')
+        namespace = json.dumps(self.storage_identity(), ensure_ascii=False, sort_keys=True,
+                               separators=(',', ':'), allow_nan=False)
+        return OpenSearch.index_name('storage', namespace, _digest(namespace + '\0' + index)[:32])
 
     def _unit(self, record):
         metadata = record['metadata']
@@ -69,7 +77,8 @@ class _SearchChannel:
             if (not isinstance(vector, list) or len(vector) != vector_dimension or not any(vector)
                     or any(type(value) not in (int, float) or not math.isfinite(value) for value in vector)):
                 raise SearchUnavailable('Invalid finite nonzero vector')
-        self.backend.stage(index, [self._unit(record) for record in records], vector_dimension=vector_dimension)
+        self.backend.stage(self._native_index(index), [self._unit(record) for record in records],
+                           vector_dimension=vector_dimension)
 
     def _checked_units(self, index):
         try:
@@ -78,8 +87,9 @@ class _SearchChannel:
             raise SearchUnavailable('Search channel canonical content mismatch') from exc
 
     def _read_checked_units(self, index):
-        manifest = self.backend.verify(index)
-        units = self.backend.read_units(index)
+        native = self._native_index(index)
+        manifest = self.backend.verify(native)
+        units = self.backend.read_units(native)
         serialized = json.dumps(sorted(units, key=content_order), ensure_ascii=False,
                                 sort_keys=True, separators=(',', ':'), allow_nan=False)
         if (manifest.get('units_sha256') != _digest(serialized)
@@ -101,16 +111,16 @@ class _SearchChannel:
         manifest, units = self._checked_units(index)
         return {'count': len(units), 'dimension': manifest.get('dimension'),
                 'units_sha256': _digest(canonical_records([unit['record'] for unit in units])),
-                'storage': self.storage_identity()}
+                'storage': self.storage_identity(), 'generation': self._native_index(index)}
 
     def seal(self, index, checksum):
         self.verify(index)
-        self.backend.seal(index, checksum)
+        self.backend.seal(self._native_index(index), checksum)
 
     def is_sealed(self, index, checksum):
         try:
             self.verify(index)
-            return self.backend.is_sealed(index, checksum)
+            return self.backend.is_sealed(self._native_index(index), checksum)
         except SearchUnavailable:
             return False
 
@@ -133,12 +143,12 @@ class _SearchChannel:
             for page in (False, True):
                 selected = [unit for unit in allowed if (unit['kind'] == 'Page') == page]
                 if selected:
-                    hits.extend(self.backend.search(index, 'storage', 'records', selected, query, limit,
+                    hits.extend(self.backend.search(self._native_index(index), 'storage', 'records', selected, query, limit,
                                                     'Page' if page else None))
             hits.sort(key=lambda hit: (-hit['score'], content_order(hit)))
             hits = hits[:limit]
         else:
-            hits = self.backend.dense(index, 'storage', 'records', allowed, query, limit)
+            hits = self.backend.dense(self._native_index(index), 'storage', 'records', allowed, query, limit)
         stored = {unit['unit_id']: unit for unit in allowed}
         results = []
         for hit in hits:

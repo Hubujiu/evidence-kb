@@ -68,12 +68,16 @@ class SearchRouterContracts(unittest.TestCase):
         self.stage()
         with patch.object(self.bm25, 'search', wraps=self.bm25.search) as lexical, \
                 patch.object(self.dense, 'dense', wraps=self.dense.dense) as dense, \
+                patch.object(self.lexical, 'query', wraps=self.lexical.query) as lexical_query, \
+                patch.object(self.vector, 'query', wraps=self.vector.query) as dense_query, \
                 patch.object(self.dense, 'search', side_effect=AssertionError('wrong lexical route')), \
                 patch.object(self.bm25, 'dense', side_effect=AssertionError('wrong dense route')):
             self.assertTrue(self.router.search(self.index, 'tenant', 'scope', self.authority.rows, 'permission', 5))
             self.assertTrue(self.router.dense(self.index, 'tenant', 'scope', self.authority.rows, [1, 1, 0], 5))
-            self.assertEqual(lexical.call_args.args[0], self.router.channel_index(self.index, 'bm25'))
-            self.assertEqual(dense.call_args.args[0], self.router.channel_index(self.index, 'dense'))
+            self.assertTrue(lexical.called)
+            self.assertTrue(dense.called)
+            self.assertEqual(lexical_query.call_args.args[0], self.router.channel_index(self.index, 'bm25'))
+            self.assertEqual(dense_query.call_args.args[0], self.router.channel_index(self.index, 'dense'))
 
     def test_current_permission_and_scope_are_enforced_by_both_channels(self):
         self.stage()
@@ -116,7 +120,7 @@ class SearchRouterContracts(unittest.TestCase):
             self.router.seal(self.index, 'seal')
         with self.assertRaisesRegex(SearchUnavailable, 'canonical content mismatch'):
             self.router.search(self.index, 'tenant', 'scope', self.authority.rows, 'permission', 5)
-        self.assertFalse(self.bm25.is_sealed(target, 'seal'))
+        self.assertFalse(self.lexical.is_sealed(target, 'seal'))
 
     def test_second_store_failure_never_reaches_manifest_publication(self):
         pointer = Mock()
@@ -147,7 +151,7 @@ class SearchRouterContracts(unittest.TestCase):
         with self.assertRaisesRegex(SearchUnavailable, 'differs from frozen input'):
             self.router.stage(self.index, changed, 3)
         with self.assertRaisesRegex(SearchUnavailable, '^Search generation not found$'):
-            self.dense.verify(self.router.channel_index(self.index, 'dense'))
+            self.vector.verify(self.router.channel_index(self.index, 'dense'))
 
     def test_provider_identity_and_channel_order_are_in_dependency_hash(self):
         first = backend_dependencies(self.router)
@@ -178,7 +182,7 @@ class SearchRouterContracts(unittest.TestCase):
         self.assertEqual(hit['anchors'], canonical['anchors'])
 
     def test_generic_vector_contract_filters_before_nearest_neighbour_ranking(self):
-        index = self.router.channel_index(self.index, 'dense')
+        index = 'products-v1'
         records = [{'id': 'private', 'vector': [1, 0, 0], 'metadata': {'group': 'private'}},
                    {'id': 'public', 'vector': [0, 1, 0], 'metadata': {'group': 'public'}}]
         self.vector.stage(index, records, 3)
@@ -187,6 +191,24 @@ class SearchRouterContracts(unittest.TestCase):
         self.assertEqual(self.vector.read_records(index), records)
         with self.assertRaisesRegex(ValueError, 'filters'):
             self.vector.query(index, [1, 0, 0], 1, filters={'unknown': {}})
+
+    def test_independent_named_collections_restart_and_isolate_contract_namespaces(self):
+        backend = EmbeddedSearch(self.root / 'independent-plugin')
+        self.addCleanup(backend.close)
+        vector, lexical = SearchVectorAdapter(backend), SearchLexicalAdapter(backend)
+        vector.stage('products-v1', [{'id': 'p1', 'vector': [1, 0, 0], 'metadata': {'category': 'public'}}], 3)
+        lexical.stage('products-v1', [{'id': 'p2', 'text': 'enterprise widget', 'metadata': {'category': 'public'}}])
+        vector.stage('products-v2', [{'id': 'p3', 'vector': [0, 1, 0], 'metadata': {}}], 3)
+        self.assertEqual([hit['id'] for hit in vector.query('products-v1', [1, 0, 0], 2)], ['p1'])
+        self.assertEqual([hit['id'] for hit in lexical.query('products-v1', 'widget', 2)], ['p2'])
+        self.assertEqual([hit['id'] for hit in vector.query('products-v2', [1, 0, 0], 2)], ['p3'])
+        reopened = EmbeddedSearch(backend.root)
+        self.addCleanup(reopened.close)
+        self.assertEqual([hit['id'] for hit in SearchVectorAdapter(reopened).query('products-v1', [1, 0, 0], 2)], ['p1'])
+        self.assertEqual([hit['id'] for hit in SearchLexicalAdapter(reopened).query('products-v1', 'widget', 2)], ['p2'])
+        for name in ('', '../escape', 'x/y', 'x\x00y', 'x' * 129):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'collection name'):
+                vector.stage(name, [{'id': 'invalid', 'vector': [1, 0, 0], 'metadata': {}}], 3)
 
     def test_document_authority_restart_publication_and_current_acl(self):
         root = self.root / 'document-authority'
@@ -255,10 +277,10 @@ class SearchRouterContracts(unittest.TestCase):
                 self.vector.identity = original
             self.assertTrue(router.is_sealed(self.index, 'sealed'))
 
-    def test_split_plugin_declares_both_channel_dependencies(self):
+    def test_split_plugin_declares_channels_and_authoritative_source_dependencies(self):
         specs = {spec.key: spec for spec in platform_plugins(SimpleNamespace(storage_root=self.root, dsn=''))}
         router = specs['platform.search.split']
-        self.assertEqual(('platform.search.bm25', 'platform.search.dense'), router.requires)
+        self.assertEqual(('platform.search.bm25', 'platform.search.dense', 'platform.search.source'), router.requires)
         self.assertEqual(('platform.search',), router.provides)
         for channel in ('bm25', 'dense'):
             for backend in ('postgres', 'embedded'):
