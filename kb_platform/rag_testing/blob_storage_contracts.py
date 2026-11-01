@@ -8,11 +8,13 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from kb_platform.blob_plugins import blob_plugins
 from kb_platform.blob_migration import migrate_legacy_originals
 from kb_platform.blob_service import BlobRef, BlobService
 from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.storage import FileBlobProvider, OriginalStore, S3BlobProvider
+from kb_platform.storage_catalog import default_storage_providers, initialize_configuration
+from kb_platform.storage_plugins import compile_storage_plugins, require_storage
+from kb_platform.storage_sdk import OBJECT_V1, StorageSlot
 
 
 class BlobStorageContracts(unittest.TestCase):
@@ -136,38 +138,54 @@ class BlobStorageContracts(unittest.TestCase):
 
     def test_host_registry_provider_binding_and_independent_consumer(self):
         def mount(ctx, config):
-            ctx.provide('tasks', ctx.require('blobs.bound'))
-        specs = [*blob_plugins(), PluginSpec('tasks', ('tasks',), ('blobs.bound',), mount)]
-        profile = {'version': 1, 'plugins': [
-            {'id': 'registry', 'use': 'blobs.service'},
-            {'id': 'files', 'use': 'blobs.provider.files', 'config': {'root': str(self.root)}},
-            {'id': 'space', 'use': 'blobs.binding.files', 'config': {'space': 'project-a/tasks'}},
-            {'id': 'tasks', 'use': 'tasks'},
-        ]}
+            ctx.provide('tasks', require_storage(ctx, 'objects'))
+        spec = PluginSpec('tasks', ('tasks',), (), mount,
+                          storage_slots=(StorageSlot('objects', OBJECT_V1),))
+        providers = default_storage_providers()
+        configuration = initialize_configuration({
+            'version': 2, 'application_id': 'project-a',
+            'instances': {'files': {'provider': 'files', 'config': {'root': str(self.root)}}},
+            'services': {'files.objects': {'instance': 'files', 'export': 'object'}},
+            'bindings': {'tasks': {'objects': {
+                'service': 'files.objects', 'owner': 'tasks', 'space': 'originals'}}},
+        }, provider_catalog=providers)
+        profile, specs = compile_storage_plugins(
+            {'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]}, (spec,), configuration,
+            provider_catalog=providers)
         host = PluginHost(profile, specs)
         self.addCleanup(host.close)
         ref = host.call('tasks', 'put', 'tenant', b'task bytes')
         self.assertEqual(host.call('tasks', 'read', 'tenant', ref.locator), b'task bytes')
+        self.assertEqual(host.service('tasks').identity.dataset_id,
+                         configuration['bindings']['tasks']['objects']['dataset_id'])
 
-    def test_two_project_scopes_share_provider_and_isolate_blob_spaces(self):
-        catalog = blob_plugins()
-        profile = {'version': 1, 'plugins': [
-            {'id': 'registry', 'use': 'blobs.service'},
-            {'id': 'files', 'use': 'blobs.provider.files', 'config': {'root': str(self.root)}},
-        ]}
+    def test_two_project_consumers_share_provider_and_isolate_blob_spaces(self):
+        def mount(ctx, config):
+            ctx.provide(ctx.plugin_id, require_storage(ctx, 'objects'))
+
+        names = ('project-a', 'project-b')
+        specs = tuple(PluginSpec(name, (name,), (), mount,
+                                storage_slots=(StorageSlot('objects', OBJECT_V1),)) for name in names)
+        providers = default_storage_providers()
+        configuration = initialize_configuration({
+            'version': 2, 'application_id': 'shared-host',
+            'instances': {'files': {'provider': 'files', 'config': {'root': str(self.root)}}},
+            'services': {'files.objects': {'instance': 'files', 'export': 'object'}},
+            'bindings': {name: {'objects': {'service': 'files.objects', 'application_id': name,
+                'owner': 'tasks', 'space': 'originals'}} for name in names},
+        }, provider_catalog=providers)
+        profile, catalog = compile_storage_plugins(
+            {'version': 1, 'plugins': [{'id': name, 'use': name} for name in names]}, specs, configuration,
+            provider_catalog=providers)
         with PluginHost(profile, catalog) as root:
-            children = []
-            for project in ('project-a/tasks', 'project-b/tasks'):
-                child = root.scope({'version': 1, 'plugins': [{'id': 'originals', 'use': 'blobs.binding.files',
-                    'config': {'space': project}}]})
-                self.addCleanup(child.close)
-                children.append(child)
-            first = children[0].call('blobs.bound', 'put', 'tenant', b'private')
-            second = children[1].call('blobs.bound', 'put', 'tenant', b'private')
+            self.assertEqual(set(root.service('storage.registry').catalog()), {'files.objects'})
+            first = root.call('project-a', 'put', 'tenant', b'private')
+            second = root.call('project-b', 'put', 'tenant', b'private')
             self.assertNotEqual(first.locator, second.locator)
             with self.assertRaisesRegex(ValueError, 'BLOB_ACCESS_DENIED'):
-                children[1].call('blobs.bound', 'read', 'tenant', first.locator)
-            self.assertEqual(children[0].call('blobs.bound', 'read', 'tenant', first.locator), b'private')
+                root.call('project-b', 'read', 'tenant', first.locator)
+            self.assertEqual(root.call('project-a', 'read', 'tenant', first.locator), b'private')
+            self.assertEqual(root.call('project-b', 'read', 'tenant', second.locator), b'private')
 
     def test_explicit_legacy_migration_preserves_sources_and_emits_verified_mapping(self):
         tenant, data = 'legacy-tenant', b'legacy original'
