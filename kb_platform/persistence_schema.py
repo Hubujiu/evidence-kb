@@ -1,22 +1,38 @@
-from .database_contracts import Migration, SchemaPackage
+from sqlalchemy import Column, Integer, MetaData, String, Table, Text
+
+from .storage_sdk.relational import ExactString, StructuredSchema
 
 
-def cache_schema(owner, engine='sqlite'):
-    key = '`key`' if engine == 'mysql' else 'key'
-    return SchemaPackage(owner, (Migration(1, (
-        'CREATE TABLE entries (' + key + ' VARCHAR(64) PRIMARY KEY, hash VARCHAR(64) NOT NULL, object_ref TEXT)',
-    )),))
+cache_metadata = MetaData()
+entries = Table('entries', cache_metadata,
+    Column('key', ExactString(64), primary_key=True),
+    Column('hash', String(64), nullable=False),
+    Column('object_ref', Text))
+
+budget_metadata = MetaData()
+budget_config = Table('config', budget_metadata,
+    Column('id', Integer, primary_key=True),
+    Column('caps', Text, nullable=False))
+budget_calls = Table('calls', budget_metadata,
+    Column('id', ExactString(200), primary_key=True),
+    Column('status', String(16), nullable=False),
+    Column('reserved', Text, nullable=False),
+    Column('usage', Text),
+    Column('category', Text, nullable=False),
+    Column('diagnostic', Text))
+budget_guard = Table('producer_guard', budget_metadata,
+    Column('id', Integer, primary_key=True),
+    Column('successor', Text))
+ledger_imports = Table('ledger_imports', budget_metadata,
+    Column('source_sha256', String(64), primary_key=True),
+    Column('snapshot_sha256', String(64), nullable=False),
+    Column('source_path', Text, nullable=False),
+    Column('record_count', Integer, nullable=False))
 
 
-def budget_schema(owner, engine='sqlite'):
-    identity = 'VARBINARY(800)' if engine == 'mysql' else 'VARCHAR(200)'
-    usage = '`usage`' if engine == 'mysql' else 'usage'
-    return SchemaPackage(owner, (Migration(1, (
-        'CREATE TABLE config (id INTEGER PRIMARY KEY, caps TEXT NOT NULL)',
-        'CREATE TABLE calls (id ' + identity + ' PRIMARY KEY, status VARCHAR(16) NOT NULL, '
-        'reserved TEXT NOT NULL, ' + usage + ' TEXT, category TEXT NOT NULL, diagnostic TEXT)',
-        'CREATE TABLE producer_guard (id INTEGER PRIMARY KEY, successor TEXT)',
-        'INSERT INTO producer_guard(id,successor) VALUES(1,NULL)',
-        'CREATE TABLE ledger_imports (source_sha256 VARCHAR(64) PRIMARY KEY, '
-        'snapshot_sha256 VARCHAR(64) NOT NULL, source_path TEXT NOT NULL, record_count INTEGER NOT NULL)',
-    )),))
+def cache_schema(owner):
+    return StructuredSchema(owner, cache_metadata)
+
+
+def budget_schema(owner):
+    return StructuredSchema(owner, budget_metadata)

@@ -45,24 +45,23 @@ AGENT_DEPENDENCIES = {
     'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
                                   'harness_loop', 'plugin_host', 'harness_application', 'harness_context',
                                   'harness_model', 'context_budget', 'session_store', 'plugin_configuration',
-                                  'storage_plugins'}),
+                                  'storage_plugins', 'storage_sdk'}),
     'plugin_configuration': frozenset({'context_budget'}),
     'context_budget': frozenset(),
     'session_identity': frozenset(),
-    'session_store': frozenset({'session_identity', 'session_storage', 'database_contracts',
-                                'database_providers', 'database_service'}),
+    'session_store': frozenset({'session_identity', 'session_storage', 'database_contracts', 'persistence_local'}),
     'database_contracts': frozenset(),
     'database_migrations': frozenset({'database_contracts'}),
     'database_service': frozenset({'database_contracts', 'database_migrations', 'database_process'}),
     'database_process': frozenset({'database_contracts'}),
     'storage_sdk': frozenset({'database_contracts'}),
-    'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts'}),
+    'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts', 'implementation_dependencies'}),
     'storage_plugins': frozenset({'storage_sdk', 'storage_service', 'plugin_configuration', 'plugin_host'}),
     'storage_process': frozenset({'storage_sdk', 'blob_service', 'database_contracts'}),
     'storage_cache_plugins': frozenset({'storage_sdk', 'storage_plugins', 'plugin_host',
                                        'plugin_configuration', 'rag_testing'}),
-    'persistence_schema': frozenset({'database_contracts'}),
-    'persistence_local': frozenset({'database_contracts', 'database_providers', 'database_service', 'persistence_schema'}),
+    'persistence_schema': frozenset({'database_contracts', 'storage_sdk'}),
+    'persistence_local': frozenset({'database_contracts', 'database_providers', 'storage_adapters', 'storage_sdk'}),
     'plugin_profiles': frozenset({'plugin_native'}),
     'harness_graph': frozenset({'agent_engine', 'plugin_native'}),
     'harness_context': frozenset({'context_budget'}),
@@ -270,6 +269,34 @@ def workflow_violations(workflow):
 
 
 
+def storage_boundary_violations(tree, module):
+    portable = module.rsplit('.', 1)[-1] in {
+        'knowledge_schema', 'knowledge_sql', 'knowledge_storage', 'session_store',
+        'persistence_schema', 'persistence_journal', 'provider_receipt_database', 'budget', 'cache'}
+    sdk = module.startswith('kb_platform.storage_sdk.')
+    assembly = module in {'kb_platform.platform_plugins', 'kb_platform.application_composition'}
+    errors = []
+    for node in ast.walk(tree):
+        if module == 'kb_platform.search' and isinstance(node, ast.Attribute) and node.attr == '__name__':
+            errors.append((node.lineno, 'search dependencies must be declared by implementations, not selected by class name'))
+        if (portable or sdk) and isinstance(node, ast.Attribute) and node.attr in {
+                'engine', 'physical_name', 'runtime_engine', 'migration_engine', 'dialect'}:
+            errors.append((node.lineno, 'portable storage consumers must not inspect provider internals'))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if (portable or sdk) and node.value.lower() in {'postgresql', 'postgres', 'mysql', 'sqlite'}:
+                errors.append((node.lineno, 'portable storage contracts cannot select a database vendor'))
+            if assembly and node.value.startswith(('platform.repository.postgres', 'platform.search.postgres',
+                    'platform.search.bm25.', 'platform.search.dense.', 'platform.search.embedded',
+                    'platform.search.opensearch', 'platform.search.split')):
+                errors.append((node.lineno, 'compose storage by declared slots instead of vendor plugin keys'))
+    for line, target in imports(tree, module):
+        if (portable or sdk or assembly) and (target.split('.')[0] in {'psycopg', 'pymysql'}
+                or target.startswith(('sqlalchemy.dialects', 'kb_platform.database_providers',
+                    'kb_platform.database_service', 'kb_platform.postgres_search', 'kb_platform.storage_adapters'))):
+            errors.append((line, 'inject a storage contract; provider compatibility belongs in its adapter'))
+    return errors
+
+
 def architecture_violations(root: Path) -> list[str]:
 
     import yaml
@@ -285,6 +312,8 @@ def architecture_violations(root: Path) -> list[str]:
         relative = path.relative_to(root)
         module = ".".join(relative.with_suffix("").parts)
         tree = ast.parse(path.read_text("utf-8-sig"), filename=str(relative))
+        errors.extend(f'{relative.as_posix()}:{line}: {reason}'
+                      for line, reason in storage_boundary_violations(tree, module))
         if path.name.endswith("_contracts.py"):
             for node in ast.walk(tree):
                 if isinstance(node, ast.Assert):
@@ -309,11 +338,11 @@ def architecture_violations(root: Path) -> list[str]:
             elif module.startswith('kb_platform.storage_adapters.'):
                 layer = frozenset({'storage_sdk', 'storage_adapters', 'database_contracts',
                                    'database_migrations', 'database_providers', 'database_process',
-                                   'blob_service', 'storage', 'search_errors', 'search_tokens'})
+                                   'blob_service', 'storage', 'search_errors', 'search_tokens', 'implementation_dependencies'})
             elif module.startswith('kb_platform.database_providers.'):
                 layer = frozenset({'database_contracts', 'database_providers'})
             elif module.startswith('kb_platform.session_storage.'):
-                layer = frozenset({'database_contracts', 'session_storage'})
+                layer = frozenset({'database_contracts', 'session_storage', 'storage_sdk'})
             if layer is not None and target.startswith('kb_platform.') and target.split('.')[1] not in layer:
                 reason = 'agent boundary cannot depend on this implementation; inject its port at composition'
             if (path.stem in HARNESS_MODULES | {'agent_model', 'agent_provider'}
@@ -590,8 +619,9 @@ def main() -> int:
                         help='Run controlled actual PostgreSQL/MySQL/SQLite/S3 storage acceptance using KB_STORAGE_TEST_* variables.')
     args = parser.parse_args()
     integration_dsn = os.environ.get('KB_INTEGRATION_DSN') if args.local_integration else None
-    if args.local_integration and not integration_dsn:
-        parser.error('--local-integration requires KB_INTEGRATION_DSN for a dedicated acceptance database')
+    integration_migration_dsn = os.environ.get('KB_INTEGRATION_MIGRATION_DSN') if args.local_integration else None
+    if args.local_integration and not (integration_dsn and integration_migration_dsn):
+        parser.error('--local-integration requires KB_INTEGRATION_DSN and KB_INTEGRATION_MIGRATION_DSN')
     storage_env = {key: value for key, value in os.environ.items() if key.startswith('KB_STORAGE_TEST_')}
     output = args.output.resolve()
     if args.worker:
@@ -663,7 +693,8 @@ def main() -> int:
                 results.append(run_check('runtime-integration', [sys.executable, '-c',
                     'raise RuntimeError("current native build is required for integration")'], output, env))
             else:
-                integration_env = {**env, 'KB_DSN': integration_dsn}
+                integration_env = {**env, 'KB_INTEGRATION_DSN': integration_dsn,
+                                   'KB_INTEGRATION_MIGRATION_DSN': integration_migration_dsn}
                 results.append(run_check('runtime-integration',
                     [sys.executable, '-B', '-m', 'kb_platform.rag_testing.runtime_integration',
                      '--output', str(output / 'runtime-integration')], output, integration_env))

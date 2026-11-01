@@ -4,7 +4,10 @@ from pathlib import Path
 import json
 import sqlite3
 
+from sqlalchemy import func, select
+
 from .session_store import SessionStore, canonical, digest
+from .session_storage.schema import metadata
 
 
 TABLE_COLUMNS = {
@@ -88,7 +91,7 @@ def export_sessions(store, *, source_frozen=False):
     if source_frozen is not True:
         raise ValueError('SESSION_SOURCE_MUST_BE_FROZEN')
     with store.database.transaction(write=False) as tx:
-        tables = {table: [store._row(row) for row in tx.execute(f'SELECT * FROM {table}').fetchall()]
+        tables = {table: [store._row(row) for row in tx.execute(select(metadata.tables[table])).fetchall()]
                   for table in TABLE_COLUMNS}
     return _package(tables, {'kind': 'database', 'dataset_id': store.identity.dataset_id})
 
@@ -110,15 +113,14 @@ def import_sessions(store, package, *, target_offline=False):
         raise ValueError('SESSION_TARGET_MUST_BE_OFFLINE')
     validate_export(package)
     with store.database.transaction(write=True) as tx:
-        if any(tx.execute(f'SELECT COUNT(*) AS n FROM {table}').fetchone()['n']
+        if any(tx.execute(select(func.count(tuple(metadata.tables[table].primary_key)[0]).label('n'))).fetchone()['n']
                for table in TABLE_COLUMNS):
             raise ValueError('SESSION_IMPORT_TARGET_NOT_EMPTY')
-        for table, columns in TABLE_COLUMNS.items():
-            sql = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({','.join(':' + key for key in columns)})"
-            for row in package['tables'][table]:
-                tx.execute(sql, row)
         for table in TABLE_COLUMNS:
-            actual = _ordered(table, [store._row(row) for row in tx.execute(f'SELECT * FROM {table}').fetchall()])
+            for row in package['tables'][table]:
+                tx.insert(metadata.tables[table], row)
+        for table in TABLE_COLUMNS:
+            actual = _ordered(table, [store._row(row) for row in tx.execute(select(metadata.tables[table])).fetchall()])
             if actual != package['tables'][table] or [digest(row) for row in actual] != package['record_hashes'][table]:
                 raise ValueError('SESSION_IMPORT_VERIFICATION_FAILED')
     return {'source_dataset_id': package['source']['dataset_id'],

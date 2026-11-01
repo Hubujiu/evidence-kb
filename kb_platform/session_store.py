@@ -7,8 +7,11 @@ from pathlib import Path
 import time
 from uuid import uuid4
 
+from sqlalchemy import func, select
+
 from .session_identity import PlatformError
-from .session_storage import session_schema, lock_suffix
+from .session_storage import session_schema
+from .session_storage.schema import artifacts, events, requests, sessions
 
 
 def canonical(value):
@@ -30,20 +33,16 @@ class SessionStore:
         self._owned_service = None
         if database is None:
             from .database_contracts import SpaceKey
-            from .database_providers import SQLiteProvider
-            from .database_service import DatabaseService
+            from .persistence_local import local_space
 
             self.root = Path(root).resolve()
             if (self.root / 'sessions.sqlite3').exists():
                 raise ValueError('LEGACY_SESSION_DATABASE_REQUIRES_EXPLICIT_IMPORT')
-            self._owned_service = DatabaseService()
-            self._owned_service.register('local', SQLiteProvider(self.root), owned=True)
-            grant = self._owned_service.grant('local', SpaceKey('local', 'conversations', 'history'),
-                                               consumer_identity='session-store')
-            database = self._owned_service.bind(grant)
+            database, self._owned_service = local_space(
+                self.root, SpaceKey('local', 'conversations', 'history'))
         self.database = database
         try:
-            database.prepare(session_schema(database.info.engine, database.identity.space.owner_id))
+            database.prepare(session_schema(database.identity.space.owner_id))
             database.seal()
         except BaseException:
             self.close()
@@ -66,11 +65,9 @@ class SessionStore:
                 for key, value in row.items()}
 
     def _owner(self, db, actor, session_id, *, lock=True):
-        suffix = lock_suffix(self.database.info.engine) if lock else ''
-        row = self._row(db.execute('SELECT * FROM sessions WHERE id=:id AND tenant=:tenant '
-                                   'AND principal=:principal' + suffix,
-                         {'id': session_id, 'tenant': actor.tenant_id,
-                          'principal': actor.principal_id}).fetchone())
+        statement = select(sessions).where(sessions.c.id == session_id,
+            sessions.c.tenant == actor.tenant_id, sessions.c.principal == actor.principal_id)
+        row = self._row(db.execute(statement.with_for_update() if lock else statement).fetchone())
         if row is None:
             raise PlatformError('SESSION_NOT_FOUND', 'Conversation not available', 404)
         return row
@@ -88,10 +85,9 @@ class SessionStore:
         state = initial_state
         timestamp = now()
         with self._db() as db:
-            db.execute('INSERT INTO sessions VALUES(:id,:tenant,:principal,:scope,:revision,:state,:created,:updated)',
-                       {'id': session_id, 'tenant': actor.tenant_id, 'principal': actor.principal_id,
-                        'scope': scope_id, 'revision': 0, 'state': canonical(state),
-                        'created': timestamp, 'updated': timestamp})
+            db.insert(sessions, {'id': session_id, 'tenant': actor.tenant_id,
+                'principal': actor.principal_id, 'scope': scope_id, 'revision': 0, 'state': canonical(state),
+                'created': timestamp, 'updated': timestamp})
         return self.load(actor, session_id)
 
     def load(self, actor, session_id):
@@ -105,32 +101,31 @@ class SessionStore:
         with self._db(write=False) as db:
             return [{'session_id': row['id'], 'scope_id': row['scope'], 'revision': row['revision'],
                      'created_at': row['created'], 'updated_at': row['updated']}
-                    for row in map(self._row, db.execute('SELECT id,scope,revision,created,updated FROM sessions '
-                        'WHERE tenant=:tenant AND principal=:principal ORDER BY updated DESC,id DESC LIMIT :limit OFFSET :offset',
-                        {'tenant': actor.tenant_id, 'principal': actor.principal_id,
-                         'limit': limit, 'offset': offset}).fetchall())]
+                    for row in map(self._row, db.execute(select(sessions.c.id, sessions.c.scope,
+                        sessions.c.revision, sessions.c.created, sessions.c.updated).where(
+                        sessions.c.tenant == actor.tenant_id, sessions.c.principal == actor.principal_id)
+                        .order_by(sessions.c.updated.desc(), sessions.c.id.desc()).limit(limit).offset(offset)).fetchall())]
 
     def events(self, actor, session_id):
         with self._db(write=False) as db:
             self._owner(db, actor, session_id, lock=False)
             return [{**dict(row), 'payload': json.loads(row['payload'])} for row in
-                    map(self._row, db.execute('SELECT * FROM events WHERE session=:session ORDER BY seq',
-                                             {'session': session_id}).fetchall())]
+                    map(self._row, db.execute(select(events).where(events.c.session == session_id)
+                                             .order_by(events.c.seq)).fetchall())]
 
     @staticmethod
     def _event(db, session_id, kind, payload, group_id, agent):
-        seq = db.execute('SELECT COALESCE(MAX(seq),0)+1 AS next_seq FROM events WHERE session=:session',
-                         {'session': session_id}).fetchone()['next_seq']
-        db.execute('INSERT INTO events VALUES(:session,:seq,:kind,:payload,:group_id,:agent,:created)',
-                   {'session': session_id, 'seq': seq, 'kind': kind, 'payload': canonical(payload),
-                    'group_id': group_id, 'agent': agent, 'created': now()})
+        seq = db.execute(select((func.coalesce(func.max(events.c.seq), 0) + 1).label('next_seq'))
+                         .where(events.c.session == session_id)).fetchone()['next_seq']
+        db.insert(events, {'session': session_id, 'seq': seq, 'kind': kind,
+            'payload': canonical(payload), 'group_id': group_id, 'agent': agent, 'created': now()})
         return seq
 
     def begin(self, actor, session_id, request_id, expected_revision, fingerprint, lease_seconds=900):
         with self._db() as db:
             session = self._owner(db, actor, session_id)
-            previous = self._row(db.execute('SELECT * FROM requests WHERE session=:session AND request_id=:request',
-                                  {'session': session_id, 'request': request_id}).fetchone())
+            previous = self._row(db.execute(select(requests).where(
+                requests.c.session == session_id, requests.c.request_id == request_id)).fetchone())
             if previous:
                 if previous['fingerprint'] != fingerprint:
                     raise PlatformError('REQUEST_ID_REUSED', 'Request id has different content', 409)
@@ -140,24 +135,23 @@ class SessionStore:
                                     'Request is running or interrupted; inspect its durable events', 409)
             if session['revision'] != expected_revision:
                 raise PlatformError('SESSION_REVISION_CONFLICT', 'Reload conversation before submitting', 409)
-            pending = [self._row(row) for row in db.execute(
-                "SELECT * FROM requests WHERE session=:session AND status='running'",
-                {'session': session_id}).fetchall()]
+            pending = [self._row(row) for row in db.execute(select(requests).where(
+                requests.c.session == session_id, requests.c.status == 'running')).fetchall()]
             if any(row['expires'] > time.time() for row in pending):
                 raise PlatformError('TURN_IN_PROGRESS', 'A conversation has one active writer', 409)
             for row in pending:
-                db.execute("UPDATE requests SET status='interrupted' WHERE session=:session AND request_id=:request",
-                           {'session': session_id, 'request': row['request_id']})
+                db.execute(requests.update().where(requests.c.session == session_id,
+                    requests.c.request_id == row['request_id']).values(status='interrupted'))
                 self._event(db, session_id, 'interrupted', {'request_id': row['request_id']}, row['request_id'], 'system')
             token = uuid4().hex
-            db.execute('INSERT INTO requests VALUES(:session,:request,:fingerprint,:token,:status,:expires,:response)',
-                       {'session': session_id, 'request': request_id, 'fingerprint': fingerprint,
-                        'token': token, 'status': 'running', 'expires': time.time() + lease_seconds, 'response': None})
+            db.insert(requests, {'session': session_id, 'request_id': request_id,
+                'fingerprint': fingerprint, 'token': token, 'status': 'running',
+                'expires': time.time() + lease_seconds, 'response': None})
             return {'token': token, 'session': self._decode(session)}
 
     def _lease(self, db, session_id, token):
-        row = self._row(db.execute("SELECT * FROM requests WHERE session=:session AND token=:token AND status='running'",
-                         {'session': session_id, 'token': token}).fetchone())
+        row = self._row(db.execute(select(requests).where(requests.c.session == session_id,
+                         requests.c.token == token, requests.c.status == 'running')).fetchone())
         if row is None or row['expires'] <= time.time():
             raise PlatformError('TURN_LEASE_EXPIRED', 'Conversation writer lease expired', 409)
         return row
@@ -173,11 +167,11 @@ class SessionStore:
         with self._db() as db:
             self._owner(db, actor, session_id)
             self._lease(db, session_id, token)
-            previous = db.execute('SELECT body FROM artifacts WHERE session=:session AND id=:id',
-                                  {'session': session_id, 'id': key}).fetchone()
+            previous = db.execute(select(artifacts.c.body).where(artifacts.c.session == session_id,
+                                  artifacts.c.id == key)).fetchone()
             if previous is None:
-                db.execute('INSERT INTO artifacts VALUES(:session,:id,:body,:created)',
-                           {'session': session_id, 'id': key, 'body': canonical(body), 'created': now()})
+                db.insert(artifacts, {'session': session_id, 'id': key,
+                           'body': canonical(body), 'created': now()})
             elif digest(json.loads(previous['body'])) != key:
                 raise PlatformError('ARTIFACT_INTEGRITY', 'Artifact integrity check failed', 503)
         return {'artifact_id': key, 'sha256': key, 'bytes': len(canonical(body).encode())}
@@ -185,8 +179,8 @@ class SessionStore:
     def read_artifact(self, actor, session_id, artifact_id):
         with self._db(write=False) as db:
             self._owner(db, actor, session_id, lock=False)
-            row = db.execute('SELECT body FROM artifacts WHERE session=:session AND id=:id',
-                             {'session': session_id, 'id': artifact_id}).fetchone()
+            row = db.execute(select(artifacts.c.body).where(artifacts.c.session == session_id,
+                             artifacts.c.id == artifact_id)).fetchone()
             if row is None:
                 raise PlatformError('ARTIFACT_NOT_FOUND', 'Artifact not available', 404)
             body = json.loads(row['body'])
@@ -207,8 +201,8 @@ class SessionStore:
         with self._db() as db:
             session = self._owner(db, actor, session_id)
             if failure:
-                request = self._row(db.execute("SELECT * FROM requests WHERE session=:session AND token=:token AND status='running'",
-                                     {'session': session_id, 'token': token}).fetchone())
+                request = self._row(db.execute(select(requests).where(requests.c.session == session_id,
+                                     requests.c.token == token, requests.c.status == 'running')).fetchone())
                 if request is None:
                     raise PlatformError('TURN_LEASE_EXPIRED', 'Conversation writer was superseded', 409)
                 self._event(db, session_id, 'turn_failed', {'code': response.get('stop_reason', 'SESSION_FAILED')},
@@ -219,8 +213,8 @@ class SessionStore:
                     self._event(db, session_id, 'assistant', assistant_event, request['request_id'], 'orchestrator')
             response = {**response, 'session_id': session_id, 'revision': session['revision'] + 1}
             self._event(db, session_id, 'turn_completed', response, request['request_id'], 'orchestrator')
-            db.execute('UPDATE sessions SET revision=:revision,state=:state,updated=:updated WHERE id=:id',
-                       {'revision': response['revision'], 'state': canonical(state), 'updated': now(), 'id': session_id})
-            db.execute("UPDATE requests SET status='complete',response=:response WHERE session=:session AND token=:token",
-                       {'response': canonical(response), 'session': session_id, 'token': token})
+            db.execute(sessions.update().where(sessions.c.id == session_id).values(
+                revision=response['revision'], state=canonical(state), updated=now()))
+            db.execute(requests.update().where(requests.c.session == session_id,
+                requests.c.token == token).values(status='complete', response=canonical(response)))
             return response

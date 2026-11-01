@@ -12,9 +12,10 @@ import unittest
 import httpx
 
 from kb_platform.blob_service import BlobService
-from kb_platform.database_contracts import SpaceKey
+from kb_platform.database_contracts import DatabaseError, Migration, SchemaPackage, SpaceKey
 from kb_platform.database_providers import SQLiteProvider
-from kb_platform.database_service import DatabaseService
+from kb_platform.storage_adapters.sql import SqlStorageProvider
+from kb_platform.storage_sdk import ExistingDataset
 from kb_platform.embedding_jobs import recovered_observation
 from kb_platform.persistence_migration import import_ledger, inspect_ledger_import
 from kb_platform.provider_admission import CaptureAdmissionError, ProviderAdmission
@@ -26,7 +27,7 @@ from .budget import BudgetLedger
 from .cache import StageCache, StageKey
 
 
-def exercise_persistence(bind, objects, root):
+def exercise_persistence(bind, objects, root, *, engine='structured'):
     check = unittest.TestCase()
     key = StageKey(stage='retrieval', implementation='storage-contract/1', upstream=('question',),
         config_hash='config', corpus_hash='corpus', index_snapshot='index', principal='principal',
@@ -172,7 +173,7 @@ def exercise_persistence(bind, objects, root):
         check.assertEqual(response.data, {'text': 'synthetic response', 'finish_reason': 'stop'})
     check.assertEqual(len(sent), 1)
     check.assertEqual(model_ledger.summary()['effective_usage_or_reserved'], {'requests': 1})
-    return {'engine': first.database.info.engine, 'cache': 'exact-key-current-authorization-blob-integrity',
+    return {'engine': engine, 'cache': 'exact-key-current-authorization-blob-integrity',
             'physical_requests': second.summary()['physical_requests'], 'unknown_reservation': 40,
             'admission': 'cross-client-exclusion-reservation-visible-before-send',
             'legacy_import': 'explicit-hash-checked-source-readonly-sealed-and-idempotent',
@@ -183,19 +184,54 @@ def exercise_persistence(bind, objects, root):
 
 
 class PersistenceContracts(unittest.TestCase):
+    def test_previous_managed_budget_lineage_is_not_adopted_or_rewritten(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'previous-budget.sqlite3'
+            space = SpaceKey('local-persistence', 'physical-budget', 'primary')
+            provider = SqlStorageProvider(SQLiteProvider(path.parent, files={space: path}))
+            identity = provider.initialize('relational', space)
+            previous = next(export for export in provider.exports() if export.name == 'relational')
+            database = previous.open_space(space, ExistingDataset(identity.dataset_id))
+            package = SchemaPackage(space.owner_id, (Migration(1, (
+                'CREATE TABLE config(id INTEGER PRIMARY KEY,caps TEXT NOT NULL)',
+                'CREATE TABLE calls(id TEXT PRIMARY KEY,status TEXT NOT NULL,reserved TEXT NOT NULL,'
+                'usage TEXT,category TEXT NOT NULL,diagnostic TEXT)',
+            )),))
+            database.prepare(package)
+            database.seal()
+            with database.transaction() as transaction:
+                transaction.execute('INSERT INTO config VALUES(1,:caps)', {'caps': '{"calls":3}'})
+                transaction.execute('INSERT INTO calls VALUES(:id,:status,:reserved,NULL,:category,NULL)',
+                    {'id': 'retained-unknown', 'status': 'UNKNOWN', 'reserved': '{"calls":2}',
+                     'category': 'synthetic'})
+            provider.close()
+            original = path.read_bytes()
+            with self.assertRaisesRegex(DatabaseError, 'STORAGE_STRUCTURED_MIGRATION_REQUIRED'):
+                BudgetLedger(path, {'calls': 3})
+            self.assertEqual(path.read_bytes(), original)
+            with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as connection:
+                self.assertEqual(connection.execute('SELECT content_hash FROM _database_migrations').fetchone()[0],
+                                 package.migrations[0].digest)
+                self.assertEqual(connection.execute('SELECT dataset_id FROM _database_identity').fetchone()[0],
+                                 identity.dataset_id)
+                self.assertEqual(connection.execute('SELECT status,reserved FROM calls').fetchone(),
+                                 ('UNKNOWN', '{"calls":2}'))
+
     def test_actual_sqlite_injected_storage_obeys_shared_rules(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            service, blobs = DatabaseService(), BlobService()
+            service, blobs = SqlStorageProvider(SQLiteProvider(root / 'database')), BlobService()
             self.addCleanup(service.close)
             self.addCleanup(blobs.close)
-            service.register('local', SQLiteProvider(root / 'database'))
             blobs.register('local', FileBlobProvider(root / 'objects'))
 
             def bind(owner, space):
-                return service.bind(service.grant('local', SpaceKey('persistence', owner, space), 'fixture'))
+                key = SpaceKey('persistence', owner, space)
+                identity = service.initialize('structured', key)
+                export = next(item for item in service.exports() if item.name == 'structured')
+                return export.open_space(key, ExistingDataset(identity.dataset_id))
 
-            result = exercise_persistence(bind, blobs.bind('local', space='cache'), root / 'migration')
+            result = exercise_persistence(bind, blobs.bind('local', space='cache'), root / 'migration', engine='sqlite')
             self.assertEqual(result['physical_requests'], 6)
 
     def test_legacy_ledger_cannot_be_silently_replaced_or_mutated(self):

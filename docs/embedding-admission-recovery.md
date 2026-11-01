@@ -22,10 +22,10 @@
 
 该模块已有的 `live_contract_suite(dsn)` 增加真实 PostgreSQL 续建用例：首批完成、后批预算拒绝、重复准入不消耗次数、补充关联预算、新任务管理实例恢复、已完成批次不重发，最终检查累计账本和熔断状态。该套件共 11 项通过；使用合成 HTTP，不代表供应商答案质量。
 
-运行真实数据库合同需要已初始化项目表结构的专用测试数据库。通过应用角色连接，以随机测试租户隔离；使用现有统一合同，不运行额外模型调用：
+当前真实数据库合同由正式入口初始化独立结构化空间。设置同一专用测试数据库的 `KB_INTEGRATION_DSN`（受限运行账号）与 `KB_INTEGRATION_MIGRATION_DSN`（夹具初始化账号），运行：
 
 ```powershell
-uv run --no-sync python -c "import os, unittest; from kb_platform.rag_testing.embedding_jobs_contracts import live_contract_suite; result = unittest.TextTestRunner(verbosity=2).run(live_contract_suite(os.environ['KB_DSN'])); raise SystemExit(not result.wasSuccessful())"
+uv run --no-sync python scripts/check_project.py --local-integration --output reports/embedding-recovery-new
 ```
 
 完整项目门禁仍为 `uv run --no-sync python scripts/check_project.py`。真实供应商、全产品 HTTP 与答案质量的结果另行记录，不能用上述组件合同代替。

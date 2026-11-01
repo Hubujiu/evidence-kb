@@ -23,6 +23,7 @@ from kb_platform.plugin_host import PluginHost, PluginSpec
 from kb_platform.storage_adapters.sql import SqlStorageProvider
 from kb_platform.storage_plugins import compile_storage_plugins, require_storage
 from kb_platform.storage_sdk import RELATIONAL_V1, StorageProvider, StorageSlot
+from kb_platform.storage_sdk.relational import GUARDED_RELATIONAL_V1
 
 
 def task_schema(owner='tasks'):
@@ -421,7 +422,7 @@ class DatabasePluginContracts(unittest.TestCase):
 
     def providers(self):
         return {'sqlite': StorageProvider(lambda config: SqlStorageProvider(SQLiteProvider(config['root'])),
-                                          {'relational': (RELATIONAL_V1,)})}
+                                          {'relational': (RELATIONAL_V1,), 'structured': (GUARDED_RELATIONAL_V1,)})}
 
     def initialize(self, configuration):
         initializer = SqlStorageProvider(SQLiteProvider(configuration['instances']['main']['config']['root']))

@@ -5,6 +5,7 @@ from ..database_migrations import initialize_space, prepare
 from ..storage_sdk import (
     ExistingDataset, RELATIONAL_POSTGRES_V1, RELATIONAL_V1, SpaceKey, StorageError, StorageExport,
 )
+from ..storage_sdk.relational import GUARDED_RELATIONAL_V1
 
 
 def relational_contracts(engine):
@@ -15,18 +16,19 @@ class SqlStorageProvider:
     def __init__(self, provider, *, adapters=None):
         self._provider = provider
         self._adapters = {} if adapters is None else dict(adapters)
-        if 'relational' in self._adapters:
+        if {'relational', 'structured'} & self._adapters.keys():
             raise ValueError('STORAGE_RELATIONAL_EXPORT_RESERVED')
 
     def exports(self):
-        exports = [StorageExport('relational', relational_contracts(self._provider.info.engine), self._relational)]
+        exports = [StorageExport('relational', relational_contracts(self._provider.info.engine), self._relational),
+                   StorageExport('structured', (GUARDED_RELATIONAL_V1,), self._structured)]
         for name, (contracts, factory) in self._adapters.items():
             exports.append(StorageExport(name, contracts,
                 lambda space, target, selected=factory: selected(self._relational(space, target))))
         return tuple(exports)
 
     def initialize(self, export_name, space):
-        if export_name not in {'relational', *self._adapters} or not isinstance(space, SpaceKey):
+        if export_name not in {'relational', 'structured', *self._adapters} or not isinstance(space, SpaceKey):
             raise ValueError('INVALID_STORAGE_INITIALIZATION')
         return initialize_space(self._provider.open_space(space))
 
@@ -36,6 +38,15 @@ class SqlStorageProvider:
         physical = self._provider.open_space(space)
         initialize_space(physical, expected_dataset_id=target.dataset_id)
         return _SqlSpace(physical)
+
+    def _structured(self, space, target):
+        from .structured import StructuredSqlSpace
+
+        if not isinstance(target, ExistingDataset):
+            raise StorageError('STORAGE_PERSISTENT_DATASET_REQUIRED')
+        physical = self._provider.open_space(space)
+        initialize_space(physical, expected_dataset_id=target.dataset_id)
+        return StructuredSqlSpace(physical)
 
     def close(self):
         self._provider.close()

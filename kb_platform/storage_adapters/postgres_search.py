@@ -4,6 +4,7 @@ import json
 import math
 import re
 import struct
+from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -11,6 +12,7 @@ from ..database_contracts import CommitUnknown, DatabaseError, QueryLimits
 from ..search_errors import SearchUnavailable
 from ..search_tokens import tokens
 from ..storage_sdk import StorageError
+from ..implementation_dependencies import implementation_dependencies
 from .postgres_search_schema import postgres_search_schema
 
 
@@ -95,6 +97,7 @@ class PostgresSearchStore:
                 {'extension': extension}).fetchone()
         if installed is None or installed['nspname'] != 'public':
             raise StorageError('STORAGE_EXTENSION_REQUIRED', extension=extension, schema='public')
+        self._extension = {'name': extension, 'version': installed['extversion']}
 
     @contextmanager
     def _transaction(self, *, write=False):
@@ -108,6 +111,16 @@ class PostgresSearchStore:
 
     def storage_identity(self):
         return {'dataset': str(self.identity), 'channel': self.channel, 'format': 'postgres-generic-search/1'}
+
+    def dependency_manifest(self):
+        directory = Path(__file__).resolve().parents[1]
+        return {'version': 1, 'implementation': {**implementation_dependencies(__file__,
+            Path(__file__).with_name('postgres_search_schema.py'), directory / 'search_tokens.py',
+            directory / 'storage_catalog.py', directory / 'database_contracts.py',
+            directory / 'database_migrations.py', directory / 'database_providers/base.py',
+            directory / 'database_providers/postgres.py', directory / 'storage_adapters/sql.py',
+            packages=('psycopg', 'sqlalchemy', 'regex')), 'extension': dict(self._extension)},
+            'storage': self.storage_identity()}
 
     def _generation(self, index):
         if not isinstance(index, str) or re.fullmatch(r'[\w][\w.-]{0,127}', index) is None:

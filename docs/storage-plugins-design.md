@@ -12,7 +12,7 @@
 
 | 类别 | 接口职责 | 当前提供商和扩展 |
 | --- | --- | --- |
-| relational | 参数化 SQL、事务、业务迁移、有界进程查询 | PostgreSQL、MySQL、SQLite；PG 专用消费者声明 `RELATIONAL_POSTGRES_V1` |
+| relational | 结构化表达式、逻辑 schema、事务；guarded 扩展提供跨事务互斥 | PostgreSQL、MySQL、SQLite；业务使用 `storage.relational.structured/v1` |
 | document | 按 ID 读取 JSON 文档、有界批量读取、revision 条件写入与删除 | PostgreSQL、SQLite；不提供任意文档查询语言 |
 | kv | 按键读取、写入和删除 bytes | 三种 SQL 后端导出 `KV_DURABLE_V1`；Redis 导出 `KV_EXPIRING_V1` |
 | vector | 向量集合写入、校验、封存、读取与近邻查询 | PostgreSQL pgvector、embedded dense |
@@ -21,9 +21,11 @@
 
 同一个 PostgreSQL 实例插件可以导出 `relational`、`document`、`kv`、`vector`、`lexical`。每个 export 声明自己实现的合同。消费插件取得 vector 句柄时只能调用 vector 合同的方法，不能借此调用 document 或 SQL 接口。
 
-当前 PostgreSQL 搜索适配实现复用已有搜索 schema，部署需同时安装 pgvector 和 pg_textsearch。即使只绑定一个搜索 export，这个内部实现要求仍然存在。公共 vector 和 lexical 接口彼此独立，后续提供商可以分别实现。
+PostgreSQL 的 vector 和 lexical 出口使用独立通用 schema。vector 只要求 pgvector，lexical 只要求 pg_textsearch，不要求知识库表；两者可使用不同数据库。
 
 合同按 ID 和主版本精确匹配，SDK 显式声明继承关系。例如 `KV_EXPIRING_V1` 满足基础 `KV_V1`，但不满足 `KV_DURABLE_V1`。Redis 不会因为能够保存 bytes 就被当作持久文档数据库。未实现的 CAS、原子计数、流式对象接口不会出现在导出声明中。
+
+document、vector、lexical 合同还要求 `dependency_manifest()`，声明实现依赖与持久数据身份。缺失方法或非法声明在绑定时拒绝。公共服务组合稳定配置指纹，排除运行注册代次；检索构建据此判断依赖是否改变，不再按提供商类名选择哈希文件。KV、object、relational 不要求该方法。
 
 ## 装配与调用
 
@@ -79,7 +81,7 @@ PLUGIN = PluginSpec("example.consumer", (), (), mount, storage_slots=(CACHE,))
 
 [storage.example.json](../config/storage.example.json) 是 v2 初始化模板。顶层字段固定为 `version`、`application_id`、`instances`、`services`、`bindings`。`services` 将业务可读的服务名映射到实例的具名 export，`bindings` 将消费者实例的槽位映射到服务和空间。
 
-根应用读取 `KB_STORAGE_CONFIG`，独立 core 也接受 `create_agent_application(storage_configuration=...)`。其他应用可直接使用编译器和自己的提供商目录。旧 `KB_DATABASES_CONFIG` 会被拒绝；旧配置只能通过离线转换命令生成新文件，不能在启动时回退到旧注册器。
+根应用读取 `KB_STORAGE_CONFIG`。`create_app`、`create_root_application`、`create_platform` 和 `create_agent_application` 均接受 `storage_configuration` 与 `provider_catalog`，第三方提供商通过注入目录接入，不修改业务代码。旧 `KB_DATABASES_CONFIG` 会被拒绝；旧配置只能通过离线转换命令生成新文件，不能在启动时回退到旧注册器。
 
 `SpaceKey(application_id, owner_id, space_id)` 标识持久归属。插件实现名、实例名和运行代次不改变空间归属。持久绑定必须携带经显式初始化生成的 `dataset_id`，普通启动使用 `ExistingDataset` 核对身份。空目标、缺少身份或错误身份均拒绝绑定，不会自动创建空数据集替代旧数据。Redis 缓存使用 `EphemeralCacheSpace(cache_id)`，承认 TTL 和丢失语义，不伪装为持久数据集。
 
@@ -94,14 +96,14 @@ PLUGIN = PluginSpec("example.consumer", (), (), mount, storage_slots=(CACHE,))
 | `storage_catalog.py`、`storage_adapters/` | 提供商装配、合同实现和适配器内部表或索引 |
 | `database_providers/`、`database_migrations.py` | SQL 引擎、账号、事务、迁移锁、版本和内容哈希 |
 | `session_storage/`、`session_store.py` | 会话业务表、迁移与并发规则 |
-| `knowledge_storage.py`、`knowledge_queries.py`、`knowledge_sql.py`、`knowledge_schema.py` | 知识库语义操作、可信事务身份、私有方言与领域迁移 |
+| `knowledge_storage.py`、`knowledge_queries.py`、`knowledge_sql.py`、`knowledge_schema.py` | 知识库语义操作、可信事务身份与逻辑 schema，不含厂商方言 |
 | `persistence_schema.py`、`provider_receipt_database.py` | 缓存索引、预算、请求回执的表结构 |
 
-业务插件拥有领域 schema、逻辑集合、字段和迁移。提供商管理连接、隔离和引擎差异；document、kv、vector 等适配器只管理实现其合同需要的内部结构。提供商不替业务插件定义文档表，也不自动把 PostgreSQL SQL 翻译成 MySQL SQL。
+业务插件拥有领域 schema、逻辑集合、字段和迁移。提供商管理连接、隔离和引擎差异；document、kv、vector 等适配器只管理实现其合同需要的内部结构。结构化关系适配器编译 SQLAlchemy Core 表达式，并实现各引擎的时间、JSON、精确字符串、冲突写入和锁语义。业务不提交 PostgreSQL 字符串让其他数据库猜测翻译。
 
-关系消费者提交自己的 `SchemaPackage`。owner 必须匹配空间 owner，同版本不同内容哈希或 dirty 迁移拒绝继续。`prepare()` 在 `seal()` 或首次普通事务后关闭。SQLite 用写事务，PostgreSQL 用事务级 advisory lock，MySQL 用命名锁协调迁移；MySQL DDL 的隐式提交由迁移进度记录处理。受限运行账号与 SQLite authorizer 限制直接 DDL 和基础元数据修改。
+业务关系消费者提交自己的 `StructuredSchema`，使用公共 Core 表达式及 `ExactString`、`TypedJSON`、`UtcDateTime`、`Clock`、`After`。低层 SQL 接口仍使用 `SchemaPackage`，它与 structured 是不同合同，不能互相冒充。owner 必须匹配空间 owner，同版本不同内容哈希或 dirty 迁移拒绝继续。`prepare()` 在 `seal()` 或首次普通事务后关闭。SQLite 用写事务，PostgreSQL 用事务级 advisory lock，MySQL 用命名锁协调迁移；MySQL DDL 的隐式提交由迁移进度记录处理。受限运行账号与 SQLite authorizer 限制直接 DDL 和基础元数据修改。
 
-一个插件空间可以包含多个企业租户。空间归属与企业 ACL 是不同的约束。知识库继续在每次事务设置局部 tenant、kb 和 search_path，并在证据读取和最终交付时复查权限。可信 Python 插件和数据库账号边界不构成恶意代码沙箱。
+一个插件空间可以包含多个企业租户。空间归属与企业 ACL 是不同的约束。知识库每次事务传入可信 tenant、kb 作用域，公共适配器执行作用域约束；PostgreSQL 另外设置事务局部 RLS。证据读取和最终交付仍复查领域权限。可信 Python 插件和数据库账号边界不构成恶意代码沙箱。
 
 ## 当前业务适配边界
 
@@ -110,14 +112,14 @@ PLUGIN = PluginSpec("example.consumer", (), (), mount, storage_slots=(CACHE,))
 | 会话 `harness.store.database` | PostgreSQL、MySQL、SQLite | `SessionStore` 唯一拥有 revision、请求指纹、租约和原子完成规则 |
 | StageCache 索引、BudgetLedger、数据库回执 | 三种关系后端 | 使用同一缓存、预算及物理请求实现 |
 | 通用 JSON 文档 | PostgreSQL、SQLite | 按 ID 与 revision 访问，迁移必须保存删除历史 |
-| 完整知识库正文、ACL、构建和任务 | PostgreSQL、SQLite | 同一领域规则；PG 保留 RLS，SQLite 使用封闭作用域操作和写事务；MySQL 领域方言尚未实现 |
+| 完整知识库正文、ACL、构建和任务 | 任何实现 structured 合同的提供商 | 内置 PostgreSQL、MySQL、SQLite 共用同一领域 schema 和操作，无引擎白名单 |
 | `platform.search.storage` | BM25、dense、source 分别绑定 | 要求 lexical BM25、vector、document 三个合同 |
 | 原件 `platform.originals.storage` | files、S3 | 对象复制和数据库引用切换分别执行 |
 | `storage.cache.volatile` | 关系索引与 Redis payload | 显式使用可丢失缓存，miss 或断线返回未命中 |
 
 BM25 与 dense 可以使用同一 PostgreSQL、两个 PostgreSQL 数据库、PostgreSQL 与 embedded，或两个 embedded 通道。`SplitSearch` 分别接收词法和向量投影，从独立 source 读取权威文档。封存绑定三个数据身份与内容哈希，只有全部校验和封存成功后才允许发布。检索结果仍由业务层按当前权限过滤和复核。
 
-`KB_SEARCH_CHANNELS_CONFIG` 仍是领域组合的可选入口，见 [search-channels.example.json](../config/search-channels.example.json)。它不替代 v2 公共存储配置，也不是旧数据库配置的自动兼容入口。
+`KB_SEARCH_CHANNELS_CONFIG`、`KB_SEARCH_BACKEND` 和业务层 `KB_DSN` 已移除。旧选择器明确报错，检索只通过 v2 的 BM25、dense、source 槽位绑定。
 
 `StageCache(payload_cache=...)` 是文件或 object payload 后端的显式替代。关系索引仍保存精确依赖与校验信息，Redis 不形成第二套缓存或费用账本。授权、模式和 `under_test` 检查先于复用；payload 丢失触发必要阶段重建，内容损坏明确报错。这里没有性能提升的测量结论。
 
@@ -134,7 +136,7 @@ BM25 与 dense 可以使用同一 PostgreSQL、两个 PostgreSQL 数据库、Pos
 本轮没有把所有审计文件搬入数据库：
 
 - 冻结的 `budget_batches` 前序 SQLite、文件哈希和审核记录保持只读。
-- `producer_guard` 专用 SQLite sidecar 继续负责跨进程互斥与封存。
+- `BudgetLedger` 通过 guarded 关系合同执行跨进程互斥。SQLite sidecar、PostgreSQL advisory lock 和 MySQL named lock 由适配器分别实现。冻结前序账本的旧 producer seal 只读。
 - `model_http` 的实际请求 capture 继续写独立 `audit_root` JSON，远程账本需要另外提供审计目录。
 - `LunaClient` 旧格式响应缓存和默认文件回执保留；`RequestReceipts(database=...)` 支持显式注入。
 - `ProviderAdmission` 支持数据库与对象注入，`from_directory` 保留不可变历史读取入口。
@@ -143,6 +145,6 @@ Embedding 恢复和语义页核验通过账本接口读取物理请求，冻结�
 
 ## 领域仓储与通用检索边界
 
-`platform.repository.storage` 依赖 relational 合同，知识库自身拥有封闭操作、schema 和方言映射，当前实现 PostgreSQL、SQLite。通用 MySQL SQL/KV 仍可用于会话和其他插件；知识库仓储遇到尚未实现的方言会在挂载时返回 `KNOWLEDGE_SQL_DIALECT_UNAVAILABLE`。能力匹配用于确认接口合同，具体领域实现是否支持目标方言仍必须验证。
+`platform.repository.storage` 只要求 structured 合同。`knowledge_schema.py` 拥有逻辑表和不可变约束，`knowledge_sql.py` 把封闭的 `KnowledgeQuery` 转为中立 Core 操作，`knowledge_storage.py` 提供可信作用域。三者不读取 engine、DSN 或物理 schema。会话、预算、缓存索引和请求回执使用同一边界。
 
-PostgreSQL 的通用 vector/lexical 出口使用 `storage_adapters/postgres_search.py` 及独立 schema，记录只包含通用 ID、metadata 和相应通道数据，不要求知识库表或伪造 tenant/kb 字段。vector 只检查 pgvector，lexical 只检查 pg_textsearch。旧 PG 知识库空间的 Migration 1 不能用新搜索 Migration 1 覆盖；应绑定独立搜索空间并显式重建、核验和发布。原有知识库专用 PG 搜索入口继续作为领域实现保留。
+新 schema 使用独立迁移身份。适配器发现旧业务表时返回 `STORAGE_STRUCTURED_MIGRATION_REQUIRED`，不改写旧 Migration 1 或自动认领旧表。冻结的旧 SQL 在 `config/storage/legacy-knowledge-migration-v1.json`，仅供显式离线读取。迁移保留请求、UNKNOWN、向量、权限和引用，旧发布指针在新数据集中保持未激活，重新核验并封存后才能发布。详见 [本轮清理与迁移](storage-capability-cleanup.md)。

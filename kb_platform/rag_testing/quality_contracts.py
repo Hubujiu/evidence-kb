@@ -9,6 +9,29 @@ from scripts.check_project import architecture_violations, deny_external_io
 
 
 class ArchitectureContracts(unittest.TestCase):
+    def test_storage_boundary_rejects_retired_vendor_selection(self):
+        for path, source in (
+            ('knowledge_storage', "engine = database.info.engine\nif engine not in {'postgresql', 'sqlite'}: raise ValueError(engine)"),
+            ('knowledge_sql', 'from sqlalchemy.dialects.postgresql import insert'),
+            ('knowledge_schema', "def schema(engine):\n    return 'TEXT' if engine == 'sqlite' else 'JSONB'"),
+            ('platform_plugins', 'from .database_providers import PostgresProvider'),
+            ('application_composition', "row['use'] = 'platform.repository.postgres'"),
+            ('session_store', 'name = database.physical_name'),
+            ('search', "if type(backend).__name__ == 'PostgresSearch': dependencies = ['psycopg']"),
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(self.check_source(source, f'kb_platform/{path}.py'))
+        self.assertTrue(self.check_source('from sqlalchemy.dialects.mysql import VARBINARY',
+                                         'kb_platform/storage_sdk/relational.py'))
+        for path, source in (
+            ('knowledge_sql', 'from sqlalchemy import select, update'),
+            ('knowledge_schema', 'from .storage_sdk.relational import ExactString, StructuredSchema'),
+            ('platform_plugins', 'from .storage_plugins import require_storage'),
+            ('storage_adapters/structured', 'from sqlalchemy.dialects.mysql import VARBINARY'),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual([], self.check_source(source, f'kb_platform/{path}.py'))
+
     def test_agent_ports_reject_implementation_and_reverse_dependencies(self):
         for path, source in (
             ('agent_provider', 'from .remote import LunaClient'),

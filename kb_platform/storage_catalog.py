@@ -12,6 +12,7 @@ from .storage_sdk import (
     DOCUMENT_V1, ExistingDataset, KV_DURABLE_V1, KV_V1, LEXICAL_BM25_V1, OBJECT_V1,
     StorageError, StorageExport, StorageIdentity, StorageProvider, VECTOR_V1, KV_EXPIRING_V1,
 )
+from .storage_sdk.relational import GUARDED_RELATIONAL_V1
 
 
 def resolve_inputs(config):
@@ -116,7 +117,8 @@ class EmbeddedStorageProvider:
 def default_storage_providers():
     result = {}
     for engine in ('postgresql', 'mysql', 'sqlite'):
-        exports = {'relational': relational_contracts(engine), 'kv': (KV_V1, KV_DURABLE_V1)}
+        exports = {'relational': relational_contracts(engine), 'structured': (GUARDED_RELATIONAL_V1,),
+                   'kv': (KV_V1, KV_DURABLE_V1)}
         if engine != 'mysql':
             exports['document'] = (DOCUMENT_V1,)
         if engine == 'postgresql':

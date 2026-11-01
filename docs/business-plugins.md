@@ -4,7 +4,7 @@
 
 ## 显式构造端口
 
-Platform 接收 `repository`、`search`、`store`、`parser`、`embedding_jobs`、`embedding_provider` 和 `ocr_client`。KnowledgeRepository 管理每次领域事务的可信作用域与封闭操作，私有持久化实现支持 PostgreSQL 和 SQLite。Platform 保留权限检查、authority 锁、revision 复查和 snapshot 提交。
+Platform 接收 `repository`、`search`、`store`、`parser`、`embedding_jobs`、`embedding_provider` 和 `ocr_client`。KnowledgeRepository 管理每次领域事务的可信作用域与封闭操作，持久化只依赖 structured 合同，厂商兼容由存储适配器负责。Platform 保留权限检查、authority 锁、revision 复查和 snapshot 提交。
 
 KnowledgeService 接收显式会话存储、gateway、model、context policy、context manager、runtime、workflow factory、tool executor、semantic pages 和检索配置。它不创建第二个存储、运行时或模型实例。`create_knowledge_application()` 可借用已有 Platform、ResearchService 和模型服务，借用路径不关闭这些对象。
 
@@ -21,12 +21,11 @@ KnowledgeService 接收显式会话存储、gateway、model、context policy、c
 | B1 `models.route.generation` | generation 路由，依赖注册表和客户端 | 独立注册身份及所属实例租约 | Embedding 路由 |
 | B1 `models.route.embedding` | embedding 路由，依赖同上 | 独立注册身份及所属实例租约 | generation 与 OCR |
 | B1 `platform.model_clients.remote` | `model.clients` | 关闭自己创建的客户端，显式传入时借用 | 本地能力 |
-| B2 `platform.repository.postgres` | `platform.repository` | 每次事务关闭连接 | 不依赖数据库的能力 |
-| B2 `platform.search.postgres` | `platform.search`，依赖 repository | 关闭自己的连接池 | 其他搜索实例 |
-| B2 `platform.search.embedded` | `platform.search` | 释放自己的索引 reader | 同上 |
-| B2 `platform.search.opensearch` | `platform.search` | 复用现有按请求访问实现 | 同上 |
-| B2 `platform.originals.files` | `platform.originals` | 卸载不删除业务数据 | 数据库中的证据快照 |
-| B2 `harness.store.sqlite` | `session.store` | 短事务结束时关闭 SQLite 连接 | 其他组合的独立会话 |
+| B2 `platform.repository.storage` | `platform.repository`，primary 需要 structured | 借用绑定，连接由提供商实例关闭 | 不依赖数据库的能力 |
+| B2 `platform.search.storage` | `platform.search`，分别需要 lexical BM25、vector、document | 借用三个绑定，支持独立提供商 | 其他独立检索组合 |
+| B2 `platform.originals.storage` | `platform.originals`，需要 object | 卸载不删除业务数据 | 数据库中的证据快照 |
+| B2 `harness.store.database` | `session.store`，需要 structured | 借用提供商绑定 | 其他组合的独立会话 |
+| B2 `harness.store.sqlite` | `session.store`，显式本地持久化组合 | 只关闭自有本地资源 | 不使用公共存储的独立 Agent |
 | B3 `platform.parser.native` | `platform.parser` | 大文件沿用受控解析子进程及超时 | 移除 OCR 后仍可原生解析 |
 | B3 `models.ocr`、`platform.ocr.client` | `ocr`，依赖所选模型路由 | 借用模型绑定 | Embedding。独立 OCR 路由也不影响 generation |
 | B4 `platform.embedding_jobs` | `platform.embedding_jobs`，依赖 repository | 复用持久任务状态机，不启动额外轮询线程 | BM25 |

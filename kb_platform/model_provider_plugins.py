@@ -9,6 +9,8 @@ import httpx
 from .model_configuration import configured_adapter, configured_budget, read_model_config
 from .plugin_configuration import config_schema, environment_inputs, file_inputs, TEXT
 from .plugin_host import PluginSpec
+from .storage_sdk import StorageSlot
+from .storage_sdk.relational import GUARDED_RELATIONAL_V1
 
 
 def model_route_marker(route):
@@ -156,6 +158,14 @@ def compile_model_plugins(profile, catalog):
                 {name: item.get('dimension') for name, item in routes.items()}))
             entries.append({'id': key, 'use': key,
                 'config': {name: config[name] for name in ('config_path', 'audit_root') if name in config}})
+    for row in selected['plugins']:
+        if row.get('disabled') or row['use'] != 'models.budget' or 'database_slot' not in row.get('config', {}):
+            continue
+        key = _generated_key('budget', row['id'])
+        base = next(spec for spec in specs if spec.key == 'models.budget')
+        additions.append(replace(base, key=key,
+            storage_slots=(StorageSlot(row['config']['database_slot'], GUARDED_RELATIONAL_V1),)))
+        row['use'] = key
     selected['plugins'].extend(entries)
     by_spec = {spec.key: spec for spec in (*specs, *additions)}
     markers = {name for row in selected['plugins'] if not row.get('disabled')

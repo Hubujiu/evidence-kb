@@ -179,7 +179,7 @@ class VolatileStageCacheContracts(unittest.TestCase):
         config = {'version': 2, 'application_id': 'independent-cache-project',
             'instances': {'index': {'provider': 'sqlite', 'config': {'root': str(root)}},
                           'cache': {'provider': 'memory', 'config': {}}},
-            'services': {'index': {'instance': 'index', 'export': 'relational'},
+            'services': {'index': {'instance': 'index', 'export': 'structured'},
                          'payload': {'instance': 'cache', 'export': 'kv'}},
             'bindings': {'cache': {
                 'index': {'service': 'index', 'owner': 'stage-cache', 'space': 'results'},

@@ -1,7 +1,9 @@
 import hashlib
 import json
+from pathlib import Path
 
-from .search import OpenSearch, SearchUnavailable, content_order
+from .search import OpenSearch, SearchUnavailable, backend_dependencies, content_order
+from .implementation_dependencies import implementation_dependencies
 from .storage_sdk import StorageError
 
 
@@ -24,6 +26,11 @@ class DocumentEvidenceSource:
 
     def storage_identity(self):
         return {'dataset': str(self.identity)}
+
+    def dependency_manifest(self):
+        return {'version': 1, 'implementation': implementation_dependencies(__file__,
+            Path(__file__).with_name('search.py')), 'storage': self.storage_identity(),
+            'documents': backend_dependencies(self.documents)}
 
     @staticmethod
     def _key(index, suffix):

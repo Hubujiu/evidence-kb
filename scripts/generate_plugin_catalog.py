@@ -12,7 +12,7 @@ from kb_platform.storage_plugins import storage_plugins
 
 
 def render():
-    settings = Settings('', '', Path('.local/store'), Path('.local/identities.json'))
+    settings = Settings(Path('.local/store'), Path('.local/identities.json'))
     groups = (
         ('通用 Agent', 'harness_services.py', builtin_plugins()),
         ('公共模型服务', 'model_plugins.py', model_plugins()),
@@ -43,7 +43,7 @@ def render():
             slots = ', '.join(slot.name + ': ' + slot.contract.key for slot in spec.storage_slots)
             lines.append(f'| {group} | `{spec.key}` | {", ".join(spec.provides) or "无"} | '
                          f'{", ".join(spec.requires) or "无"} | {slots or "无"} |')
-    lines.extend(['', '关系方言约束与可选预算槽位由应用组合按配置声明，生成的真实依赖由 Rust 宿主检查。',
+    lines.extend(['', '消费者声明存储合同与可选预算槽位，生成的真实依赖由 Rust 宿主检查；装配层不补厂商约束。',
                   '合同 SDK 与注册器不强制第三方业务使用公共服务；模型和存储各自检查领域语义。', ''])
     return '\n'.join(lines), count
 

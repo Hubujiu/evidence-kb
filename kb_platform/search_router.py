@@ -1,10 +1,12 @@
 import hashlib
 import json
+from pathlib import Path
 
 from .search import (OpenSearch, SearchGenerationIncomplete, SearchUnavailable, backend_dependencies,
                      binding_key, content_order, lexical_results)
 from .search_channels import canonical_records
 from .search_evidence import canonical_units, unit_sha256
+from .implementation_dependencies import implementation_dependencies
 
 
 FORMAT = 'split-authoritative-search/2'
@@ -35,6 +37,14 @@ class SplitSearch:
         self.bm25, self.vector, self.source = bm25, dense, source
         self._channels = (('bm25', bm25), ('dense', dense))
         self.supports_manifest_storage = getattr(source, 'supports_manifest_storage', False)
+
+    def dependency_manifest(self):
+        channels = {'bm25': backend_dependencies(self.bm25), 'dense': backend_dependencies(self.vector)}
+        source = backend_dependencies(self.source)
+        return {'version': 1, 'implementation': implementation_dependencies(__file__,
+            Path(__file__).with_name('search.py')), 'storage': {
+                'channels': {name: value['storage'] for name, value in channels.items()},
+                'source': source['storage']}, 'channels': channels, 'source': source}
 
     @classmethod
     def channel_index(cls, index, channel):

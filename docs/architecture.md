@@ -1,6 +1,6 @@
 # 产品模块与评测边界
 
-当前内置实现、服务依赖和公开 profile 见 [插件目录](plugin-catalog.md)。公共存储按 relational、document、kv、vector、lexical、object 六类合同连接消费插件与提供商，结构见 [存储插件设计](storage-plugins-design.md)，执行、验收和搬迁步骤见 [执行方案](storage-plugins-execution-plan.md)。会话和通用关系持久化支持 PostgreSQL、MySQL、SQLite；知识库领域仓储支持 PostgreSQL 和 SQLite；MySQL 的通用 SQL 能力不等于知识库领域实现。第三轮边界见 [改造方案](plugin-boundaries-v3-plan.md)。
+当前内置实现、服务依赖和公开 profile 见 [插件目录](plugin-catalog.md)。公共存储按 relational、document、kv、vector、lexical、object 六类合同连接消费插件与提供商，结构见 [存储插件设计](storage-plugins-design.md)，执行、验收和搬迁步骤见 [执行方案](storage-plugins-execution-plan.md)。知识库领域仓储、会话、预算、缓存索引和请求回执均消费 structured 关系合同；内置 PostgreSQL、MySQL、SQLite 实现同一业务协议。第三轮边界见 [改造方案](plugin-boundaries-v3-plan.md)。
 
 共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由由 Rust 生命周期管理。
 
@@ -8,19 +8,19 @@
 
 通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/application-profiles/` 中选定的根 profile，展开 platform 与 knowledge 组合包并取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由可信 catalog 提供。Rust 拥有依赖解析、作用域、生命周期、通用 loop 和图节点推进，Python 执行服务效果与知识库路由策略。通用宿主、loop 与工具目录不导入知识库业务。
 
-默认检索由 `postgres_search.py` 提供，使用 pg_textsearch BM25 和 pgvector 精确检索。`platform.search.storage` 分别声明 lexical BM25、vector 和 document source 三个槽位，`search_router.SplitSearch` 核对三方身份、内容、封存和发布。BM25 与 dense 可以使用同一实例、不同 PG 数据库或 PG 与 embedded 的组合；通用 PG 搜索分别要求 pg_textsearch 或 pgvector，使用独立搜索 schema；原有知识库专用 PG 搜索入口仍依赖两个扩展。`KB_SEARCH_CHANNELS_CONFIG` 仍可用于领域组合。知识库正文、权限、发布状态和 Embedding 任务通过同一领域仓储访问 PostgreSQL 或 SQLite；`search.py` 保留共有排序与绑定合同。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件通过 files 或 S3 对象接口用于下载、PDF 和图片预览；证据以不可变解析快照为准。当前配置边界见 [存储设计](storage-plugins-design.md)，检索协议见 [检索存储](search-storage.md)。
+默认本地检索由 embedded 提供；通过存储配置可选择 pg_textsearch BM25 和 pgvector 精确检索。`platform.search.storage` 分别声明 lexical BM25、vector 和 document source 三个槽位，`search_router.SplitSearch` 核对三方身份、内容、封存和发布。BM25 与 dense 可以使用同一实例、不同 PG 数据库或 PG 与 embedded 的组合；通用 PG 搜索分别要求 pg_textsearch 或 pgvector，使用独立搜索 schema；旧知识库专用 PG 搜索代码仅供显式历史数据工具读取，不再出现在运行时 catalog。`KB_SEARCH_CHANNELS_CONFIG` 已移除。知识库正文、权限、发布状态和 Embedding 任务通过 structured 关系合同访问所绑定提供商；`search.py` 保留共有排序与绑定合同。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件通过 files 或 S3 对象接口用于下载、PDF 和图片预览；证据以不可变解析快照为准。当前配置边界见 [存储设计](storage-plugins-design.md)，检索协议见 [检索存储](search-storage.md)。
 
 产品保留一个回答方案。`kb_platform/delivery.py` 负责交付应用的组装；`DeliveryProfile` 保存配置路径、提供者路径、运行目录与冻结配置。预算 CLI 和服务启动器都调用这一实现。
 
 ## 公共存储与业务所有权
 
-`storage_sdk` 定义六类接口与扩展合同，不依赖宿主、知识库或具体驱动。`storage_plugins.compile_storage_plugins` 将实例、具名 export 和槽位配置编译为 registry、instance、bound 和消费者依赖，交给原 Rust 宿主管理。`storage_service` 负责领域合同、授权和绑定，不另建生命周期状态机。`PluginSpec.storage_slots` 允许可信插件声明所需接口，`require_storage` 返回受合同限制的句柄。根应用和独立 core 读取 `KB_STORAGE_CONFIG`，独立应用也能注入自己的 provider catalog。
+`storage_sdk` 定义六类接口与扩展合同，不依赖宿主、知识库或具体驱动。SQLAlchemy Core 是结构化关系合同的中立表达式类型，厂商类型和编译器只在适配器中。`storage_plugins.compile_storage_plugins` 将实例、具名 export 和槽位配置编译为 registry、instance、bound 和消费者依赖，交给原 Rust 宿主管理。`storage_service` 负责领域合同、授权和绑定，不另建生命周期状态机。`PluginSpec.storage_slots` 允许可信插件声明所需接口，`require_storage` 返回受合同限制的句柄。根应用和独立 core 读取 `KB_STORAGE_CONFIG`，独立应用也能注入自己的 provider catalog。
 
 公共模型和公共存储都是可选基础服务。第三方可直接声明依赖自己的适配器或服务；Rust 宿主仍检查一般依赖和生命周期。一个 PostgreSQL 提供商可以导出多个合同，Redis 只导出基础 KV 与 TTL 扩展。合同缺失或版本不符拒绝绑定，不能按数据库品牌推测能力。
 
 PostgreSQL、MySQL、SQLite 提供商管理连接、受限运行权限和事务。适配器管理实现公共合同需要的内部结构，业务插件拥有领域 schema、查询与迁移。`SpaceKey(application_id, owner_id, space_id)` 加显式初始化的 `dataset_id` 标识持久数据，运行注册代次管理当前句柄。正常启动核对现有身份，错误身份或误指空库拒绝，不自动创建替代数据集。Redis 缓存使用明确的 `cache_id`。多个项目可以共用服务器并保持空间独立，多个宿主各有自己的连接池。旧配置只能离线转换，运行时不回退到 `KB_DATABASES_CONFIG`。
 
-`harness.store.database` 支持三种数据库，`SessionStore` 继续唯一拥有会话规则。知识库业务只使用 `knowledge_queries.py` 的封闭语义操作；`knowledge_storage.py` 管理可信租户/知识库作用域，`knowledge_sql.py` 隐藏 SQL 方言、JSON、锁与时钟，`knowledge_schema.py` 拥有领域迁移。`platform.repository.storage` 只声明 relational 合同，提供商没有对应领域方言时在挂载时明确拒绝。SQLite 通过封闭操作和事务实施服务级租户隔离，PostgreSQL 额外保留 RLS。原 PostgreSQL Migration 1 内容、哈希与授权不变，历史 schema 中仍有旧搜索对象。绑定新库不会自动搬迁旧数据。
+`harness.store.database` 支持三种数据库，`SessionStore` 唯一拥有会话规则。知识库业务只使用 `knowledge_queries.py` 的封闭语义操作；`knowledge_storage.py` 管理可信作用域，`knowledge_sql.py` 使用中立 Core 表达式，`knowledge_schema.py` 拥有逻辑 schema。`platform.repository.storage` 只声明 structured 合同，不读取数据库引擎。公共适配器负责 JSON、锁、时钟、精确字符串和 SQL 编译，并执行作用域隔离；PostgreSQL 额外保留 RLS。新 schema 使用独立迁移身份，旧 Migration 1 归档不变；历史表需 [显式离线迁移](storage-capability-cleanup.md)，运行时不自动接纳或搬迁。
 
 `storage_adapters.objects` 将 files 与 S3 接入 object 合同，`storage` 提供原件业务接口。BlobRef 绑定空间、租户、SHA-256 和长度，API 经对象接口读取，不以外部传入路径读取原件。当前是完整 bytes 读取，未提供端到端流式下载。对象存储和数据库引用没有分布式事务，复制对象后需显式核验和切换业务引用。
 

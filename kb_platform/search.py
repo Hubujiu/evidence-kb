@@ -8,6 +8,7 @@ from functools import lru_cache
 import httpx
 
 from .search_errors import SearchUnavailable as SearchUnavailable
+from .implementation_dependencies import dependency_manifest, implementation_dependencies
 
 TIE_BREAK_FIELDS = ('source_version_id', 'parse_snapshot_id', 'ordinal', 'unit_id')
 BINDING_FIELDS = ('binding_id', 'source_id', 'source_version_id', 'parse_snapshot_id')
@@ -35,45 +36,13 @@ def score_order() -> list[dict]:
 
 
 def backend_dependencies(backend):
-    from pathlib import Path
-    import importlib.metadata
-    files = [Path(__file__)]
-    packages = []
-    if type(backend).__name__ == 'EmbeddedSearch':
-        files += [Path(__file__).with_name(name) for name in ('embedded_search.py', 'search_tokens.py')]
-        packages = ['tantivy', 'numpy', 'regex']
-    if type(backend).__name__ == 'PostgresSearch':
-        files += [Path(__file__).with_name(name) for name in ('postgres_search.py', 'search_tokens.py')]
-        packages = ['psycopg', 'regex']
-    if type(backend).__name__ == 'PostgresSearchStore':
-        files += [Path(__file__).parent / 'storage_adapters' / name for name in
-                  ('postgres_search.py', 'postgres_search_schema.py')]
-        files.append(Path(__file__).with_name('search_tokens.py'))
-        packages = ['psycopg', 'sqlalchemy', 'regex']
-    dependencies = {'files': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files},
-                    'packages': {name: importlib.metadata.version(name) for name in packages}}
-    if type(backend).__name__ == 'SplitSearch':
-        file = Path(__file__).with_name('search_router.py')
-        dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
-        dependencies['channels'] = {'bm25': backend_dependencies(backend.bm25),
-                                    'dense': backend_dependencies(backend.vector)}
-        dependencies['source'] = backend_dependencies(backend.source)
-    elif type(backend).__name__ in ('SearchVectorAdapter', 'SearchLexicalAdapter'):
-        file = Path(__file__).with_name('search_channels.py')
-        dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
-        dependencies['backend'] = backend_dependencies(backend.backend)
-        dependencies['storage'] = backend.storage_identity()
-    elif type(backend).__name__ == 'DocumentEvidenceSource':
-        file = Path(__file__).with_name('search_evidence.py')
-        dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
-        dependencies['storage'] = backend.storage_identity()
-    elif type(backend).__name__ in ('PostgresSearch', 'PostgresSearchStore'):
-        dependencies['storage'] = backend.storage_identity()
-    elif type(backend).__name__ == 'EmbeddedSearch':
-        dependencies['storage'] = {'root_sha256': hashlib.sha256(str(backend.root).encode()).hexdigest()}
-    elif type(backend).__name__ == 'OpenSearch':
-        dependencies['storage'] = {'url_sha256': hashlib.sha256(backend.url.encode()).hexdigest()}
-    return dependencies
+    describe = getattr(backend, 'dependency_manifest', None)
+    if not callable(describe):
+        raise SearchUnavailable('Search dependency manifest required')
+    try:
+        return dependency_manifest(describe())
+    except (TypeError, ValueError) as error:
+        raise SearchUnavailable('Invalid search dependency manifest') from error
 
 
 class SearchGenerationIncomplete(SearchUnavailable):
@@ -106,6 +75,10 @@ def _bulk_batches(units):
 class OpenSearch:
     def __init__(self, url: str):
         self.url = url.rstrip('/')
+
+    def dependency_manifest(self):
+        return {'version': 1, 'implementation': implementation_dependencies(__file__, packages=('httpx',)),
+                'storage': {'url_sha256': hashlib.sha256(self.url.encode()).hexdigest()}}
 
     def read_units(self, index, ids):
         response = self._request('POST', f'/{self._index(index)}/_mget', json={'ids': ids})

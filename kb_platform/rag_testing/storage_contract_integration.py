@@ -328,7 +328,7 @@ def suite(fixtures):
             for engine in ('sqlite', 'postgresql', 'mysql'):
                 with self.subTest(engine=engine):
                     name = 'volatile-stage-cache-' + engine
-                    service, database = fixtures.bind(engine, name, owner='stage-cache')
+                    service, database = fixtures.structured(engine, name, owner='stage-cache')
                     provider, tracked = self.redis()
                     space = SpaceKey('storage-acceptance-' + fixtures.run_id, 'stage-cache', name)
                     target = EphemeralCacheSpace('stage-payload-' + fixtures.run_id)
@@ -377,7 +377,7 @@ def suite(fixtures):
                     service.close()
                     with self.assertRaises(RuntimeError):
                         cache.get(key, authorize=lambda: True)
-                    _, recovered_database = fixtures.bind(engine, name, owner='stage-cache')
+                    _, recovered_database = fixtures.structured(engine, name, owner='stage-cache')
                     recovered = StageCache(database=recovered_database, payload_cache=payload_cache,
                                            payload_ttl_seconds=30)
                     self.assertIsNone(recovered.get(key, authorize=lambda: True))

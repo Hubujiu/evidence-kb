@@ -111,7 +111,7 @@ class DeliveryContracts(unittest.TestCase):
 
         path = self.root / 'identities.json'
         token = 'a' * 32
-        settings = Settings('', '', self.root, path)
+        settings = Settings(self.root, path)
         path.write_text(json.dumps({token: {'tenant_id': 'tenant', 'principal_id': 'alice'}}))
         self.assertEqual(settings.identities(), {token: Actor('tenant', 'alice')})
         path.write_text(json.dumps({token: {'tenant_id': '', 'principal_id': 'alice'}}))

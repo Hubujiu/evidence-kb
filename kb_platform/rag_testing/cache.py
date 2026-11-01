@@ -5,8 +5,10 @@ import math
 from pathlib import Path
 from typing import Callable
 
+from sqlalchemy import select
+
 from ..persistence_local import local_database
-from ..persistence_schema import cache_schema
+from ..persistence_schema import cache_schema, entries
 from ..storage_sdk import ExpiringKeyValueStore, StorageError
 from .contracts import Contract, digest
 
@@ -44,9 +46,8 @@ class StageCache:
         self.database = database
         if objects is None and payload_cache is None:
             (self.root / 'objects').mkdir(parents=True, exist_ok=True)
-        self._key_column = '`key`' if self.database.info.engine == 'mysql' else 'key'
         try:
-            self.database.prepare(cache_schema(self.database.identity.space.owner_id, self.database.info.engine))
+            self.database.prepare(cache_schema(self.database.identity.space.owner_id))
             self.database.seal()
         except BaseException:
             self.close()
@@ -73,13 +74,10 @@ class StageCache:
             locator = None
         else:
             locator = self.objects.put('stage-cache', raw.encode('utf-8')).locator
-        insert = ('INSERT IGNORE INTO entries(`key`,hash,object_ref) VALUES(:key,:hash,:ref)'
-                  if self.database.info.engine == 'mysql' else
-                  'INSERT INTO entries(key,hash,object_ref) VALUES(:key,:hash,:ref) ON CONFLICT(key) DO NOTHING')
         with self.database.transaction(write=True) as db:
-            db.execute(insert, {'key': key_hash, 'hash': content_hash, 'ref': locator})
-            old = db.execute('SELECT hash FROM entries WHERE ' + self._key_column + '=:key',
-                             {'key': key_hash}).fetchone()
+            db.insert(entries, {'key': key_hash, 'hash': content_hash, 'object_ref': locator},
+                      conflict_keys=('key',))
+            old = db.execute(select(entries.c.hash).where(entries.c.key == key_hash)).fetchone()
             if old['hash'] != content_hash:
                 raise ValueError("stage output changed; use a new implementation/sample identity")
         self._remember(content_hash, raw.encode('utf-8'))
@@ -108,8 +106,8 @@ class StageCache:
         if mode == "cold" or (mode == "live" and under_test):
             return None
         with self.database.transaction(write=False) as db:
-            row = db.execute('SELECT hash,object_ref FROM entries WHERE ' + self._key_column + '=:key',
-                             {'key': digest(key)}).fetchone()
+            row = db.execute(select(entries.c.hash, entries.c.object_ref)
+                             .where(entries.c.key == digest(key))).fetchone()
         if row is None:
             return None
         if self.payload_cache is not None:

@@ -11,7 +11,7 @@ services:
       - "127.0.0.1:55432:5432"
     volumes:
       - metadata_postgres:/var/lib/postgresql
-      - ./sql:/docker-entrypoint-initdb.d:ro
+      - ./docker/postgres/bootstrap.sql:/docker-entrypoint-initdb.d/bootstrap.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kb_admin -d evidence_kb"]
       interval: 3s

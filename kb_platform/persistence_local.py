@@ -4,7 +4,24 @@ import sqlite3
 
 from .database_contracts import SpaceKey
 from .database_providers.sqlite import SQLiteProvider
-from .database_service import DatabaseService
+from .storage_adapters.sql import SqlStorageProvider
+from .storage_sdk import ExistingDataset
+
+
+def _open_local(provider, space):
+    storage = SqlStorageProvider(provider)
+    try:
+        identity = storage.initialize('structured', space)
+        exported = next(item for item in storage.exports() if item.name == 'structured')
+        bound = exported.open_space(space, ExistingDataset(identity.dataset_id))
+    except BaseException:
+        storage.close()
+        raise
+    return bound, storage
+
+
+def local_space(root, space):
+    return _open_local(SQLiteProvider(root), space)
 
 
 def local_database(path, *, owner):
@@ -15,14 +32,19 @@ def local_database(path, *, owner):
         if tables and '_database_identity' not in tables:
             raise ValueError('LEGACY_PERSISTENCE_REQUIRES_EXPLICIT_IMPORT')
     key = SpaceKey('local-persistence', owner, 'primary')
-    service = DatabaseService()
-    service.register('local', SQLiteProvider(path.parent, files={key: path}))
-    try:
-        bound = service.bind(service.grant('local', key, owner))
-    except BaseException:
-        service.close()
-        raise
-    return bound, service
+    return _open_local(SQLiteProvider(path.parent, files={key: path}), key)
+
+
+def read_frozen_ledger(path, identities=None):
+    with closing(sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)) as database:
+        database.row_factory = sqlite3.Row
+        database.execute('BEGIN')
+        rows = [dict(row) for row in database.execute(
+            'SELECT id,status,reserved,usage,category,diagnostic FROM calls')]
+    if identities is None:
+        return rows
+    selected = set(identities)
+    return [row for row in rows if row['id'] in selected]
 
 
 def sealed_local_ledger(path):

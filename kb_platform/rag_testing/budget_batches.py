@@ -27,7 +27,8 @@ def _snapshot(path):
                  'category': category, 'diagnostic': diagnostic}
                 for identity, status, reserved, usage, category, diagnostic in db.execute(
                     'SELECT id,status,reserved,usage,category,diagnostic FROM calls ORDER BY id')]
-        totals = BudgetLedger._totals(db, caps)
+        totals = BudgetLedger._sum_rows([(json.dumps(row['reserved']),
+            None if row['usage'] is None else json.dumps(row['usage'])) for row in rows], caps)
     if sha256(path.read_bytes()).hexdigest() != before:
         raise ValueError('LEDGER_CHANGED_DURING_SNAPSHOT')
     for row in rows:

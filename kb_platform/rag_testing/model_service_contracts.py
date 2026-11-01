@@ -29,6 +29,29 @@ class ModelServiceContracts(unittest.TestCase):
                 'capabilities': ['chat' if route == 'generation' else route],
                 **({'dimension': 2} if route == 'embedding' else {})} for route in routes}}
 
+    def http_storage(self, config_path, name):
+        from kb_platform.storage_catalog import initialize_configuration
+
+        configured = json.loads(config_path.read_text('utf-8'))
+        generation = 'generation' in configured['models']
+        profile = {'version': 1, 'bundles': ['platform', *(['knowledge'] if generation else [])],
+            'plugins': [{'id': 'provider', 'use': 'models.service', 'config': {
+                'config_path': str(config_path), 'database_slot': 'budget',
+                'audit_root': str(self.root / name / 'audit')}}]}
+        if generation:
+            profile['plugins'].extend([{'id': 'research', 'use': 'platform.research'},
+                {'id': 'store', 'use': 'harness.store.database', 'config': {}}])
+        template = json.loads((Path(__file__).resolve().parents[2] /
+            'config/storage.local.example.json').read_text('utf-8'))
+        for instance, row in template['instances'].items():
+            row['config']['root'] = str(self.root / name / instance)
+        template['bindings']['provider'] = {'budget': {
+            'service': 'records.domain', 'owner': 'model-budget', 'space': 'ledger'}}
+        if generation:
+            template['bindings']['store'] = {'primary': {
+                'service': 'records.domain', 'owner': 'sessions', 'space': 'history'}}
+        return profile, initialize_configuration(template)
+
     def setUp(self):
         directory = TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -393,15 +416,21 @@ class ModelServiceContracts(unittest.TestCase):
 
     def test_generic_agent_uses_public_llm_dependency_and_persists_answer(self):
         from kb_platform.harness_profile import create_agent_application
+        from kb_platform.storage_catalog import initialize_configuration
 
         models = ModelService()
         models.register('generation', self.adapter({'choices': [{'message': {
             'content': '{"kind":"answer","value":"shared model"}'}, 'finish_reason': 'stop'}]}))
         profile = {'version': 1, 'bundles': ['core'], 'plugins': [
-            {'id': 'store', 'config': {'root': str(self.root / 'sessions')}},
+            {'id': 'store', 'use': 'harness.store.database', 'config': {}},
             {'id': 'models', 'use': 'models.service'}, {'id': 'llm', 'use': 'models.structured'},
             {'id': 'model', 'use': 'harness.model.service'}]}
-        app, host = create_agent_application(profile=profile, models=models, environment={})
+        storage = initialize_configuration({'version': 2, 'application_id': 'model-agent-contract',
+            'instances': {'records': {'provider': 'sqlite', 'config': {'root': str(self.root / 'sessions')}}},
+            'services': {'history': {'instance': 'records', 'export': 'structured'}},
+            'bindings': {'store': {'primary': {'service': 'history', 'owner': 'sessions', 'space': 'history'}}}})
+        app, host = create_agent_application(profile=profile, models=models, environment={},
+                                             storage_configuration=storage)
         from kb_platform.session_identity import Actor
         actor = Actor('tenant', 'user')
         with host:
@@ -452,15 +481,16 @@ class ModelServiceContracts(unittest.TestCase):
 
         config_path = self.root / 'application.json'
         config_path.write_text(json.dumps(self.configuration(('generation',))))
-        settings = SimpleNamespace(identities=lambda: {}, dsn='', search_url='', storage_root=self.root,
-                                   search_backend='postgres')
+        settings = SimpleNamespace(identities=lambda: {}, storage_root=self.root)
+        profile, storage = self.http_storage(config_path, 'chat-http')
         fake_platform = SimpleNamespace(embedding_provider=None, ocr_client=None)
         with patch.dict('os.environ', {'KB_DEFER_DEFAULT_APP': '1', 'KB_REMOTE_MODELS': '1',
                         'KB_MODELS_CONFIG': str(config_path), 'KB_AGENT_ROOT': str(self.root / 'app-sessions'),
                         'SYNTH_KEY': 'synthetic'}):
             from kb_platform.api import create_app
             with patch('kb_platform.core.Platform', return_value=fake_platform):
-                app = create_app(settings, agent_factory=_KnowledgeFixture)
+                app = create_app(settings, agent_factory=_KnowledgeFixture, profile=profile,
+                                 storage_configuration=storage)
         models = app.state.models
         try:
             endpoint = next(route.endpoint for route in app.routes if route.path == '/capabilities')
@@ -607,11 +637,11 @@ class ModelServiceContracts(unittest.TestCase):
         from kb_platform.core import Actor
 
         config_path = self.root / 'document-models.json'
-        settings = SimpleNamespace(identities=lambda: {}, dsn='', search_url='', storage_root=self.root,
-                                   search_backend='postgres')
+        settings = SimpleNamespace(identities=lambda: {}, storage_root=self.root)
         for routes in [('embedding',), ('ocr',), ('embedding', 'ocr')]:
             with self.subTest(routes=routes):
                 config_path.write_text(json.dumps(self.configuration(routes)))
+                profile, storage = self.http_storage(config_path, '-'.join(routes))
                 def platform(**ports):
                     return SimpleNamespace(embedding_provider=ports["embedding_provider"],
                                            ocr_client=ports["ocr_client"])
@@ -620,7 +650,7 @@ class ModelServiceContracts(unittest.TestCase):
                     from kb_platform.api import create_app
                     with patch('kb_platform.core.Platform', side_effect=platform), \
                             patch('kb_platform.remote.LunaClient', side_effect=AssertionError('unexpected generation')):
-                        app = create_app(settings)
+                        app = create_app(settings, profile=profile, storage_configuration=storage)
                 models = app.state.models
                 try:
                     self.assertIsNone(app.state.agent)

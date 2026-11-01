@@ -14,7 +14,8 @@ import xml.etree.ElementTree as ET
 import httpx
 
 from .runner import write_json
-from .runtime_integration import acceptance_dsn
+from .runtime_integration import acceptance_migration_dsn, controlled_storage
+from .runtime_integration import acceptance_dsn as acceptance_dsn
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -48,8 +49,9 @@ def browser_verdict(path):
     return {'tests': len(cases), 'failures': 0, 'errors': 0, 'skipped': 0}
 
 
-def run(summary, output, dsn):
-    database = acceptance_dsn(dsn)
+def run(summary, output, dsn, migration_dsn=None):
+    migration_dsn = migration_dsn or os.environ['KB_INTEGRATION_MIGRATION_DSN']
+    database = acceptance_migration_dsn(dsn, migration_dsn)
     host, library = checked_native(summary)
     node = shutil.which('node')
     cli = ROOT / 'e2e/node_modules/e2e/dist/cli/bin.js'
@@ -74,8 +76,11 @@ def run(summary, output, dsn):
         'cwd': str(ROOT), 'stop_file': str(stop),
         'application': {'factory': 'kb_platform.host_applications:api',
                         'config': {'host': '127.0.0.1', 'port': port, 'log_level': 'warning'}}})
+    storage_observations = {}
+    storage_context = controlled_storage(dsn, migration_dsn, output, storage_observations)
+    storage_file, credentials = storage_context.__enter__()
     env = {**{key: value for key, value in os.environ.items() if not key.startswith('KB_')},
-        'KB_DSN': dsn, 'PGHOSTADDR': '127.0.0.1', 'KB_SEARCH_BACKEND': 'postgres',
+        **credentials, 'KB_STORAGE_CONFIG': str(storage_file), 'PGHOSTADDR': '127.0.0.1',
         'KB_STORAGE_ROOT': str(output / 'originals'), 'KB_IDENTITIES_FILE': str(identities),
         'KB_REMOTE_MODELS': '0', 'KB_ENABLE_EMBEDDINGS': '0', 'KB_DEFER_DEFAULT_APP': '1',
         'KB_AGENT_KERNEL_LIBRARY': str(library), 'PYTHONUTF8': '1',
@@ -138,6 +143,11 @@ def run(summary, output, dsn):
     finally:
         if browser_output.exists():
             shutil.copytree(browser_output, output / 'browser')
+        try:
+            storage_context.__exit__(None, None, None)
+        except Exception as error:
+            report['status'], report['cleanup_error'] = 'FAIL', str(error)
+        report['storage'] = storage_observations
         write_json(output / 'report.json', report)
     return report
 

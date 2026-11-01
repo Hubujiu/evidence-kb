@@ -2,8 +2,10 @@ import hashlib
 import json
 import math
 import re
+from pathlib import Path
 
-from .search import OpenSearch, SearchUnavailable, binding_key, content_order
+from .search import OpenSearch, SearchUnavailable, backend_dependencies, binding_key, content_order
+from .implementation_dependencies import implementation_dependencies
 
 
 def canonical_records(records):
@@ -25,6 +27,11 @@ class _SearchChannel:
     def __init__(self, backend, identity=None):
         self.backend = backend
         self.identity = identity if identity is not None else getattr(getattr(backend, 'database', None), 'identity', None)
+
+    def dependency_manifest(self):
+        return {'version': 1, 'implementation': implementation_dependencies(__file__,
+            Path(__file__).with_name('search.py')), 'storage': self.storage_identity(),
+            'backend': backend_dependencies(self.backend)}
 
     def storage_identity(self):
         if self.identity is not None:

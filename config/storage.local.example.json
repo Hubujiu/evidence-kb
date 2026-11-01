@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "application_id": "knowledge-local-v2",
+  "instances": {
+    "records": {"provider": "sqlite", "config": {"root": ".local/storage-v2/records"}},
+    "search": {"provider": "embedded", "config": {"root": ".local/storage-v2/search"}},
+    "originals": {"provider": "files", "config": {"root": ".local/storage-v2/originals"}}
+  },
+  "services": {
+    "records.domain": {"instance": "records", "export": "structured"},
+    "records.source": {"instance": "records", "export": "document"},
+    "search.lexical": {"instance": "search", "export": "lexical"},
+    "search.vector": {"instance": "search", "export": "vector"},
+    "originals.objects": {"instance": "originals", "export": "object"}
+  },
+  "bindings": {
+    "repository": {"primary": {"service": "records.domain", "owner": "knowledge", "space": "domain"}},
+    "search": {
+      "bm25": {"service": "search.lexical", "owner": "knowledge-search", "space": "lexical"},
+      "dense": {"service": "search.vector", "owner": "knowledge-search", "space": "vector"},
+      "source": {"service": "records.source", "owner": "knowledge-search", "space": "source"}
+    },
+    "originals": {"objects": {"service": "originals.objects", "owner": "knowledge", "space": "originals"}}
+  }
+}
