@@ -1,5 +1,5 @@
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -8,7 +8,6 @@ from .harness_services import builtin_plugins
 from .knowledge_application import HostedKnowledgeApplication
 from .knowledge_profile import ENVIRONMENT, knowledge_plugins, load_knowledge_profile
 from .model_plugins import model_plugins
-from .blob_plugins import blob_plugins
 from .platform_plugins import HostedPlatform, platform_plugins
 from .plugin_host import PluginHost
 from .plugin_profiles import expand_profile
@@ -68,53 +67,47 @@ def _search_channels(selected, settings, environment):
             raise ValueError('INVALID_SEARCH_CHANNEL_BACKEND')
         selected['plugins'].append(_row('search_' + channel,
             'platform.search.' + channel + '.' + backend, **value))
+    selected['plugins'].append(_row('search_source', 'platform.search.source.postgres'))
     return selected
 
 
-def _databases(selected, catalog, settings, environment):
-    from .database_plugins import compile_database_plugins
+def _storage(selected, catalog, settings, environment):
+    from .storage_catalog import default_storage_providers
+    from .storage_plugins import compile_storage_plugins
+    from .storage_sdk import RELATIONAL_POSTGRES_V1, RELATIONAL_V1, StorageSlot
 
-    path = environment.get('KB_DATABASES_CONFIG')
-    configuration = json.loads(Path(path).read_text('utf-8')) if path else None
-    by_id = {row['id']: row for row in selected['plugins']}
-    for row in selected['plugins']:
-        if row['use'] == 'harness.store.sqlite' and (configuration is None or row['id'] in configuration['bindings']):
-            root = Path(row.get('config', {}).get('root', environment.get('KB_AGENT_ROOT', '.local/agentic-v5')))
-            if (root / 'sessions.sqlite3').exists():
-                raise ValueError('LEGACY_SESSION_DATABASE_REQUIRES_EXPLICIT_IMPORT')
-            row.update(use='harness.store.database', config={})
-            if configuration is None:
-                configuration = {'version': 1, 'application_id': 'evidence-kb',
-                    'routes': {'sessions': {'provider': 'sqlite', 'root': str(root)}},
-                    'bindings': {row['id']: {'primary': {'route': 'sessions',
-                        'owner': 'conversations', 'space': 'history'}}}}
-    if configuration is None:
+    if environment.get('KB_DATABASES_CONFIG'):
+        raise ValueError('LEGACY_STORAGE_CONFIGURATION_REQUIRES_CONVERSION')
+    path = environment.get('KB_STORAGE_CONFIG')
+    if not path:
         return selected, catalog
-    declarations = {spec.key: spec.storage_slots for spec in catalog if spec.storage_slots}
-    slots = dict(declarations)
+    configuration = json.loads(Path(path).read_text('utf-8'))
+    by_id = {row['id']: row for row in selected['plugins']}
+    changes = {}
     for identity, bindings in configuration['bindings'].items():
         if identity not in by_id:
-            raise ValueError('UNKNOWN_DATABASE_CONSUMER')
+            raise ValueError('UNKNOWN_STORAGE_CONSUMER')
         row = by_id[identity]
-        if row['use'] == 'harness.store.database':
-            slots[row['use']] = ('primary',)
-        elif row['use'] in ('platform.repository.postgres', 'platform.search.postgres',
-                            'platform.search.bm25.postgres', 'platform.search.dense.postgres'):
-            if set(bindings) != {'primary'}:
-                raise ValueError('DATABASE_SLOT_CONFIGURATION_MISMATCH')
-            row.setdefault('config', {})['database_slot'] = 'primary'
-            slots[row['use']] = ('primary',)
-        elif row['use'] == 'models.service':
-            if set(bindings) != {'budget'}:
-                raise ValueError('DATABASE_SLOT_CONFIGURATION_MISMATCH')
+        use = row['use']
+        if use in ('harness.store.sqlite', 'harness.store.database'):
+            row.update(use='harness.store.database', config={})
+            changes[row['use']] = (StorageSlot('primary', RELATIONAL_V1),)
+        elif use == 'models.service':
             row.setdefault('config', {})['database_slot'] = 'budget'
-            slots[row['use']] = ('budget',)
-        elif row['use'] in declarations:
-            if set(bindings) != set(declarations[row['use']]):
-                raise ValueError('DATABASE_SLOT_CONFIGURATION_MISMATCH')
-        else:
-            raise ValueError('DATABASE_CONSUMER_NOT_DECLARED')
-    return compile_database_plugins(selected, catalog, configuration, slots=slots)
+            changes[use] = (StorageSlot('budget', RELATIONAL_V1),)
+        elif use in ('platform.repository.postgres', 'platform.search.postgres',
+                     'platform.search.bm25.postgres', 'platform.search.dense.postgres',
+                     'platform.search.source.postgres'):
+            row.setdefault('config', {})['database_slot'] = 'primary'
+            changes[use] = (StorageSlot('primary', RELATIONAL_POSTGRES_V1),)
+        elif use in ('platform.originals.files', 'platform.originals.blobs'):
+            row.update(use='platform.originals.storage', config={})
+        elif use == 'platform.search.split':
+            row.update(use='platform.search.storage', config={})
+    catalog = tuple(replace(spec, storage_slots=changes[spec.key]) if spec.key in changes else spec
+                    for spec in catalog)
+    return compile_storage_plugins(selected, catalog, configuration,
+                                   provider_catalog=default_storage_providers())
 
 
 def load_application_profile(settings, *, profile=None, environment=None, remote=None):
@@ -182,10 +175,10 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
     packages_root = selected_environment.get('KB_PROCESS_PLUGINS_ROOT')
     installed = ProcessPackages(packages_root).catalogs(
         journal=Path(packages_root) / 'transport-journal') if packages_root else ()
-    catalog = (*builtin_plugins(), *model_plugins(models), *blob_plugins(),
+    catalog = (*builtin_plugins(), *model_plugins(models),
                *platform_plugins(settings, platform=platform, research=research, model_clients=model_clients),
                *knowledge_plugins(platform, research, service_factory=service_factory), *installed, *extra_plugins)
-    selected, catalog = _databases(selected, catalog, settings, selected_environment)
+    selected, catalog = _storage(selected, catalog, settings, selected_environment)
     host = PluginHost(selected, catalog)
     try:
         specs = {spec.key: spec for spec in catalog}
@@ -222,11 +215,11 @@ def create_borrowed_knowledge(platform, research, *, profile=None, service_facto
         selected['plugins'].extend(row for row in _client_routes() if row['config']['client'] in clients)
     selected['plugins'].extend([_row('platform', 'platform.borrowed'),
                                 _row('research', 'platform.research.borrowed')])
-    catalog = (*builtin_plugins(), *model_plugins(models, clients=clients), *blob_plugins(),
+    catalog = (*builtin_plugins(), *model_plugins(models, clients=clients),
                *platform_plugins(Settings.from_environment(), platform=platform, research=research),
                *knowledge_plugins(platform, research, service_factory=service_factory), *extra_plugins)
-    if selected_environment.get('KB_DATABASES_CONFIG'):
-        selected, catalog = _databases(selected, catalog, None, selected_environment)
+    if selected_environment.get('KB_STORAGE_CONFIG'):
+        selected, catalog = _storage(selected, catalog, None, selected_environment)
     host = PluginHost(deepcopy(selected), catalog)
     try:
         return HostedKnowledgeApplication(host, host.service('application')), host

@@ -23,9 +23,9 @@ def model_plugins(models=None, *, clients=None):
 
             database = None
             if 'database_slot' in config:
-                from .database_plugins import require_database
+                from .storage_plugins import require_storage
 
-                database = require_database(ctx, config['database_slot'])
+                database = require_storage(ctx, config['database_slot'])
             selected = from_config(config['config_path'], database=database, audit_root=config.get('audit_root'))
             ctx.defer(selected.close)
         if selected is None:

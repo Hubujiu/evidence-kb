@@ -25,27 +25,35 @@ def load_agent_profile(profile=None, *, environment=None, bundles=None):
 
 def create_agent_application(*, decide=None, model=None, tools=(), profile=None,
                              extra_plugins=(), bundles=None, environment=None, models=None,
-                             database_configuration=None):
-    from .database_plugins import compile_database_plugins
+                             storage_configuration=None):
+    from dataclasses import replace
+    from .storage_catalog import default_storage_providers
+    from .storage_plugins import compile_storage_plugins
+    from .storage_sdk import RELATIONAL_V1, StorageSlot
     from .model_plugins import model_plugins
 
     selected = load_agent_profile(profile, environment=environment, bundles=bundles)
     catalog = (*model_plugins(models), *builtin_plugins(decide=decide, model=model, tools=tools), *extra_plugins)
     environment = os.environ if environment is None else environment
-    if database_configuration is None and environment.get('KB_DATABASES_CONFIG'):
-        database_configuration = json.loads(Path(environment['KB_DATABASES_CONFIG']).read_text('utf-8'))
-    if database_configuration is not None:
-        slots = {}
+    if environment.get('KB_DATABASES_CONFIG'):
+        raise ValueError('LEGACY_STORAGE_CONFIGURATION_REQUIRES_CONVERSION')
+    if storage_configuration is None and environment.get('KB_STORAGE_CONFIG'):
+        storage_configuration = json.loads(Path(environment['KB_STORAGE_CONFIG']).read_text('utf-8'))
+    if storage_configuration is not None:
+        changes = {}
         for row in selected['plugins']:
-            if row['id'] not in database_configuration.get('bindings', {}):
+            if row['id'] not in storage_configuration.get('bindings', {}):
                 continue
             if row['use'] in ('harness.store.sqlite', 'harness.store.database'):
                 row.update(use='harness.store.database', config={})
-                slots[row['use']] = ('primary',)
+                changes[row['use']] = (StorageSlot('primary', RELATIONAL_V1),)
             elif row['use'] == 'models.service':
                 row.setdefault('config', {})['database_slot'] = 'budget'
-                slots[row['use']] = ('budget',)
-        selected, catalog = compile_database_plugins(selected, catalog, database_configuration, slots=slots)
+                changes[row['use']] = (StorageSlot('budget', RELATIONAL_V1),)
+        catalog = tuple(replace(spec, storage_slots=changes[spec.key]) if spec.key in changes else spec
+                        for spec in catalog)
+        selected, catalog = compile_storage_plugins(selected, catalog, storage_configuration,
+                                                     provider_catalog=default_storage_providers())
     host = PluginHost(selected, catalog)
     try:
         application = host.service('application')

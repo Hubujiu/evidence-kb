@@ -365,24 +365,31 @@ def http_configuration(fixtures, engine):
     write_json(directory / 'identities.json', {tokens[name]: {
         'tenant_id': fixtures.run_id + ('-other' if name == 'other' else ''),
         'principal_id': name} for name in tokens})
-    bindings = {'repository': {'primary': {'route': 'main', 'owner': 'knowledge', 'space': 'content'}},
-                'search_bm25': {'primary': {'route': 'main', 'owner': 'knowledge', 'space': 'lexical'}}}
-    if engine == 'postgres':
-        bindings['search_dense'] = {'primary': {'route': 'dense', 'owner': 'knowledge', 'space': 'vector'}}
-    routes = {'main': {'provider': 'postgresql', 'url_env': 'KB_STORAGE_TEST_POSTGRES_URL'}}
-    if engine == 'postgres':
-        routes['dense'] = {'provider': 'postgresql', 'url_env': 'KB_STORAGE_TEST_DENSE_POSTGRES_URL'}
-    for slots in bindings.values():
-        value = slots['primary']
-        key = SpaceKey(application, value['owner'], value['space'])
-        database = 'dense_postgresql' if value['route'] == 'dense' else 'postgresql'
-        fixtures.spaces.append((database, 'kb_' + key.digest[:24]))
-    write_json(directory / 'databases.json', {'version': 1, 'application_id': application,
-                                            'routes': routes, 'bindings': bindings})
-    write_json(directory / 'channels.json', {'bm25': {'backend': 'postgres'}, 'dense': {
-        'backend': engine, **({'root': str(fixtures.resource_root / 'dense-indexes')} if engine == 'embedded' else {})}})
-    profile = directory / 'application.json'
-    plugins = [{'id': 'capabilities', 'use': 'storage.fixture.capabilities'}]
+    from kb_platform.storage_catalog import initialize_configuration
+
+    instances = {
+        'main': {'provider': 'postgresql', 'config': {'url_env': 'KB_STORAGE_TEST_POSTGRES_URL'}},
+        'documents': {'provider': 'sqlite', 'config': {'root': str(fixtures.resource_root / ('documents-' + engine))}},
+        'dense': ({'provider': 'postgresql', 'config': {'url_env': 'KB_STORAGE_TEST_DENSE_POSTGRES_URL'}}
+                  if engine == 'postgres' else
+                  {'provider': 'embedded', 'config': {'root': str(fixtures.resource_root / 'dense-indexes')}}),
+    }
+    services = {
+        'main.sql': {'instance': 'main', 'export': 'relational'},
+        'main.lexical': {'instance': 'main', 'export': 'lexical'},
+        'dense.vector': {'instance': 'dense', 'export': 'vector'},
+        'documents.records': {'instance': 'documents', 'export': 'document'},
+        'originals.objects': {'instance': 'originals', 'export': 'object'},
+    }
+    bindings = {
+        'repository': {'primary': {'service': 'main.sql', 'owner': 'knowledge', 'space': 'content'}},
+        'search': {
+            'bm25': {'service': 'main.lexical', 'owner': 'knowledge', 'space': 'lexical'},
+            'dense': {'service': 'dense.vector', 'owner': 'knowledge', 'space': 'vector'},
+            'source': {'service': 'documents.records', 'owner': 'knowledge', 'space': 'evidence'},
+        },
+        'originals': {'objects': {'service': 'originals.objects', 'owner': 'knowledge', 'space': 'originals'}},
+    }
     if engine == 'postgres':
         import boto3
         from botocore.config import Config
@@ -394,22 +401,34 @@ def http_configuration(fixtures, engine):
             config=Config(proxies={}, s3={'addressing_style': 'path'}, retries={'max_attempts': 0}))
         client.create_bucket(Bucket=bucket)
         fixtures.buckets.append((client, bucket))
-        plugins.extend([
-            {'id': 'originals', 'use': 'platform.originals.blobs'},
-            {'id': 'blob-service', 'use': 'blobs.service'},
-            {'id': 'blob-provider', 'use': 'blobs.provider.s3', 'config': {
-                'endpoint_url': fixtures.selected['s3_endpoint'], 'bucket': bucket,
-                'access_key_env': 'KB_STORAGE_TEST_S3_ACCESS_KEY',
-                'secret_key_env': 'KB_STORAGE_TEST_S3_SECRET_KEY'}},
-            {'id': 'blob-binding', 'use': 'blobs.binding.s3', 'config': {'space': application}},
-        ])
+        instances['originals'] = {'provider': 's3', 'config': {
+            'endpoint_url': fixtures.selected['s3_endpoint'], 'bucket': bucket,
+            'access_key_env': 'KB_STORAGE_TEST_S3_ACCESS_KEY',
+            'secret_key_env': 'KB_STORAGE_TEST_S3_SECRET_KEY'}}
+    else:
+        instances['originals'] = {'provider': 'files', 'config': {
+            'root': str(fixtures.resource_root / ('originals-' + engine))}}
+    configuration = {'version': 2, 'application_id': application, 'instances': instances,
+                     'services': services, 'bindings': bindings}
+    for slots in bindings.values():
+        for value in slots.values():
+            instance = services[value['service']]['instance']
+            if instances[instance]['provider'] != 'postgresql':
+                continue
+            key = SpaceKey(application, value['owner'], value['space'])
+            database = 'dense_postgresql' if instance == 'dense' else 'postgresql'
+            fixtures.spaces.append((database, 'kb_' + key.digest[:24]))
+    write_json(directory / 'storage.json', initialize_configuration(configuration))
+    profile = directory / 'application.json'
+    plugins = [{'id': 'capabilities', 'use': 'storage.fixture.capabilities'},
+               {'id': 'search', 'use': 'platform.search.storage'},
+               {'id': 'originals', 'use': 'platform.originals.storage'}]
     write_json(profile, {'version': 1, 'bundles': ['platform'], 'plugins': plugins})
     environment = {key: value for key, value in fixtures.environment.items()
                    if not key.startswith(('KB_', 'OPENAI_', 'GOOGLE_', 'ANTHROPIC_', 'AZURE_'))}
     environment.update({key: value for key, value in fixtures.environment.items()
                         if key.startswith('KB_STORAGE_TEST_') or key in ('KB_AGENT_KERNEL_LIBRARY', 'KB_PLUGIN_HOST_BINARY')})
-    environment.update({'KB_DATABASES_CONFIG': str(directory / 'databases.json'),
-        'KB_SEARCH_CHANNELS_CONFIG': str(directory / 'channels.json'),
+    environment.update({'KB_STORAGE_CONFIG': str(directory / 'storage.json'),
         'KB_STORAGE_ROOT': str(fixtures.resource_root / ('originals-' + engine)), 'KB_IDENTITIES_FILE': str(directory / 'identities.json'),
         'KB_DEFER_DEFAULT_APP': '1', 'KB_REMOTE_MODELS': '0', 'KB_ENABLE_EMBEDDINGS': '0',
         'KB_AGENT_ROOT': str(fixtures.resource_root / ('sessions-' + engine)), 'PYTHONUTF8': '1',
@@ -516,8 +535,8 @@ def run_browser(directory, environment, url, token):
 
 @contextmanager
 def deny_dense_generation(fixtures, directory):
-    configuration = json.loads((directory / 'databases.json').read_text('utf-8'))
-    keys = {channel: configuration['bindings']['search_' + channel]['primary'] for channel in ('bm25', 'dense')}
+    configuration = json.loads((directory / 'storage.json').read_text('utf-8'))
+    keys = {channel: configuration['bindings']['search'][channel] for channel in ('bm25', 'dense')}
     schemas = {channel: 'kb_' + SpaceKey(configuration['application_id'], value['owner'], value['space']).digest[:24]
                for channel, value in keys.items()}
     engines = {channel: create_engine(fixtures.selected['dense_postgresql' if channel == 'dense' else 'postgresql']
@@ -555,7 +574,7 @@ def deny_dense_generation(fixtures, directory):
 
 
 def staged_build_id(fixtures, directory, kb_id):
-    configuration = json.loads((directory / 'databases.json').read_text('utf-8'))
+    configuration = json.loads((directory / 'storage.json').read_text('utf-8'))
     value = configuration['bindings']['repository']['primary']
     schema = 'kb_' + SpaceKey(configuration['application_id'], value['owner'], value['space']).digest[:24]
     engine = create_engine(fixtures.selected['postgresql'].set(drivername='postgresql+psycopg'))
@@ -880,8 +899,10 @@ def run(output, environment=None):
                            for engine, url in selected.items() if engine != 's3_endpoint'}}
     try:
         with (output / 'checks.log').open('w', encoding='utf-8') as stream:
+            from .storage_contract_integration import suite as contract_suite
+
             suite = unittest.TestSuite((foundation_suite(fixtures), session_suite(fixtures),
-                                        knowledge_suite(fixtures), http_suite(fixtures)))
+                                        knowledge_suite(fixtures), contract_suite(fixtures), http_suite(fixtures)))
             result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
         report.update({'tests': result.testsRun, 'failures': len(result.failures),
                        'errors': len(result.errors), 'skipped': len(result.skipped),

@@ -44,9 +44,9 @@ def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
         ctx.provide('session.store', store)
 
     def database_store(ctx, config):
-        from .database_plugins import require_database
+        from .storage_plugins import require_storage
 
-        ctx.provide('session.store', SessionStore(database=require_database(ctx, 'primary')))
+        ctx.provide('session.store', SessionStore(database=require_storage(ctx, 'primary')))
 
     def durable_sessions(ctx, config):
         ctx.provide('sessions', DurableSessions(ctx.require('session.store')))

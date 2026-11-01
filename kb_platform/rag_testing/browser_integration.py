@@ -79,7 +79,7 @@ def run(summary, output, dsn):
         'KB_STORAGE_ROOT': str(output / 'originals'), 'KB_IDENTITIES_FILE': str(identities),
         'KB_REMOTE_MODELS': '0', 'KB_ENABLE_EMBEDDINGS': '0', 'KB_DEFER_DEFAULT_APP': '1',
         'KB_AGENT_KERNEL_LIBRARY': str(library), 'PYTHONUTF8': '1',
-        'E2E_TELEMETRY_DISABLED': '1', 'KB_E2E_URL': url,
+        'E2E_TELEMETRY_DISABLED': '1', 'KB_E2E_TESTS': 'knowledge.e2e.js', 'KB_E2E_URL': url,
         'KB_E2E_TOKEN': token, 'KB_E2E_OTHER_TOKEN': other_token}
     report = {'status': 'FAIL', 'database': database, 'new_model_calls': 0,
         'new_embedding_calls': 0, 'new_judge_calls': 0,

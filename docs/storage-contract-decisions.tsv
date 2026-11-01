@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-11-01T06:40:00Z	start	执行用户批准的六类合同改造、真实E2E及提交合并	用户明确批准且公共服务保持可选	docs/storage-contracts-v2-approval-plan.md	in progress
+2026-11-01T06:41:00Z	baseline	先提交前轮关系与对象基础并合入当前main	隔离新改造且保留已完成工作	db11092;9c0c5e9	committed
+2026-11-01T06:42:00Z	baseline	合并期间误启动的检查保留为失败记录并重新运行	冲突文本使首次结果不能代表代码基线	.local/checks/storage-contract-baseline-20261101-01/summary.json	invalidated by unresolved merge
+2026-11-01T06:44:00Z	baseline	解决冲突后运行统一入口，622个合同全部通过	建立本次修改前可核对基线	.local/checks/storage-contract-baseline-20261101-02/summary.json	PASS
+2026-11-01T06:45:00Z	contracts	共用SDK先提交，三个工作区分别实现绑定、值存储与检索	先固定接口并消除并发写同一源码的风险	0cd0710	committed
