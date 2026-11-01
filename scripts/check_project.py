@@ -30,6 +30,12 @@ EXCLUDED_IMPORTS = frozenset({"output", "outputs", "reports"})
 AGENT_DEPENDENCIES = {
     'agent_provider': frozenset(),
     'model_errors': frozenset(),
+    'protocol_validation': frozenset(),
+    'model_sdk': frozenset({'model_errors', 'protocol_validation'}),
+    'model_completion': frozenset({'agent_provider', 'model_sdk', 'protocol_validation'}),
+    'authentication': frozenset({'session_identity', 'storage_sdk'}),
+    'authentication_plugins': frozenset({'authentication', 'plugin_configuration', 'plugin_host',
+                                         'storage_plugins', 'storage_sdk'}),
     'agent_model': frozenset({'agent_provider', 'context_budget', 'agent_schema', 'model_errors'}),
     'agent_engine': frozenset({'agent_native'}),
     'agent_native': frozenset(),
@@ -39,7 +45,7 @@ AGENT_DEPENDENCIES = {
     'plugin_native': frozenset({'agent_native'}),
     'host_protocol': frozenset(),
     'host_worker': frozenset({'host_protocol', 'plugin_native'}),
-    'plugin_host': frozenset({'plugin_native', 'storage_sdk'}),
+    'plugin_host': frozenset({'plugin_native', 'storage_sdk', 'protocol_validation'}),
     'harness_sessions': frozenset({'agent_engine', 'agent_plugins', 'session_identity', 'session_store'}),
     'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host', 'session_identity'}),
     'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
@@ -54,9 +60,11 @@ AGENT_DEPENDENCIES = {
     'database_migrations': frozenset({'database_contracts'}),
     'database_service': frozenset({'database_contracts', 'database_migrations', 'database_process'}),
     'database_process': frozenset({'database_contracts'}),
-    'storage_sdk': frozenset({'database_contracts'}),
-    'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts', 'implementation_dependencies'}),
-    'storage_plugins': frozenset({'storage_sdk', 'storage_service', 'plugin_configuration', 'plugin_host'}),
+    'storage_sdk': frozenset({'database_contracts', 'protocol_validation'}),
+    'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts', 'implementation_dependencies',
+                                 'protocol_validation'}),
+    'storage_plugins': frozenset({'storage_sdk', 'storage_service', 'plugin_configuration', 'plugin_host',
+                                 'protocol_validation'}),
     'storage_process': frozenset({'storage_sdk', 'blob_service', 'database_contracts'}),
     'storage_cache_plugins': frozenset({'storage_sdk', 'storage_plugins', 'plugin_host',
                                        'plugin_configuration', 'rag_testing'}),
@@ -71,7 +79,8 @@ AGENT_DEPENDENCIES = {
                                   'model_plugins', 'storage_catalog', 'storage_plugins', 'storage_sdk',
                                   'storage_cache_plugins', 'model_provider_plugins'}),
     'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
-    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
+    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors', 'model_sdk', 'model_completion',
+                               'protocol_validation'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
     'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),
 }
@@ -334,7 +343,7 @@ def architecture_violations(root: Path) -> list[str]:
             reason = None
             layer = AGENT_DEPENDENCIES.get(path.stem) if not evaluation else None
             if module.startswith('kb_platform.storage_sdk.'):
-                layer = frozenset({'storage_sdk', 'database_contracts'})
+                layer = frozenset({'storage_sdk', 'database_contracts', 'protocol_validation'})
             elif module.startswith('kb_platform.storage_adapters.'):
                 layer = frozenset({'storage_sdk', 'storage_adapters', 'database_contracts',
                                    'database_migrations', 'database_providers', 'database_process',

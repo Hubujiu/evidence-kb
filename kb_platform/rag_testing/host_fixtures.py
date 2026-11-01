@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Event, Lock
 
 from kb_platform.plugin_host import PluginHost, PluginSpec
+from kb_platform.plugin_configuration import config_schema, TEXT
 
 
 class Fixture:
@@ -48,7 +49,8 @@ class Generic(Fixture):
             ctx.provide('nested', Nested())
             ctx.defer(lambda: fixture.record('disposed', plugin=ctx.plugin_id))
 
-        self.catalog = [PluginSpec('fixture.arithmetic', ('arithmetic',), (), base),
+        self.catalog = [PluginSpec('fixture.arithmetic', ('arithmetic',), (), base,
+                            config_schema=config_schema({'factor': {'type': 'integer'}}, required=('factor',))),
                         PluginSpec('fixture.nested', ('nested',), ('arithmetic',), dependent)]
         self.host = PluginHost({'version': 1, 'plugins': [
             {'id': 'base', 'use': 'fixture.arithmetic', 'config': {'factor': 2}},
@@ -160,8 +162,10 @@ class SharedModel(Fixture):
             ctx.provide(ctx.spec.provides[0], Consumer())
 
         catalog = (*model_plugins(), PluginSpec('fixture.provider', ('fixture.provider.ready',), ('models',), provider),
-            PluginSpec('fixture.title', ('title',), ('llm', 'fixture.provider.ready'), consumer),
-            PluginSpec('fixture.compact', ('compact',), ('llm', 'fixture.provider.ready'), consumer))
+            PluginSpec('fixture.title', ('title',), ('llm', 'fixture.provider.ready'), consumer,
+                config_schema=config_schema({'purpose': TEXT}, required=('purpose',))),
+            PluginSpec('fixture.compact', ('compact',), ('llm', 'fixture.provider.ready'), consumer,
+                config_schema=config_schema({'purpose': TEXT}, required=('purpose',))))
         self.host = PluginHost({'version': 1, 'plugins': [
             {'id': 'models', 'use': 'models.service'}, {'id': 'provider', 'use': 'fixture.provider'},
             {'id': 'llm', 'use': 'models.structured'},

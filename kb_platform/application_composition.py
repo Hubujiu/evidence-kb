@@ -117,7 +117,10 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
 
 def create_root_application(settings, *, profile=None, environment=None, platform=None,
                             research=None, models=None, model_clients=None, service_factory=None,
-                            extra_plugins=(), remote=None, storage_configuration=None, provider_catalog=None):
+                            extra_plugins=(), remote=None, storage_configuration=None, provider_catalog=None,
+                            authentication=False):
+    from .authentication_plugins import authentication_plugins
+
     selected = load_application_profile(settings, profile=profile, environment=environment, remote=remote)
     if platform is not None:
         excluded = {'repository', 'originals', 'parser', 'embedding-jobs', 'search', 'search_bm25', 'search_dense', 'capabilities'}
@@ -128,8 +131,14 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
     installed = ProcessPackages(packages_root).catalogs(
         journal=Path(packages_root) / 'transport-journal') if packages_root else ()
     catalog = (*builtin_plugins(), *model_plugins(models), *stage_cache_plugins(),
+               *authentication_plugins(settings),
                *platform_plugins(settings, platform=platform, research=research, model_clients=model_clients),
                *knowledge_plugins(platform, research, service_factory=service_factory), *installed, *extra_plugins)
+    if authentication:
+        specs = {spec.key: spec for spec in catalog}
+        if not any('authentication' in specs[row['use']].provides for row in selected['plugins']
+                   if not row.get('disabled')):
+            selected['plugins'].append(_row('authentication', 'authentication.file'))
     from .model_provider_plugins import compile_model_plugins
 
     selected, catalog = compile_model_plugins(selected, catalog)
@@ -137,6 +146,13 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
         storage_configuration=storage_configuration, provider_catalog=provider_catalog)
     host = PluginHost(selected, catalog)
     try:
+        if authentication:
+            from .authentication import Authentication
+            from .protocol_validation import callable_accepts
+
+            if not callable_accepts(getattr(host.service('authentication'), 'authenticate', None),
+                                    Authentication.authenticate):
+                raise ValueError('AUTHENTICATION_PROTOCOL_INVALID')
         specs = {spec.key: spec for spec in catalog}
         provided = {name for row in selected['plugins'] if not row.get('disabled')
                     for name in specs[row['use']].provides}

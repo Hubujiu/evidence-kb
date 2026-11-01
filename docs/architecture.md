@@ -1,5 +1,9 @@
 # 产品模块与评测边界
 
+插件在进入 Rust 生命周期之前必须满足 `evidence-plugin/1` 的声明和同步调用约定；配置仍由 JSON Schema 验证。共享 `protocol_validation` 只使用标准库检查调用签名，不执行插件探测请求。公共模型类型与适配器合同位于独立 `model_sdk`；公共存储合同仍位于 `storage_sdk`，两者不依赖知识库或宿主。实际响应、授权、存储身份和调用租约仍在运行时边界核验，启用前结构检查不替代这些行为合同。
+
+HTTP 身份解析已通过 `authentication` 服务访问。[认证会话](authentication.md) 可绑定公共 TTL KV 合同，由现有 Redis 适配器或第三方提供商承载；API 不直接读取 token 文件或导入 Redis。文件认证保留为默认插件，对话历史仍通过独立关系合同管理。
+
 当前内置实现、服务依赖和公开 profile 见 [插件目录](plugin-catalog.md)。公共存储按 relational、document、kv、vector、lexical、object 六类合同连接消费插件与提供商，结构见 [存储插件设计](storage-plugins-design.md)，执行、验收和搬迁步骤见 [执行方案](storage-plugins-execution-plan.md)。知识库领域仓储、会话、预算、缓存索引和请求回执均消费 structured 关系合同；内置 PostgreSQL、MySQL、SQLite 实现同一业务协议。第三轮边界见 [改造方案](plugin-boundaries-v3-plan.md)。
 
 共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由由 Rust 生命周期管理。

@@ -20,6 +20,7 @@ from kb_platform.database_process import decode_value, encode_value
 from kb_platform.database_providers import SQLiteProvider
 from kb_platform.database_service import DatabaseService
 from kb_platform.plugin_host import PluginHost, PluginSpec
+from kb_platform.plugin_configuration import config_schema, TEXT
 from kb_platform.storage_adapters.sql import SqlStorageProvider
 from kb_platform.storage_plugins import compile_storage_plugins, require_storage
 from kb_platform.storage_sdk import RELATIONAL_V1, StorageProvider, StorageSlot
@@ -442,8 +443,11 @@ class DatabasePluginContracts(unittest.TestCase):
             database.seal()
             ctx.provide(config['service'], database)
 
-        return (PluginSpec('fixture.tasks.a', ('tasks.a',), (), mount, storage_slots=(self.primary,)),
-                PluginSpec('fixture.tasks.b', ('tasks.b',), (), mount, storage_slots=(self.primary,)))
+        schema = config_schema({'service': TEXT}, required=('service',))
+        return (PluginSpec('fixture.tasks.a', ('tasks.a',), (), mount, storage_slots=(self.primary,),
+                          config_schema=schema),
+                PluginSpec('fixture.tasks.b', ('tasks.b',), (), mount, storage_slots=(self.primary,),
+                          config_schema=schema))
 
     def profile(self):
         return {'version': 1, 'plugins': [

@@ -7,7 +7,8 @@ from pathlib import Path
 from .context_budget import digest
 from .embeddings import EmbeddingCallError
 from .model_errors import RemoteModelError
-from .model_service import Capability, Media, ModelRequest, ModelService
+from .model_sdk import Capability, Media, ModelRequest
+from .model_service import ModelService
 
 
 def from_clients(chat, embedding=None):

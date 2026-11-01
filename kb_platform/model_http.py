@@ -9,9 +9,9 @@ from uuid import uuid4
 import httpx
 
 from .agent_engine import current_execution
-from .model_adapters import CompletionPort
+from .model_completion import CompletionPort
 from .model_errors import ModelPreflightError, RemoteModelError
-from .model_service import Capability, Media, ModelInfo, ModelResult
+from .model_sdk import Capability, Media, ModelInfo, ModelResult
 from .provider_admission import ProviderAdmission
 from .provider_runtime import retry_after_seconds
 
@@ -130,7 +130,7 @@ class OpenAICompatibleAdapter:
         raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
 
     def invoke(self, request):
-        from .model_service import validate_request
+        from .model_sdk import validate_request
 
         request = validate_request(request)
         if request.capability not in self.info.capabilities:

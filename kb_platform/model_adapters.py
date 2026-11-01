@@ -3,9 +3,9 @@ from typing import Protocol
 from uuid import uuid4
 
 from .agent_luna import LunaModelProvider
-from .agent_provider import ProviderCompletion
 from .context_budget import digest
-from .model_service import Capability, ModelInfo, ModelResult
+from .model_sdk import Capability, ModelInfo, ModelResult
+from .model_errors import ModelPreflightError
 
 
 class LunaAdapter:
@@ -22,6 +22,8 @@ class LunaAdapter:
     def invoke(self, request):
         body = request.payload
         if request.capability == Capability.OCR:
+            if 'max_tokens' in body:
+                raise ModelPreflightError('UNSUPPORTED_MODEL_OPTION')
             data = self.client.complete_json(body.get('system', 'Transcribe the image as JSON.'),
                 body.get('instruction', 'Transcribe all visible text.'), purpose='ocr',
                 images=[body['media'].data], validator=body.get('validator'),
@@ -81,42 +83,3 @@ class EmbeddingAdapter:
     def embedding_preflight(self, request_id, error):
         return (self._observed.embedding_preflight(request_id, error) if self._observed is not None
                 else getattr(error, 'preflight_code', None))
-
-
-class CompletionPort:
-
-    max_attempts = 1
-
-    def __init__(self, adapter):
-        self.adapter = adapter
-
-    def identity(self, messages, output_limit):
-        return {'protocol': 'model-service/1', 'provider': self.adapter.info.provider,
-                'model': self.adapter.info.model, 'endpoint': self.adapter.endpoint,
-                'revision': self.adapter.info.revision,
-                'messages': messages, 'output_limit': output_limit}
-
-    def complete(self, messages, output_limit, *, purpose, key, trace):
-        from .model_service import ModelRequest
-
-        request = ModelRequest(Capability.CHAT, {'messages': messages, 'max_tokens': output_limit},
-                               {**trace, 'purpose': purpose})
-        try:
-            result = self.adapter.invoke(request)
-        except BaseException as exc:
-            trace['attempt'] += int(getattr(exc, 'model_sent', False))
-            raise
-        trace['attempt'] += 1
-        return ProviderCompletion(result.data['text'], result.data.get('finish_reason'), result.usage)
-
-    def cache_get(self, key):
-        return None
-
-    def cache_put(self, key, value):
-        pass
-
-    def record(self, purpose, key, **metadata):
-        pass
-
-    def save_failed_response(self, result, metadata):
-        return {'response_persisted': False}

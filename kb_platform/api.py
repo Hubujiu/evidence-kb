@@ -1,7 +1,6 @@
 import html
 import json
 import os
-import secrets
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -66,11 +65,10 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     from .application_composition import create_root_application
 
     settings = settings if settings is not None else Settings.from_environment()
-    identities = settings.identities()
     composition = create_root_application(settings, platform=platform, profile=profile,
         model_clients=model_clients, service_factory=agent_factory, extra_plugins=extra_plugins,
         remote=False if platform is not None else None, storage_configuration=storage_configuration,
-        provider_catalog=provider_catalog)
+        provider_catalog=provider_catalog, authentication=True)
     service, research, models = composition.platform, composition.research, composition.models
     provider = service.embedding_provider if service is not None else None
     luna = service.ocr_client if service is not None else None
@@ -90,9 +88,9 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
 
     def identity(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
         if credentials is not None and credentials.scheme.lower() == "bearer":
-            for token, principal in identities.items():
-                if secrets.compare_digest(credentials.credentials, token):
-                    return principal
+            actor = composition.host.call('authentication', 'authenticate', credentials.credentials)
+            if isinstance(actor, Actor):
+                return actor
         raise HTTPException(401, detail="身份验证失败", headers={"WWW-Authenticate": "Bearer"})
 
     principal = Annotated[Actor, Depends(identity)]

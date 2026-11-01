@@ -47,7 +47,7 @@ class RuntimeReviewContracts(unittest.TestCase):
             context.provide('resource', Resource())
             context.defer(dispose)
 
-        catalog = [PluginSpec('resource', ('resource',), (), mount),
+        catalog = [PluginSpec('resource', ('resource',), (), mount, config_schema={'type': 'object'}),
             PluginSpec('stable', ('stable',), (), lambda context, config: context.provide('stable', Stable()))]
         host = PluginHost(profile({'id': 'resource', 'use': 'resource', 'config': {'value': 1}},
             {'id': 'stable', 'use': 'stable'}), catalog)
@@ -165,7 +165,7 @@ class RuntimeReviewContracts(unittest.TestCase):
             context.provide('service', Service())
 
         with PluginHost(profile({'id': 'service', 'use': 'service'}),
-                [PluginSpec('service', ('service',), (), mount)]) as root:
+                [PluginSpec('service', ('service',), (), mount, config_schema={'type': 'object'})]) as root:
             child = root.scope(profile())
             root.update('service', config={'revision': 2})
             with self.assertRaises(PluginError) as rejected:
@@ -199,7 +199,7 @@ class RuntimeReviewContracts(unittest.TestCase):
             context.provide(name, Service())
             context.defer(cleanup)
 
-        catalog = [PluginSpec(name, (name,), (), mount) for name in entered]
+        catalog = [PluginSpec(name, (name,), (), mount, config_schema={'type': 'object'}) for name in entered]
         host = PluginHost(profile(*({'id': name, 'use': name, 'config': {'revision': 1}}
             for name in entered)), catalog)
 
@@ -265,7 +265,7 @@ class RuntimeReviewContracts(unittest.TestCase):
             context.defer(cleanup)
 
         host = PluginHost(profile({'id': 'service', 'use': 'service', 'config': {'revision': 1}}),
-            [PluginSpec('service', ('service',), (), mount)])
+            [PluginSpec('service', ('service',), (), mount, config_schema={'type': 'object'})])
 
         def invoke():
             try:

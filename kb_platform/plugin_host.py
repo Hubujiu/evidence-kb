@@ -5,6 +5,7 @@ from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
+from inspect import isawaitable, isgenerator, isasyncgen
 from threading import Event, RLock, Timer, current_thread
 from types import MappingProxyType
 from time import monotonic
@@ -13,6 +14,7 @@ import warnings
 from jsonschema import Draft202012Validator, validators
 
 from .plugin_native import PluginError, native_call
+from .protocol_validation import valid_callable
 from .storage_sdk import StorageSlot
 
 
@@ -20,8 +22,17 @@ _leases = ContextVar('plugin_scope_leases', default=())
 _executing = ContextVar('plugin_lifecycle_action', default=None)
 _current_call = ContextVar('plugin_current_call', default=None)
 _clock_lock = RLock()
+PLUGIN_PROTOCOL = 'evidence-plugin/1'
 _ConfigValidator = validators.extend(Draft202012Validator, type_checker=
     Draft202012Validator.TYPE_CHECKER.redefine('integer', lambda checker, value: type(value) is int))
+
+
+def _synchronous_result(value, code):
+    if isawaitable(value) or isgenerator(value) or isasyncgen(value):
+        if callable(getattr(value, 'close', None)):
+            value.close()
+        raise PluginError(code)
+    return value
 
 
 def _advance_clock(host):
@@ -82,17 +93,37 @@ class PluginSpec:
     config_check: Callable | None = None
     config_inputs: Callable | None = None
     storage_slots: tuple[StorageSlot, ...] = ()
+    protocol: str = PLUGIN_PROTOCOL
 
     def __post_init__(self):
+        if self.protocol != PLUGIN_PROTOCOL:
+            raise PluginError('UNSUPPORTED_PLUGIN_PROTOCOL', str(self.protocol))
+        if (not isinstance(self.key, str) or not self.key
+                or not isinstance(self.version, str) or not self.version
+                or self.concurrency not in {'serial', 'concurrent'}):
+            raise PluginError('INVALID_PLUGIN_SPEC')
+        for names in (self.provides, self.requires):
+            if (not isinstance(names, (tuple, list))
+                    or any(not isinstance(name, str) or not name for name in names)
+                    or len(set(names)) != len(names)):
+                raise PluginError('INVALID_PLUGIN_SERVICES', self.key)
+        if not valid_callable(self.mount, object(), {}):
+            raise PluginError('INVALID_PLUGIN_MOUNT', self.key)
+        for hook in (self.config_check, self.config_inputs):
+            if hook is not None and not valid_callable(hook, {}):
+                raise PluginError('INVALID_PLUGIN_CONFIG_HOOK', self.key)
         object.__setattr__(self, 'provides', tuple(self.provides))
         object.__setattr__(self, 'requires', tuple(self.requires))
         object.__setattr__(self, 'storage_slots', tuple(self.storage_slots))
         if (any(not isinstance(slot, StorageSlot) for slot in self.storage_slots) or
                 len({slot.name for slot in self.storage_slots}) != len(self.storage_slots)):
             raise ValueError('INVALID_PLUGIN_STORAGE_SLOTS')
-        if self.config_schema is not None:
-            Draft202012Validator.check_schema(self.config_schema)
-            object.__setattr__(self, 'config_schema', deepcopy(self.config_schema))
+        schema = self.config_schema if self.config_schema is not None else {
+            'type': 'object', 'properties': {}, 'additionalProperties': False}
+        if not isinstance(schema, dict) or schema.get('type') != 'object':
+            raise PluginError('INVALID_PLUGIN_CONFIG_SCHEMA', self.key)
+        Draft202012Validator.check_schema(schema)
+        object.__setattr__(self, 'config_schema', deepcopy(schema))
 
 
 class PluginContext:
@@ -138,7 +169,7 @@ class PluginContext:
             return resource
 
     def defer(self, dispose):
-        if not callable(dispose):
+        if not valid_callable(dispose):
             raise PluginError('INVALID_PLUGIN_DISPOSER')
         with self.host._lock:
             resource = self.registration_id('disposer')
@@ -148,7 +179,7 @@ class PluginContext:
     def effect(self, dispose):
         call = self.host.current_call
         if (call is None or call['instance'] != self.identity['instance']
-                or call['generation'] != self.identity['generation'] or not callable(dispose)):
+                or call['generation'] != self.identity['generation'] or not valid_callable(dispose)):
             raise PluginError('INVALID_PLUGIN_EFFECT_CONTEXT')
         with self.host._lock:
             resource = native_call('runtime_resource', host=call['host'],
@@ -217,6 +248,8 @@ class PluginHost:
         self._collection = None
         self.isolated, self.intercept = tuple(isolated), deepcopy(intercept or {})
         specs = list(catalog)
+        if any(not isinstance(spec, PluginSpec) for spec in specs):
+            raise PluginError('INVALID_PLUGIN_CATALOG')
         self.catalog = MappingProxyType({spec.key: spec for spec in specs})
         if len(self.catalog) != len(specs):
             raise PluginError('DUPLICATE_PLUGIN_IMPLEMENTATION')
@@ -285,16 +318,16 @@ class PluginHost:
 
     @staticmethod
     def _validate_config(spec, config):
-        if spec.config_schema is not None:
-            failures = list(_ConfigValidator(spec.config_schema).iter_errors(config))
-            if failures:
-                raise PluginError('INVALID_PLUGIN_CONFIG', f'{spec.key}: {failures[0].message}')
+        failures = list(_ConfigValidator(spec.config_schema).iter_errors(config))
+        if failures:
+            raise PluginError('INVALID_PLUGIN_CONFIG', f'{spec.key}: {failures[0].message}')
         if spec.config_check is not None:
-            spec.config_check(deepcopy(config))
+            _synchronous_result(spec.config_check(deepcopy(config)), 'INVALID_PLUGIN_CONFIG_HOOK_RESULT')
 
     @staticmethod
     def _configuration_inputs(spec, config):
-        return spec.config_inputs(deepcopy(config)) if spec.config_inputs is not None else {}
+        return (_synchronous_result(spec.config_inputs(deepcopy(config)), 'INVALID_PLUGIN_CONFIG_HOOK_RESULT')
+            if spec.config_inputs is not None else {})
 
     def _find_scope(self, identity):
         scopes = [self._root]
@@ -324,7 +357,7 @@ class PluginHost:
             try:
                 if self._configuration_inputs(spec, action['config']) != action['configuration_inputs']:
                     raise PluginError('CONFIGURATION_INPUT_CHANGED', action['plugin'])
-                spec.mount(context, deepcopy(action['config']))
+                _synchronous_result(spec.mount(context, deepcopy(action['config'])), 'INVALID_PLUGIN_MOUNT_RESULT')
                 if set(context._services) != set(spec.provides):
                     raise PluginError('PLUGIN_SERVICES_INCOMPLETE', action['plugin'])
             finally:
@@ -344,7 +377,7 @@ class PluginHost:
                 else:
                     callback = context._resources.get(resource)
                     if callback is not None:
-                        callback()
+                        _synchronous_result(callback(), 'INVALID_PLUGIN_DISPOSER_RESULT')
                     with self._lock:
                         context._resources.pop(resource, None)
                         context._listeners.pop(resource, None)

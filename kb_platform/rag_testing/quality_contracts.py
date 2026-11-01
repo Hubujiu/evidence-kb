@@ -9,6 +9,27 @@ from scripts.check_project import architecture_violations, deny_external_io
 
 
 class ArchitectureContracts(unittest.TestCase):
+    def test_public_protocol_layers_remain_independent(self):
+        for module, source in (
+            ('model_sdk', 'from .plugin_host import PluginHost'),
+            ('model_sdk', 'from .model_adapters import LunaAdapter'),
+            ('model_sdk', 'from .agent_model import AgentModel'),
+            ('protocol_validation', 'from .model_sdk import ModelAdapter'),
+            ('authentication', 'from .storage_adapters.redis_cache import RedisCache'),
+            ('authentication', 'from .core import Platform'),
+            ('storage_sdk/relational', 'from ..plugin_host import PluginHost'),
+        ):
+            with self.subTest(module=module):
+                self.assertTrue(self.check_source(source, f'kb_platform/{module}.py'))
+        for module, source in (
+            ('model_sdk', 'from .protocol_validation import callable_accepts'),
+            ('model_completion', 'from .model_sdk import ModelRequest'),
+            ('storage_sdk/relational', 'from ..protocol_validation import callable_accepts'),
+            ('authentication', 'from .storage_sdk import StorageError'),
+        ):
+            with self.subTest(module=module):
+                self.assertEqual([], self.check_source(source, f'kb_platform/{module}.py'))
+
     def test_storage_boundary_rejects_retired_vendor_selection(self):
         for path, source in (
             ('knowledge_storage', "engine = database.info.engine\nif engine not in {'postgresql', 'sqlite'}: raise ValueError(engine)"),
