@@ -1,5 +1,3 @@
-from contextlib import closing
-import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -65,15 +63,12 @@ class SessionStoreContracts(unittest.TestCase):
         artifact = knowledge.artifact(self.actor, sid, lease['token'], {'original': 'unchanged'})
         committed = knowledge.finish(self.actor, sid, lease['token'], session['state'],
                                   {'status': 'answered', 'answer': 'Existing answer'})
-        with closing(sqlite3.connect(knowledge.path)) as db:
-            schema = db.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall()
+        identity = knowledge.identity
         generic = SessionStore(self.root)
         self.assertEqual(generic.load(self.actor, sid)['state'], session['state'])
         self.assertEqual(generic.begin(self.actor, sid, 'request', 0, 'fingerprint'), {'cached': committed})
         self.assertEqual(generic.read_artifact(self.actor, sid, artifact['artifact_id']), {'original': 'unchanged'})
-        with closing(sqlite3.connect(generic.path)) as db:
-            self.assertEqual(db.execute("SELECT type,name,sql FROM sqlite_master ORDER BY type,name").fetchall(),
-                             schema)
+        self.assertEqual(generic.identity, identity)
 
     def test_principal_and_tenant_isolation_cover_history_artifacts_and_replay(self):
         sid = self.create()['session_id']
@@ -156,7 +151,7 @@ class SessionStoreContracts(unittest.TestCase):
         self.assertEqual([event['kind'] for event in knowledge.events(self.actor, sid)],
                          ['assistant', 'turn_completed'])
         self.assertEqual(backend.calls, ['create', 'begin', 'finish'])
-        self.assertEqual(facade.root, self.store.root)
+        self.assertEqual(facade.identity, self.store.identity)
 
     def test_knowledge_facade_rejects_candidate_evidence_before_failure_commit(self):
         facade = KnowledgeSessions(self.store)

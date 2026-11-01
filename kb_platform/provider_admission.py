@@ -50,26 +50,50 @@ def _physical_id(value):
 
 
 class ProviderAdmission:
-    def __init__(self, provider, root):
+    def __init__(self, provider, root=None, *, database=None, objects=None):
         identity = {'provider_id': provider.provider_id, 'model': provider.model,
                     'dimension': getattr(provider, 'dimension', None),
                     'endpoint_sha256': digest(provider.manifest.get('endpoint', provider.base_url))}
         self.scope_hash = digest(identity)
-        self.directory = Path(root) / self.scope_hash
+        if database is None and root is None or database is not None and (root is not None or objects is None):
+            raise ValueError('PROVIDER_ADMISSION_STORAGE_REQUIRED')
+        self.directory = None if root is None else Path(root) / self.scope_hash
+        self._journal = None
+        if database is not None:
+            from .persistence_journal import ImmutableJsonJournal
+
+            self._journal = ImmutableJsonJournal(database, objects, namespace=self.scope_hash)
         self.identity = identity
         self._ephemeral = set()
-        metadata = self.directory / 'provider.json'
-        if metadata.exists():
-            if _read(metadata) != {'schema': 'provider-admission/1', 'scope_hash': self.scope_hash, **identity}:
-                raise ValueError('PROVIDER_ADMISSION_IDENTITY_MISMATCH')
+        metadata = {'schema': 'provider-admission/1', 'scope_hash': self.scope_hash, **identity}
+        try:
+            current = self._read('provider.json')
+        except FileNotFoundError:
+            self._immutable('provider.json', metadata)
         else:
-            _immutable(metadata, {'schema': 'provider-admission/1', 'scope_hash': self.scope_hash, **identity})
+            if current != metadata:
+                raise ValueError('PROVIDER_ADMISSION_IDENTITY_MISMATCH')
+
+    def _read(self, key):
+        return _read(self.directory / key) if self._journal is None else self._journal.read(key)
+
+    def _immutable(self, key, value):
+        if self._journal is None:
+            return _immutable(self.directory / key, value)
+        return self._journal.put(key, value)
+
+    def _items(self, prefix):
+        if self._journal is not None:
+            return self._journal.items(prefix + '/')
+        return [(prefix + '/' + path.name, path.read_bytes())
+                for path in sorted((self.directory / prefix).glob('*.json'))]
 
     @classmethod
     def from_directory(cls, directory):
         value = _read(Path(directory) / 'provider.json')
         instance = object.__new__(cls)
         instance.directory, instance.scope_hash = Path(directory), value['scope_hash']
+        instance._journal = None
         instance.identity = {key: value[key] for key in ('provider_id', 'model', 'dimension', 'endpoint_sha256')}
         if value['schema'] != 'provider-admission/1' or digest(instance.identity) != instance.scope_hash:
             raise ValueError('PROVIDER_ADMISSION_IDENTITY_MISMATCH')
@@ -79,15 +103,14 @@ class ProviderAdmission:
     def block(self, physical_id, *, payload_sha256, category):
         _physical_id(physical_id)
         self._ephemeral.add(physical_id)
-        path = self.directory / 'events' / (physical_id + '.json')
+        key = 'events/' + physical_id + '.json'
         value = {'schema': 'provider-permission-error/1', 'scope_hash': self.scope_hash,
                  'physical_request_id': physical_id, 'http_status': 403,
                  'payload_sha256': payload_sha256, 'category': category}
-        if path.exists():
-            if _read(path) != value:
-                raise ValueError('PROVIDER_PERMISSION_RECEIPT_CONFLICT')
-        else:
-            _immutable(path, value)
+        try:
+            self._immutable(key, value)
+        except ValueError as error:
+            raise ValueError('PROVIDER_PERMISSION_RECEIPT_CONFLICT') from error
 
     def seed_from_capture(self, root):
 
@@ -111,23 +134,23 @@ class ProviderAdmission:
             raise CaptureAdmissionError('Provider is blocked after received HTTP 403; operator acknowledgement required; no request was sent')
 
     def snapshot(self, *, public=False):
-        if _read(self.directory / 'provider.json') != {
+        if self._read('provider.json') != {
                 'schema': 'provider-admission/1', 'scope_hash': self.scope_hash, **self.identity}:
             raise ValueError('PROVIDER_ADMISSION_IDENTITY_MISMATCH')
         events, acknowledged, files = set(self._ephemeral), set(), {}
-        for path in sorted((self.directory / 'events').glob('*.json')):
-            row = _read(path)
+        for key, raw in self._items('events'):
+            row = json.loads(raw)
             if (row.get('schema') != 'provider-permission-error/1' or
                     row.get('scope_hash') != self.scope_hash or row.get('http_status') != 403 or
-                    path.stem != _physical_id(row.get('physical_request_id'))):
+                    Path(key).stem != _physical_id(row.get('physical_request_id'))):
                 raise ValueError('INVALID_PROVIDER_PERMISSION_RECEIPT')
             events.add(row['physical_request_id'])
-            files['events/' + path.name] = sha256(path.read_bytes()).hexdigest()
-        for path in sorted((self.directory / 'acknowledgements').glob('*.json')):
-            row = _read(path)
+            files[key] = sha256(raw).hexdigest()
+        for key, raw in self._items('acknowledgements'):
+            row = json.loads(raw)
             if (row.get('scope_hash') != self.scope_hash or
                     row.get('schema') != 'provider-permission-acknowledgement/1' or
-                    path.stem != _physical_id(row.get('acknowledgement_id')) or
+                    Path(key).stem != _physical_id(row.get('acknowledgement_id')) or
                     not isinstance(row.get('observed_error_ids'), list) or
                     not row['observed_error_ids'] or
                     row.get('external_repair_asserted_by_operator') is not True or
@@ -138,7 +161,7 @@ class ProviderAdmission:
             if not ids.issubset(events):
                 raise ValueError('ACKNOWLEDGEMENT_WITHOUT_PERMISSION_ERROR')
             acknowledged.update(ids)
-            files['acknowledgements/' + path.name] = sha256(path.read_bytes()).hexdigest()
+            files[key] = sha256(raw).hexdigest()
         blocked = sorted(events - acknowledged)
         result = {'provider_id': self.identity['provider_id'], 'model': self.identity['model'],
                   'state': 'BLOCKED' if blocked else 'AVAILABLE',
@@ -162,5 +185,5 @@ class ProviderAdmission:
                    'expected_checkpoint': expected_checkpoint, 'observed_error_ids': current['observed_error_ids'],
                    'evidence_reference': evidence_reference, 'external_repair_asserted_by_operator': True,
                    'provider_probe_performed': False, 'budget_or_error_rows_modified': False}
-        _immutable(self.directory / 'acknowledgements' / (receipt['acknowledgement_id'] + '.json'), receipt)
+        self._immutable('acknowledgements/' + receipt['acknowledgement_id'] + '.json', receipt)
         return receipt

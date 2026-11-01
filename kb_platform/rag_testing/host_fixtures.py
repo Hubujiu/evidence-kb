@@ -335,6 +335,16 @@ def process_llm(config):
     return ProcessLLM(config)
 
 
+def native_array_import(config):
+    import numpy
+
+    class NativeArrayImport(Fixture):
+        def run(self):
+            return {'values': numpy.arange(4).tolist(), 'library': numpy.__version__}
+
+    return NativeArrayImport(config)
+
+
 def process_tree_worker():
     receipt, phase = Path(sys.argv[1]), sys.argv[2]
     child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'],

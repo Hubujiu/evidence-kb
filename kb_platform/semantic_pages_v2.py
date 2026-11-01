@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .knowledge_queries import KnowledgeQuery
+
 from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
@@ -67,8 +69,7 @@ class SemanticPageAuthority:
             self.platform._auth(conn, actor, kb_id, 'kb.read')
             if not kb['manifest_id']:
                 raise PlatformError('NO_PUBLISHED_MANIFEST', 'Publish canonical Pages first', 409)
-            build = conn.execute('SELECT * FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s '
-                "AND status='PUBLISHED'", (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
+            build = conn.execute(KnowledgeQuery.SEMANTIC_PAGES_V2_LOCKED_1, (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
             if not build or build['inputs'].get('page_navigation_protocol') != PAGE_PROTOCOL:
                 raise PlatformError('SEMANTIC_PAGE_BUILD_REQUIRED', 'The current build has no canonical Page channel', 409)
             rows = self.platform._allowed(self.platform._bindings(conn, actor, kb_id), actor, 'human_search')
@@ -84,7 +85,7 @@ class SemanticPageAuthority:
         build_id = snapshot['state']['manifest_id']
         units, _ = platform._units(actor, kb_id, build_id, rows)
         by_id = {u['citation_id']: u for u in units if u['kind'] == 'Page'}
-        stored = conn.execute('SELECT * FROM citations WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+        stored = conn.execute(KnowledgeQuery.SEMANTIC_PAGES_V2_CATALOG_1,
                               (actor.tenant_id, kb_id, build_id)).fetchall()
         stored = {r['citation_id']: r for r in stored}
         result = {}
@@ -95,8 +96,7 @@ class SemanticPageAuthority:
             if [e['ordinal'] for e in doc['elements']] != sorted(e['ordinal'] for e in doc['elements']):
                 raise PlatformError('SEMANTIC_PAGE_SOURCE_INVALID', 'Canonical parse order changed', 503)
             text = '\n'.join(e['raw_text'] for e in doc['elements'])
-            original = conn.execute('SELECT original_path,original_sha256 FROM source_versions '
-                'WHERE tenant_id=%s AND source_id=%s AND source_version_id=%s',
+            original = conn.execute(KnowledgeQuery.SEMANTIC_PAGES_V2_CATALOG_2,
                 (actor.tenant_id, row['source_id'], row['source_version_id'])).fetchone()
             if not original:
                 raise PlatformError('SOURCE_INTEGRITY', 'Original source version is unavailable', 503)
@@ -158,7 +158,7 @@ class SemanticPageService:
     def current_manifest(self, actor, kb_id):
         state = self.gateway.authorize(actor, kb_id)
         try:
-            if type(self.platform.backend).__name__ == 'PostgresSearch':
+            if getattr(self.platform.backend, 'supports_manifest_storage', type(self.platform.backend).__name__ == 'PostgresSearch'):
                 manifest, checksum = self.platform.backend.current_manifest(actor.tenant_id, kb_id)
                 if hashlib.sha256(json.dumps(manifest, ensure_ascii=False, sort_keys=True,
                         separators=(',', ':'), allow_nan=False).encode()).hexdigest() != checksum:
@@ -253,7 +253,7 @@ class SemanticPageService:
             self._index_bound(manifest,checksum)
             if not snapshot['authorize']():
                 raise PlatformError('SCOPE_CHANGED', 'Authorization changed before semantic publication', 409)
-            if type(self.platform.backend).__name__ == 'PostgresSearch':
+            if getattr(self.platform.backend, 'supports_manifest_storage', type(self.platform.backend).__name__ == 'PostgresSearch'):
                 self.platform.backend.publish_manifest(manifest, checksum)
                 return {'manifest_path': str(path), 'manifest_sha256': checksum, **manifest}
             temporary=directory/('active-'+uuid4().hex+'.tmp')

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from contextlib import closing
 from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
 import re
-import sqlite3
 from threading import Lock
 from uuid import uuid4
 
@@ -275,15 +273,14 @@ class GoogleSemanticProvider:
         try:
             if (self.audit_dir / (request_id + '.json')).exists():
                 return None
-            with closing(sqlite3.connect(self.ledger.path.resolve().as_uri() + '?mode=ro', uri=True)) as ledger:
-                registered = ledger.execute('SELECT 1 FROM calls WHERE id=?', (request_id,)).fetchone()
+            registered = self.ledger.entry(request_id)
             return reason if registered is None else None
-        except (OSError, ValueError, sqlite3.Error):
+        except (OSError, ValueError):
             return None
 
     def recover_embedding(self, request_id):
         self._unchanged()
-        observation = read_embedding_capture(self.audit_dir, self.ledger.path, request_id)
+        observation = read_embedding_capture(self.audit_dir, self.ledger, request_id)
         if observation is None:
             return None
         record = observation['record']

@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 import httpx
+from sqlalchemy.exc import IntegrityError
 
 from kb_platform.agent_model import BudgetLedger as AgentBudget
 from kb_platform.context_budget import ContextBudget
@@ -60,7 +61,9 @@ class ModelHttpFailureContracts(unittest.TestCase):
                         self.assertEqual(error.call_record['attempts'], int(sent))
                         self.assertTrue(error.physical_request_id)
                         self.assertIsInstance(error.__cause__,
-                            OSError if recording_error == 'audit' else sqlite3.IntegrityError)
+                            OSError if recording_error == 'audit' else IntegrityError)
+                        if recording_error == 'ledger':
+                            self.assertIsInstance(error.__cause__.orig, sqlite3.IntegrityError)
                         for snapshot in (budget.snapshot(), structured._model.turn_budget_snapshot('s', 't')):
                             self.assertEqual(snapshot['calls'], int(sent))
                             self.assertEqual(snapshot['unknown_usage_calls'], int(sent))

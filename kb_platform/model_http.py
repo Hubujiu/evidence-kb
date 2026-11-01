@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import math
+from pathlib import Path
 import time
 from uuid import uuid4
 
@@ -54,7 +55,8 @@ def validate_provider_options(*, provider, model, endpoint, api_key, capabilitie
 
 class OpenAICompatibleAdapter:
     def __init__(self, *, provider, model, endpoint, api_key, capabilities, ledger,
-                 reservation, timeout=120, client=None, preferred_batch_size=1):
+                 reservation, timeout=120, client=None, preferred_batch_size=1,
+                 audit_root=None, admission=None, admission_factory=None):
         self.info = validate_provider_options(provider=provider, model=model, endpoint=endpoint,
             api_key=api_key, capabilities=capabilities, reservation=reservation, caps=ledger.caps,
             timeout=timeout, preferred_batch_size=preferred_batch_size, adapter_name=type(self).__name__)
@@ -62,8 +64,16 @@ class OpenAICompatibleAdapter:
         self.ledger, self.reservation, self.timeout = ledger, dict(reservation), timeout
         self.provider_id, self.model, self.base_url = provider, model, self.endpoint
         self.manifest = {'provider': provider, 'model': model, 'adapter': type(self).__name__}
-        self.admission = ProviderAdmission(self, ledger.path.parent / 'model-admission')
-        self.audit_root = ledger.path.parent / 'model-calls'
+        ledger_path = getattr(ledger, 'path', None)
+        if audit_root is None:
+            if ledger_path is None:
+                raise ValueError('MODEL_AUDIT_STORAGE_REQUIRED')
+            audit_root = ledger_path.parent / 'model-calls'
+        self.audit_root = Path(audit_root)
+        if admission is not None and admission_factory is not None:
+            raise ValueError('MODEL_ADMISSION_STORAGE_AMBIGUOUS')
+        self.admission = (admission_factory(self) if admission_factory is not None else admission or
+                          ProviderAdmission(self, self.audit_root.parent / 'model-admission'))
         self.audit_root.mkdir(parents=True, exist_ok=True)
         self.client = client or httpx.Client(follow_redirects=False, trust_env=False)
         self._owned = client is None

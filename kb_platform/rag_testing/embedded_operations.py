@@ -66,7 +66,8 @@ def main():
     check('revocation_survives_publication', not platform.search(reader, scope, 'BETA')['hits'])
     citation = platform.search(actor, scope, 'BETA')['hits'][0]['citation_id']
     resolved = platform.resolve_citation(actor, scope, citation)
-    Path(resolved['original_path']).rename(Path(resolved['original_path']).with_suffix('.backup-offline'))
+    original = platform.store.checked_path(resolved['original_path'], actor.tenant_id, resolved['original_sha256'])
+    original.rename(original.with_suffix('.backup-offline'))
     check('missing_backup_does_not_break_evidence', bool(platform.resolve_citation(actor, scope, citation)['text']))
     try:
         platform.resolve_citation(actor, scope, citation, purpose='download')

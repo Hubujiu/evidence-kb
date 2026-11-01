@@ -13,6 +13,7 @@ ALTER TABLE public.search_generations FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS search_scope ON public.search_generations;
 CREATE POLICY search_scope ON public.search_generations USING
  (tenant_id=current_setting('app.tenant_id',true) AND kb_id=current_setting('app.kb_id',true));
+REVOKE INSERT,UPDATE,DELETE ON public.search_generations FROM kb_app;
 GRANT SELECT ON public.search_generations TO kb_app;
 
 CREATE OR REPLACE FUNCTION public.search_scope(p_index text)
@@ -41,7 +42,7 @@ BEGIN
    EXECUTE format('ALTER TABLE kb_search.%I ENABLE ROW LEVEL SECURITY',tab);
    EXECUTE format('ALTER TABLE kb_search.%I FORCE ROW LEVEL SECURITY',tab);
    EXECUTE format('CREATE POLICY scope ON kb_search.%I USING (tenant_id=current_setting(''app.tenant_id'',true) AND kb_id=current_setting(''app.kb_id'',true))',tab);
-   EXECUTE format('GRANT SELECT,INSERT ON kb_search.%I TO kb_app',tab);
+   EXECUTE format('GRANT SELECT,INSERT ON kb_search.%I TO %I',tab,session_user);
  END LOOP;
 END $$;
 REVOKE ALL ON FUNCTION public.create_search_generation(text,integer,integer,text) FROM PUBLIC;
@@ -62,7 +63,7 @@ BEGIN
      EXECUTE format('CREATE INDEX %I ON kb_search.%I USING bm25 (%I) WITH (text_config=''simple'')',tab||'_'||field,tab,field);
    END LOOP;
    EXECUTE format('CREATE INDEX ON kb_search.%I (binding_key)',tab);
-   EXECUTE format('REVOKE INSERT ON kb_search.%I FROM kb_app',tab);
+   EXECUTE format('REVOKE INSERT ON kb_search.%I FROM %I',tab,session_user);
    EXECUTE format('ANALYZE kb_search.%I',tab);
  END LOOP;
  IF total<>generation.unit_count THEN RAISE EXCEPTION 'Generation count mismatch'; END IF;

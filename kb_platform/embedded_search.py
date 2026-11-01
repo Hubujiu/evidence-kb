@@ -136,6 +136,8 @@ class EmbeddedSearch:
 
     def verify(self, index):
         path = self._path(index)
+        if not path.exists():
+            raise SearchUnavailable('Search generation not found')
         try:
             manifest = json.loads((path / 'manifest.json').read_text('utf-8'))
             if manifest['format'] != FORMAT:
@@ -150,6 +152,8 @@ class EmbeddedSearch:
 
     def _connection(self, index):
         path = self._path(index) / 'units.sqlite'
+        if not path.parent.exists():
+            raise SearchUnavailable('Search generation not found')
         try:
             return sqlite3.connect(path.as_uri() + '?mode=ro&immutable=1', uri=True)
         except sqlite3.Error as exc:

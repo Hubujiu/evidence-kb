@@ -4,11 +4,8 @@ import hashlib
 import inspect
 import json
 import math
-import sqlite3
 from uuid import uuid4
 
-import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from .embeddings import EmbeddingCallError, EmbeddingError, read_embedding_capture
@@ -85,14 +82,17 @@ class EmbeddingJobs:
                  circuit_threshold=3, circuit_seconds=60):
         if min(lease_seconds, max_attempts, circuit_threshold, circuit_seconds) < 1:
             raise ValueError('positive job limits required')
-        self.dsn, self.lease_seconds, self.max_attempts = dsn, lease_seconds, max_attempts
+        from .knowledge_storage import PostgresRepository
+
+        self.repository = dsn if isinstance(dsn, PostgresRepository) else PostgresRepository(dsn)
+        self.lease_seconds, self.max_attempts = lease_seconds, max_attempts
         self.circuit_threshold, self.circuit_seconds = circuit_threshold, circuit_seconds
 
     @contextmanager
     def _tx(self, tenant_id, kb_id):
-        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
-            conn.execute("SELECT set_config('app.tenant_id', %s, true), set_config('app.kb_id', %s, true)",
-                         (tenant_id, kb_id))
+        from .database_providers.postgres import pg_transaction
+
+        with pg_transaction(self.repository._database(), tenant_id, kb_id) as conn:
             yield conn
 
     @staticmethod
@@ -290,7 +290,7 @@ def recovered_observation(row, provider):
         if recover is not None:
             observation = recover(row['request_id'])
         elif hasattr(provider, 'audit_dir') and hasattr(provider, 'ledger'):
-            observation = read_embedding_capture(provider.audit_dir, provider.ledger.path, row['request_id'])
+            observation = read_embedding_capture(provider.audit_dir, provider.ledger, row['request_id'])
         else:
             return None
         if observation is None:
@@ -307,7 +307,7 @@ def recovered_observation(row, provider):
                 or observation['physical_usage'] != record.get('usage')):
             return None
         return observation
-    except (KeyError, TypeError, ValueError, OSError, sqlite3.Error, EmbeddingError):
+    except (KeyError, TypeError, ValueError, OSError, EmbeddingError):
         return None
 
 
@@ -337,5 +337,5 @@ def recovered_vectors(row, provider):
         if record.get('vectors_sha256') != semantic_digest(vectors):
             return None
         return vectors
-    except (ValueError, OSError, sqlite3.Error, EmbeddingError):
+    except (ValueError, OSError, EmbeddingError):
         return None

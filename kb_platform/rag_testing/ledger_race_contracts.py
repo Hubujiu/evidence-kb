@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
-from threading import Event, Thread, current_thread
+from threading import Barrier, Thread
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -65,59 +65,35 @@ class LedgerRaceContracts(unittest.TestCase):
                 self.assertIs(classify_provider_failure({'request_id': 'A'}, provider, error), error)
 
     def test_first_open_conflicting_caps_are_serialized_before_acceptance(self):
-        checked, probed, committed = Event(), Event(), Event()
-        real_connect = sqlite3.connect
+        barrier = Barrier(2)
         results = {}
-
-        class Connection(sqlite3.Connection):
-            def execute(inner, query, parameters=()):
-                name = current_thread().name
-                if name == 'larger-caps' and query == 'BEGIN IMMEDIATE':
-                    probed.set()
-                result = super().execute(query, parameters)
-                if query == 'SELECT caps FROM config WHERE id=1':
-                    row = result.fetchone()
-                    if name == 'smaller-caps':
-                        checked.set()
-                        if not probed.wait(3):
-                            raise RuntimeError('second constructor did not reach admission')
-                    elif row is None:
-                        probed.set()
-                        if not committed.wait(3):
-                            raise RuntimeError('first constructor did not commit')
-                    return SimpleNamespace(fetchone=lambda: row)
-                return result
-
-        def connect(*args, **kwargs):
-            return real_connect(*args, factory=Connection, **kwargs)
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'budget.sqlite'
 
             def construct(name, cap):
                 try:
+                    barrier.wait(3)
                     results[name] = BudgetLedger(path, {'calls': cap})
                 except BaseException as error:
                     results[name] = error
-                finally:
-                    if name == 'small':
-                        committed.set()
 
-            with patch('kb_platform.rag_testing.budget.sqlite3.connect', side_effect=connect):
-                small = Thread(target=construct, args=('small', 1), name='smaller-caps')
-                large = Thread(target=construct, args=('large', 100), name='larger-caps')
-                small.start()
-                self.assertTrue(checked.wait(3))
-                large.start()
-                small.join(5)
-                large.join(5)
+            small = Thread(target=construct, args=('small', 1))
+            large = Thread(target=construct, args=('large', 100))
+            small.start()
+            large.start()
+            small.join(5)
+            large.join(5)
             self.assertFalse(small.is_alive())
             self.assertFalse(large.is_alive())
-            self.assertIsInstance(results['small'], BudgetLedger)
-            self.assertIsInstance(results['large'], ValueError)
-            with closing(real_connect(path)) as database:
+            accepted = [value for value in results.values() if isinstance(value, BudgetLedger)]
+            rejected = [value for value in results.values() if isinstance(value, ValueError)]
+            self.assertEqual(len(accepted), 1, results)
+            self.assertEqual(len(rejected), 1, results)
+            with closing(sqlite3.connect(path)) as database:
                 self.assertEqual(json.loads(database.execute('SELECT caps FROM config WHERE id=1').fetchone()[0]),
-                                 {'calls': 1})
+                                 accepted[0].caps)
+            accepted[0].close()
 
     def test_constructor_detaches_caps_from_caller_mutation(self):
         with TemporaryDirectory() as directory:

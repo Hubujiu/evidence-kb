@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+from .knowledge_queries import KnowledgeQuery
+
 from decimal import Decimal, InvalidOperation
 import math
 from pathlib import Path
 from uuid import uuid4, uuid5, NAMESPACE_URL
 
-from psycopg.types.json import Jsonb
+from .knowledge_queries import JsonValue as Jsonb
 
 from .session_identity import Actor as Actor, PlatformError as PlatformError
 
-from .search import SearchUnavailable, TIE_BREAK_FIELDS, content_order, QUERY_PROTOCOL
+from .search import SearchGenerationIncomplete, SearchUnavailable, TIE_BREAK_FIELDS, content_order, QUERY_PROTOCOL
 from .embeddings import EmbeddingError
 
 
@@ -52,35 +54,34 @@ class Platform:
     def _auth(self, conn, actor: Actor, kb_id: str, capability='kb.read') -> dict:
         if not kb_id:
             _deny()
-        row = conn.execute('SELECT k.*, m.capabilities FROM knowledge_bases k JOIN members m '
-                           'USING (tenant_id,kb_id) WHERE k.tenant_id=%s AND k.kb_id=%s AND m.principal_id=%s',
+        row = conn.execute(KnowledgeQuery.CORE_AUTH_1,
                            (actor.tenant_id, kb_id, actor.principal_id)).fetchone()
         if not row or capability not in row['capabilities']:
             _deny()
         return row
 
     def _lock_authority(self, conn, actor: Actor) -> int:
-        row = conn.execute('SELECT revision FROM tenant_state WHERE tenant_id=%s FOR UPDATE',
+        row = conn.execute(KnowledgeQuery.CORE_LOCK_AUTHORITY_1,
                            (actor.tenant_id,)).fetchone()
         if not row:
             _deny()
         return row['revision']
 
     def _revision(self, conn, actor: Actor) -> int:
-        row = conn.execute('SELECT revision FROM tenant_state WHERE tenant_id=%s',
+        row = conn.execute(KnowledgeQuery.CORE_REVISION_1,
                            (actor.tenant_id,)).fetchone()
         if not row:
             _deny()
         return row['revision']
 
     def _bump(self, conn, actor: Actor, kb_id: str | None = None):
-        conn.execute('UPDATE tenant_state SET revision=revision+1 WHERE tenant_id=%s', (actor.tenant_id,))
+        conn.execute(KnowledgeQuery.CORE_BUMP_1, (actor.tenant_id,))
         if kb_id:
-            conn.execute('UPDATE knowledge_bases SET revision=revision+1 WHERE tenant_id=%s AND kb_id=%s',
+            conn.execute(KnowledgeQuery.CORE_BUMP_2,
                          (actor.tenant_id, kb_id))
 
     def _source(self, conn, actor: Actor, source_id: str, owner=False) -> dict:
-        row = conn.execute('SELECT * FROM sources WHERE tenant_id=%s AND source_id=%s',
+        row = conn.execute(KnowledgeQuery.CORE_SOURCE_1,
                            (actor.tenant_id, source_id)).fetchone()
         if not row or (row['owner_id'] != actor.principal_id and
                        (owner or actor.principal_id not in row['readers'])):
@@ -92,22 +93,19 @@ class Platform:
             raise PlatformError('INVALID_NAME', 'Knowledge base name is required')
         kb_id = str(uuid4())
         with self._tx(actor, kb_id) as conn:
-            conn.execute('INSERT INTO tenant_state (tenant_id) VALUES (%s) ON CONFLICT DO NOTHING',
+            conn.execute(KnowledgeQuery.CORE_CREATE_KB_1,
                          (actor.tenant_id,))
             self._lock_authority(conn, actor)
-            conn.execute('INSERT INTO knowledge_bases (tenant_id,kb_id,name,owner_id) VALUES (%s,%s,%s,%s)',
+            conn.execute(KnowledgeQuery.CORE_CREATE_KB_2,
                          (actor.tenant_id, kb_id, name, actor.principal_id))
-            conn.execute('INSERT INTO members VALUES (%s,%s,%s,%s)',
+            conn.execute(KnowledgeQuery.CORE_CREATE_KB_3,
                          (actor.tenant_id, kb_id, actor.principal_id, Jsonb(sorted(CAPABILITIES))))
             self._bump(conn, actor)
         return {'kb_id': kb_id, 'name': name, 'tenant_id': actor.tenant_id, 'manifest_id': None}
 
     def list_kbs(self, actor: Actor) -> list[dict]:
         with self._tx(actor) as conn:
-            return conn.execute('SELECT k.kb_id,k.name,k.manifest_id,m.capabilities FROM knowledge_bases k '
-                                'JOIN members m USING (tenant_id,kb_id) '
-                                'WHERE k.tenant_id=%s AND m.principal_id=%s AND m.capabilities<>\'[]\'::jsonb '
-                                'ORDER BY k.name,k.kb_id',
+            return conn.execute(KnowledgeQuery.CORE_LIST_KBS_1,
                                 (actor.tenant_id, actor.principal_id)).fetchall()
 
     def set_member(self, actor: Actor, kb_id: str, principal_id: str, capabilities: list[str]) -> dict:
@@ -116,8 +114,7 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             kb = self._auth(conn, actor, kb_id, 'kb.manage_members')
-            previous = conn.execute('SELECT capabilities FROM members WHERE tenant_id=%s AND kb_id=%s '
-                                    'AND principal_id=%s', (actor.tenant_id, kb_id, principal_id)).fetchone()
+            previous = conn.execute(KnowledgeQuery.CORE_SET_MEMBER_2, (actor.tenant_id, kb_id, principal_id)).fetchone()
             management = {'kb.manage', 'kb.manage_members', 'kb.manage_managers', 'kb.delete'}
             affected = set(capabilities) | set(previous['capabilities'] if previous else [])
             if (not set(capabilities).issubset(kb['capabilities']) or
@@ -125,8 +122,7 @@ class Platform:
                 _deny()
             if principal_id == kb['owner_id'] and set(capabilities) != CAPABILITIES:
                 raise PlatformError('OWNER_REQUIRED', 'Owner capabilities cannot be removed', 409)
-            conn.execute('INSERT INTO members VALUES (%s,%s,%s,%s) ON CONFLICT (tenant_id,kb_id,principal_id) '
-                         'DO UPDATE SET capabilities=EXCLUDED.capabilities',
+            conn.execute(KnowledgeQuery.CORE_SET_MEMBER_1,
                          (actor.tenant_id, kb_id, principal_id, Jsonb(sorted(set(capabilities)))))
             self._bump(conn, actor, kb_id)
         return {'principal_id': principal_id, 'capabilities': sorted(set(capabilities))}
@@ -168,26 +164,21 @@ class Platform:
                 if current['revision'] != existing['revision']:
                     raise PlatformError('STALE_PARSE', 'Source policy changed during parsing', 409)
                 effective_readers = readers if readers is not None else current['readers']
-                conn.execute('UPDATE sources SET readers=%s,policy=%s,revision=revision+1 '
-                             'WHERE tenant_id=%s AND source_id=%s',
+                conn.execute(KnowledgeQuery.CORE_INGEST_3,
                              (Jsonb(effective_readers), Jsonb(parse_policy), actor.tenant_id, source_id))
             else:
-                conn.execute('INSERT INTO sources (tenant_id,source_id,owner_id,readers,policy) VALUES (%s,%s,%s,%s,%s)',
+                conn.execute(KnowledgeQuery.CORE_INGEST_4,
                              (actor.tenant_id, source_id, actor.principal_id, Jsonb(readers or []), Jsonb(parse_policy)))
-            conn.execute('INSERT INTO source_versions VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
+            conn.execute(KnowledgeQuery.CORE_INGEST_1,
                          (actor.tenant_id, source_id, digest, filename, path, digest, document['media_type']))
-            conn.execute('INSERT INTO parse_snapshots VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
+            conn.execute(KnowledgeQuery.CORE_INGEST_2,
                          (actor.tenant_id, source_id, digest, document['parse_snapshot_id'], Jsonb(document)))
             binding = self._bind(conn, actor, kb_id, source_id, digest, document['parse_snapshot_id'])
             self._bump(conn, actor, kb_id)
         return {**binding, 'document': document}
 
     def _bind(self, conn, actor, kb_id, source_id, source_version_id, parse_id):
-        row = conn.execute('INSERT INTO bindings (tenant_id,kb_id,binding_id,source_id,source_version_id,'
-                           'parse_snapshot_id,status) VALUES (%s,%s,%s,%s,%s,%s,\'ACTIVE\') '
-                           'ON CONFLICT (tenant_id,kb_id,source_id) DO UPDATE SET '
-                           'source_version_id=EXCLUDED.source_version_id,parse_snapshot_id=EXCLUDED.parse_snapshot_id,'
-                           'status=\'ACTIVE\',revision=bindings.revision+1 RETURNING binding_id,source_id,source_version_id',
+        row = conn.execute(KnowledgeQuery.CORE_BIND_1,
                            (actor.tenant_id, kb_id, str(uuid4()), source_id, source_version_id, parse_id)).fetchone()
         return row
 
@@ -196,8 +187,7 @@ class Platform:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id, 'kb.write')
             self._source(conn, actor, source_id, owner=True)
-            snapshot = conn.execute('SELECT parse_snapshot_id FROM parse_snapshots WHERE tenant_id=%s '
-                                    'AND source_id=%s AND source_version_id=%s ORDER BY parse_snapshot_id LIMIT 1',
+            snapshot = conn.execute(KnowledgeQuery.CORE_BIND_SOURCE_1,
                                     (actor.tenant_id, source_id, source_version_id)).fetchone()
             if not snapshot:
                 _deny()
@@ -209,8 +199,7 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id, 'kb.write')
-            row = conn.execute('UPDATE bindings SET status=\'REMOVED\',revision=revision+1 '
-                               'WHERE tenant_id=%s AND kb_id=%s AND binding_id=%s RETURNING binding_id,status',
+            row = conn.execute(KnowledgeQuery.CORE_REMOVE_BINDING_1,
                                (actor.tenant_id, kb_id, binding_id)).fetchone()
             if not row:
                 _deny()
@@ -223,7 +212,7 @@ class Platform:
         with self._tx(actor) as conn:
             self._lock_authority(conn, actor)
             self._source(conn, actor, source_id, owner=True)
-            conn.execute('UPDATE sources SET readers=%s,revision=revision+1 WHERE tenant_id=%s AND source_id=%s',
+            conn.execute(KnowledgeQuery.CORE_SET_SOURCE_READERS_1,
                          (Jsonb(sorted(set(readers))), actor.tenant_id, source_id))
             self._bump(conn, actor)
         return {'source_id': source_id, 'readers': sorted(set(readers))}
@@ -233,16 +222,13 @@ class Platform:
         with self._tx(actor) as conn:
             self._lock_authority(conn, actor)
             self._source(conn, actor, source_id, owner=True)
-            conn.execute('UPDATE sources SET policy=%s,revision=revision+1 WHERE tenant_id=%s AND source_id=%s',
+            conn.execute(KnowledgeQuery.CORE_SET_SOURCE_POLICY_1,
                          (Jsonb(policy), actor.tenant_id, source_id))
             self._bump(conn, actor)
         return {'source_id': source_id, 'policy': policy}
 
     def _bindings(self, conn, actor, kb_id):
-        return conn.execute('SELECT b.*,s.owner_id,s.readers,s.policy,s.revision AS source_revision,p.document '
-                            'FROM bindings b JOIN sources s USING (tenant_id,source_id) JOIN parse_snapshots p '
-                            'USING (tenant_id,source_id,source_version_id,parse_snapshot_id) '
-                            'WHERE b.tenant_id=%s AND b.kb_id=%s AND b.status=\'ACTIVE\' ORDER BY b.binding_id',
+        return conn.execute(KnowledgeQuery.CORE_BINDINGS_1,
                             (actor.tenant_id, kb_id)).fetchall()
 
     def _allowed(self, rows, actor, purpose):
@@ -306,12 +292,12 @@ class Platform:
                       'excluded_vector_source_ids': sorted({row['source_id'] for row in rows} - vector_sources)
                       if model_enabled else [],
                       'model_admission': 'EXPERIMENTAL' if model_enabled else 'NOT_ENABLED'}
-            conn.execute('INSERT INTO builds VALUES (%s,%s,%s,%s,%s,%s,%s,%s,\'STAGING\',%s)',
+            conn.execute(KnowledgeQuery.CORE_STAGE_1,
                          (actor.tenant_id, kb_id, build_id, kb['manifest_id'], authority_revision,
                           kb['revision'], index, Jsonb(config), len(units)))
             for citation in citations:
-                conn.execute('INSERT INTO citations VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)', citation)
-        if type(self.backend).__name__ == 'PostgresSearch':
+                conn.execute(KnowledgeQuery.CORE_STAGE_3, citation)
+        if getattr(self.backend, 'supports_resume_build', type(self.backend).__name__ == 'PostgresSearch'):
             return self.resume_build(actor, kb_id, build_id)
         try:
             if model_enabled:
@@ -328,7 +314,7 @@ class Platform:
                 self.backend.stage(index, units)
         except (SearchUnavailable, EmbeddingError, PlatformError) as exc:
             with self._tx(actor, kb_id) as conn:
-                conn.execute('UPDATE builds SET status=\'FAILED\' WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+                conn.execute(KnowledgeQuery.CORE_STAGE_4,
                              (actor.tenant_id, kb_id, build_id))
             if isinstance(exc, PlatformError):
                 raise
@@ -336,7 +322,7 @@ class Platform:
                 raise PlatformError('EMBEDDING_FAILED', str(exc), 422) from exc
             raise PlatformError('SEARCH_UNAVAILABLE', str(exc), 503) from exc
         with self._tx(actor, kb_id) as conn:
-            conn.execute('UPDATE builds SET status=\'VALIDATED\' WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+            conn.execute(KnowledgeQuery.CORE_STAGE_2,
                          (actor.tenant_id, kb_id, build_id))
         return {'build_id': build_id, 'kb_id': kb_id, 'status': 'VALIDATED', 'unit_count': len(units),
                 'channels': channels, 'expected_manifest_id': kb['manifest_id'],
@@ -351,7 +337,7 @@ class Platform:
     def build_status(self, actor, kb_id, build_id):
         with self._tx(actor, kb_id) as conn:
             self._auth(conn, actor, kb_id, 'kb.manage')
-            row = conn.execute('SELECT build_id,status,unit_count FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+            row = conn.execute(KnowledgeQuery.CORE_BUILD_STATUS_1,
                                (actor.tenant_id, kb_id, build_id)).fetchone()
             if row is None:
                 _deny()
@@ -367,7 +353,7 @@ class Platform:
             revision = self._lock_authority(conn, actor)
             kb = self._auth(conn, actor, kb_id, 'kb.manage')
             self._auth(conn, actor, kb_id, 'kb.read')
-            build = conn.execute('SELECT * FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+            build = conn.execute(KnowledgeQuery.CORE_RESUME_BUILD_2,
                                  (actor.tenant_id, kb_id, build_id)).fetchone()
             if build is None:
                 _deny()
@@ -394,7 +380,7 @@ class Platform:
             fields = ('tenant_id', 'kb_id', 'citation_id', 'build_id', 'binding_id', 'source_id',
                       'source_version_id', 'parse_snapshot_id', 'element_id', 'text', 'evidence_ids', 'anchors', 'table_data')
             expected = {r[2]: dict(zip(fields, [v.obj if isinstance(v, Jsonb) else v for v in r], strict=True)) for r in generated}
-            stored = conn.execute('SELECT * FROM citations WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+            stored = conn.execute(KnowledgeQuery.CORE_RESUME_BUILD_3,
                                   (actor.tenant_id, kb_id, build_id)).fetchall()
             if len(units) != build['unit_count'] or expected != {r['citation_id']: r for r in stored}:
                 raise PlatformError('STALE_BUILD', 'Regenerated units differ from committed evidence', 409)
@@ -430,23 +416,25 @@ class Platform:
 
         authorize()
         try:
-            existing = self.backend.read_units(build['index_name'])
+            try:
+                existing = self.backend.read_units(build['index_name'])
+            except SearchUnavailable as exc:
+                if str(exc) != 'Search generation not found' and not isinstance(exc, SearchGenerationIncomplete):
+                    raise
+                self.backend.stage(build['index_name'], units,
+                                   vector_dimension=self.embedding_provider.dimension if config['embedding'] else None)
+            else:
+                if existing != sorted(units, key=content_order):
+                    raise PlatformError('BUILD_CONTENT_MISMATCH', 'Stored generation differs from frozen inputs', 409)
         except SearchUnavailable as exc:
-
-            if str(exc) != 'Search generation not found':
-                raise
-            self.backend.stage(build['index_name'], units,
-                               vector_dimension=self.embedding_provider.dimension if config['embedding'] else None)
-        else:
-            if existing != sorted(units, key=content_order):
-                raise PlatformError('BUILD_CONTENT_MISMATCH', 'Stored generation differs from frozen inputs', 409)
+            raise PlatformError('SEARCH_UNAVAILABLE', str(exc), 503) from exc
         with self._tx(actor, kb_id) as conn:
             if self._lock_authority(conn, actor) != revision:
                 raise PlatformError('STALE_BUILD', 'Authority changed before validation', 409)
             current = self._auth(conn, actor, kb_id, 'kb.manage')
             if current['revision'] != build['kb_revision'] or current['manifest_id'] != build['expected_manifest_id']:
                 raise PlatformError('STALE_BUILD', 'Knowledge base changed before validation', 409)
-            conn.execute("UPDATE builds SET status='VALIDATED' WHERE tenant_id=%s AND kb_id=%s AND build_id=%s AND status='STAGING'",
+            conn.execute(KnowledgeQuery.CORE_RESUME_BUILD_1,
                          (actor.tenant_id, kb_id, build_id))
         return {'build_id': build_id, 'kb_id': kb_id, 'status': 'VALIDATED', 'unit_count': len(units),
                 'channels': config['channels'], 'expected_manifest_id': build['expected_manifest_id']}
@@ -493,7 +481,7 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             authority_revision = self._lock_authority(conn, actor)
             kb = self._auth(conn, actor, kb_id, 'kb.manage')
-            build = conn.execute('SELECT * FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s FOR UPDATE',
+            build = conn.execute(KnowledgeQuery.CORE_PUBLISH_3,
                                  (actor.tenant_id, kb_id, build_id)).fetchone()
             if not build:
                 _deny()
@@ -504,9 +492,9 @@ class Platform:
             if (build['expected_manifest_id'] != kb['manifest_id'] or
                 build['authority_revision'] != authority_revision or build['kb_revision'] != kb['revision']):
                 raise PlatformError('STALE_BUILD', 'Build inputs or authorization changed', 409)
-            conn.execute('UPDATE knowledge_bases SET manifest_id=%s WHERE tenant_id=%s AND kb_id=%s',
+            conn.execute(KnowledgeQuery.CORE_PUBLISH_1,
                          (build_id, actor.tenant_id, kb_id))
-            conn.execute('UPDATE builds SET status=\'PUBLISHED\' WHERE tenant_id=%s AND kb_id=%s AND build_id=%s',
+            conn.execute(KnowledgeQuery.CORE_PUBLISH_2,
                          (actor.tenant_id, kb_id, build_id))
         return {'kb_id': kb_id, 'manifest_id': build_id, 'status': 'PUBLISHED', 'idempotent': False}
 
@@ -521,8 +509,7 @@ class Platform:
             allowed = self._allowed(self._bindings(conn, actor, kb_id), actor, purpose)
             if not kb['manifest_id']:
                 raise PlatformError('NO_PUBLISHED_MANIFEST', 'Knowledge base has no published index', 409)
-            build = conn.execute('SELECT * FROM builds WHERE tenant_id=%s AND kb_id=%s AND build_id=%s '
-                                 'AND status=\'PUBLISHED\'', (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
+            build = conn.execute(KnowledgeQuery.CORE_SEARCH_1, (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
             if not build:
                 raise PlatformError('INVALID_MANIFEST', 'Published index unavailable', 503)
             config = build['inputs']
@@ -587,8 +574,7 @@ class Platform:
                     (hit.get('binding_id'), hit.get('source_id'), hit.get('source_version_id'), hit.get('parse_snapshot_id'))
                     not in allowed_keys):
                     raise PlatformError('INDEX_SCOPE_VIOLATION', 'Index scope validation failed', 503)
-                record = conn.execute('SELECT * FROM citations WHERE tenant_id=%s AND kb_id=%s AND citation_id=%s '
-                                      'AND build_id=%s', (actor.tenant_id, kb_id, hit.get('citation_id'),
+                record = conn.execute(KnowledgeQuery.CORE_SEARCH_2, (actor.tenant_id, kb_id, hit.get('citation_id'),
                                                          build['build_id'])).fetchone()
                 keys = ('source_id', 'binding_id', 'source_version_id', 'parse_snapshot_id',
                         'text', 'evidence_ids', 'anchors')
@@ -629,29 +615,27 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id)
-            row = conn.execute('SELECT c.*,p.document,v.filename,v.original_path,v.original_sha256,v.media_type,s.policy,'
-                               's.owner_id,s.readers FROM citations c JOIN bindings b '
-                               'USING (tenant_id,kb_id,binding_id) JOIN builds d ON c.tenant_id=d.tenant_id '
-                               'AND c.kb_id=d.kb_id AND c.build_id=d.build_id '
-                               'JOIN source_versions v ON c.tenant_id=v.tenant_id AND c.source_id=v.source_id '
-                               'AND c.source_version_id=v.source_version_id '
-                               'JOIN sources s ON c.tenant_id=s.tenant_id AND c.source_id=s.source_id '
-                               'JOIN parse_snapshots p ON c.tenant_id=p.tenant_id AND c.source_id=p.source_id '
-                               'AND c.source_version_id=p.source_version_id AND c.parse_snapshot_id=p.parse_snapshot_id '
-                               'WHERE c.tenant_id=%s AND c.kb_id=%s AND c.citation_id=%s '
-                               'AND b.source_id=c.source_id '
-                               'AND b.status=\'ACTIVE\' AND d.status=\'PUBLISHED\'',
+            row = conn.execute(KnowledgeQuery.CORE_RESOLVE_CITATION_1,
                                (actor.tenant_id, kb_id, citation_id)).fetchone()
             if not row or not self._allowed([row], actor, purpose):
                 _deny()
             if purpose == 'download':
                 try:
-                    self.store.checked_path(row['original_path'], actor.tenant_id, row['original_sha256'])
+                    self.store.read(row['original_path'], actor.tenant_id, row['original_sha256'])
                 except (OSError, ValueError) as exc:
                     raise PlatformError('SOURCE_INTEGRITY', 'Original backup unavailable or corrupt', 503) from exc
             return {key: row[key] for key in ('citation_id', 'kb_id', 'source_id', 'source_version_id', 'filename',
                     'original_path', 'original_sha256', 'text', 'anchors', 'media_type', 'policy', 'table_data',
                     'build_id', 'parse_snapshot_id', 'evidence_ids')}
+
+    def read_original(self, actor, kb_id, citation_id, purpose='download'):
+        target = self.resolve_citation(actor, kb_id, citation_id, purpose=purpose)
+        try:
+            data = self.store.read(target['original_path'], actor.tenant_id, target['original_sha256'])
+        except (OSError, ValueError) as error:
+            raise PlatformError('SOURCE_INTEGRITY', 'Original backup unavailable or corrupt', 503) from error
+        self.resolve_citation(actor, kb_id, citation_id, purpose=purpose)
+        return data
 
     def table_query(self, actor, kb_id, citation_id, operation='rows', column=None, filters=None):
         citation = self.resolve_citation(actor, kb_id, citation_id)

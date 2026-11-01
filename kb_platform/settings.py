@@ -13,6 +13,7 @@ class Settings:
     storage_root: Path
     identities_file: Path
     search_backend: str = 'postgres'
+    search_channels_file: Path | None = None
 
     @classmethod
     def from_environment(cls):
@@ -22,6 +23,7 @@ class Settings:
             Path(os.getenv("KB_STORAGE_ROOT", ".local/store")).resolve(),
             Path(os.getenv("KB_IDENTITIES_FILE", ".local/identities.json")).resolve(),
             os.getenv('KB_SEARCH_BACKEND', 'postgres'),
+            Path(os.environ['KB_SEARCH_CHANNELS_CONFIG']).resolve() if os.getenv('KB_SEARCH_CHANNELS_CONFIG') else None,
         )
 
     def identities(self):

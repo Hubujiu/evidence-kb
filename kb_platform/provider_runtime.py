@@ -116,20 +116,40 @@ class ProviderCircuit:
 
 class RequestReceipts:
 
-    def __init__(self, directory):
-        self.directory = Path(directory)
-        self.directory.mkdir(parents=True, exist_ok=True)
+    def __init__(self, directory=None, *, database=None):
+        if (directory is None) == (database is None):
+            raise ValueError('REQUEST_RECEIPT_STORAGE_REQUIRED')
+        self._database = None
+        self.directory = None if directory is None else Path(directory)
+        if database is None:
+            self.directory.mkdir(parents=True, exist_ok=True)
+        else:
+            from .provider_receipt_database import ReceiptDatabase
+
+            self._database = ReceiptDatabase(database)
+
+    @staticmethod
+    def _validate_previous(previous, metadata):
+        if previous['status'] in {'STARTED', 'UNKNOWN'}:
+            raise RuntimePolicyError('PROVIDER_REQUEST_UNRESOLVED')
+        linked = (metadata.get('retry_of') == previous['physical_request_id']
+                  and isinstance(metadata.get('retry_reason'), str) and metadata['retry_reason'])
+        if (not linked or previous['status'] == 'COMPLETE'
+                and metadata.get('retry_reason') != 'format_correction'):
+            raise RuntimePolicyError('PROVIDER_REQUEST_ALREADY_SETTLED')
 
     def _pending(self, logical_id):
         return self.directory / (hashlib.sha256(logical_id.encode()).hexdigest() + '.pending')
 
     def begin(self, logical_id, request_hash, metadata):
         physical_id = uuid4().hex
-        pending = self._pending(logical_id)
         row = {'logical_request_id': logical_id, 'physical_request_id': physical_id,
                'request_hash': request_hash, 'status': 'STARTED', 'started_at': time.time(),
                'attempt': metadata.get('attempt'), 'retry_of': metadata.get('retry_of'),
                'retry_reason': metadata.get('retry_reason')}
+        if self._database is not None:
+            return self._database.begin(logical_id, row, lambda previous: self._validate_previous(previous, metadata))
+        pending = self._pending(logical_id)
         try:
             with pending.open('x', encoding='utf-8') as stream:
                 json.dump(row, stream)
@@ -141,11 +161,7 @@ class RequestReceipts:
             terminal = pending.with_suffix('.terminal')
             if terminal.exists():
                 previous = json.loads(terminal.read_text('utf-8'))
-                linked = (metadata.get('retry_of') == previous['physical_request_id']
-                          and isinstance(metadata.get('retry_reason'), str) and metadata['retry_reason'])
-                if (not linked or previous['status'] == 'COMPLETE'
-                        and metadata.get('retry_reason') != 'format_correction'):
-                    raise RuntimePolicyError('PROVIDER_REQUEST_ALREADY_SETTLED')
+                self._validate_previous(previous, metadata)
             self._write(physical_id, row)
         except BaseException:
             pending.unlink(missing_ok=True)
@@ -169,6 +185,14 @@ class RequestReceipts:
     def finish(self, logical_id, physical_id, status, **metadata):
         if status not in {'COMPLETE', 'ERROR', 'UNKNOWN'}:
             raise ValueError('INVALID_PHYSICAL_REQUEST_STATE')
+        if self._database is not None:
+            def mutate(row, active):
+                if (row is None or active is None or row['logical_request_id'] != logical_id or
+                        row['status'] != 'STARTED' or active['physical_request_id'] != physical_id):
+                    raise RuntimePolicyError('INVALID_PHYSICAL_REQUEST_TRANSITION')
+                row.update(status=status, completed_at=time.time(), **metadata)
+
+            return self._database.transition(logical_id, physical_id, mutate)
         target = self.directory / (physical_id + '.json')
         row = json.loads(target.read_text('utf-8'))
         if row['logical_request_id'] != logical_id or row['status'] != 'STARTED':
@@ -182,6 +206,15 @@ class RequestReceipts:
     def reconcile(self, logical_id, physical_id, *, outcome, evidence_reference):
         if outcome not in {'COMPLETE', 'ERROR'} or not isinstance(evidence_reference, str) or not evidence_reference.strip():
             raise ValueError('RECONCILIATION_EVIDENCE_REQUIRED')
+        if self._database is not None:
+            def mutate(row, active):
+                if (row is None or active is None or row['logical_request_id'] != logical_id or
+                        row['status'] not in {'STARTED', 'UNKNOWN'} or
+                        active['physical_request_id'] != physical_id):
+                    raise RuntimePolicyError('INVALID_REQUEST_RECONCILIATION')
+                row.update(status=outcome, reconciled_at=time.time(), reconciliation_evidence=evidence_reference)
+
+            return self._database.transition(logical_id, physical_id, mutate)
         target = self.directory / (physical_id + '.json')
         row = json.loads(target.read_text('utf-8'))
         pending = self._pending(logical_id)

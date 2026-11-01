@@ -158,6 +158,25 @@ class ArchitectureContracts(unittest.TestCase):
             "from .contracts import Trace", "kb_platform/rag_testing/cache.py"
         ))
 
+    def test_database_foundations_accept_neutral_storage_and_reject_business_execution(self):
+        for source, path in (
+            ('from .database_contracts import SpaceKey', 'kb_platform/database_service.py'),
+            ('from .database_process import query_json', 'kb_platform/database_service.py'),
+            ('from ..database_contracts import SchemaPackage', 'kb_platform/database_providers/postgres.py'),
+            ('from ..persistence_local import local_database', 'kb_platform/rag_testing/cache.py'),
+            ('from ..database_contracts import SchemaPackage', 'kb_platform/rag_testing/budget.py'),
+        ):
+            with self.subTest(path=path, source=source):
+                self.assertEqual([], self.check_source(source, path))
+        for source, path in (
+            ('from .knowledge_storage import PostgresRepository', 'kb_platform/database_service.py'),
+            ('from ..knowledge_service import KnowledgeService', 'kb_platform/database_providers/postgres.py'),
+            ('from ..database_plugins import require_database', 'kb_platform/rag_testing/cache.py'),
+            ('from .rag_testing.runner import run', 'kb_platform/persistence_local.py'),
+        ):
+            with self.subTest(path=path, source=source):
+                self.assertTrue(self.check_source(source, path))
+
     def test_shared_capture_cannot_import_evaluation(self):
         for source in ("from .scoring import evaluate", "from scripts.rag_test import main",
                        "import sys\nsys.path.append('output')"):

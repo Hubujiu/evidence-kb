@@ -8,6 +8,7 @@ from .harness_services import builtin_plugins
 from .knowledge_application import HostedKnowledgeApplication
 from .knowledge_profile import ENVIRONMENT, knowledge_plugins, load_knowledge_profile
 from .model_plugins import model_plugins
+from .blob_plugins import blob_plugins
 from .platform_plugins import HostedPlatform, platform_plugins
 from .plugin_host import PluginHost
 from .plugin_profiles import expand_profile
@@ -49,6 +50,73 @@ def _client_routes():
                  client='embedding', capability='embedding')]
 
 
+def _search_channels(selected, settings, environment):
+    path = environment.get('KB_SEARCH_CHANNELS_CONFIG') or getattr(settings, 'search_channels_file', None)
+    if not path:
+        return selected
+    channels = json.loads(Path(path).read_text('utf-8'))
+    if not isinstance(channels, dict) or set(channels) != {'bm25', 'dense'}:
+        raise ValueError('INVALID_SEARCH_CHANNELS_CONFIGURATION')
+    search = next((row for row in selected['plugins'] if row['id'] == 'search'), None)
+    if search is None:
+        raise ValueError('SEARCH_SERVICE_REQUIRED')
+    search.update(use='platform.search.split', config={})
+    for channel in ('bm25', 'dense'):
+        value = dict(channels[channel])
+        backend = value.pop('backend', None)
+        if backend not in ('postgres', 'embedded'):
+            raise ValueError('INVALID_SEARCH_CHANNEL_BACKEND')
+        selected['plugins'].append(_row('search_' + channel,
+            'platform.search.' + channel + '.' + backend, **value))
+    return selected
+
+
+def _databases(selected, catalog, settings, environment):
+    from .database_plugins import compile_database_plugins
+
+    path = environment.get('KB_DATABASES_CONFIG')
+    configuration = json.loads(Path(path).read_text('utf-8')) if path else None
+    by_id = {row['id']: row for row in selected['plugins']}
+    for row in selected['plugins']:
+        if row['use'] == 'harness.store.sqlite' and (configuration is None or row['id'] in configuration['bindings']):
+            root = Path(row.get('config', {}).get('root', environment.get('KB_AGENT_ROOT', '.local/agentic-v5')))
+            if (root / 'sessions.sqlite3').exists():
+                raise ValueError('LEGACY_SESSION_DATABASE_REQUIRES_EXPLICIT_IMPORT')
+            row.update(use='harness.store.database', config={})
+            if configuration is None:
+                configuration = {'version': 1, 'application_id': 'evidence-kb',
+                    'routes': {'sessions': {'provider': 'sqlite', 'root': str(root)}},
+                    'bindings': {row['id']: {'primary': {'route': 'sessions',
+                        'owner': 'conversations', 'space': 'history'}}}}
+    if configuration is None:
+        return selected, catalog
+    declarations = {spec.key: spec.storage_slots for spec in catalog if spec.storage_slots}
+    slots = dict(declarations)
+    for identity, bindings in configuration['bindings'].items():
+        if identity not in by_id:
+            raise ValueError('UNKNOWN_DATABASE_CONSUMER')
+        row = by_id[identity]
+        if row['use'] == 'harness.store.database':
+            slots[row['use']] = ('primary',)
+        elif row['use'] in ('platform.repository.postgres', 'platform.search.postgres',
+                            'platform.search.bm25.postgres', 'platform.search.dense.postgres'):
+            if set(bindings) != {'primary'}:
+                raise ValueError('DATABASE_SLOT_CONFIGURATION_MISMATCH')
+            row.setdefault('config', {})['database_slot'] = 'primary'
+            slots[row['use']] = ('primary',)
+        elif row['use'] == 'models.service':
+            if set(bindings) != {'budget'}:
+                raise ValueError('DATABASE_SLOT_CONFIGURATION_MISMATCH')
+            row.setdefault('config', {})['database_slot'] = 'budget'
+            slots[row['use']] = ('budget',)
+        elif row['use'] in declarations:
+            if set(bindings) != set(declarations[row['use']]):
+                raise ValueError('DATABASE_SLOT_CONFIGURATION_MISMATCH')
+        else:
+            raise ValueError('DATABASE_CONSUMER_NOT_DECLARED')
+    return compile_database_plugins(selected, catalog, configuration, slots=slots)
+
+
 def load_application_profile(settings, *, profile=None, environment=None, remote=None):
     environment = dict(os.environ if environment is None else environment)
     remote = environment.get('KB_REMOTE_MODELS') == '1' if remote is None else remote
@@ -70,6 +138,7 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
         if settings.search_backend not in ('postgres', 'embedded', 'opensearch'):
             raise ValueError('UNKNOWN_SEARCH_BACKEND')
         by_id['search']['use'] = 'platform.search.' + settings.search_backend
+    selected = _search_channels(selected, settings, environment)
     if not remote or 'platform' not in by_id:
         return selected
     if 'provider' not in by_id:
@@ -106,16 +175,17 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
                             extra_plugins=(), remote=None):
     selected = load_application_profile(settings, profile=profile, environment=environment, remote=remote)
     if platform is not None:
-        excluded = {'repository', 'originals', 'parser', 'embedding-jobs', 'search', 'capabilities'}
+        excluded = {'repository', 'originals', 'parser', 'embedding-jobs', 'search', 'search_bm25', 'search_dense', 'capabilities'}
         selected['plugins'] = [row for row in selected['plugins'] if row['id'] not in excluded]
         next(row for row in selected['plugins'] if row['id'] == 'platform').update(use='platform.borrowed')
     selected_environment = os.environ if environment is None else environment
     packages_root = selected_environment.get('KB_PROCESS_PLUGINS_ROOT')
     installed = ProcessPackages(packages_root).catalogs(
         journal=Path(packages_root) / 'transport-journal') if packages_root else ()
-    catalog = (*builtin_plugins(), *model_plugins(models),
+    catalog = (*builtin_plugins(), *model_plugins(models), *blob_plugins(),
                *platform_plugins(settings, platform=platform, research=research, model_clients=model_clients),
                *knowledge_plugins(platform, research, service_factory=service_factory), *installed, *extra_plugins)
+    selected, catalog = _databases(selected, catalog, settings, selected_environment)
     host = PluginHost(selected, catalog)
     try:
         specs = {spec.key: spec for spec in catalog}
@@ -152,9 +222,11 @@ def create_borrowed_knowledge(platform, research, *, profile=None, service_facto
         selected['plugins'].extend(row for row in _client_routes() if row['config']['client'] in clients)
     selected['plugins'].extend([_row('platform', 'platform.borrowed'),
                                 _row('research', 'platform.research.borrowed')])
-    catalog = (*builtin_plugins(), *model_plugins(models, clients=clients),
+    catalog = (*builtin_plugins(), *model_plugins(models, clients=clients), *blob_plugins(),
                *platform_plugins(Settings.from_environment(), platform=platform, research=research),
                *knowledge_plugins(platform, research, service_factory=service_factory), *extra_plugins)
+    if selected_environment.get('KB_DATABASES_CONFIG'):
+        selected, catalog = _databases(selected, catalog, None, selected_environment)
     host = PluginHost(deepcopy(selected), catalog)
     try:
         return HostedKnowledgeApplication(host, host.service('application')), host
