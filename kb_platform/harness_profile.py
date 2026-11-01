@@ -30,10 +30,12 @@ def create_agent_application(*, decide=None, model=None, tools=(), profile=None,
     from .storage_catalog import default_storage_providers
     from .storage_plugins import compile_storage_plugins
     from .storage_sdk import RELATIONAL_V1, StorageSlot
+    from .storage_cache_plugins import stage_cache_plugins
     from .model_plugins import model_plugins
 
     selected = load_agent_profile(profile, environment=environment, bundles=bundles)
-    catalog = (*model_plugins(models), *builtin_plugins(decide=decide, model=model, tools=tools), *extra_plugins)
+    catalog = (*model_plugins(models), *stage_cache_plugins(),
+               *builtin_plugins(decide=decide, model=model, tools=tools), *extra_plugins)
     environment = os.environ if environment is None else environment
     if environment.get('KB_DATABASES_CONFIG'):
         raise ValueError('LEGACY_STORAGE_CONFIGURATION_REQUIRES_CONVERSION')

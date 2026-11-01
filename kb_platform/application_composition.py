@@ -8,6 +8,7 @@ from .harness_services import builtin_plugins
 from .knowledge_application import HostedKnowledgeApplication
 from .knowledge_profile import ENVIRONMENT, knowledge_plugins, load_knowledge_profile
 from .model_plugins import model_plugins
+from .storage_cache_plugins import stage_cache_plugins
 from .platform_plugins import HostedPlatform, platform_plugins
 from .plugin_host import PluginHost
 from .plugin_profiles import expand_profile
@@ -175,7 +176,7 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
     packages_root = selected_environment.get('KB_PROCESS_PLUGINS_ROOT')
     installed = ProcessPackages(packages_root).catalogs(
         journal=Path(packages_root) / 'transport-journal') if packages_root else ()
-    catalog = (*builtin_plugins(), *model_plugins(models),
+    catalog = (*builtin_plugins(), *model_plugins(models), *stage_cache_plugins(),
                *platform_plugins(settings, platform=platform, research=research, model_clients=model_clients),
                *knowledge_plugins(platform, research, service_factory=service_factory), *installed, *extra_plugins)
     selected, catalog = _storage(selected, catalog, settings, selected_environment)
@@ -215,7 +216,7 @@ def create_borrowed_knowledge(platform, research, *, profile=None, service_facto
         selected['plugins'].extend(row for row in _client_routes() if row['config']['client'] in clients)
     selected['plugins'].extend([_row('platform', 'platform.borrowed'),
                                 _row('research', 'platform.research.borrowed')])
-    catalog = (*builtin_plugins(), *model_plugins(models, clients=clients),
+    catalog = (*builtin_plugins(), *model_plugins(models, clients=clients), *stage_cache_plugins(),
                *platform_plugins(Settings.from_environment(), platform=platform, research=research),
                *knowledge_plugins(platform, research, service_factory=service_factory), *extra_plugins)
     if selected_environment.get('KB_STORAGE_CONFIG'):

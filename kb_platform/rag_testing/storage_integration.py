@@ -887,6 +887,14 @@ def knowledge_suite(fixtures):
     return unittest.defaultTestLoader.loadTestsFromTestCase(KnowledgeStorageIntegration)
 
 
+def planned_tests(suite):
+    for test in suite:
+        if isinstance(test, unittest.TestSuite):
+            yield from planned_tests(test)
+        else:
+            yield test.id()
+
+
 def run(output, environment=None):
     environment = os.environ if environment is None else environment
     selected = configuration(environment)
@@ -894,7 +902,7 @@ def run(output, environment=None):
     observations = {}
     fixtures = StorageFixtures(selected, output, observations, environment)
     report = {'status': 'FAIL', 'new_model_calls': 0, 'new_embedding_calls': 0,
-              'new_judge_calls': 0, 'scope': 'actual relational stores; synthetic component contracts',
+              'new_judge_calls': 0, 'scope': 'actual six-category storage and Rust HTTP/browser flows; synthetic evidence controls',
               'planned': {'session_engines': 3, 'cross_engine_clones': 6, 'persistence_engines': 3,
                           'transaction_atomicity_probes': 78, 'nontransactional_schema_rejections': 1,
                           'knowledge_namespaces': 2, 'physical_connection_reuse': 1,
@@ -905,16 +913,23 @@ def run(output, environment=None):
         with (output / 'checks.log').open('w', encoding='utf-8') as stream:
             from .storage_contract_integration import suite as contract_suite
             from .storage_search_integration import suite as search_contract_suite
+            from .storage_object_integration import suite as object_contract_suite
 
             suite = unittest.TestSuite((foundation_suite(fixtures), session_suite(fixtures),
                                         knowledge_suite(fixtures), contract_suite(fixtures),
-                                        search_contract_suite(fixtures), http_suite(fixtures)))
+                                        search_contract_suite(fixtures), object_contract_suite(fixtures),
+                                        http_suite(fixtures)))
+            planned = tuple(planned_tests(suite))
+            write_json(output / 'plan.json', {'test_ids': planned, 'total': len(planned),
+                       'new_model_calls_limit': 0, 'new_embedding_calls_limit': 0, 'new_judge_calls_limit': 0})
+            report['planned']['test_groups'] = len(planned)
             result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
         report.update({'tests': result.testsRun, 'failures': len(result.failures),
                        'errors': len(result.errors), 'skipped': len(result.skipped),
+                       'not_run': len(planned) - result.testsRun,
                        'failure_details': [{'test': test.id(), 'traceback': detail}
                                            for test, detail in (*result.failures, *result.errors)]})
-        if result.wasSuccessful() and result.testsRun and not result.skipped:
+        if result.wasSuccessful() and result.testsRun == len(planned) > 0 and not result.skipped:
             report['status'] = 'PASS'
     except Exception as error:
         report['error'] = type(error).__name__ + ': ' + str(error)

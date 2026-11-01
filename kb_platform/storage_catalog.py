@@ -139,7 +139,7 @@ def default_storage_providers():
 
 def initialize_configuration(configuration, *, provider_catalog=None):
     from copy import deepcopy
-    from .storage_sdk import SpaceKey
+    from .storage_sdk import EphemeralCacheSpace, SpaceKey
 
     selected = deepcopy(configuration)
     if selected.get('version') != 2:
@@ -150,6 +150,9 @@ def initialize_configuration(configuration, *, provider_catalog=None):
         for consumer, slots in selected['bindings'].items():
             for binding in slots.values():
                 if 'cache_id' in binding:
+                    if 'dataset_id' in binding:
+                        raise ValueError('INVALID_STORAGE_BINDING')
+                    EphemeralCacheSpace(binding['cache_id'])
                     continue
                 definition = selected['services'][binding['service']]
                 name, export = definition['instance'], definition['export']

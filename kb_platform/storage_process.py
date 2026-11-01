@@ -3,7 +3,7 @@ import json
 import math
 import re
 
-from .storage_sdk import Document, RELATIONAL_V1, StorageError
+from .storage_sdk import DOCUMENT_V1, Document, RELATIONAL_V1, StorageError
 from .database_contracts import CommitUnknown
 
 
@@ -111,6 +111,10 @@ def call_json(bound, request):
     budget = [MAX_NODES]
     args = [decode_value(value, _budget=budget) for value in request.get('args', [])]
     kwargs = {key: decode_value(value, _budget=budget) for key, value in request.get('kwargs', {}).items()}
+    if method == 'put' and bound._grant.contract.satisfies(DOCUMENT_V1):
+        document_id = kwargs.get('document_id', args[0] if args else None)
+        value = kwargs.get('value', args[1] if len(args) > 1 else None)
+        _size(encode_value(Document(document_id, value, 2**63 - 1)), MAX_RESULT_BYTES)
     if method == 'query':
         limit = kwargs.get('limit', args[2] if len(args) > 2 else None)
         if type(limit) is not int or not 1 <= limit <= 1000:
@@ -130,6 +134,11 @@ def call_json(bound, request):
         if isinstance(code, str) and re.fullmatch('[A-Z][A-Z0-9_]{0,127}', code):
             raise StorageError(code) from None
         raise StorageError('STORAGE_BACKEND_UNAVAILABLE') from None
-    result = encode_value(result)
-    _size(result, MAX_RESULT_BYTES)
+    try:
+        result = encode_value(result)
+        _size(result, MAX_RESULT_BYTES)
+    except StorageError:
+        if method in {'put', 'set', 'delete', 'put_expiring', 'stage', 'seal', 'batch_json'}:
+            raise StorageError('STORAGE_WRITE_RESULT_UNAVAILABLE', method=method, outcome='COMPLETED') from None
+        raise
     return result

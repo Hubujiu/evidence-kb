@@ -121,11 +121,21 @@ def suite(fixtures):
                     _, _, _, _, _, recovered = self.sql(engine, name, 'document')
                     self.assertEqual(recovered.identity, store.identity)
                     self.assertEqual(recovered.get('policy'), saved)
+                    self.assertTrue(recovered.delete('policy', expected_revision=saved.revision))
+                    self.assertIsNone(recovered.get('policy'))
+                    recreated = recovered.put('policy', {'generation': 'recreated'}, expected_revision=0)
+                    self.assertGreater(recreated.revision, saved.revision)
+                    with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                        recovered.put('policy', {'generation': 'stale'}, expected_revision=saved.revision)
+                    with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                        recovered.delete('policy', expected_revision=saved.revision)
+                    self.assertEqual(recovered.get('policy'), recreated)
                     with self.assertRaisesRegex(StorageError, 'STORAGE_SERVICE_UNAVAILABLE'):
                         store.get('policy')
                     _record(fixtures, 'document-cas-client-restart', backend=engine,
                             identity=asdict(recovered.identity), concurrent_winners=1,
-                            concurrent_conflicts=3, revision=recovered.get('policy').revision)
+                            concurrent_conflicts=3, revision=recovered.get('policy').revision,
+                            stale_cas_after_delete_recreate_rejected=True)
 
         def test_postgres_sqlite_document_snapshots_migrate_both_directions(self):
             for source_engine, target_engine in (('postgresql', 'sqlite'), ('sqlite', 'postgresql')):
@@ -140,6 +150,8 @@ def suite(fixtures):
                     source.put('policy', {'text': '不可变合成原文'}, expected_revision=0)
                     source.put('policy', {'text': '经过显式修订的合成原文'}, expected_revision=1)
                     source.put('evidence', {'source': 'synthetic', 'offsets': [4, 12]}, expected_revision=0)
+                    deleted = source.put('deleted', {'source': 'deleted-synthetic'}, expected_revision=0)
+                    self.assertTrue(source.delete('deleted', expected_revision=deleted.revision))
                     snapshot = export_documents(source, expected_dataset_id=source.identity.dataset_id)
                     restored = DocumentSnapshot.from_json(snapshot.to_json())
                     changed = json.loads(json.dumps(restored.payload))
@@ -159,10 +171,16 @@ def suite(fixtures):
                                                  expected_target_dataset_id=target.identity.dataset_id)
                         self.assertEqual(count, 2)
                     self.assertEqual(target.get_many(('policy', 'evidence')), source.get_many(('policy', 'evidence')))
+                    self.assertIsNone(target.get('deleted'))
+                    recreated = target.put('deleted', {'source': 'recreated'}, expected_revision=0)
+                    self.assertGreater(recreated.revision, deleted.revision)
+                    with self.assertRaisesRegex(StorageError, 'STORAGE_REVISION_CONFLICT'):
+                        target.put('deleted', {'source': 'stale'}, expected_revision=deleted.revision)
                     _record(fixtures, 'document-snapshot-migration', source_backend=source_engine,
                             target_backend=target_engine, source_identity=asdict(source.identity),
                             target_identity=asdict(target.identity), documents=count,
-                            checksum=restored.checksum, rejected_before_write=3, idempotent_reimport=True)
+                            checksum=restored.checksum, rejected_before_write=3, idempotent_reimport=True,
+                            tombstone_history_migrated=True, stale_cas_after_migration_rejected=True)
 
         def test_durable_kv_uses_the_same_contract_on_three_real_backends(self):
             for engine in ('sqlite', 'postgresql', 'mysql'):

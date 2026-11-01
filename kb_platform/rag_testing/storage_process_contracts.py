@@ -1,6 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from kb_platform.database_contracts import Migration, SchemaPackage
 from kb_platform.database_providers import SQLiteProvider
@@ -85,6 +86,36 @@ class StorageProcessContracts(unittest.TestCase):
         with self.assertRaisesRegex(StorageError, 'STORAGE_PROCESS_LIMIT'):
             bound.call_json(_request('get', 'large'))
         self.assertEqual(len(bound.get('large')), MAX_RESULT_BYTES + 1)
+
+    def test_document_write_result_limit_is_rejected_before_mutation(self):
+        bound = self.bound('document', DOCUMENT_V1)
+        with self.assertRaisesRegex(StorageError, 'STORAGE_PROCESS_LIMIT'):
+            bound.call_json(_request('put', 'large', {'text': 'x' * 300000}, expected_revision=0))
+        self.assertIsNone(bound.get('large'))
+        result = decode_value(bound.call_json(_request('put', 'bounded', {'text': 'x' * 120000}, expected_revision=0)))
+        self.assertEqual(result, Document('bounded', {'text': 'x' * 120000}, 1))
+
+    def test_document_contract_keyword_arguments_work_through_host_and_process(self):
+        bound = self.bound('document', DOCUMENT_V1)
+        document = bound.put(document_id='named', value={'number': 7}, expected_revision=0)
+        self.assertEqual(bound.get(document_id='named'), document)
+        self.assertEqual(bound.get_many(document_ids=('named', 'missing')), (document, None))
+        self.assertEqual(decode_value(bound.call_json(_request('get_many', document_ids=['named']))), [document])
+        self.assertTrue(decode_value(bound.call_json(_request('delete', document_id='named', expected_revision=1))))
+
+    def test_completed_write_with_unusable_result_is_not_an_input_limit_error(self):
+        bound = self.bound('kv', KV_DURABLE_V1)
+        write = bound._implementation.set
+
+        def oversized_receipt(key, value):
+            write(key, value)
+            return 'x' * (MAX_RESULT_BYTES + 1)
+
+        with patch.object(bound._implementation, 'set', side_effect=oversized_receipt):
+            with self.assertRaisesRegex(StorageError, 'STORAGE_WRITE_RESULT_UNAVAILABLE') as error:
+                bound.call_json(_request('set', 'completed', b'persisted'))
+        self.assertEqual(error.exception.details['outcome'], 'COMPLETED')
+        self.assertEqual(bound.get('completed'), b'persisted')
 
     def test_malformed_payloads_and_too_deep_values_are_rejected(self):
         bound = self.bound('kv', KV_DURABLE_V1)

@@ -59,6 +59,8 @@ AGENT_DEPENDENCIES = {
     'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts'}),
     'storage_plugins': frozenset({'storage_sdk', 'storage_service', 'plugin_configuration', 'plugin_host'}),
     'storage_process': frozenset({'storage_sdk', 'blob_service', 'database_contracts'}),
+    'storage_cache_plugins': frozenset({'storage_sdk', 'storage_plugins', 'plugin_host',
+                                       'plugin_configuration', 'rag_testing'}),
     'persistence_schema': frozenset({'database_contracts'}),
     'persistence_local': frozenset({'database_contracts', 'database_providers', 'database_service', 'persistence_schema'}),
     'plugin_profiles': frozenset({'plugin_native'}),
@@ -67,7 +69,8 @@ AGENT_DEPENDENCIES = {
     'harness_model': frozenset({'agent_decisions', 'agent_engine', 'agent_model', 'agent_schema', 'context_budget'}),
     'harness_application': frozenset({'harness_sessions'}),
     'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles',
-                                  'model_plugins', 'storage_catalog', 'storage_plugins', 'storage_sdk'}),
+                                  'model_plugins', 'storage_catalog', 'storage_plugins', 'storage_sdk',
+                                  'storage_cache_plugins'}),
     'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
     'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
@@ -292,7 +295,12 @@ def architecture_violations(root: Path) -> list[str]:
             top = target.split(".")[0]
             reason = None
             layer = AGENT_DEPENDENCIES.get(path.stem) if not evaluation else None
-            if module.startswith('kb_platform.database_providers.'):
+            if module.startswith('kb_platform.storage_sdk.'):
+                layer = frozenset({'storage_sdk', 'database_contracts'})
+            elif module.startswith('kb_platform.storage_adapters.'):
+                layer = frozenset({'storage_sdk', 'storage_adapters', 'database_contracts',
+                                   'database_migrations', 'database_providers', 'blob_service', 'storage'})
+            elif module.startswith('kb_platform.database_providers.'):
                 layer = frozenset({'database_contracts', 'database_providers'})
             elif module.startswith('kb_platform.session_storage.'):
                 layer = frozenset({'database_contracts', 'session_storage'})
