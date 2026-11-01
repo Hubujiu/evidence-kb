@@ -45,4 +45,3 @@ def knowledge_schema(owner, engine='postgresql'):
     if engine == 'sqlite':
         return sqlite_schema(owner)
     raise ValueError('KNOWLEDGE_SQL_DIALECT_UNAVAILABLE')
-
