@@ -8,8 +8,13 @@ from kb_platform.embedded_search import EmbeddedSearch
 from kb_platform.platform_plugins import platform_plugins
 from kb_platform.postgres_search import PostgresSearch
 from kb_platform.search import SearchUnavailable, backend_dependencies
+from kb_platform.search_channels import SearchLexicalAdapter, SearchVectorAdapter
+from kb_platform.search_evidence import DocumentEvidenceSource, unit_sha256
+from kb_platform.search_router import channel_records
 from kb_platform.search_router import SplitSearch
+from kb_platform.storage_sdk import LEXICAL_BM25_V1, VECTOR_V1
 from .product_fixture import Authority
+from .storage_values_contracts import value_store
 
 
 class SearchRouterContracts(unittest.TestCase):
@@ -21,7 +26,11 @@ class SearchRouterContracts(unittest.TestCase):
         self.dense = EmbeddedSearch(self.root / 'dense-database')
         self.addCleanup(self.bm25.close)
         self.addCleanup(self.dense.close)
-        self.router = SplitSearch(self.bm25, self.dense)
+        self.source = EmbeddedSearch(self.root / 'source-database')
+        self.addCleanup(self.source.close)
+        self.lexical = SearchLexicalAdapter(self.bm25)
+        self.vector = SearchVectorAdapter(self.dense)
+        self.router = SplitSearch(self.lexical, self.vector, self.source)
         self.authority = Authority([('public.md', 'Public enterprise permission rule.'),
                                     ('private.md', 'Private enterprise permission rule.')])
         self.units = self.authority.units
@@ -36,7 +45,7 @@ class SearchRouterContracts(unittest.TestCase):
     def test_new_generation_not_found_is_distinct_from_partial_generation(self):
         with self.assertRaisesRegex(SearchUnavailable, '^Search generation not found$'):
             self.router.read_units(self.index)
-        self.bm25.stage(self.router.channel_index(self.index, 'bm25'), self.units, 3)
+        self.lexical.stage(self.router.channel_index(self.index, 'bm25'), channel_records(self.units, 'bm25'))
         with self.assertRaisesRegex(SearchUnavailable, 'Incomplete split search generation'):
             self.router.read_units(self.index)
         self.assertFalse(self.router.is_sealed(self.index, 'seal'))
@@ -45,9 +54,11 @@ class SearchRouterContracts(unittest.TestCase):
         self.stage()
         metadata = self.router.verify(self.index)
         self.assertEqual(metadata['count'], len(self.units))
-        restarted = SplitSearch(EmbeddedSearch(self.bm25.root), EmbeddedSearch(self.dense.root))
-        self.addCleanup(restarted.bm25.close)
-        self.addCleanup(restarted.vector.close)
+        restarted = SplitSearch(SearchLexicalAdapter(EmbeddedSearch(self.bm25.root)),
+                                SearchVectorAdapter(EmbeddedSearch(self.dense.root)), EmbeddedSearch(self.source.root))
+        self.addCleanup(restarted.bm25.backend.close)
+        self.addCleanup(restarted.vector.backend.close)
+        self.addCleanup(restarted.source.close)
         self.assertEqual({unit['unit_id']: unit for unit in self.units},
                          {unit['unit_id']: unit for unit in restarted.read_units(self.index)})
         self.assertEqual(['page', self.units[0]['unit_id']],
@@ -77,7 +88,7 @@ class SearchRouterContracts(unittest.TestCase):
                 self.assertEqual([], search(self.index, 'tenant', 'scope', revoked, query, 5))
 
     def test_shared_physical_store_uses_distinct_immutable_channel_generations(self):
-        router = SplitSearch(self.bm25, self.bm25)
+        router = SplitSearch(self.lexical, SearchVectorAdapter(self.bm25), self.source)
         router.stage(self.index, self.units, 3)
         self.assertNotEqual(router.channel_index(self.index, 'bm25'), router.channel_index(self.index, 'dense'))
         self.assertEqual(len(self.units), len(router.read_units(self.index)))
@@ -97,9 +108,10 @@ class SearchRouterContracts(unittest.TestCase):
 
     def test_mismatched_canonical_content_prevents_query_and_seal(self):
         target = self.router.channel_index(self.index, 'bm25')
-        self.bm25.stage(target, self.units, 3)
+        self.source.stage(self.index, self.units, 3)
+        self.lexical.stage(target, channel_records(self.units, 'bm25'))
         changed = [{**unit, 'text': unit['text'] + ' changed'} for unit in self.units]
-        self.dense.stage(self.router.channel_index(self.index, 'dense'), changed, 3)
+        self.vector.stage(self.router.channel_index(self.index, 'dense'), channel_records(changed, 'dense'), 3)
         with self.assertRaisesRegex(SearchUnavailable, 'canonical content mismatch'):
             self.router.seal(self.index, 'seal')
         with self.assertRaisesRegex(SearchUnavailable, 'canonical content mismatch'):
@@ -108,9 +120,9 @@ class SearchRouterContracts(unittest.TestCase):
 
     def test_second_store_failure_never_reaches_manifest_publication(self):
         pointer = Mock()
-        self.bm25.supports_manifest_storage = True
-        self.bm25.publish_manifest = pointer
-        router = SplitSearch(self.bm25, self.dense)
+        self.source.supports_manifest_storage = True
+        self.source.publish_manifest = pointer
+        router = SplitSearch(self.lexical, self.vector, self.source)
         with patch.object(self.dense, 'stage', side_effect=SearchUnavailable('synthetic dense outage')):
             with self.assertRaisesRegex(SearchUnavailable, 'synthetic dense outage'):
                 router.stage(self.index, self.units, 3)
@@ -130,7 +142,7 @@ class SearchRouterContracts(unittest.TestCase):
         self.assertTrue(self.router.is_sealed(self.index, 'recovered'))
 
     def test_retry_refuses_to_replace_completed_channel_with_different_content(self):
-        self.bm25.stage(self.router.channel_index(self.index, 'bm25'), self.units, 3)
+        self.lexical.stage(self.router.channel_index(self.index, 'bm25'), channel_records(self.units, 'bm25'))
         changed = [{**unit, 'text': unit['text'] + ' changed'} for unit in self.units]
         with self.assertRaisesRegex(SearchUnavailable, 'differs from frozen input'):
             self.router.stage(self.index, changed, 3)
@@ -139,7 +151,7 @@ class SearchRouterContracts(unittest.TestCase):
 
     def test_provider_identity_and_channel_order_are_in_dependency_hash(self):
         first = backend_dependencies(self.router)
-        swapped = backend_dependencies(SplitSearch(self.dense, self.bm25))
+        swapped = backend_dependencies(SplitSearch(SearchLexicalAdapter(self.dense), SearchVectorAdapter(self.bm25), self.source))
         self.assertNotEqual(first, swapped)
         postgres_a = PostgresSearch('postgresql://localhost/database_a')
         postgres_b = PostgresSearch('postgresql://localhost/database_b')
@@ -147,6 +159,101 @@ class SearchRouterContracts(unittest.TestCase):
         self.addCleanup(postgres_b.close)
         self.assertNotEqual(backend_dependencies(postgres_a), backend_dependencies(postgres_b))
         self.assertNotIn('postgresql://', str(backend_dependencies(postgres_a)))
+
+    def test_channel_contracts_do_not_require_document_or_other_search_interfaces(self):
+        VECTOR_V1.validate(self.vector)
+        LEXICAL_BM25_V1.validate(self.lexical)
+        for service in (self.vector, self.lexical):
+            for method in ('read_units', 'search', 'dense', 'expand', 'get', 'put'):
+                self.assertFalse(hasattr(service, method), method)
+        self.stage()
+        vectors = self.vector.read_records(self.router.channel_index(self.index, 'dense'))
+        lexical = self.lexical.read_records(self.router.channel_index(self.index, 'bm25'))
+        self.assertTrue(all(set(record) == {'id', 'metadata', 'vector'} for record in vectors))
+        self.assertTrue(all('vector' not in record and 'text' in record for record in lexical))
+        self.assertTrue(all(not ({'text', 'anchors', 'evidence_ids'} & set(record['metadata'])) for record in vectors))
+        hit = self.router.dense(self.index, 'tenant', 'scope', self.authority.rows, [1, 1, 0], 1)[0]
+        canonical = next(unit for unit in self.units if unit['unit_id'] == hit['unit_id'])
+        self.assertEqual(hit['text'], canonical['text'])
+        self.assertEqual(hit['anchors'], canonical['anchors'])
+
+    def test_generic_vector_contract_filters_before_nearest_neighbour_ranking(self):
+        index = self.router.channel_index(self.index, 'dense')
+        records = [{'id': 'private', 'vector': [1, 0, 0], 'metadata': {'group': 'private'}},
+                   {'id': 'public', 'vector': [0, 1, 0], 'metadata': {'group': 'public'}}]
+        self.vector.stage(index, records, 3)
+        hits = self.vector.query(index, [1, 0, 0], 1, filters={'eq': {'group': 'public'}})
+        self.assertEqual([hit['id'] for hit in hits], ['public'])
+        self.assertEqual(self.vector.read_records(index), records)
+        with self.assertRaisesRegex(ValueError, 'filters'):
+            self.vector.query(index, [1, 0, 0], 1, filters={'unknown': {}})
+
+    def test_document_authority_restart_publication_and_current_acl(self):
+        root = self.root / 'document-authority'
+        with value_store(root) as documents:
+            identity = documents.identity.dataset_id
+            router = SplitSearch(self.lexical, self.vector, DocumentEvidenceSource(documents))
+            router.stage(self.index, self.units, 3)
+            router.seal(self.index, 'synthetic-checksum')
+            manifest = {'index_name': self.index, 'tenant_id': 'tenant', 'kb_id': 'scope'}
+            router.publish_manifest(manifest, 'synthetic-checksum')
+            self.assertEqual(router.current_manifest('tenant', 'scope'), (manifest, 'synthetic-checksum'))
+        with value_store(root, dataset=identity) as documents:
+            restarted = SplitSearch(self.lexical, self.vector, DocumentEvidenceSource(documents))
+            self.assertTrue(restarted.is_sealed(self.index, 'synthetic-checksum'))
+            self.assertEqual(restarted.current_manifest('tenant', 'scope'), (manifest, 'synthetic-checksum'))
+            self.assertEqual(restarted.read_units(self.index), sorted(self.units, key=lambda unit: (
+                unit['source_version_id'], unit['parse_snapshot_id'], unit['ordinal'], unit['unit_id'])))
+            hits = restarted.dense(self.index, 'tenant', 'scope', self.authority.rows[1:], [1, 1, 0], 5)
+            self.assertEqual({hit['source_id'] for hit in hits}, {'s1'})
+
+    def test_document_authority_mutation_is_detected_before_evidence_delivery(self):
+        with value_store(self.root / 'documents') as documents:
+            source = DocumentEvidenceSource(documents)
+            router = SplitSearch(self.lexical, self.vector, source)
+            router.stage(self.index, self.units, 3)
+            router.seal(self.index, 'sealed')
+            with self.assertRaisesRegex(SearchUnavailable, 'Sealed evidence'):
+                source.stage(self.index, self.units, 3)
+            key = source._key(self.index, unit_sha256(self.units[0]))
+            record = documents.get(key)
+            documents.put(key, record.value | {'text': 'corrupted authoritative evidence'}, expected_revision=record.revision)
+            with self.assertRaisesRegex(SearchUnavailable, 'integrity mismatch'):
+                router.dense(self.index, 'tenant', 'scope', self.authority.rows, [1, 1, 0], 5)
+            self.assertFalse(router.is_sealed(self.index, 'sealed'))
+
+    def test_half_seal_is_not_published_and_retry_completes_without_replacing_channels(self):
+        with value_store(self.root / 'documents') as documents:
+            source = DocumentEvidenceSource(documents)
+            router = SplitSearch(self.lexical, self.vector, source)
+            router.stage(self.index, self.units, 3)
+            with patch.object(self.vector, 'seal', side_effect=SearchUnavailable('synthetic seal outage')):
+                with self.assertRaisesRegex(SearchUnavailable, 'seal outage'):
+                    router.seal(self.index, 'sealed')
+            manifest = {'index_name': self.index, 'tenant_id': 'tenant', 'kb_id': 'scope'}
+            with self.assertRaisesRegex(SearchUnavailable, 'must be sealed'):
+                router.publish_manifest(manifest, 'sealed')
+            with self.assertRaises(FileNotFoundError):
+                source.current_manifest('tenant', 'scope')
+            with patch.object(self.lexical, 'seal', side_effect=AssertionError('preserve sealed lexical generation')):
+                router.seal(self.index, 'sealed')
+            router.publish_manifest(manifest, 'sealed')
+            self.assertEqual(router.current_manifest('tenant', 'scope'), (manifest, 'sealed'))
+
+    def test_seal_binds_actual_dataset_identity_not_only_generation_content(self):
+        with value_store(self.root / 'documents') as documents:
+            router = SplitSearch(self.lexical, self.vector, DocumentEvidenceSource(documents))
+            router.stage(self.index, self.units, 3)
+            router.seal(self.index, 'sealed')
+            original = self.vector.identity
+            self.vector.identity = 'different-dataset'
+            try:
+                self.assertFalse(router.is_sealed(self.index, 'sealed'))
+                with self.assertRaisesRegex(SearchUnavailable, 'must be sealed'):
+                    router.publish_manifest({'index_name': self.index}, 'sealed')
+            finally:
+                self.vector.identity = original
+            self.assertTrue(router.is_sealed(self.index, 'sealed'))
 
     def test_split_plugin_declares_both_channel_dependencies(self):
         specs = {spec.key: spec for spec in platform_plugins(SimpleNamespace(storage_root=self.root, dsn=''))}

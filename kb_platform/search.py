@@ -51,6 +51,16 @@ def backend_dependencies(backend):
         dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
         dependencies['channels'] = {'bm25': backend_dependencies(backend.bm25),
                                     'dense': backend_dependencies(backend.vector)}
+        dependencies['source'] = backend_dependencies(backend.source)
+    elif type(backend).__name__ in ('SearchVectorAdapter', 'SearchLexicalAdapter'):
+        file = Path(__file__).with_name('search_channels.py')
+        dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
+        dependencies['backend'] = backend_dependencies(backend.backend)
+        dependencies['storage'] = backend.storage_identity()
+    elif type(backend).__name__ == 'DocumentEvidenceSource':
+        file = Path(__file__).with_name('search_evidence.py')
+        dependencies['files'][file.name] = hashlib.sha256(file.read_bytes()).hexdigest()
+        dependencies['storage'] = backend.storage_identity()
     elif type(backend).__name__ == 'PostgresSearch':
         dependencies['storage'] = backend.storage_identity()
     elif type(backend).__name__ == 'EmbeddedSearch':
