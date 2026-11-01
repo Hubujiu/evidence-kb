@@ -86,7 +86,7 @@ def _document(row, expected_key=None):
                 row['key_hash'] != _key_hash(key) or expected_key is not None and key != expected_key):
             raise ValueError('INVALID_RECORD')
         return Document(key, value, revision)
-    except (KeyError, TypeError, ValueError, StorageError):
+    except (KeyError, TypeError, ValueError, RecursionError, StorageError):
         raise StorageError('STORAGE_DATA_CORRUPT') from None
 
 
@@ -209,7 +209,8 @@ class SqlKeyValueStore(_SqlStore):
             row = tx.execute('SELECT item_key,payload FROM kb_storage_kv WHERE key_hash=:key', {'key': key_hash}).first()
             if row is None:
                 return None
-            if row['item_key'] != key or not isinstance(row['payload'], bytes):
+            if (row['item_key'] != key or not isinstance(row['payload'], bytes) or
+                    len(row['payload']) > MAX_VALUE_BYTES):
                 raise StorageError('STORAGE_DATA_CORRUPT')
             return validate_value(row['payload'])
 
@@ -264,22 +265,25 @@ class DocumentSnapshot:
             snapshot = cls(value['payload'], value['checksum'])
             _validate_snapshot(snapshot)
             return snapshot
-        except (ValueError, TypeError, KeyError):
+        except (ValueError, TypeError, KeyError, RecursionError):
             raise StorageError('STORAGE_INVALID_SNAPSHOT') from None
 
 
 def _validate_snapshot(snapshot):
     if not isinstance(snapshot, DocumentSnapshot) or type(snapshot.payload) is not dict:
         raise StorageError('STORAGE_INVALID_SNAPSHOT')
-    payload = snapshot.payload
+    raw = _snapshot_bytes(snapshot.payload)
+    if sha256(raw).hexdigest() != snapshot.checksum:
+        raise StorageError('STORAGE_INVALID_SNAPSHOT')
+    payload = json.loads(raw)
     if (set(payload) != {'format', 'source', 'documents'} or payload['format'] != 'storage-document-snapshot/v1' or
-            sha256(_snapshot_bytes(payload)).hexdigest() != snapshot.checksum):
+            not isinstance(snapshot.checksum, str)):
         raise StorageError('STORAGE_INVALID_SNAPSHOT')
     source = payload['source']
     if (type(source) is not dict or set(source) != {'space', 'dataset_id'} or
             type(source['space']) is not list or len(source['space']) != 3 or
-            any(type(item) is not str or not item for item in source['space']) or
-            type(source['dataset_id']) is not str or not source['dataset_id']):
+            any(type(item) is not str or not item or len(item) > 200 for item in source['space']) or
+            type(source['dataset_id']) is not str or not source['dataset_id'] or len(source['dataset_id']) > 200):
         raise StorageError('STORAGE_INVALID_SNAPSHOT')
     documents = payload['documents']
     if type(documents) is not list or len(documents) > MAX_SNAPSHOT_ITEMS:
@@ -294,7 +298,7 @@ def _validate_snapshot(snapshot):
         if record['id'] in seen or record['revision'] < 1:
             raise StorageError('STORAGE_INVALID_SNAPSHOT')
         seen.add(record['id'])
-    return documents
+    return payload
 
 
 def export_documents(store, *, expected_dataset_id):
@@ -314,8 +318,9 @@ def export_documents(store, *, expected_dataset_id):
 
 
 def import_documents(store, snapshot, *, expected_source_dataset_id, expected_target_dataset_id):
-    documents = _validate_snapshot(snapshot)
-    if (snapshot.payload['source']['dataset_id'] != expected_source_dataset_id or
+    payload = _validate_snapshot(snapshot)
+    documents = payload['documents']
+    if (payload['source']['dataset_id'] != expected_source_dataset_id or
             store.identity.dataset_id != expected_target_dataset_id):
         raise StorageError('STORAGE_DATASET_IDENTITY_MISMATCH')
     limits = QueryLimits(max_rows=MAX_SNAPSHOT_ITEMS + 1, max_bytes=MAX_SNAPSHOT_BYTES,

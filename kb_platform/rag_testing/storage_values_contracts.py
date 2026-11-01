@@ -221,6 +221,24 @@ class StorageDocumentContracts(unittest.TestCase):
                                                    expected_source_dataset_id=source.identity.dataset_id,
                                                    expected_target_dataset_id=target.identity.dataset_id), 2)
 
+    def test_import_uses_the_content_validated_by_its_checksum(self):
+        with TemporaryDirectory() as root:
+            with value_store(Path(root) / 'source') as source, value_store(Path(root) / 'target') as target:
+                source.put('a', {'text': 'validated'})
+                snapshot = export_documents(source, expected_dataset_id=source.identity.dataset_id)
+                original = target._transaction
+
+                @contextmanager
+                def changed_after_validation(**kwargs):
+                    snapshot.payload['documents'][0]['value']['text'] = 'mutated-after-validation'
+                    with original(**kwargs) as tx:
+                        yield tx
+
+                with patch.object(target, '_transaction', changed_after_validation):
+                    import_documents(target, snapshot, expected_source_dataset_id=source.identity.dataset_id,
+                                     expected_target_dataset_id=target.identity.dataset_id)
+                self.assertEqual(target.get('a').value, {'text': 'validated'})
+
 
 class StorageKeyValueContracts(unittest.TestCase):
     def test_durable_binary_roundtrip_restart_and_key_case(self):
