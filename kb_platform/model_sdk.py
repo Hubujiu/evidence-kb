@@ -4,7 +4,7 @@ from enum import StrEnum
 import math
 from typing import Protocol
 
-from .model_errors import RemoteModelError
+from .model_errors import ModelPreflightError, RemoteModelError, preserve_result_failure as preserve_result_failure
 from .protocol_validation import callable_accepts
 
 
@@ -109,37 +109,37 @@ def validate_adapter(adapter, *, owned=False):
 
 def validate_request(request):
     if not isinstance(request, ModelRequest) or not isinstance(request.payload, dict):
-        raise ValueError('INVALID_MODEL_REQUEST')
+        raise ModelPreflightError('INVALID_MODEL_REQUEST')
     kind, body = Capability(request.capability), request.payload
     if not isinstance(request.call_context, dict):
-        raise ValueError('INVALID_MODEL_CALL_CONTEXT')
+        raise ModelPreflightError('INVALID_MODEL_CALL_CONTEXT')
     remaining = request.call_context.get('remaining_seconds')
     if remaining is not None and (type(remaining) not in (int, float) or not math.isfinite(remaining)
                                   or remaining <= 0):
-        raise ValueError('INVALID_MODEL_DEADLINE')
+        raise ModelPreflightError('INVALID_MODEL_DEADLINE')
     if kind == Capability.CHAT:
         if not isinstance(body.get('messages'), list) or not body['messages']:
-            raise ValueError('INVALID_MODEL_MESSAGES')
+            raise ModelPreflightError('INVALID_MODEL_MESSAGES')
         for message in body['messages']:
             if (not isinstance(message, dict) or message.get('role') not in {'system', 'user', 'assistant'}
                     or not isinstance(message.get('content'), str)):
-                raise ValueError('INVALID_MODEL_MESSAGES')
+                raise ModelPreflightError('INVALID_MODEL_MESSAGES')
             if set(message) - {'role', 'content'}:
-                raise ValueError('UNSUPPORTED_MODEL_OPTION')
+                raise ModelPreflightError('UNSUPPORTED_MODEL_OPTION')
     elif kind == Capability.EMBEDDING:
         if (not isinstance(body.get('texts'), list) or not body['texts']
                 or any(not isinstance(x, str) or not x for x in body['texts'])
                 or body.get('task', 'document') not in {'document', 'query'}):
-            raise ValueError('INVALID_EMBEDDING_INPUT')
+            raise ModelPreflightError('INVALID_EMBEDDING_INPUT')
     elif kind in {Capability.OCR, Capability.TRANSCRIPTION}:
         media = body.get('media')
         prefix = 'image/' if kind == Capability.OCR else 'audio/'
         if not isinstance(media, Media) or not media.mime_type.startswith(prefix):
-            raise ValueError('INVALID_MODEL_MEDIA_TYPE')
+            raise ModelPreflightError('INVALID_MODEL_MEDIA_TYPE')
     elif kind in {Capability.SPEECH, Capability.IMAGE}:
         key = 'text' if kind == Capability.SPEECH else 'prompt'
         if not isinstance(body.get(key), str) or not body[key].strip():
-            raise ValueError('INVALID_MODEL_TEXT')
+            raise ModelPreflightError('INVALID_MODEL_TEXT')
     allowed = {
         Capability.CHAT: {'messages', 'max_tokens'},
         Capability.EMBEDDING: {'texts', 'task', 'dimensions'},
@@ -149,29 +149,17 @@ def validate_request(request):
         Capability.IMAGE: {'prompt', 'count', 'size'},
     }
     if set(body) - allowed[kind]:
-        raise ValueError('UNSUPPORTED_MODEL_OPTION')
+        raise ModelPreflightError('UNSUPPORTED_MODEL_OPTION')
     for key in ('max_tokens', 'dimensions', 'count'):
         if key in body and (type(body[key]) is not int or body[key] < 1):
-            raise ValueError('INVALID_MODEL_LIMIT')
+            raise ModelPreflightError('INVALID_MODEL_LIMIT')
     if 'validator' in body and body['validator'] is not None and not callable(body['validator']):
-        raise ValueError('INVALID_MODEL_VALIDATOR')
+        raise ModelPreflightError('INVALID_MODEL_VALIDATOR')
     authorize = request.call_context.get('authorize')
     if authorize is not None and not callable(authorize):
-        raise ValueError('INVALID_MODEL_AUTHORIZER')
+        raise ModelPreflightError('INVALID_MODEL_AUTHORIZER')
     references = {id(value): value for value in (body.get('validator'), authorize) if callable(value)}
     return ModelRequest(kind, deepcopy(body, references), deepcopy(request.call_context, references))
-
-
-def preserve_result_failure(error, usage, *, result=None, physical_request_id=None):
-    error.model_sent = True
-    if isinstance(usage, dict):
-        error.observed_usage = dict(usage)
-    request_id = getattr(result, 'request_id', None)
-    if isinstance(request_id, str) and request_id:
-        error.request_id = request_id
-    physical_request_id = getattr(result, 'physical_request_id', None) or physical_request_id
-    if isinstance(physical_request_id, str) and physical_request_id:
-        error.physical_request_id = physical_request_id
 
 
 def validate_result(request, result, *, info=None):
