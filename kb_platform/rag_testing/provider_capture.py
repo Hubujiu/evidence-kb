@@ -6,6 +6,7 @@ from copy import deepcopy
 import json
 from pathlib import Path
 import sqlite3
+import sys
 import time
 from uuid import uuid4
 
@@ -13,11 +14,17 @@ import httpx
 
 from .contracts import digest
 from kb_platform.agent_context import estimate_messages
+from kb_platform.model_errors import preserve_result_failure
 from kb_platform.provider_admission import CaptureAdmissionError, CapturePreflightError, ProviderAdmission
 from kb_platform.remote import LunaClient
 
 
 _context = ContextVar('rag_physical_capture', default={})
+
+
+def capture_unresolved(record):
+    return (record.get('status') not in ('COMPLETE', 'ERROR')
+            or 'ledger_settlement' in record and record['ledger_settlement'] != 'COMMITTED')
 
 
 @contextmanager
@@ -94,7 +101,28 @@ class MeteredTransport(httpx.BaseTransport):
         except BaseException as exc:
             exc.model_sent = False
             raise
+
+        def preserve_observed(error):
+            if 'http_status' in record:
+                body = record.get('response')
+                usage = body.get('usage') if model and isinstance(body, dict) else None
+                preserve_result_failure(error, usage, physical_request_id=identity)
+
+        def settle(state, usage, diagnostic=None):
+            record.update(status=state, usage=usage, ledger_settlement='UNCONFIRMED')
+            try:
+                self.ledger.finish(identity, status=state, usage=usage, diagnostic=diagnostic)
+            except BaseException as error:
+                preserve_observed(error)
+                record['ledger_error'] = type(error).__name__
+                if getattr(error, 'operation_id', None) is not None:
+                    record['ledger_operation_id'] = error.operation_id
+                raise
+            record['ledger_settlement'] = 'COMMITTED'
+
+
         started = time.perf_counter()
+        failed = False
         try:
             response = self.inner.handle_request(request)
             if response.status_code == 403:
@@ -143,30 +171,36 @@ class MeteredTransport(httpx.BaseTransport):
                     actual['embedding_input_tokens'] = token_count
                 actual.update(model=0, input_tokens=0, output_tokens=0)
             state = 'COMPLETE' if 200 <= response.status_code < 300 else 'ERROR'
-            self.ledger.finish(identity, status=state, usage=actual,
-                               diagnostic=None if state == 'COMPLETE' else f'HTTP_{response.status_code}')
-            record.update(status=state, http_status=response.status_code, response=body, usage=actual)
+            record.update(http_status=response.status_code, response=body)
+            settle(state, actual, None if state == 'COMPLETE' else f'HTTP_{response.status_code}')
             return response
         except BaseException as exc:
-
-
-            if record['status'] == 'STARTED':
-                received_403 = record.get('http_status') == 403
-                known_not_sent = isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
-                state = 'ERROR' if received_403 or known_not_sent else 'UNKNOWN'
-                usage = dict.fromkeys(self.ledger.caps, 0) if known_not_sent else None
-                if received_403:
-                    usage = ({'model': 1, 'remote_embedding_calls': 0, 'embedding_input_tokens': 0} if model else
-                             {'remote_embedding_calls': 1, 'model': 0, 'input_tokens': 0, 'output_tokens': 0})
-                if usage is not None:
-                    usage['model' if model else 'remote_embedding_calls'] = 1
-                self.ledger.finish(identity, status=state, usage=usage,
-                                   diagnostic='HTTP_403' if received_403 else type(exc).__name__)
-                record.update(status=state, error=type(exc).__name__)
+            failed = True
+            if 'ledger_settlement' in record:
+                raise
+            preserve_observed(exc)
+            received_403 = record.get('http_status') == 403
+            known_not_sent = isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
+            state = 'ERROR' if received_403 or known_not_sent else 'UNKNOWN'
+            usage = dict.fromkeys(self.ledger.caps, 0) if known_not_sent else None
+            if received_403:
+                usage = ({'model': 1, 'remote_embedding_calls': 0, 'embedding_input_tokens': 0} if model else
+                         {'remote_embedding_calls': 1, 'model': 0, 'input_tokens': 0, 'output_tokens': 0})
+            if usage is not None:
+                usage['model' if model else 'remote_embedding_calls'] = 1
+            record['error'] = type(exc).__name__
+            settle(state, usage, 'HTTP_403' if received_403 else type(exc).__name__)
             raise
         finally:
             record['elapsed_seconds'] = time.perf_counter() - started
-            save()
+            failure = sys.exception() if failed else None
+            try:
+                save()
+            except Exception as capture_error:
+                if failure is None:
+                    preserve_observed(capture_error)
+                    raise
+                failure.add_note('Physical capture persistence failed: ' + type(capture_error).__name__)
 
     def close(self):
         self.inner.close()

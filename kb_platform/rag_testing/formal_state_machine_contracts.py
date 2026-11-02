@@ -35,6 +35,47 @@ class FormalRegistryContracts(unittest.TestCase):
                 'assumptions': ['Synthetic lint fixture'], 'exclusions': ['Not a model or product proof'],
                 'source_bindings': [binding], 'models': [], 'negative_controls': []}]}
 
+    def test_physical_settlement_constraint_survives_refreshed_source_hash(self):
+        repository = Path(__file__).resolve().parents[2]
+        from scripts.physical_settlement_lint import CAPTURE_CONSUMERS
+
+        owners = tuple(dict.fromkeys(['kb_platform/rag_testing/provider_capture.py',
+            'kb_platform/google_semantic_provider.py', *[row[0] for row in CAPTURE_CONSUMERS]]))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = self.fixture(root)
+            bindings = {}
+            for name in owners:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text((repository / name).read_text('utf-8'), encoding='utf-8')
+                binding = {'path': name, 'language': 'python', 'symbol': '<module>'}
+                binding['sha256'] = source_digest(root, binding)
+                registry['machines'][0]['source_bindings'].append(binding)
+                bindings[name] = binding
+            self.assertEqual([], registry_violations(root, registry))
+            target = root / owners[0]
+            original = target.read_text('utf-8')
+            mutants = (("if 'ledger_settlement' in record:", 'if False:'),
+                       ("if 'http_status' in record:", 'if True:'),
+                       ("body.get('usage') if model and isinstance(body, dict) else None", "record.get('usage')"),
+                       ('                preserve_observed(error)\n', ''),
+                       ('                    preserve_observed(capture_error)\n', ''),
+                       ('            record.update(http_status=response.status_code, response=body)\n'
+                        "            settle(state, actual, None if state == 'COMPLETE' else f'HTTP_{response.status_code}')",
+                        "            settle(state, actual, None if state == 'COMPLETE' else f'HTTP_{response.status_code}')\n"
+                        '            record.update(http_status=response.status_code, response=body)'),
+                       ('\n        except BaseException as exc:\n            exc.model_sent = False\n',
+                        '\n        except BaseException as exc:\n            exc.model_sent = True\n'))
+            for before, after in mutants:
+                with self.subTest(mutation=before):
+                    self.assertIn(before, original)
+                    target.write_text(original.replace(before, after, 1), encoding='utf-8')
+                    bindings[owners[0]]['sha256'] = source_digest(root, bindings[owners[0]])
+                    errors = registry_violations(root, registry)
+                    self.assertTrue(any('physical settlement:' in error for error in errors))
+                    self.assertFalse(any('source review drift' in error for error in errors))
+
     def modeled_fixture(self, root):
         registry = self.fixture(root)
         (root / 'formal/Model.tla').write_text('---- MODULE Model ----\nVARIABLE state\nInit == state = 0\n'

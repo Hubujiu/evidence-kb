@@ -14,6 +14,7 @@ from ..core import Actor
 from .contracts import Fragment, Plan, Suite, Trace, digest
 from .delivery_fixtures import bind_suite, load_delivery_fixtures
 from .runner import run, write_json
+from .provider_capture import capture_unresolved
 
 
 VERSION = 'delivery-real-http-actual-payload/2'
@@ -48,7 +49,7 @@ def physical_records(directory):
 
 def require_no_pending(directory):
     pending = [record['physical_request_id'] for record in physical_records(directory)
-               if record.get('status') not in ('COMPLETE', 'ERROR')]
+               if capture_unresolved(record)]
     if pending:
         raise RuntimeError('UNRESOLVED_PHYSICAL_REQUESTS:' + ','.join(pending))
 
@@ -270,7 +271,8 @@ def _fragment(binding, source, relative_start=0, text=None):
 
 
 def capture_final(response, records, bindings, sources):
-
+    if any(capture_unresolved(record) for record in records):
+        raise ValueError('FINAL_PHYSICAL_PAYLOAD_MISSING_OR_AMBIGUOUS')
     models = [record for record in records if isinstance(record['payload'].get('messages'), list)]
     calls = response.get('trace', {}).get('calls', [])
     answers = [call for call in calls if call.get('role') == 'answer']
@@ -508,7 +510,7 @@ class DeliveryHTTPAdapter:
 
 def _usage(records):
     def total(key):
-        values = [record.get('usage', {}).get(key) for record in records]
+        values = [(record.get('usage') or {}).get(key) for record in records]
         return sum(values) if all(type(value) is int and value >= 0 for value in values) else None
     return {'model_calls': len(records), 'input_tokens': total('input_tokens'), 'output_tokens': total('output_tokens')}
 
@@ -517,9 +519,11 @@ def _physical_summary(records):
     models = [record for record in records if isinstance(record['payload'].get('messages'), list)]
     return {'physical_request_ids': [record['physical_request_id'] for record in records], **_usage(models),
         'embedding_requests': len(records) - len(models),
-        'pending_or_unknown': [record['physical_request_id'] for record in records if record['status'] not in ('COMPLETE', 'ERROR')],
+        'pending_or_unknown': [record['physical_request_id'] for record in records if capture_unresolved(record)],
+        'unconfirmed_settlement_requests': [record['physical_request_id'] for record in records
+            if 'ledger_settlement' in record and record['ledger_settlement'] != 'COMMITTED'],
         'unknown_usage_model_requests': [record['physical_request_id'] for record in models
-            if any(type(record.get('usage', {}).get(key)) is not int for key in ('input_tokens', 'output_tokens'))]}
+            if any(type((record.get('usage') or {}).get(key)) is not int for key in ('input_tokens', 'output_tokens'))]}
 
 
 def execute_prepared(client, prepared_directory, output, *, config_name, physical_directory,

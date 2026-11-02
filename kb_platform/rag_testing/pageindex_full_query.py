@@ -11,6 +11,7 @@ from .budget_batches import LinkedBudgetLedger, freeze_predecessor
 from .contracts import Fragment, Plan, RequestEvidenceBinding, Suite, Trace, digest
 from .runner import run, write_json
 from .sdk_gateway import SDKGateway
+from .provider_capture import capture_unresolved
 
 PROMPT = (
     "Answer only from the supplied document. Return one JSON object with answer and citations. "
@@ -190,6 +191,8 @@ class PDFAdapter:
             for r in physical
             if r["context"].get("case_id") == request.case_id and r["context"].get("variant") == self.variant
         ]
+        if any(capture_unresolved(record) for record in bound):
+            raise ValueError('UNRESOLVED_PHYSICAL_CAPTURE')
         final = [
             r
             for r in bound
@@ -247,10 +250,10 @@ class PDFAdapter:
             elapsed_ms=None if reused else (time.perf_counter() - started) * 1000,
             model_calls=len(bound),
             input_tokens=sum(r["usage"]["input_tokens"] for r in bound)
-            if all("input_tokens" in r.get("usage", {}) for r in bound)
+            if all("input_tokens" in (r.get("usage") or {}) for r in bound)
             else None,
             output_tokens=sum(r["usage"]["output_tokens"] for r in bound)
-            if all("output_tokens" in r.get("usage", {}) for r in bound)
+            if all("output_tokens" in (r.get("usage") or {}) for r in bound)
             else None,
         )
 
