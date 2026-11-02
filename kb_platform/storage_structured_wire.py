@@ -1,7 +1,6 @@
 from concurrent.futures import Future, TimeoutError
 from contextlib import contextmanager
 from dataclasses import asdict
-import json
 from queue import Empty, Queue
 from threading import Event, RLock, Thread
 from time import monotonic
@@ -15,41 +14,15 @@ from .storage_expression_wire import (
     Decoder, decoded_value, expression, fields, schema_descriptor, schema_semantics, statement,
 )
 from .storage_sdk.relational import StructuredSchema
+from .storage_json_wire import (
+    MAX_MESSAGE_BYTES as MAX_MESSAGE_BYTES, MAX_VALUE_BYTES, StorageJsonClient, StorageJsonEndpoint,
+    wire as _wire,
+)
 
 
 MAX_HANDLES = 64
-MAX_MESSAGE_BYTES = 4 * 1024 * 1024 - 4096
 MAX_STATEMENTS = 20000
 GUARD_LEASE_SECONDS = 60
-
-
-def _wire(value):
-    nodes = 0
-
-    def visit(item, depth=0):
-        nonlocal nodes
-        nodes += 1
-        if depth > 48 or nodes > 1000000:
-            raise DatabaseError('STORAGE_WIRE_STRUCTURE_LIMIT')
-        if type(item) is dict:
-            if any(type(key) is not str for key in item):
-                raise DatabaseError('STORAGE_WIRE_JSON_REQUIRED')
-            for child in item.values():
-                visit(child, depth + 1)
-        elif type(item) is list:
-            for child in item:
-                visit(child, depth + 1)
-        elif type(item) not in (str, int, float, bool, type(None)):
-            raise DatabaseError('STORAGE_WIRE_JSON_REQUIRED')
-
-    visit(value)
-    try:
-        encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
-        if len(encoded.encode()) > MAX_MESSAGE_BYTES:
-            raise DatabaseError('STORAGE_WIRE_MESSAGE_LIMIT')
-        return json.loads(encoded)
-    except (ValueError, TypeError, UnicodeError):
-        raise DatabaseError('STORAGE_WIRE_JSON_REQUIRED') from None
 
 
 def _limits(value):
@@ -200,6 +173,7 @@ class PortableStructuredEndpoint:
             raise ValueError('STORAGE_WIRE_TRUSTED_SCHEMA_REQUIRED')
         self._lock, self._handles, self._outcomes = RLock(), {}, {}
         self._package, self._sealed, self._closed = None, False, False
+        self._transport = StorageJsonEndpoint(self._execute, self._validate_transfer_transaction)
 
     def _finished(self, token, outcome):
         with self._lock:
@@ -207,6 +181,13 @@ class PortableStructuredEndpoint:
             self._outcomes[token] = outcome
             while len(self._outcomes) > 256:
                 self._outcomes.pop(next(iter(self._outcomes)))
+        self._transport.discard_transaction(token)
+
+    def _validate_transfer_transaction(self, token):
+        with self._lock:
+            handle = self._handles.get(token) if type(token) is str else None
+            if self._closed or handle is None or handle.kind != 'transaction' or handle._stopped.is_set():
+                raise DatabaseError('STORAGE_HANDLE_CLOSED')
 
     def _open(self, manager, *, kind, seconds, operation_id=None):
         with self._lock:
@@ -220,7 +201,10 @@ class PortableStructuredEndpoint:
         return {'handle': handle.id, 'operation_id': operation_id}
 
     def execute(self, request):
-        request = _wire(request)
+        return self._transport.execute(request)
+
+    def _execute(self, request):
+        request = _wire(request, maximum=MAX_VALUE_BYTES)
         if type(request) is not dict or request.get('version') != 1 or type(request.get('version')) is not int:
             raise DatabaseError('STORAGE_WIRE_VERSION_INVALID')
         with self._lock:
@@ -304,7 +288,8 @@ class PortableStructuredEndpoint:
             decoder = Decoder(self._package.metadata)
             if operation == 'execute':
                 fields(request, {'version', 'op', 'handle', 'statement'})
-                return _result(tx.execute(decoder.statement(request['statement'])))
+                result = _result(tx.execute(decoder.statement(request['statement'])))
+                return self._transport.result(result, transaction=token)
             fields(request, {'version', 'op', 'handle', 'table', 'values', 'conflict_keys', 'updates', 'returning'})
             table = decoder.table(request['table'])
             keys = request['conflict_keys']
@@ -312,8 +297,9 @@ class PortableStructuredEndpoint:
                 raise DatabaseError('INVALID_STRUCTURED_CONFLICT_KEYS')
             updates = None if request['updates'] is None else decoder.values(table, request['updates'])
             returning = tuple(decoder.expression(item) for item in decoder.items(request['returning']))
-            return _result(tx.insert(table, decoder.values(table, request['values']), conflict_keys=keys,
-                                     updates=updates, returning=returning))
+            result = _result(tx.insert(table, decoder.values(table, request['values']), conflict_keys=keys,
+                                      updates=updates, returning=returning))
+            return self._transport.result(result, transaction=token)
 
         try:
             return handle.call(run)
@@ -324,6 +310,7 @@ class PortableStructuredEndpoint:
         with self._lock:
             self._closed = True
             handles = tuple(self._handles.values())
+        self._transport.close()
         failures = []
         for handle in handles:
             try:
@@ -357,9 +344,10 @@ class _Transaction:
 class PortableStructuredClient:
     def __init__(self, call, *, identity):
         self._send, self.identity = call, identity
+        self._transport = StorageJsonClient(lambda request: self._send(request))
 
     def _call(self, request):
-        return _wire(self._send(_wire({'version': 1, **request})))
+        return self._transport.call({'version': 1, **request})
 
     def prepare(self, package):
         if not isinstance(package, StructuredSchema):

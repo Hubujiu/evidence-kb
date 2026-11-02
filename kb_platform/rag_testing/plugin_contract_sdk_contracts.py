@@ -1,4 +1,5 @@
 import unittest
+from copy import deepcopy
 from threading import Event, Thread
 
 from kb_platform.plugin_contracts import ContractApplication, ContractError, ContractRegistry, Method, wire
@@ -102,6 +103,65 @@ class PluginContractSDKContracts(unittest.TestCase):
         with self.assertRaisesRegex(PluginError, 'Additional properties'):
             ContractApplication(application, catalog, **args)
         self.assertEqual(events, [])
+
+    def test_invalid_update_and_apply_keep_active_instances_and_service(self):
+        application, catalog, args, events = self.setup_application()
+        app = ContractApplication(application, catalog, **args)
+        self.addCleanup(app.close)
+        profile = {'version': 1, 'plugins': [{'id': name, 'use': spec.key, 'config': deepcopy(config)}
+                   for name, (spec, config) in app.host._entries.items()]}
+        original = next(row['config'] for row in profile['plugins'] if row['id'] == 'backend')
+        variants = []
+        for field, value in [('configuration', {'unknown': True}), ('configuration', []),
+                             ('bindings', {'hidden': 'provider'}), ('command', ['unexpected']),
+                             ('declaration', {}), ('unknown', True)]:
+            variants.append({**deepcopy(original), field: value})
+        variants.append({key: value for key, value in original.items() if key != 'configuration'})
+        for operation in ('update', 'apply'):
+            for index, config in enumerate(variants):
+                with self.subTest(operation=operation, variant=index):
+                    events.clear()
+                    before = app.host.inspect()
+                    with self.assertRaises(PluginError) as caught:
+                        if operation == 'update':
+                            app.host.update('backend', config=config)
+                        else:
+                            selected = deepcopy(profile)
+                            next(row for row in selected['plugins'] if row['id'] == 'backend')['config'] = config
+                            app.host.apply(selected)
+                    self.assertEqual(caught.exception.code, 'INVALID_PLUGIN_CONFIG')
+                    self.assertEqual(app.host.inspect(), before)
+                    self.assertEqual(events, [])
+                    self.assertEqual(app.run({}), 'hello')
+
+    def test_valid_configuration_updates_keep_local_schema_references(self):
+        application, catalog, args, events = self.setup_application(config={'greeting': 'initial'})
+        args['schemas'][('provider', '1')] = {
+            '$defs': {'text': TEXT}, 'type': 'object',
+            'properties': {'greeting': {'$ref': '#/$defs/text'}},
+            'required': ['greeting'], 'additionalProperties': False}
+
+        def provider(ctx, config):
+            class Provider:
+                def get(self, request):
+                    return config['greeting']
+            ctx.defer(lambda: events.append('close-provider'))
+            ctx.provide('greeting', Provider())
+
+        args['mounts'][('provider', '1')] = provider
+        app = ContractApplication(application, catalog, **args)
+        self.addCleanup(app.close)
+        self.assertEqual(app.run({}), 'initial')
+        profile = {'version': 1, 'plugins': [{'id': name, 'use': spec.key, 'config': deepcopy(config)}
+                   for name, (spec, config) in app.host._entries.items()]}
+        selected = next(row for row in profile['plugins'] if row['id'] == 'backend')
+        selected['config']['configuration']['greeting'] = 'updated'
+        app.host.update('backend', config=selected['config'])
+        self.assertEqual(app.run({}), 'updated')
+        selected['config']['configuration']['greeting'] = 'applied'
+        app.host.apply(profile)
+        self.assertEqual(app.run({}), 'applied')
+        self.assertEqual(events.count('close-provider'), 2)
 
     def test_local_executor_requires_registration_even_with_process_root(self):
         application, catalog, args, events = self.setup_application()

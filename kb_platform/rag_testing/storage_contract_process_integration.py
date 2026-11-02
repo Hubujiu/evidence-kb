@@ -51,8 +51,12 @@ def verify_storage_contract_process(root):
             lease = self.store.begin(actor, sid, 'request', 0, 'fingerprint')
             self.store.append(actor, sid, lease['token'], 'message', {'content': 'fixture'}, 'request')
             artifact = self.store.artifact(actor, sid, lease['token'], {'evidence': ['process-boundary']})
+            large_body = {'evidence': 'bounded structured transfer ' * 180000}
+            large_artifact = self.store.artifact(actor, sid, lease['token'], large_body)
             response = self.store.finish(actor, sid, lease['token'], {'count': 1}, {'status': 'complete'})
             replay = self.store.begin(actor, sid, 'request', 0, 'fingerprint')
+            if self.store.read_artifact(actor, sid, large_artifact['artifact_id']) != large_body:
+                raise RuntimeError('STORAGE_LARGE_ARTIFACT_PROCESS_INTEGRITY_FAILED')
             with self.database.guard('protocol-check'):
                 try:
                     with self.database.guard('protocol-check'):
@@ -63,6 +67,7 @@ def verify_storage_contract_process(root):
             return {'state': self.store.load(actor, sid)['state'],
                     'artifact': self.store.read_artifact(actor, sid, artifact['artifact_id']),
                     'replayed': replay == {'cached': response},
+                    'large_artifact': 'verified',
                     'events': [item['kind'] for item in self.store.events(actor, sid)],
                     'guard': 'exclusive', 'external_model_calls': 0,
                     'knowledge': exercise_knowledge_repository(unittest.TestCase(), self.repository, root / 'knowledge')}
@@ -79,6 +84,7 @@ def verify_storage_contract_process(root):
         result = application.run({})
         if (result != {'state': {'count': 1}, 'artifact': {'evidence': ['process-boundary']},
                 'replayed': True, 'events': ['message', 'turn_completed'], 'guard': 'exclusive', 'external_model_calls': 0,
+                'large_artifact': 'verified',
                 'knowledge': {'knowledge_build': 'VALIDATED', 'cross_tenant': 'DENIED', 'revoked_citation': 'DENIED',
                               'expired_job': 'UNKNOWN', 'external_model_calls': 0}}
                 or application.host.inspect()['leases']):

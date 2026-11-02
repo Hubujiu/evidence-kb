@@ -3,6 +3,7 @@ from binascii import Error as Base64Error
 from contextlib import suppress
 from dataclasses import asdict
 from hashlib import sha256
+import json
 from threading import Lock
 from time import monotonic
 from types import SimpleNamespace
@@ -15,11 +16,11 @@ from .knowledge_contracts import (ACTOR, ARRAY, EMPTY, INTEGER, NULL_OBJECT, OBJ
                                   methods, object_schema)
 from .model_errors import RemoteModelError
 from .plugin_contracts import ContractError, Method
+from .platform_transfers import CHUNK_BYTES, MAX_PAYLOAD_BYTES, PlatformSnapshots
 from .session_identity import Actor, PlatformError
 from .storage_sdk import StorageError
 
 
-CHUNK_BYTES = 1024 * 1024
 STRINGS = {'type': 'array', 'items': {'type': 'string'}}
 OPTIONAL_STRINGS = {'type': ['array', 'null'], 'items': {'type': 'string'}}
 OPTIONAL_TEXT = {'type': ['string', 'null']}
@@ -50,6 +51,11 @@ OPERATIONS = {
 }
 TRANSFER = {'actor': ACTOR, 'upload_id': TEXT}
 HASH = {'type': 'string', 'pattern': '^[0-9a-f]{64}$'}
+SNAPSHOT = object_schema({'transfer_id': TEXT,
+    'total': {'type': 'integer', 'minimum': 0, 'maximum': MAX_PAYLOAD_BYTES}, 'sha256': HASH})
+SNAPSHOT_REQUEST = {'actor': ACTOR, 'transfer_id': TEXT}
+CHUNK_RESPONSE = object_schema({'offset': INTEGER, 'total': INTEGER, 'sha256': HASH,
+    'data_base64': {'type': 'string', 'maxLength': 4 * ((CHUNK_BYTES + 2) // 3)}})
 PROVIDER = {'type': ['object', 'null'], 'properties': {
     'provider_id': OPTIONAL_TEXT, 'manifest': OBJECT}, 'required': ['provider_id', 'manifest'],
     'additionalProperties': False}
@@ -64,11 +70,15 @@ METHODS = {
     'ingest_append': Method(object_schema({**TRANSFER, 'offset': INTEGER,
         'data_base64': {'type': 'string', 'minLength': 1, 'maxLength': 4 * ((CHUNK_BYTES + 2) // 3)}}),
         object_schema({'offset': INTEGER})),
-    'ingest_finish': Method(object_schema(TRANSFER), OBJECT),
+    'ingest_finish': Method(object_schema(TRANSFER), {'oneOf': [
+        object_schema({'result': OBJECT}), object_schema({'transfer': SNAPSHOT})]}),
     'ingest_cancel': Method(object_schema(TRANSFER), object_schema({'cancelled': {'type': 'boolean'}})),
-    'read_original_chunk': Method(object_schema({'actor': ACTOR, 'kb_id': TEXT, 'citation_id': TEXT,
-        'purpose': TEXT, 'offset': INTEGER}), object_schema({'offset': INTEGER, 'total': INTEGER,
-        'sha256': HASH, 'data_base64': {'type': 'string', 'maxLength': 4 * ((CHUNK_BYTES + 2) // 3)}})),
+    'ingest_result_chunk': Method(object_schema({**SNAPSHOT_REQUEST, 'offset': INTEGER}), CHUNK_RESPONSE),
+    'read_original_begin': Method(object_schema({'actor': ACTOR, 'kb_id': TEXT, 'citation_id': TEXT,
+        'purpose': TEXT}), SNAPSHOT),
+    'read_original_chunk': Method(object_schema({**SNAPSHOT_REQUEST, 'offset': INTEGER}), CHUNK_RESPONSE),
+    'transfer_cancel': Method(object_schema(SNAPSHOT_REQUEST),
+                              object_schema({'cancelled': {'type': 'boolean'}})),
 }
 
 
@@ -101,6 +111,7 @@ class PlatformEndpoint(ObjectEndpoint):
     def __init__(self, platform):
         super().__init__(platform, OPERATIONS)
         self._uploads, self._lock = {}, Lock()
+        self._transfers = PlatformSnapshots()
 
     def __getattr__(self, name):
         invoke = super().__getattr__(name)
@@ -161,9 +172,22 @@ class PlatformEndpoint(ObjectEndpoint):
             content, expected = bytes(upload['content']), upload['request']
             if len(content) != expected['size'] or sha256(content).hexdigest() != expected['sha256']:
                 raise PlatformError('INVALID_PLATFORM_TRANSFER', 'Upload is incomplete or content hash changed', 409)
+            identity = self._transfers.reserve(request['actor'], 'ingest')
             del self._uploads[request['upload_id']]
         arguments = {key: expected[key] for key in ('kb_id', 'filename', 'readers', 'policy', 'source_id')}
-        return _call(lambda: self._implementation.ingest(Actor(**request['actor']), data=content, **arguments))
+        try:
+            result = _call(lambda: self._implementation.ingest(Actor(**request['actor']), data=content, **arguments))
+            context = {'kb_id': expected['kb_id'], 'result': result}
+            transfer = self._transfers.publish_json(identity, result, context)
+            if transfer is None:
+                return {'result': result}
+            context['result'] = {key: result[key] for key in ('source_id', 'source_version_id')}
+            context['result']['parse_snapshot_id'] = result['document']['parse_snapshot_id']
+            self._authorize_ingest(request['actor'], context)
+            return {'transfer': transfer}
+        except BaseException:
+            self._transfers.cancel(request['actor'], identity)
+            raise
 
     def ingest_cancel(self, request):
         with self._lock:
@@ -174,18 +198,58 @@ class PlatformEndpoint(ObjectEndpoint):
                 del self._uploads[request['upload_id']]
         return {'cancelled': cancelled}
 
+    def _authorize_ingest(self, actor, context):
+        return _call(lambda: self._implementation.authorize_ingest_result(
+            Actor(**actor), context['kb_id'], **context['result']))
+
+    @staticmethod
+    def _original_identity(target):
+        return {key: target[key] for key in ('kb_id', 'citation_id', 'source_id', 'source_version_id',
+            'parse_snapshot_id', 'build_id', 'original_sha256')}
+
+    def read_original_begin(self, request):
+        identity = self._transfers.reserve(request['actor'], 'original')
+        actor = Actor(**request['actor'])
+        try:
+            content = _call(lambda: self._implementation.read_original(actor,
+                request['kb_id'], request['citation_id'], purpose=request['purpose']))
+            target = _call(lambda: self._implementation.authorize_original(actor,
+                request['kb_id'], request['citation_id'], purpose=request['purpose']))
+            context = {'request': {key: request[key] for key in ('kb_id', 'citation_id', 'purpose')},
+                'identity': self._original_identity(target), 'processing_policy': target['processing_policy']}
+            transfer = self._transfers.publish(identity, [content], context)
+            if transfer['sha256'] != target['original_sha256']:
+                raise PlatformError('SOURCE_INTEGRITY', 'Original hash changed before transfer', 503)
+            return transfer
+        except BaseException:
+            self._transfers.cancel(request['actor'], identity)
+            raise
+
+    def _authorize_original(self, actor, context):
+        current = _call(lambda: self._implementation.authorize_original(Actor(**actor),
+            **context['request'], processing_policy=context['processing_policy']))
+        if self._original_identity(current) != context['identity']:
+            raise PlatformError('SOURCE_INTEGRITY', 'Original identity changed during transfer', 503)
+
+    def _read_chunk(self, request, kind, authorize):
+        result = self._transfers.read(request['actor'], request['transfer_id'], request['offset'], kind,
+                                      lambda context: authorize(request['actor'], context))
+        data = result.pop('data')
+        return {**result, 'data_base64': base64.b64encode(data).decode('ascii')}
+
+    def ingest_result_chunk(self, request):
+        return self._read_chunk(request, 'ingest', self._authorize_ingest)
+
     def read_original_chunk(self, request):
-        content = _call(lambda: self._implementation.read_original(Actor(**request['actor']),
-            request['kb_id'], request['citation_id'], purpose=request['purpose']))
-        offset = request['offset']
-        if offset > len(content):
-            raise PlatformError('INVALID_PLATFORM_TRANSFER', 'Download offset exceeds original size', 409)
-        return {'offset': offset, 'total': len(content), 'sha256': sha256(content).hexdigest(),
-                'data_base64': base64.b64encode(content[offset:offset + CHUNK_BYTES]).decode('ascii')}
+        return self._read_chunk(request, 'original', self._authorize_original)
+
+    def transfer_cancel(self, request):
+        return {'cancelled': self._transfers.cancel(request['actor'], request['transfer_id'])}
 
     def close(self):
         with self._lock:
             self._uploads.clear()
+        self._transfers.close()
 
 
 class PlatformClient(ObjectClient):
@@ -210,27 +274,39 @@ class PlatformClient(ObjectClient):
                     'data_base64': base64.b64encode(chunk).decode('ascii')})
                 if result['offset'] != offset + len(chunk):
                     raise PlatformError('INVALID_PLATFORM_TRANSFER', 'Upload acknowledgement offset changed', 502)
-            return domain_call(self._dependency.ingest_finish, transfer)
-        except Exception:
+            result = domain_call(self._dependency.ingest_finish, transfer)
+            if 'result' in result:
+                return result['result']
+            content = self._read_transfer(identity, result['transfer'], self._dependency.ingest_result_chunk)
+            return json.loads(content)
+        except BaseException:
             with suppress(Exception):
                 domain_call(self._dependency.ingest_cancel, transfer)
             raise
 
     def read_original(self, actor, kb_id, citation_id, purpose='download'):
         request = {'actor': asdict(actor), 'kb_id': kb_id, 'citation_id': citation_id, 'purpose': purpose}
-        content, expected = bytearray(), None
-        while True:
-            result = domain_call(self._dependency.read_original_chunk, {**request, 'offset': len(content)})
-            identity = result['total'], result['sha256']
-            if expected is None:
-                expected = identity
-            if identity != expected or result['offset'] != len(content):
-                raise PlatformError('SOURCE_INTEGRITY', 'Original changed during transfer', 503)
-            chunk = _decode(result['data_base64'])
-            content.extend(chunk)
-            if len(content) > expected[0] or (not chunk and len(content) < expected[0]):
-                raise PlatformError('INVALID_PLATFORM_TRANSFER', 'Download content size does not match', 502)
-            if len(content) == expected[0]:
-                if sha256(content).hexdigest() != expected[1]:
-                    raise PlatformError('SOURCE_INTEGRITY', 'Original hash changed during transfer', 503)
-                return bytes(content)
+        opened = domain_call(self._dependency.read_original_begin, request)
+        return self._read_transfer(request['actor'], opened, self._dependency.read_original_chunk)
+
+    def _read_transfer(self, actor, opened, operation):
+        request = {'actor': actor, 'transfer_id': opened['transfer_id']}
+        content, expected = bytearray(), (opened['total'], opened['sha256'])
+        try:
+            if type(expected[0]) is not int or not 0 <= expected[0] <= MAX_PAYLOAD_BYTES:
+                raise PlatformError('PLATFORM_TRANSFER_LIMIT', 'Invalid transfer size', 502)
+            while True:
+                result = domain_call(operation, {**request, 'offset': len(content)})
+                if (result['total'], result['sha256']) != expected or result['offset'] != len(content):
+                    raise PlatformError('SOURCE_INTEGRITY', 'Transfer identity or offset changed', 503)
+                chunk = _decode(result['data_base64'])
+                content.extend(chunk)
+                if len(content) > expected[0] or (not chunk and len(content) < expected[0]):
+                    raise PlatformError('INVALID_PLATFORM_TRANSFER', 'Download content size does not match', 502)
+                if len(content) == expected[0]:
+                    if sha256(content).hexdigest() != expected[1]:
+                        raise PlatformError('SOURCE_INTEGRITY', 'Transfer content hash changed', 503)
+                    return bytes(content)
+        finally:
+            with suppress(Exception):
+                domain_call(self._dependency.transfer_cancel, request)

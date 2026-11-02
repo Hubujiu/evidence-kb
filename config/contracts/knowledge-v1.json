@@ -1724,7 +1724,57 @@
                         "additionalProperties": false,
                         "properties": {
                           "method": {
-                            "const": "read_original_chunk"
+                            "const": "ingest_result_chunk"
+                          },
+                          "request": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "actor": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "principal_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "tenant_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "tenant_id",
+                                  "principal_id"
+                                ],
+                                "type": "object"
+                              },
+                              "offset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "transfer_id": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "actor",
+                              "transfer_id",
+                              "offset"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "request"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "method": {
+                            "const": "read_original_begin"
                           },
                           "request": {
                             "additionalProperties": false,
@@ -1755,10 +1805,6 @@
                                 "minLength": 1,
                                 "type": "string"
                               },
-                              "offset": {
-                                "minimum": 0,
-                                "type": "integer"
-                              },
                               "purpose": {
                                 "minLength": 1,
                                 "type": "string"
@@ -1768,8 +1814,102 @@
                               "actor",
                               "kb_id",
                               "citation_id",
-                              "purpose",
+                              "purpose"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "request"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "method": {
+                            "const": "read_original_chunk"
+                          },
+                          "request": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "actor": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "principal_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "tenant_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "tenant_id",
+                                  "principal_id"
+                                ],
+                                "type": "object"
+                              },
+                              "offset": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "transfer_id": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "actor",
+                              "transfer_id",
                               "offset"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "request"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "method": {
+                            "const": "transfer_cancel"
+                          },
+                          "request": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "actor": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "principal_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "tenant_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "tenant_id",
+                                  "principal_id"
+                                ],
+                                "type": "object"
+                              },
+                              "transfer_id": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "actor",
+                              "transfer_id"
                             ],
                             "type": "object"
                           }
@@ -5351,6 +5491,119 @@
             "type": "object"
           },
           "response": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "result": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "result"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "transfer": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "sha256": {
+                        "pattern": "^[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "total": {
+                        "maximum": 67108864,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "transfer_id": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "transfer_id",
+                      "total",
+                      "sha256"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "transfer"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "ingest_result_chunk": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "principal_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "tenant_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tenant_id",
+                  "principal_id"
+                ],
+                "type": "object"
+              },
+              "offset": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "transfer_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "actor",
+              "transfer_id",
+              "offset"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "data_base64": {
+                "maxLength": 1398104,
+                "type": "string"
+              },
+              "offset": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "total": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "offset",
+              "total",
+              "sha256",
+              "data_base64"
+            ],
             "type": "object"
           }
         },
@@ -5488,7 +5741,7 @@
             "type": "object"
           }
         },
-        "read_original_chunk": {
+        "read_original_begin": {
           "request": {
             "additionalProperties": false,
             "properties": {
@@ -5518,10 +5771,6 @@
                 "minLength": 1,
                 "type": "string"
               },
-              "offset": {
-                "minimum": 0,
-                "type": "integer"
-              },
               "purpose": {
                 "minLength": 1,
                 "type": "string"
@@ -5531,7 +5780,69 @@
               "actor",
               "kb_id",
               "citation_id",
-              "purpose",
+              "purpose"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "total": {
+                "maximum": 67108864,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "transfer_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "transfer_id",
+              "total",
+              "sha256"
+            ],
+            "type": "object"
+          }
+        },
+        "read_original_chunk": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "principal_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "tenant_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tenant_id",
+                  "principal_id"
+                ],
+                "type": "object"
+              },
+              "offset": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "transfer_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "actor",
+              "transfer_id",
               "offset"
             ],
             "type": "object"
@@ -5988,6 +6299,52 @@
             "type": "object"
           },
           "response": {
+            "type": "object"
+          }
+        },
+        "transfer_cancel": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "principal_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "tenant_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tenant_id",
+                  "principal_id"
+                ],
+                "type": "object"
+              },
+              "transfer_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "actor",
+              "transfer_id"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "cancelled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "cancelled"
+            ],
             "type": "object"
           }
         }
@@ -7021,26 +7378,17 @@
           "request": {
             "additionalProperties": false,
             "properties": {
-              "args": {
-                "type": "array"
-              },
               "binding": {
                 "minLength": 1,
                 "type": "string"
               },
-              "kwargs": {
+              "request": {
                 "type": "object"
-              },
-              "method": {
-                "minLength": 1,
-                "type": "string"
               }
             },
             "required": [
               "binding",
-              "method",
-              "args",
-              "kwargs"
+              "request"
             ],
             "type": "object"
           },

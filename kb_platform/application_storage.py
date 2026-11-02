@@ -17,6 +17,7 @@ REQUIREMENTS = {
     'search': {'bm25': LEXICAL_BM25_V1, 'dense': VECTOR_V1, 'source': DOCUMENT_V1},
     'originals': {'objects': OBJECT_V1},
 }
+MAX_INVOKE_NODES = 250000
 
 
 def storage_methods():
@@ -26,8 +27,7 @@ def storage_methods():
                 'required': list(properties), 'additionalProperties': False}
     return {
         'describe': Method(request({'binding': key}), {'type': 'object'}),
-        'invoke': Method(request({'binding': key, 'method': key,
-            'args': {'type': 'array'}, 'kwargs': {'type': 'object'}}), {'type': 'object'}),
+        'invoke': Method(request({'binding': key, 'request': {'type': 'object'}}), {'type': 'object'}),
         'relational': Method(request({'binding': key, 'request': {'type': 'object'}}), {'type': 'object'}),
         'objects': Method(request({'binding': key, 'request': {'type': 'object'}}), {'type': 'object'}),
     }
@@ -51,7 +51,8 @@ class ApplicationStorage:
         compile_storage_plugins({'version': 1, 'plugins': [{'id': name, 'use': name} for name in consumers]},
             specs, configuration, provider_catalog=providers)
         self._registry, self._instances, self._bound, self._structured = StorageService(), [], {}, {}
-        self._objects, self._lock, self._active, self._closing = {}, RLock(), 0, False
+        self._objects, self._generic = {}, {}
+        self._lock, self._active, self._closing = RLock(), 0, False
         try:
             exports = {}
             for name, definition in configuration['instances'].items():
@@ -101,20 +102,36 @@ class ApplicationStorage:
             return {'identity': asdict(bound.identity), 'methods': sorted(bound._methods)}
 
     def invoke(self, request):
-        with self._operation():
-            return self._invoke(request)
+        from .storage_json_wire import StorageJsonEndpoint
 
-    def _invoke(self, request):
+        with self._operation():
+            name = request['binding']
+            with self._lock:
+                if name not in self._generic:
+                    bound = self._binding(name)
+                    self._generic[name] = StorageJsonEndpoint(
+                        lambda logical: self._invoke(bound, logical), operations=('invoke',))
+                endpoint = self._generic[name]
+            return endpoint.execute(request['request'])
+
+    def _invoke(self, bound, request):
         from .search import SearchGenerationIncomplete, SearchUnavailable
 
-        bound = self._binding(request['binding'])
+        if (type(request) is not dict or set(request) != {'version', 'op', 'method', 'args', 'kwargs'}
+                or type(request['version']) is not int or request['version'] != 1 or request['op'] != 'invoke'
+                or type(request['method']) is not str or type(request['args']) is not list
+                or type(request['kwargs']) is not dict or len(request['args']) > 64 or len(request['kwargs']) > 64
+                or any(type(key) is not str for key in request['kwargs'])):
+            raise StorageError('STORAGE_INVALID_PROCESS_REQUEST')
         method = request['method']
         if method.startswith('_') or method not in bound._methods or method in {'prepare', 'transaction', 'guard'}:
             raise StorageError('STORAGE_PROCESS_METHOD_REJECTED')
+        budget = [MAX_INVOKE_NODES]
+        args = [decode_value(item, _budget=budget) for item in request['args']]
+        kwargs = {key: decode_value(item, _budget=budget) for key, item in request['kwargs'].items()}
         try:
-            result = getattr(bound, method)(*[decode_value(item) for item in request['args']],
-                **{key: decode_value(item) for key, item in request['kwargs'].items()})
-            return encode_value(result)
+            result = getattr(bound, method)(*args, **kwargs)
+            return encode_value(result, _budget=[MAX_INVOKE_NODES])
         except (SearchUnavailable, FileNotFoundError) as error:
             kind = ('incomplete' if isinstance(error, SearchGenerationIncomplete) else
                     'search' if isinstance(error, SearchUnavailable) else 'missing')
@@ -169,7 +186,7 @@ class ApplicationStorage:
             self._closing = True
             if self._active:
                 raise StorageError('STORAGE_SERVICE_BUSY')
-            for endpoints in (self._structured, self._objects):
+            for endpoints in (self._generic, self._structured, self._objects):
                 for name, endpoint in reversed(tuple(endpoints.items())):
                     endpoint.close()
                     del endpoints[name]
@@ -182,6 +199,7 @@ class ApplicationStorage:
 
 class StorageClient:
     def __init__(self, dependency, binding):
+        from .storage_json_wire import StorageJsonClient
         from .storage_sdk import StorageIdentity
 
         self._dependency, self._binding = dependency, binding
@@ -189,6 +207,8 @@ class StorageClient:
         identity = metadata['identity']
         self.identity = StorageIdentity(SpaceKey(**identity['space']), identity['dataset_id'])
         self._methods = frozenset(metadata['methods'])
+        self._values = StorageJsonClient(lambda request: self._call('invoke',
+            {'binding': self._binding, 'request': request}), operations=('invoke',))
 
     def _call(self, method, request):
         from .search import SearchGenerationIncomplete, SearchUnavailable
@@ -223,7 +243,9 @@ class StorageClient:
                 {'binding': self._binding, 'request': request}))
             return getattr(client, method)
         def invoke(*args, **kwargs):
-            return decode_value(self._call('invoke', {'binding': self._binding, 'method': method,
-                'args': [encode_value(item) for item in args],
-                'kwargs': {key: encode_value(item) for key, item in kwargs.items()}}))
+            budget = [MAX_INVOKE_NODES]
+            request = {'version': 1, 'op': 'invoke', 'method': method,
+                'args': [encode_value(item, _budget=budget) for item in args],
+                'kwargs': {key: encode_value(item, _budget=budget) for key, item in kwargs.items()}}
+            return decode_value(self._values.call(request), _budget=[MAX_INVOKE_NODES])
         return invoke

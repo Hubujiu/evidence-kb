@@ -43,27 +43,42 @@ def datatype(value):
         return {'kind': 'text'}
     if isinstance(value, String):
         return {'kind': 'string', 'length': value.length}
+    if isinstance(value, Numeric) and not isinstance(value, Float):
+        return {'kind': 'decimal', 'precision': value.precision, 'scale': value.scale,
+                'as_decimal': value.asdecimal, 'decimal_return_scale': value.decimal_return_scale}
     for cls, name in ((NullType, 'null'), (BigInteger, 'bigint'), (Integer, 'integer'), (Boolean, 'boolean'),
-                      (Float, 'float'), (Numeric, 'decimal'), (LargeBinary, 'bytes'), (Date, 'date')):
+                      (Float, 'float'), (LargeBinary, 'bytes'), (Date, 'date')):
         if isinstance(value, cls):
             return {'kind': name}
     raise DatabaseError('STORAGE_EXPRESSION_TYPE_UNSUPPORTED')
 
 
 def restored_type(value):
-    fields(value, {'kind', 'length'}, {'kind'})
+    fields(value, {'kind', 'length', 'precision', 'scale', 'as_decimal', 'decimal_return_scale'}, {'kind'})
     kind = value['kind']
     if kind in ('string', 'exact_string'):
+        fields(value, {'kind', 'length'}, {'kind'})
         length = value.get('length')
         if length is not None and (type(length) is not int or not 1 <= length <= 1000000):
             raise DatabaseError('STORAGE_EXPRESSION_TYPE_UNSUPPORTED')
         if kind == 'exact_string' and length is None:
             raise DatabaseError('STORAGE_EXPRESSION_TYPE_UNSUPPORTED')
         return ExactString(length) if kind == 'exact_string' else String(length)
+    if kind == 'decimal':
+        fields(value, {'kind', 'precision', 'scale', 'as_decimal', 'decimal_return_scale'})
+        precision, scale, result_scale = value['precision'], value['scale'], value['decimal_return_scale']
+        if (precision is not None and (type(precision) is not int or not 1 <= precision <= 1000)
+                or scale is not None and (type(scale) is not int or not 0 <= scale <= 1000)
+                or precision is not None and scale is not None and scale > precision
+                or result_scale is not None and (type(result_scale) is not int or not 0 <= result_scale <= 1000)
+                or type(value['as_decimal']) is not bool):
+            raise DatabaseError('STORAGE_EXPRESSION_TYPE_UNSUPPORTED')
+        return Numeric(precision=precision, scale=scale, asdecimal=value['as_decimal'],
+                       decimal_return_scale=result_scale)
     types = {'null': NullType, 'bigint': BigInteger, 'integer': Integer, 'boolean': Boolean, 'float': Float,
-             'decimal': Numeric, 'bytes': LargeBinary, 'date': Date, 'text': Text, 'json': TypedJSON,
+             'bytes': LargeBinary, 'date': Date, 'text': Text, 'json': TypedJSON,
              'datetime': UtcDateTime}
-    if type(kind) is not str or kind not in types or 'length' in value:
+    if type(kind) is not str or kind not in types or set(value) != {'kind'}:
         raise DatabaseError('STORAGE_EXPRESSION_TYPE_UNSUPPORTED')
     return types[kind]()
 
@@ -121,8 +136,12 @@ def expression(value, params=None):
     if isinstance(value, FunctionElement):
         if value.name not in FUNCTIONS:
             raise DatabaseError('STORAGE_EXPRESSION_FUNCTION_UNSUPPORTED')
+        arguments = tuple(value.clauses)
+        if (value.name == 'count' and len(arguments) == 1 and isinstance(arguments[0], ColumnClause)
+                and arguments[0].is_literal and arguments[0].name == '*'):
+            arguments = ()
         return {'node': 'function', 'name': value.name,
-                'args': [expression(item, params) for item in value.clauses]}
+                'args': [expression(item, params) for item in arguments]}
     try:
         return {'node': 'value', 'value': encode_value(value)}
     except (DatabaseError, TypeError, ValueError):

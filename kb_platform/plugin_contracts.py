@@ -218,13 +218,27 @@ class ContractContext:
         return call['cancel_signal'].wait(timeout)
 
 
-def _spec(definition, manifest, registry, mount):
+def _spec(definition, manifest, registry, mount, validator):
+    manifest = deepcopy(manifest)
+
+    def validate_config(envelope):
+        error = next(validator.iter_errors(wire(envelope['configuration'])), None)
+        if error is not None:
+            raise PluginError('INVALID_PLUGIN_CONFIG', error.message)
+
     def initialize(context, envelope):
         mount(ContractContext(context, definition, manifest, registry), wire(envelope['configuration']))
     identity = json.dumps([manifest['id'], manifest['implementation'], manifest['version']], separators=(',', ':'))
     key = 'contract.' + sha256(identity.encode('utf-8')).hexdigest()
+    properties = {name: {'const': value} for name, value in manifest['config'].items()
+                  if name != 'configuration'}
+    properties['configuration'] = {'type': 'object'}
+    envelope_schema = {'type': 'object', 'properties': properties,
+                       'required': list(manifest['config']), 'additionalProperties': False}
+    validate_config(manifest['config'])
     return PluginSpec(key, tuple(manifest['provides']), tuple(manifest['requires']), initialize,
-                      version=manifest['version'], concurrency=manifest['concurrency'])
+                      version=manifest['version'], concurrency=manifest['concurrency'],
+                      config_schema=envelope_schema, config_check=validate_config)
 
 
 def process_mount(definition, registry, *, cwd, journal):
@@ -281,15 +295,12 @@ class ContractApplication:
             for declaration in definition['requires'].values():
                 registry.methods(declaration['contract'])
             validator = schema_validator(schemas[key])
-            error = next(validator.iter_errors(manifest['config']['configuration']), None)
-            if error is not None:
-                raise PluginError('INVALID_PLUGIN_CONFIG', error.message)
             mount = mounts.get(key)
             if mount is None:
                 root = Path(process_root).resolve()
                 mount = process_mount(definition, registry, cwd=root,
                     journal=root / '.plugin-journal' / manifest['id'])
-            spec = _spec(definition, manifest, registry, mount)
+            spec = _spec(definition, manifest, registry, mount, validator)
             specs.append(spec)
             entries.append({'id': manifest['id'], 'use': spec.key, 'config': manifest['config']})
         self.plan = plan

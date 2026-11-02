@@ -11,6 +11,54 @@ from .contract_application_contracts import ContractApplicationContracts
 class ContractHTTPIntegration(unittest.TestCase):
     setUp = ContractApplicationContracts.setUp
 
+    def test_large_parsed_document_upload_publish_search_and_original_download(self):
+        from fastapi.testclient import TestClient
+        from kb_platform.documents import max_upload_bytes
+        from kb_platform.storage import OriginalStore
+
+        with patch.dict(os.environ, {'KB_DEFER_DEFAULT_APP': '1'}):
+            from kb_platform.api import create_app
+
+            app = create_app(self.settings, profile=self.profile, models=self.models,
+                             storage_configuration=self.storage)
+        headers = {'Authorization': 'Bearer ' + self.token}
+        content = (b'Evidence line with number 42.\n' * 4000)[:100000]
+        self.assertLess(len(content), max_upload_bytes())
+        with TestClient(app) as client:
+            created = client.post('/scopes', headers=headers, json={'name': 'Large parse JSON boundary'})
+            self.assertEqual(created.status_code, 201, created.text)
+            scope = created.json()['scope_id']
+            uploaded = client.post(f'/knowledge-bases/{scope}/sources', headers=headers,
+                files={'file': ('100KB.txt', content, 'text/plain')},
+                data={'policy': json.dumps({'llm_context': True, 'allowed_providers': ['synthetic']})})
+            self.assertEqual(uploaded.status_code, 201, uploaded.text[:1000])
+            document = uploaded.json()['document']
+            self.assertEqual(document['status'], 'READY')
+            self.assertGreater(len(json.dumps(document).encode()), 4 * 1024 * 1024)
+            self.assertGreater(len(document['elements']), 1)
+            staged = client.post(f'/knowledge-bases/{scope}/builds', headers=headers, json={'channels': ['bm25']})
+            self.assertEqual(staged.status_code, 201, staged.text)
+            published = client.post(f'/knowledge-bases/{scope}/builds/{staged.json()["build_id"]}/publish',
+                                    headers=headers)
+            self.assertEqual(published.status_code, 200, published.text)
+            found = client.post(f'/knowledge-bases/{scope}/search', headers=headers, json={'query': 'number 42'})
+            self.assertEqual(found.status_code, 200, found.text)
+            self.assertTrue(found.json()['hits'])
+            citation = found.json()['hits'][0]['citation_id']
+            reads, read = [], OriginalStore.read
+
+            def counted(store, *args, **kwargs):
+                reads.append(args)
+                return read(store, *args, **kwargs)
+
+            with patch.object(OriginalStore, 'read', counted):
+                original = client.get(f'/knowledge-bases/{scope}/citations/{citation}/original', headers=headers)
+            self.assertEqual(original.status_code, 200, original.text[:1000])
+            self.assertEqual(original.content, content)
+            self.assertEqual(len(reads), 1)
+            self.assertEqual(self.physical, [])
+        self.assertEqual(app.state.root_plugins.inspect()['state'], 'disposed')
+
     def test_http_uses_access_plugin_and_delivers_full_turn_without_private_identity_loader(self):
         from fastapi.testclient import TestClient
 

@@ -377,6 +377,10 @@ class StructuredModel:
     def complete_json(self, messages, **options):
         return self.complete(messages, **options).to_dict()
 
+    def turn_budget_snapshot(self, session_id, turn_id):
+        with self._service.lease(self._name, Capability.CHAT, expected=self._entry):
+            return self._model.turn_budget_snapshot(session_id, turn_id)
+
     def accept_completion(self, envelope):
         with self._service.lease(self._name, Capability.CHAT, expected=self._entry):
             self._model.accept_completion(envelope)

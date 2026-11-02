@@ -110,18 +110,27 @@ class HostIntegration(unittest.TestCase):
         self.assertLess(disposed.index('dependent'), disposed.index('base'))
         self.assertLess(disposed.index('child-dependent'), disposed.index('override'))
 
-    def test_contract_application_http_uses_access_plugin_and_delivers_full_turn(self):
+    def test_contract_application_http_integrations(self):
         from .contract_http_integration import ContractHTTPIntegration
 
-        case = ContractHTTPIntegration(
-            'test_http_uses_access_plugin_and_delivers_full_turn_without_private_identity_loader')
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(ContractHTTPIntegration)
+        count = suite.countTestCases()
+        self.assertGreater(count, 0)
         stream = io.StringIO()
-        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(unittest.TestSuite([case]))
+        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
         self.capture(0 if result.wasSuccessful() else 1, stream.getvalue(), '')
-        self.assertEqual(result.testsRun, 1)
+        self.assertEqual(result.testsRun, count)
         self.assertFalse(result.skipped)
         self.assertFalse(result.expectedFailures)
         self.assertTrue(result.wasSuccessful(), stream.getvalue())
+
+    def test_generic_storage_process_transfers_large_index_and_document_values(self):
+        from .generic_storage_contracts import verify_generic_storage_process
+
+        result = verify_generic_storage_process(self.directory)
+        self.assertEqual(result, {'stage': 'VERIFIED', 'read_records': 'VERIFIED', 'get_many': 'VERIFIED',
+            'bounded_frames': True, 'external_model_calls': 0, 'storage_runtime': 'python', 'host_state': 'disposed'})
+        self.capture(0, json.dumps(result), '')
 
     def test_non_python_worker_uses_same_parent_runtime_protocol(self):
         profile = self.profile('generic')

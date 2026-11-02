@@ -638,32 +638,59 @@ class Platform:
                           'tie_break': list(TIE_BREAK_FIELDS),
                           'fusion': {'method': 'rrf', 'k': 60} if channel == 'hybrid' else None}}
 
-    def resolve_citation(self, actor, kb_id, citation_id, purpose='preview'):
+    def authorize_ingest_result(self, actor, kb_id, source_id, source_version_id, parse_snapshot_id):
+        with self._tx(actor, kb_id) as conn:
+            self._lock_authority(conn, actor)
+            self._auth(conn, actor, kb_id, 'kb.write')
+            self._source(conn, actor, source_id, owner=True)
+            row = conn.execute(KnowledgeQuery.BINDING_ACCESS,
+                               (actor.tenant_id, kb_id, source_id)).fetchone()
+            if (not row or row['source_version_id'] != source_version_id
+                    or row['parse_snapshot_id'] != parse_snapshot_id):
+                _deny()
+
+    def authorize_original(self, actor, kb_id, citation_id, purpose='preview', *, processing_policy=None):
         if purpose not in {'preview', 'download', 'llm_context'}:
             raise PlatformError('INVALID_PURPOSE', 'Unknown citation purpose')
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id)
-            row = conn.execute(KnowledgeQuery.CITATION_RESOLVE,
-                               (actor.tenant_id, kb_id, citation_id)).fetchone()
+            if processing_policy is None:
+                row = conn.execute(KnowledgeQuery.CITATION_RESOLVE,
+                                   (actor.tenant_id, kb_id, citation_id)).fetchone()
+            else:
+                row = conn.execute(KnowledgeQuery.CITATION_ACCESS,
+                                   (actor.tenant_id, kb_id, citation_id)).fetchone()
+            if row and processing_policy is not None:
+                row = {**row, 'document': {'processing_policy': processing_policy}}
             if not row or not self._allowed([row], actor, purpose):
                 _deny()
-            if purpose == 'download':
-                try:
-                    self.store.read(row['original_path'], actor.tenant_id, row['original_sha256'])
-                except (OSError, ValueError) as exc:
-                    raise PlatformError('SOURCE_INTEGRITY', 'Original backup unavailable or corrupt', 503) from exc
-            return {key: row[key] for key in ('citation_id', 'kb_id', 'source_id', 'source_version_id', 'filename',
+            result = {key: row[key] for key in ('citation_id', 'kb_id', 'source_id', 'source_version_id', 'filename',
                     'original_path', 'original_sha256', 'text', 'anchors', 'media_type', 'policy', 'table_data',
                     'build_id', 'parse_snapshot_id', 'evidence_ids')}
+            result['processing_policy'] = dict(row.get('document', {}).get('processing_policy', {}))
+            return result
+
+    def resolve_citation(self, actor, kb_id, citation_id, purpose='preview'):
+        target = self.authorize_original(actor, kb_id, citation_id, purpose)
+        if purpose == 'download':
+            try:
+                self.store.read(target['original_path'], actor.tenant_id, target['original_sha256'])
+            except (OSError, ValueError) as exc:
+                raise PlatformError('SOURCE_INTEGRITY', 'Original backup unavailable or corrupt', 503) from exc
+        return {key: value for key, value in target.items() if key != 'processing_policy'}
 
     def read_original(self, actor, kb_id, citation_id, purpose='download'):
-        target = self.resolve_citation(actor, kb_id, citation_id, purpose=purpose)
+        target = self.authorize_original(actor, kb_id, citation_id, purpose)
         try:
             data = self.store.read(target['original_path'], actor.tenant_id, target['original_sha256'])
         except (OSError, ValueError) as error:
             raise PlatformError('SOURCE_INTEGRITY', 'Original backup unavailable or corrupt', 503) from error
-        self.resolve_citation(actor, kb_id, citation_id, purpose=purpose)
+        current = self.authorize_original(actor, kb_id, citation_id, purpose,
+                                          processing_policy=target['processing_policy'])
+        if any(current[key] != target[key] for key in (
+                'source_id', 'source_version_id', 'parse_snapshot_id', 'original_sha256', 'build_id')):
+            raise PlatformError('SOURCE_INTEGRITY', 'Original identity changed during read', 503)
         return data
 
     def table_query(self, actor, kb_id, citation_id, operation='rows', column=None, filters=None):
