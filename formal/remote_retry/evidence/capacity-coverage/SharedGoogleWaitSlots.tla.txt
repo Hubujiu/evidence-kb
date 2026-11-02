@@ -1,0 +1,111 @@
+----------------------- MODULE SharedGoogleWaitSlots -----------------------
+EXTENDS Naturals, Sequences, FiniteSets, TLC
+CONSTANTS EarlyRelease, BypassFifo, IgnoreCooldown, BypassCapacity
+VARIABLES pc, queue, owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled
+vars == <<pc, queue, owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Clients == {"a", "b"}
+Capacity == 1
+WaitCap == 2
+Max(a, b) == IF a > b THEN a ELSE b
+Required == Max(nextSlot, cooldown)
+PolicyDelay == Max(nextSlot, IF IgnoreCooldown THEN 0 ELSE cooldown) - now
+Remove(q, r) == SelectSeq(q, LAMBDA x: x # r)
+Init ==
+    /\ pc = [r \in Clients |-> "idle"] /\ queue = <<>> /\ owners = {} /\ active = {} /\ claimLog = <<>>
+    /\ now = 0 /\ nextSlot = 0 /\ cooldown = 0
+    /\ started = [r \in Clients |-> 0] /\ waited = [r \in Clients |-> 0] /\ wakeAt = [r \in Clients |-> 0]
+    /\ reservedAt = [r \in Clients |-> 3] /\ requiredAt = [r \in Clients |-> 0] /\ sentAt = [r \in Clients |-> 3]
+    /\ deferred = {} /\ cancelled = {}
+Queue(r) ==
+    /\ pc[r] = "idle"
+    /\ pc' = [pc EXCEPT ![r] = "queued"]
+    /\ queue' = Append(queue, r)
+    /\ UNCHANGED <<owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Claim(r) ==
+    /\ pc[r] = "queued" /\ (BypassCapacity \/ Cardinality(owners) < Capacity) /\ (BypassFifo \/ Head(queue) = r)
+    /\ pc' = [pc EXCEPT ![r] = "rate"]
+    /\ queue' = Remove(queue, r)
+    /\ owners' = owners \cup {r}
+    /\ claimLog' = Append(claimLog, [request |-> r, head |-> Head(queue)])
+    /\ started' = [started EXCEPT ![r] = now]
+    /\ UNCHANGED <<active, now, nextSlot, cooldown, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+InterruptQueue(r) ==
+    /\ pc[r] = "queued"
+    /\ pc' = [pc EXCEPT ![r] = "done"]
+    /\ queue' = Remove(queue, r)
+    /\ UNCHANGED <<owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Reserve(r) ==
+    /\ pc[r] = "rate" /\ PolicyDelay <= 0
+    /\ pc' = [pc EXCEPT ![r] = "reserved"]
+    /\ nextSlot' = now + 1
+    /\ waited' = [waited EXCEPT ![r] = now - started[r]]
+    /\ reservedAt' = [reservedAt EXCEPT ![r] = now]
+    /\ requiredAt' = [requiredAt EXCEPT ![r] = Required]
+    /\ UNCHANGED <<queue, owners, active, claimLog, now, cooldown, started, wakeAt, sentAt, deferred, cancelled>>
+Sleep(r) ==
+    /\ pc[r] = "rate" /\ PolicyDelay > 0 /\ now - started[r] + PolicyDelay <= WaitCap
+    /\ pc' = [pc EXCEPT ![r] = "waiting"]
+    /\ wakeAt' = [wakeAt EXCEPT ![r] = now + PolicyDelay]
+    /\ UNCHANGED <<queue, owners, active, claimLog, now, nextSlot, cooldown, started, waited, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+WaitRefused(r) ==
+    /\ pc[r] = "rate" /\ PolicyDelay > 0 /\ now - started[r] + PolicyDelay > WaitCap
+    /\ pc' = [pc EXCEPT ![r] = "complete"]
+    /\ waited' = [waited EXCEPT ![r] = now - started[r]]
+    /\ UNCHANGED <<queue, owners, active, claimLog, now, nextSlot, cooldown, started, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Wake(r) ==
+    /\ pc[r] = "waiting" /\ now >= wakeAt[r]
+    /\ pc' = [pc EXCEPT ![r] = "rate"]
+    /\ UNCHANGED <<queue, owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Send(r) ==
+    /\ pc[r] = "reserved" /\ r \notin cancelled
+    /\ pc' = [pc EXCEPT ![r] = "running"]
+    /\ active' = active \cup {r}
+    /\ sentAt' = [sentAt EXCEPT ![r] = now]
+    /\ UNCHANGED <<queue, owners, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, deferred, cancelled>>
+RefuseSend(r) ==
+    /\ pc[r] = "reserved" /\ r \in cancelled
+    /\ pc' = [pc EXCEPT ![r] = "complete"]
+    /\ UNCHANGED <<queue, owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Defer(r, hint) ==
+    /\ pc[r] = "running" /\ r \notin deferred
+    /\ cooldown' = Max(cooldown, now + hint)
+    /\ deferred' = deferred \cup {r}
+    /\ UNCHANGED <<pc, queue, owners, active, claimLog, now, nextSlot, started, waited, wakeAt, reservedAt, requiredAt, sentAt, cancelled>>
+WorkSettled(r) ==
+    /\ r \in active
+    /\ active' = active \ {r}
+    /\ pc' = [pc EXCEPT ![r] = IF pc[r] = "done" THEN "done" ELSE "complete"]
+    /\ UNCHANGED <<queue, owners, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Release(r) ==
+    /\ r \in owners /\ (pc[r] = "complete" \/ (EarlyRelease /\ pc[r] = "running"))
+    /\ owners' = owners \ {r}
+    /\ pc' = [pc EXCEPT ![r] = "done"]
+    /\ UNCHANGED <<queue, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Cancel(r) ==
+    /\ pc[r] # "done" /\ r \notin cancelled
+    /\ cancelled' = cancelled \cup {r}
+    /\ UNCHANGED <<pc, queue, owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred>>
+Clock ==
+    /\ now < 2
+    /\ now' = now + 1
+    /\ UNCHANGED <<pc, queue, owners, active, claimLog, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
+Next == Clock \/ (\E r \in Clients: Queue(r) \/ Claim(r) \/ InterruptQueue(r) \/ Reserve(r) \/ Sleep(r)
+    \/ WaitRefused(r) \/ Wake(r) \/ Send(r) \/ RefuseSend(r) \/ WorkSettled(r) \/ Release(r) \/ Cancel(r)
+    \/ (\E hint \in {1, 3}: Defer(r, hint)))
+Spec == Init /\ [][Next]_vars
+TypeOK ==
+    /\ pc \in [Clients -> {"idle", "queued", "rate", "waiting", "reserved", "running", "complete", "done"}]
+    /\ owners \subseteq Clients /\ active \subseteq Clients /\ cancelled \subseteq Clients /\ deferred \subseteq Clients
+    /\ now \in 0..2 /\ nextSlot \in 0..3 /\ cooldown \in 0..5
+    /\ started \in [Clients -> 0..2] /\ waited \in [Clients -> 0..2] /\ wakeAt \in [Clients -> 0..5]
+    /\ reservedAt \in [Clients -> 0..3] /\ requiredAt \in [Clients -> 0..5] /\ sentAt \in [Clients -> 0..3]
+QueueOwnership == {queue[i]: i \in 1..Len(queue)} = {r \in Clients: pc[r] = "queued"} /\ Len(queue) = Cardinality({queue[i]: i \in 1..Len(queue)})
+SlotCapacity == Cardinality(owners) <= Capacity
+NoEarlyCleanup == active \subseteq owners
+FifoClaims == \A i \in 1..Len(claimLog): claimLog[i].request = claimLog[i].head
+ReservationAdmission == \A r \in Clients: reservedAt[r] < 3 => reservedAt[r] >= requiredAt[r]
+ActualSendRequiresReservation == \A r \in Clients: sentAt[r] < 3 => reservedAt[r] <= sentAt[r]
+SuccessUnreachable == ~(pc = [r \in Clients |-> "done"] /\ sentAt["a"] < 3 /\ sentAt["b"] < 3 /\ owners = {} /\ active = {})
+SameWireTimeUnreachable == ~(sentAt["a"] < 3 /\ sentAt["a"] = sentAt["b"] /\ reservedAt["a"] # reservedAt["b"])
+OneSlotWaitUnreachable == ~(Cardinality(owners) = 1 /\ active = owners /\ Len(queue) = 1)
+=============================================================================

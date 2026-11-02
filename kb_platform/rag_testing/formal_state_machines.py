@@ -143,6 +143,10 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
             if identity in ids or not re.fullmatch(r'[a-z][a-z0-9_-]+', identity):
                 raise ValueError(f'Duplicate or invalid machine id: {identity}')
             ids.add(identity)
+            if identity == 'remote_retry_ownership':
+                from kb_platform.rag_testing.remote_retry_lint import OWNER, SDK, remote_retry_source_violations
+                errors.extend(f'{identity}: {error}' for error in remote_retry_source_violations(
+                    local_file(root, OWNER).read_text('utf-8'), local_file(root, SDK).read_text('utf-8')))
             if identity == 'provider_admission':
                 source = local_file(root, 'kb_platform/remote.py').read_text('utf-8')
                 errors.extend(f'{identity}: {error}' for error in presend_admission_violations(source))

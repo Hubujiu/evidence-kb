@@ -2004,6 +2004,371 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "remote_retry_ownership",
+      "status": "partial",
+      "owners": [
+        "kb_platform/remote.py",
+        "kb_platform/luna_sdk.py",
+        "kb_platform/provider_runtime.py"
+      ],
+      "states": [
+        "logical request -> transport attempt/observed receipt -> wait or auth/format continuation -> terminal; FIFO claim -> rate reservation -> actual work -> cleanup"
+      ],
+      "transitions": [
+        "_Transport._post",
+        "LunaClient._complete",
+        "GoogleEmbeddingProvider._post/_embed/_vertex_headers",
+        "_GoogleRequestPolicy.wait/defer",
+        "_FifoSlots.__enter__/__exit__",
+        "luna_sdk.chat_response"
+      ],
+      "invariants": [
+        "UNKNOWN is not replayed; each new model dispatch gets a linked physical identity; per-stage transport/wait and one correction or auth continuation have separate accounting; current-token adoption does not imply a new refresh; cooldown reservation and FIFO ownership cannot release actual work early. HTTP ERROR does not prove rollback or zero usage."
+      ],
+      "assumptions": [
+        "Pinned OpenAI 2.54.0 SDK max_retries=0; runtime owns model retry. Pinned google-auth 2.62.0 token request callback retry loop is separate from model dispatch and can invoke up to three callbacks per modeled refresh; callbacks do not prove a count of network wire transmissions.",
+        "Three separate finite safety abstractions, not their full product composition. Initial Google credential is valid. Current-token adoption is an environment action representing a concurrent successful refresh; the real auth lock is tested with Events, not fully refined in TLA.",
+        "Transport model time/waits are abstract units; shared policy models two requests with explicit one-slot and two-slot profiles and ticks 0..2. Atomic lock sections and stable caller-owned context lifetimes are abstractions; cancellation need not interrupt a blocked OS/SDK wait immediately."
+      ],
+      "exclusions": [
+        "ProviderCircuit generation, durable receipt implementation and post-receipt admission are separate existing owners; their production fixes are not overwritten.",
+        "No claim of a global Luna wait cap across format stages, hard real-time sleep cap, strict physical-wire send spacing, OAuth wire-call count, restart idempotency or error-response rollback."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_Transport._post",
+          "sha256": "321e8284a57a60e28671231a65f30ebfd6f6def9d5b78972191e112b57e6d84e"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_Transport._send_attempt",
+          "sha256": "4ba79e787d7e16e6ce3a48c50135719f1482a048eba7b075e118bc0a43e703ff"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "LunaClient._complete",
+          "sha256": "7d055c02682f9e7f5c9e4eb63e89f0157b04922d990d5cb1fa9141a1dc7fd890"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_GoogleRequest.metadata",
+          "sha256": "1a21581cf4b057837c165e7540f7d734dc60065462fd336545ce38e7d5d5e966"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "GoogleEmbeddingProvider._post",
+          "sha256": "4f6eb4f2e5cbd0068852763c994817a17c9caaaa7f11189bef6141aa37476bc7"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "GoogleEmbeddingProvider._embed",
+          "sha256": "bbedae8211900b7e747ae7f3f4f4e6389c8c7f7d6df68d4ec75da0cdbe016a6e"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "GoogleEmbeddingProvider._vertex_headers",
+          "sha256": "e290fa70a5a18551a7749cf307dbe3b848f9d512cc29ad9611acacd0aecadb5f"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_GoogleRequestPolicy.wait",
+          "sha256": "587868eca2aa027bae49aad37e056139a191498a48186bbe2d742e39eb414816"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_GoogleRequestPolicy.defer",
+          "sha256": "07454aa001d40743cb796c21be55d438882de13e3209a92d355ba84c839d5466"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_FifoSlots.__enter__",
+          "sha256": "f6ef52bfc6c5b66fe60097887ea709ae3e41aa39d4a74c6053c2454c00ca3576"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_FifoSlots.__exit__",
+          "sha256": "cd4b7368d2470c8b70afde641b396b44394a4715c1f2653b714f145e7343f90e"
+        },
+        {
+          "path": "kb_platform/luna_sdk.py",
+          "language": "python",
+          "symbol": "chat_response",
+          "sha256": "1d39e78a74d6b314d42e014423236402558af8a37064658cf1234a2d6e477022"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "classify_failure",
+          "sha256": "4adc66c521182b504c421700567b44159cf359595ba8f96ec5156830a58632ef"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "retry_after_seconds",
+          "sha256": "4a76ae50a9cabbeecf4053de1943723e1d4b4cc6004e8b82eb473c539661df79"
+        }
+      ],
+      "models": [
+        {
+          "id": "remote_transport_format",
+          "module": "formal/remote_retry/RemoteRetryFormat.tla",
+          "config": "formal/remote_retry/RemoteRetryFormat.cfg",
+          "invariants": [
+            "TypeOK",
+            "ActualAttemptAccounting",
+            "NoUnknownReplay",
+            "IdentityOwnership",
+            "RetryLinks",
+            "FormatLimit",
+            "TransportLimit",
+            "WaitAdmission",
+            "KnownNotSent",
+            "NoPendingReplay"
+          ],
+          "properties": [],
+          "bounds": {
+            "logical_requests": 1,
+            "format_stages": 2,
+            "transport_attempts_per_stage": 2,
+            "clock_ticks": 5,
+            "wait_units_per_stage": 2,
+            "hint_units": [
+              0,
+              1,
+              3
+            ]
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "google_retry_auth",
+          "module": "formal/remote_retry/GoogleRetryAuth.tla",
+          "config": "formal/remote_retry/GoogleRetryAuth.cfg",
+          "invariants": [
+            "TypeOK",
+            "ModelAccounting",
+            "SharedRetryBudget",
+            "SingleAuthenticationStage",
+            "NoUnknownReplay",
+            "LinkedPhysicalAttempts",
+            "OAuthInvocationBound"
+          ],
+          "properties": [],
+          "bounds": {
+            "logical_requests": 1,
+            "transport_retries": 1,
+            "authentication_continuations": 1,
+            "sdk_token_callback_attempts_per_refresh": 3
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "shared_google_wait_slots",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/SharedGoogleWaitSlots.cfg",
+          "invariants": [
+            "TypeOK",
+            "QueueOwnership",
+            "SlotCapacity",
+            "NoEarlyCleanup",
+            "FifoClaims",
+            "ReservationAdmission",
+            "ActualSendRequiresReservation"
+          ],
+          "properties": [],
+          "bounds": {
+            "requests": 2,
+            "slots": 2,
+            "clock_ticks": 2,
+            "wait_cap_units": 2,
+            "cooldown_hints": [
+              1,
+              3
+            ]
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 384
+        },
+        {
+          "id": "shared_google_one_slot",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/OneSlot.cfg",
+          "invariants": [
+            "TypeOK",
+            "QueueOwnership",
+            "SlotCapacity",
+            "NoEarlyCleanup",
+            "FifoClaims",
+            "ReservationAdmission",
+            "ActualSendRequiresReservation"
+          ],
+          "properties": [],
+          "bounds": {
+            "requests": 2,
+            "slots": 1,
+            "clock_ticks": 2,
+            "wait_cap_units": 2,
+            "cooldown_hints": [
+              1,
+              3
+            ]
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 384
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "remote_seeded_unknown_replay",
+          "module": "formal/remote_retry/RemoteRetryFormat.tla",
+          "config": "formal/remote_retry/SeededUnknownReplay.cfg",
+          "expected_invariant": "NoUnknownReplay",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_identity_reuse",
+          "module": "formal/remote_retry/RemoteRetryFormat.tla",
+          "config": "formal/remote_retry/SeededIdentityReuse.cfg",
+          "expected_invariant": "IdentityOwnership",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_third_format",
+          "module": "formal/remote_retry/RemoteRetryFormat.tla",
+          "config": "formal/remote_retry/SeededThirdFormat.cfg",
+          "expected_invariant": "FormatLimit",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_hint_clamp",
+          "module": "formal/remote_retry/RemoteRetryFormat.tla",
+          "config": "formal/remote_retry/SeededHintClamp.cfg",
+          "expected_invariant": "WaitAdmission",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_success_reachable",
+          "module": "formal/remote_retry/RemoteRetryFormat.tla",
+          "config": "formal/remote_retry/SuccessReachable.cfg",
+          "expected_invariant": "SuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_auth_budget_reset",
+          "module": "formal/remote_retry/GoogleRetryAuth.tla",
+          "config": "formal/remote_retry/SeededAuthBudgetReset.cfg",
+          "expected_invariant": "SharedRetryBudget",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_repeated_authentication",
+          "module": "formal/remote_retry/GoogleRetryAuth.tla",
+          "config": "formal/remote_retry/SeededRepeatedAuthentication.cfg",
+          "expected_invariant": "SingleAuthenticationStage",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_o_auth_model_count",
+          "module": "formal/remote_retry/GoogleRetryAuth.tla",
+          "config": "formal/remote_retry/SeededOAuthModelCount.cfg",
+          "expected_invariant": "ModelAccounting",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_google_success_reachable",
+          "module": "formal/remote_retry/GoogleRetryAuth.tla",
+          "config": "formal/remote_retry/GoogleSuccessReachable.cfg",
+          "expected_invariant": "SuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_early_slot_release",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/SeededEarlySlotRelease.cfg",
+          "expected_invariant": "NoEarlyCleanup",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_fifo_bypass",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/SeededFifoBypass.cfg",
+          "expected_invariant": "FifoClaims",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_seeded_cooldown_bypass",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/SeededCooldownBypass.cfg",
+          "expected_invariant": "ReservationAdmission",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_slots_success_reachable",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/SlotsSuccessReachable.cfg",
+          "expected_invariant": "SuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_same_wire_time_reachable",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/SameWireTimeReachable.cfg",
+          "expected_invariant": "SameWireTimeUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_capacity_bypass",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/SeededCapacityBypass.cfg",
+          "expected_invariant": "SlotCapacity",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_one_slot_wait_reachable",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/OneSlotWaitReachable.cfg",
+          "expected_invariant": "OneSlotWaitUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Unbounded requests, threads, times, provider delays and SDK internals; no fairness/liveness is asserted.",
+        "Full concurrent composition of auth, cooldown, slots, durable receipts and format correction; clock/wire precision and arbitrary process crashes.",
+        "Real provider side effects and future/unreported usage are not inferred from observed response state; actual temporary fixtures are controlled, not paid provider evaluations.",
+        "Structural lint and source bindings are targeted regression guards, not compiler-level refinement or absence-of-bugs proof."
+      ]
     }
   ]
 }

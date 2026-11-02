@@ -1,0 +1,48 @@
+{
+  "base": "54a2686ebde6e2b88662e3d695ffa53be3eb36e9",
+  "outcome": "PASS",
+  "actual_mock_dispatches": 4,
+  "attempt": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "format_attempt": [
+    1,
+    1,
+    2,
+    2
+  ],
+  "transport_attempt": [
+    1,
+    2,
+    1,
+    2
+  ],
+  "receipt_outcomes": [
+    "ERROR",
+    "COMPLETE",
+    "ERROR",
+    "COMPLETE"
+  ],
+  "retry_reasons": [
+    null,
+    "unavailable",
+    "format_correction",
+    "rate_limit"
+  ],
+  "distinct_ids_and_links": true,
+  "original_user_preserved": true,
+  "correction_adds_purpose_schema": true,
+  "planned_sleeps": [
+    0.5,
+    0.5
+  ],
+  "per_format_wait_cap": 0.75,
+  "global_total_planned_wait": 1.0,
+  "unknown_usage_requests": 2,
+  "model_request_ledger_count": 4,
+  "external_calls": 0,
+  "production_changes": false
+}
