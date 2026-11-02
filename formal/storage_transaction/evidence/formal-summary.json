@@ -1,0 +1,98 @@
+{
+  "decision": "PASS",
+  "violations": [],
+  "evidence_contracts": {
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "results": [
+    {
+      "id": "gate-control-positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "states": {
+        "generated": 3,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-seeded-bug",
+      "decision": "PASS",
+      "returncode": 12,
+      "states": {
+        "generated": 2,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-invalid-spec",
+      "decision": "PASS",
+      "returncode": 151,
+      "states": null
+    },
+    {
+      "id": "gate-control-liveness-positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "states": {
+        "generated": 3,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-liveness-bug",
+      "decision": "PASS",
+      "returncode": 13,
+      "states": {
+        "generated": 2,
+        "distinct": 1,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "plugin_lifecycle",
+      "decision": "PASS",
+      "returncode": 0,
+      "states": {
+        "generated": 10307,
+        "distinct": 4821,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "plugin_lifecycle_legacy_superseded_failure",
+      "decision": "PASS",
+      "returncode": 12,
+      "states": {
+        "generated": 11,
+        "distinct": 10,
+        "remaining": 7
+      }
+    },
+    {
+      "id": "storage-commit-knowledge",
+      "decision": "PASS",
+      "returncode": 0,
+      "states": {
+        "generated": 90,
+        "distinct": 47,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "storage-commit-legacy-rollback",
+      "decision": "PASS",
+      "returncode": 12,
+      "states": {
+        "generated": 11,
+        "distinct": 11,
+        "remaining": 6
+      }
+    }
+  ]
+}

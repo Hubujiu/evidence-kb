@@ -56,7 +56,7 @@ class _Handle:
 
     def _run(self):
         manager, active, pending, completed, failure = None, False, None, None, None
-        outcome = {'status': 'ROLLED_BACK', 'operation_id': self.operation_id}
+        outcome = {'status': 'UNKNOWN', 'operation_id': self.operation_id}
         try:
             manager = self._manager()
             resource = manager.__enter__()
@@ -82,6 +82,7 @@ class _Handle:
                     else:
                         error = _Rollback()
                         manager.__exit__(_Rollback, error, None)
+                        outcome['status'] = 'ROLLED_BACK'
                     completed, pending = pending, None
                     break
                 if action == 'ping':
@@ -94,16 +95,14 @@ class _Handle:
                 pending.set_result(result)
                 pending = None
         except BaseException as error:
-            if isinstance(error, CommitUnknown):
-                outcome['status'] = 'UNKNOWN'
             if active:
                 active = False
                 try:
                     manager.__exit__(type(error), error, error.__traceback__)
+                    if not isinstance(error, CommitUnknown):
+                        outcome['status'] = 'ROLLED_BACK'
                 except BaseException as cleanup_error:
                     error = cleanup_error
-                    if isinstance(cleanup_error, CommitUnknown):
-                        outcome['status'] = 'UNKNOWN'
             if not self._ready.done():
                 self._ready.set_exception(error)
             if pending is not None and not pending.done():
@@ -113,6 +112,7 @@ class _Handle:
                 try:
                     error = _Rollback()
                     manager.__exit__(_Rollback, error, None)
+                    outcome['status'] = 'ROLLED_BACK'
                 except BaseException:
                     outcome['status'] = 'UNKNOWN'
             with self._state_lock:
