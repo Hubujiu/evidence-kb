@@ -116,6 +116,18 @@ class StorageGrantGenerationContracts(unittest.TestCase):
 
 
 class StorageGrantLintContracts(unittest.TestCase):
+    def test_storage_review_is_mandatory_for_its_registered_owner(self):
+        import json
+        from unittest.mock import patch
+        from kb_platform.rag_testing.formal_state_machines import registry_violations
+
+        root = Path(__file__).resolve().parents[2]
+        registry = json.loads((root / 'formal/registry-v1.json').read_text())
+        self.assertIn('storage_registry', {item['id'] for item in registry['machines']})
+        with patch('scripts.storage_grant_checks.violations', return_value=['LEASE_GUARD_PROBE']) as check:
+            self.assertIn('LEASE_GUARD_PROBE', registry_violations(root, registry))
+            check.assert_called_once_with(root)
+
     def test_mandatory_lease_review_rejects_bypass_even_without_source_hash_checks(self):
         from scripts.storage_grant_checks import violations
 
