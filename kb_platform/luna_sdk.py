@@ -27,5 +27,5 @@ def chat_response(client, base_url, headers, payload, timeout):
 
 
         if exc.__cause__ is not None:
-            raise exc.__cause__ from None
+            raise exc.__cause__
         raise
