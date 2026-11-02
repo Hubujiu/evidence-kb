@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .knowledge_queries import KnowledgeQuery
+from .knowledge_embedding import embedding_audit
 
 from decimal import Decimal, InvalidOperation
 import math
@@ -299,14 +300,31 @@ class Platform:
             return self.resume_build(actor, kb_id, build_id)
         try:
             if model_enabled:
-                with self._tx(actor, kb_id) as conn:
-                    if self._lock_authority(conn, actor) != authority_revision:
-                        raise PlatformError('STALE_BUILD', 'Authorization changed before model processing', 409)
-                    self._auth(conn, actor, kb_id, 'kb.manage')
-                    eligible = [unit for unit in units if unit['source_id'] in vector_sources and unit['kind'] != 'Page']
-                    vectors = self.embedding_provider.documents([unit['text'] for unit in eligible])
-                    for unit, vector in zip(eligible, vectors, strict=True):
-                        unit['vector'] = vector
+                eligible = [unit for unit in units if unit['source_id'] in vector_sources and unit['kind'] != 'Page']
+                provider = self.embedding_provider
+                if getattr(provider, 'requires_authorization', False):
+                    def authorize():
+                        with self._tx(actor, kb_id) as conn:
+                            if self._lock_authority(conn, actor) != authority_revision:
+                                raise PlatformError('STALE_BUILD', 'Authorization changed before model processing', 409)
+                            current = self._auth(conn, actor, kb_id, 'kb.manage')
+                            if current['revision'] != kb['revision'] or current['manifest_id'] != kb['manifest_id']:
+                                raise PlatformError('STALE_BUILD', 'Knowledge base changed during model processing', 409)
+                        return True
+
+                    audit = embedding_audit(actor, kb_id, build_id, authority_revision, rows)
+                    vectors, size = [], provider.max_batch_size
+                    for start in range(0, len(eligible), size):
+                        vectors.extend(provider.documents([unit['text'] for unit in eligible[start:start + size]],
+                            request_id=f'build-{build_id}-{start}', audit_context=audit, authorize=authorize))
+                else:
+                    with self._tx(actor, kb_id) as conn:
+                        if self._lock_authority(conn, actor) != authority_revision:
+                            raise PlatformError('STALE_BUILD', 'Authorization changed before model processing', 409)
+                        self._auth(conn, actor, kb_id, 'kb.manage')
+                        vectors = provider.documents([unit['text'] for unit in eligible])
+                for unit, vector in zip(eligible, vectors, strict=True):
+                    unit['vector'] = vector
                 self.backend.stage(index, units, vector_dimension=self.embedding_provider.dimension)
             else:
                 self.backend.stage(index, units)
@@ -396,10 +414,7 @@ class Platform:
             if self.embedding_provider is None or self.embedding_provider.manifest != config['embedding']:
                 raise PlatformError('STALE_BUILD', 'Embedding provider differs from frozen build', 409)
             eligible = [u for u in units if u['source_id'] in config['vector_source_ids'] and u['kind'] != 'Page']
-            context = dict(tenant_id=actor.tenant_id, kb_id=kb_id, build_id=build_id, principal=actor.principal_id,
-                acl_revision=str(revision), sources=[dict(source_id=r['source_id'], source_version_id=r['source_version_id'],
-                parse_snapshot_id=r['parse_snapshot_id'], source_text_sha256=sha256(
-                    '\n'.join(e['raw_text'] for e in r['document']['elements']).encode()).hexdigest()) for r in rows])
+            context = embedding_audit(actor, kb_id, build_id, revision, rows)
             jobs = self.embedding_jobs
             jobs.reconcile(actor.tenant_id, kb_id, build_id, self.embedding_provider, authorize)
             try:
@@ -523,11 +538,27 @@ class Platform:
         try:
             dense_hits = []
             if model_query and vector_allowed:
-                with self._tx(actor, kb_id) as conn:
-                    if self._lock_authority(conn, actor) != revision:
-                        raise PlatformError('SCOPE_CHANGED', 'Authorization changed before model processing', 409)
-                    self._auth(conn, actor, kb_id)
-                    vector = self.embedding_provider.query(query)
+                provider = self.embedding_provider
+                if getattr(provider, 'requires_authorization', False):
+                    def authorize():
+                        with self._tx(actor, kb_id) as conn:
+                            if self._lock_authority(conn, actor) != revision:
+                                raise PlatformError('SCOPE_CHANGED', 'Authorization changed before model processing', 409)
+                            current = self._auth(conn, actor, kb_id)
+                            if current['manifest_id'] != kb['manifest_id']:
+                                raise PlatformError('SCOPE_CHANGED', 'Published index changed before model processing', 409)
+                        return True
+
+                    vector = provider.query(query, request_id='knowledge-query-' + uuid4().hex,
+                        audit_context=embedding_audit(actor, kb_id, kb['manifest_id'], revision,
+                                                     vector_allowed, purpose=purpose),
+                        authorize=authorize)
+                else:
+                    with self._tx(actor, kb_id) as conn:
+                        if self._lock_authority(conn, actor) != revision:
+                            raise PlatformError('SCOPE_CHANGED', 'Authorization changed before model processing', 409)
+                        self._auth(conn, actor, kb_id)
+                        vector = provider.query(query)
                 dense_hits = self.backend.dense(build['index_name'], actor.tenant_id, kb_id, vector_allowed,
                                                 vector, candidate_budget // 2 if channel == 'hybrid' else candidate_budget)
                 vector_keys = {(row['binding_id'], row['source_id'], row['source_version_id'], row['parse_snapshot_id'])
