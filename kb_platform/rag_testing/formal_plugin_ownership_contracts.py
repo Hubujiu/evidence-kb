@@ -36,6 +36,11 @@ class PluginOwnershipLintContracts(unittest.TestCase):
             'retired operation retention': ('operation.action.instance)', 'operation.action.host)'),
             'retired reachability': ('.filter(|id| !retained.contains(*id))', '.filter(|id| retained.contains(*id))'),
             'listener total order': ('(*priority, *scope_order, *resource)', '(*resource, *scope_order, *priority)'),
+            'revision update entry': ('self.revision_affected(host, &[id])', 'self.affected_closure(&[id])'),
+            'revision apply entry': ('self.revision_affected(host, &affected)', 'self.affected_closure(&affected)'),
+            'revision pending carry': ('scope.observed_revision != scope.desired_revision', 'scope.observed_revision == scope.desired_revision'),
+            'revision noop identity': ('if initial.is_empty() {', 'if !initial.is_empty() {'),
+            'revision transitive closure': ('self.affected_closure(&pending)', 'initial.to_vec()'),
             'deadline minimum': ('Some(a.min(b))', 'Some(a.max(b))'),
             'expired admission': ('deadline <= self.now', 'deadline < self.now'),
         }

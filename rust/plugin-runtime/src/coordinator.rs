@@ -1249,7 +1249,7 @@ impl Coordinator {
             instance.next_manifest = Some(next);
             self.drain_instance(id);
         }
-        let affected = self.affected_closure(&[id]);
+        let affected = self.revision_affected(host, &[id]);
         let scope = self.scopes.get_mut(&host).unwrap();
         scope.order = order;
         scope.desired_revision += 1;
@@ -1797,7 +1797,7 @@ impl Coordinator {
                 .insert(plugin, id);
             affected.push(id);
         }
-        let affected = self.affected_closure(&affected);
+        let affected = self.revision_affected(host, &affected);
         let scope = self.scopes.get_mut(&host).unwrap();
         scope.order = order;
         if !affected.is_empty() {
@@ -1809,6 +1809,18 @@ impl Coordinator {
         self.prune_retired();
         self.reconcile()?;
         self.inspect(host)
+    }
+
+    fn revision_affected(&self, host: u64, initial: &[u64]) -> Vec<u64> {
+        if initial.is_empty() {
+            return Vec::new();
+        }
+        let scope = &self.scopes[&host];
+        let mut pending = initial.to_vec();
+        if scope.observed_revision != scope.desired_revision {
+            pending.extend(scope.affected.iter().copied());
+        }
+        self.affected_closure(&pending)
     }
 
     fn affected_closure(&self, initial: &[u64]) -> Vec<u64> {

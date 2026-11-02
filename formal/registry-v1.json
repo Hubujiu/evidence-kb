@@ -391,14 +391,17 @@
         "Coordinator::listeners",
         "Coordinator::resource",
         "Coordinator::ack",
-        "Coordinator::prune_retired"
+        "Coordinator::prune_retired",
+        "Coordinator::revision_affected",
+        "Coordinator::affected_closure"
       ],
       "invariants": [
         "No unrelated fresh admission on a draining owner; an already-admitted live chain may acquire nested leases. Cancellation is notification, not completion or resource release.",
         "No dispose with live descendant work; retained dependency identities outlive consumer cleanup; serial concurrent executions share ancestry.",
         "Suppressed unclaimed init cannot dispatch, stale completion cannot publish the replacement epoch, and generation identities are not reused.",
         "Cleanup failure retains the resource; successful cleanup follows reverse registration identity order. Terminal completion is immutable; acknowledgement validates the whole owned terminal batch before deletion.",
-        "Listener snapshots sort priority, scope order, then resource registration identity. Retired instance records remain until operation ownership references are removed."
+        "Listener snapshots sort priority, scope order, then resource registration identity. Retired instance records remain until operation ownership references are removed.",
+        "An unobserved revision retains its earlier affected descendant obligations when another update/apply overlaps; no-op apply does not create a revision, and already-observed historical closure is not retained indefinitely."
       ],
       "assumptions": [
         "Inventory originated at main 8160c051e63952278c5f8a80d1b024ebbe3cea17; this batch uses dependency base 27c4180 and only its explicitly registered finite slices, not all coordinator states.",
@@ -432,85 +435,85 @@
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::reconcile",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::complete",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::acquire",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::drain",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::update",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Instance",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "complete",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "reconcile",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "drain_instance",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "update",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "cancel",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "retry",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "invoke",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "drain",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/tests.rs",
@@ -528,139 +531,157 @@
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Lease",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Scope",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::retained_by_consumer",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::closing_scope_busy",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::open_ancestors",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::is_ancestor",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::lookup_binding",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "cancelled_serial_chain_in_child_retains_both_providers_until_real_completion",
-          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+          "sha256": "743c8f1591dea2fa8ca2a3bfac60b679de838e7edd135aa372c18a8c3688717f"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "inherited_deadline_and_foreign_runtime_rejections_do_not_allocate_leases",
-          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+          "sha256": "743c8f1591dea2fa8ca2a3bfac60b679de838e7edd135aa372c18a8c3688717f"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Operation",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::cancel_unclaimed_init",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::request",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "all_dependencies_gate_unclaimed_disable_and_reenable_dispatch",
-          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+          "sha256": "743c8f1591dea2fa8ca2a3bfac60b679de838e7edd135aa372c18a8c3688717f"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "claimed_disabled_epoch_cannot_publish_after_reenable_or_overwrite_successor",
-          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+          "sha256": "743c8f1591dea2fa8ca2a3bfac60b679de838e7edd135aa372c18a8c3688717f"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Resource",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::ack",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::prune_retired",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::resource",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::listeners",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::apply",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::collect",
-          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "acknowledgement_validates_entire_batch_before_forgetting_any_completion",
-          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+          "sha256": "743c8f1591dea2fa8ca2a3bfac60b679de838e7edd135aa372c18a8c3688717f"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "listener_order_lifo_failure_retry_and_retirement_preserve_resource_identity",
-          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+          "sha256": "743c8f1591dea2fa8ca2a3bfac60b679de838e7edd135aa372c18a8c3688717f"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::revision_affected",
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::affected_closure",
+          "sha256": "90041872fa72e236ec777b300683d16003e20d8ffc4e095d047dd3f570a63792"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "overlapping_updates_keep_earlier_descendant_work_in_revision_fence",
+          "sha256": "743c8f1591dea2fa8ca2a3bfac60b679de838e7edd135aa372c18a8c3688717f"
         }
       ],
       "models": [
@@ -765,6 +786,27 @@
             "operation_ids": 8,
             "cleanup_failures": 1,
             "ack_batches": 2
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-revision-convergence",
+          "module": "formal/plugin_ownership/RevisionConvergence.tla",
+          "config": "formal/plugin_ownership/RevisionConvergence.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoPrematureRevisionObservation",
+            "VersionsNeverOvershoot"
+          ],
+          "properties": [],
+          "bounds": {
+            "owners": 3,
+            "scopes": 2,
+            "root_revisions": 4,
+            "owner_target_versions": 3,
+            "overlapping_updates": 2,
+            "child_collection": 1
           },
           "timeout_seconds": 60,
           "heap_mb": 128
@@ -962,10 +1004,42 @@
           "expected_invariant": "AckRejectionsUnreachable",
           "timeout_seconds": 60,
           "heap_mb": 128
+        },
+        {
+          "id": "plugin-revision-overwrite",
+          "module": "formal/plugin_ownership/RevisionConvergence.tla",
+          "config": "formal/plugin_ownership/RevisionOverwrite.cfg",
+          "expected_invariant": "NoPrematureRevisionObservation",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-revision-overlap-success",
+          "module": "formal/plugin_ownership/RevisionConvergence.tla",
+          "config": "formal/plugin_ownership/RevisionOverlapSuccess.cfg",
+          "expected_invariant": "OverlapSuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-revision-unrelated-success",
+          "module": "formal/plugin_ownership/RevisionConvergence.tla",
+          "config": "formal/plugin_ownership/RevisionUnrelatedSuccess.cfg",
+          "expected_invariant": "UnrelatedSuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-revision-collection-success",
+          "module": "formal/plugin_ownership/RevisionConvergence.tla",
+          "config": "formal/plugin_ownership/RevisionCollectionSuccess.cfg",
+          "expected_invariant": "CollectionSuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
         }
       ],
       "remaining_obligations": [
-        "Current WIP next owners: apply desired_revision/observed_revision and affected closure; dynamic shadowing/isolation/intercept visibility; subtree collection; instance_exited identity; diagnostic bounded retention. These are actual unmodeled transitions, not merely unbounded-system assumptions.",
+        "Current WIP next owners: dynamic shadowing/isolation/intercept visibility; subtree collection internal ownership; instance_exited identity; diagnostic bounded retention. RevisionConvergence now covers overlapping root targets and abstract completed/removed child outcomes, not internal subtree reclamation.",
         "Arbitrary plugin graphs and repeated reconfiguration, all resource/callback payloads, process transport and cross-slice composed execution remain outside the currently registered bounds.",
         "Allocation exhaustion, operating-system/backend guarantees, compiler-level refinement and unbounded progress remain assumptions, not established by hashes or finite safety runs."
       ]

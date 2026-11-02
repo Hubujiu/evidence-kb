@@ -25,6 +25,11 @@ RULES = {
     'retired operation retention': ('prune_retired', 'self.operations.values().map(|operation| operation.action.instance).chain(self.actions.iter().map(|action| action.instance))'),
     'retired reachability': ('prune_retired', '.filter(|id| !retained.contains(*id))'),
     'listener total order': ('listeners', 'listeners.sort_by_key(|(priority, scope_order, resource, _)| { (*priority, *scope_order, *resource) });'),
+    'revision update entry': ('update', 'let affected = self.revision_affected(host, &[id]);'),
+    'revision apply entry': ('apply', 'let affected = self.revision_affected(host, &affected);'),
+    'revision pending carry': ('revision_affected', 'if scope.observed_revision != scope.desired_revision { pending.extend(scope.affected.iter().copied()); }'),
+    'revision noop identity': ('revision_affected', 'if initial.is_empty() { return Vec::new(); }'),
+    'revision transitive closure': ('revision_affected', 'self.affected_closure(&pending)'),
     'deadline minimum': ('acquire', '(Some(a), Some(b)) => Some(a.min(b))'),
     'expired admission': ('acquire', 'if deadline.is_some_and(|deadline| deadline <= self.now) { return Err(Error::new("deadline", "deadline already elapsed")); }'),
 }

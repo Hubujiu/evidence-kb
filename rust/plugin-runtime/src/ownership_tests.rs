@@ -451,3 +451,195 @@ fn listener_order_lifo_failure_retry_and_retirement_preserve_resource_identity()
         successor["instance"]
     );
 }
+
+#[test]
+fn overlapping_updates_keep_earlier_descendant_work_in_revision_fence() {
+    for use_apply in [false, true] {
+        for terminal in ["complete", "remove", "collect"] {
+            let mut runtime = Coordinator::default();
+            let root = create(
+                &mut runtime,
+                vec![plugin("p", &["p"], &[]), plugin("q", &["q"], &[])],
+                None,
+            );
+            for init in poll(&mut runtime, root) {
+                complete(
+                    &mut runtime,
+                    &init,
+                    "ok",
+                    &[init["plugin"].as_str().unwrap()],
+                );
+            }
+            let child = create(
+                &mut runtime,
+                vec![plugin("consumer", &["run"], &["p"])],
+                Some(root),
+            );
+            let initial = poll(&mut runtime, child).remove(0);
+            complete(&mut runtime, &initial, "ok", &["run"]);
+            call(
+                &mut runtime,
+                "update",
+                json!({"host":root,"plugin":"p","config":{"revision":2}}),
+            )
+            .unwrap();
+            if use_apply {
+                let mut p = plugin("p", &["p"], &[]);
+                p["config"] = json!({"revision":2});
+                let mut q = plugin("q", &["q"], &[]);
+                q["config"] = json!({"revision":2});
+                call(
+                    &mut runtime,
+                    "apply",
+                    json!({"host":root,"plugins":[p.clone(),q.clone()]}),
+                )
+                .unwrap();
+                let revision =
+                call(&mut runtime, "inspect", json!({"host":root})).unwrap()["desired_revision"]
+                    .clone();
+                call(&mut runtime, "apply", json!({"host":root,"plugins":[p,q]})).unwrap();
+                assert_eq!(
+                    call(&mut runtime, "inspect", json!({"host":root})).unwrap()["desired_revision"],
+                    revision
+                );
+            } else {
+                call(
+                    &mut runtime,
+                    "update",
+                    json!({"host":root,"plugin":"q","config":{"revision":2}}),
+                )
+                .unwrap();
+            }
+            let mut pending_child = None;
+            loop {
+                let actions = poll(&mut runtime, root);
+                if actions.is_empty() {
+                    break;
+                }
+                for action in actions {
+                    match action["kind"].as_str().unwrap() {
+                        "cleanup" => complete(&mut runtime, &action, "ok", &[]),
+                        "init" if action["plugin"] == "consumer" => pending_child = Some(action),
+                        "init" => complete(
+                            &mut runtime,
+                            &action,
+                            "ok",
+                            &[action["plugin"].as_str().unwrap()],
+                        ),
+                        "cancel" => (),
+                        kind => panic!("unexpected action {kind}"),
+                    }
+                }
+            }
+            let pending_child = pending_child.unwrap();
+            assert_eq!(
+                call(&mut runtime, "inspect", json!({"host":child})).unwrap()["state"],
+                "starting"
+            );
+            let before = call(&mut runtime, "inspect", json!({"host":root})).unwrap();
+            assert_eq!(
+                before["operation"]["status"], "pending",
+                "root snapshot: {before}"
+            );
+            assert!(
+                before["observed_revision"].as_u64().unwrap()
+                    < before["desired_revision"].as_u64().unwrap()
+            );
+            assert!(
+                before["operation"]["affected_instances"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&pending_child["instance"])
+            );
+            if terminal == "complete" {
+                complete(&mut runtime, &pending_child, "ok", &["run"]);
+            } else {
+                if terminal == "collect" {
+                    call(&mut runtime, "drain", json!({"host":child})).unwrap();
+                } else {
+                    call(
+                        &mut runtime,
+                        "update",
+                        json!({"host":child,"plugin":"consumer","remove":true}),
+                    )
+                    .unwrap();
+                }
+                complete(&mut runtime, &pending_child, "ok", &["run"]);
+                loop {
+                    let actions = poll(&mut runtime, child);
+                    if actions.is_empty() {
+                        break;
+                    }
+                    for action in actions {
+                        if action["kind"] == "cleanup" {
+                            complete(&mut runtime, &action, "ok", &[]);
+                        }
+                    }
+                }
+                if terminal == "collect" {
+                    call(&mut runtime, "collect", json!({"host":child})).unwrap();
+                }
+            }
+            let after = call(&mut runtime, "inspect", json!({"host":root})).unwrap();
+            assert_eq!(after["operation"]["status"], "complete");
+            assert_eq!(after["observed_revision"], after["desired_revision"]);
+            if terminal == "complete" {
+                call(
+                    &mut runtime,
+                    "update",
+                    json!({"host":child,"plugin":"consumer","config":{"independent":true}}),
+                )
+                .unwrap();
+                if use_apply {
+                    let mut p = plugin("p", &["p"], &[]);
+                    p["config"] = json!({"revision":2});
+                    let mut q = plugin("q", &["q"], &[]);
+                    q["config"] = json!({"revision":3});
+                    call(&mut runtime, "apply", json!({"host":root,"plugins":[p,q]})).unwrap();
+                } else {
+                    call(
+                        &mut runtime,
+                        "update",
+                        json!({"host":root,"plugin":"q","config":{"revision":3}}),
+                    )
+                    .unwrap();
+                }
+                let mut independent = None;
+                loop {
+                    let actions = poll(&mut runtime, root);
+                    if actions.is_empty() {
+                        break;
+                    }
+                    for action in actions {
+                        match action["kind"].as_str().unwrap() {
+                            "cleanup" => complete(&mut runtime, &action, "ok", &[]),
+                            "init" if action["plugin"] == "consumer" => independent = Some(action),
+                            "init" => complete(
+                                &mut runtime,
+                                &action,
+                                "ok",
+                                &[action["plugin"].as_str().unwrap()],
+                            ),
+                            "cancel" => (),
+                            kind => panic!("unexpected action {kind}"),
+                        }
+                    }
+                }
+                let independent = independent.unwrap();
+                let latest = call(&mut runtime, "inspect", json!({"host":root})).unwrap();
+                assert_eq!(latest["operation"]["status"], "complete");
+                assert!(
+                    !latest["operation"]["affected_instances"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&independent["instance"])
+                );
+                assert_eq!(
+                    call(&mut runtime, "inspect", json!({"host":child})).unwrap()["state"],
+                    "starting"
+                );
+                complete(&mut runtime, &independent, "ok", &["run"]);
+            }
+        }
+    }
+}

@@ -1,9 +1,10 @@
 # Plugin protocol ownership: additional finite slices
 
 Base: `27c4180e1a66d0b7c9d554eff9620ef16a49023b` (PR31 and PR32 dependency
-integration). This independent, model-only batch leaves the existing
+integration). This independent batch leaves the existing
 `formal/plugin_lifecycle/PluginLifecycle.tla` and its superseded-initialization
-fix unchanged. No new production defect is claimed by a seeded counterexample.
+fix unchanged. Stages 1–3 are model-only; stage 4 separately reproduces and fixes
+a concrete revision-convergence defect. Seeded mutants alone are not bug evidence.
 
 ## Mature reference before modeling
 
@@ -132,11 +133,55 @@ mutations across the three slices. Raw authoring evidence is in `.local/*stage3*
 The production coordinator is byte-identical to the dependency base; this is
 model-only, not a newly reproduced implementation bug.
 
+## Stage 4: overlapping revision convergence (confirmed defect)
+
+Before this change, actual Rust commands updating root provider P and then
+unrelated Q replaced the first update's affected descendant set. After P/Q became
+active but P's child consumer was still executing init, root inspection reported
+`desired_revision = observed_revision = 3`, `operation.status = complete`, and
+only Q affected, while one child operation was still pending. The real baseline
+regression ran one test and failed (exit 101); `.local/plugin-revision-baseline.log`
+contains the actual snapshot. The earlier incorrectly unqualified `--exact` filter
+ran zero tests and is retained separately as a diagnostic, never as a PASS.
+The baseline coordinator/test hashes and test patch are retained alongside it.
+
+The mature references were reviewed before this revision fix: pinned DSH fiber
+`_setEpoch`/`_unload` retain in-flight/dependent ownership, and
+[Kubernetes v1.34.1 DeploymentComplete](https://github.com/kubernetes/kubernetes/blob/v1.34.1/pkg/controller/deployment/util/deployment_util.go#L687-L694)
+requires actual target availability as well as generation observation.
+[Kubernetes observedGeneration](https://kubernetes.io/docs/reference/kubernetes-api/apps/deployment-v1/#DeploymentStatus)
+alone is not readiness. This project deliberately has its own stronger
+`reconcile` rule that publishes observed revision when the scoped target and its
+affected descendants reach their desired phases; the two protocols are not equated.
+
+`revision_affected` now carries the previous affected closure only while the
+previous revision is still unobserved, then computes the new transitive closure.
+Both `update` and `apply` use it. An empty change set remains empty so identical
+apply stays idempotent. Already converged history is not retained forever; no
+work is silently cancelled, completed or removed to manufacture convergence.
+
+`RevisionConvergence` uses fixed P/Q/consumer identities, two scopes, four root
+revisions and target versions up to three. It represents observation separately
+from internal progress; no fairness or implementation refinement is claimed.
+The legacy-overwrite profile reaches the exact premature-observation invariant.
+Three success witnesses reach overlapping completion, a later unrelated update
+while an independently reconfigured old consumer is pending, and convergence
+after legitimate child removal/collection. `CollectConsumer` abstracts completed
+removal; it does not prove the internal collection authorization/cleanup protocol.
+
+The real regression exercises both update and apply, plus repeated no-op apply,
+with completion/removal/subtree collection outcomes (six controlled runtimes).
+The completion paths then verify that a later unrelated update does not remain
+blocked by historical child ownership. All native plugin tests pass (53 total).
+The unified runner passes 38 expected runs plus two evidence contracts; the new
+positive graph has 89 states. The 20 targeted gate/lint tests include 28 refreshed-hash
+mutants. Source guards require both entry points, conditional pending carry,
+transitive closure and no-op identity. No ordinary full gate is claimed yet.
+
 ## Explicit remaining work and boundaries
 
 This feature is still WIP. Concrete next owners, not merely external assumptions:
 
-- `apply`/`reconcile` desired and observed revisions, affected-subgraph closure;
 - dynamic service shadowing, isolation and intercept visibility;
 - `collect` subtree-level reclamation (distinct from modeled `prune_retired`);
 - stale/current `instance_exited` events and bounded diagnostic retention.
