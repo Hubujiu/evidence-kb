@@ -60,8 +60,9 @@ trustworthiness of the provider that supplies this evidence.
 
 The lease abstraction separates definitely-live from definitely-expired time.
 It **excludes exact clock equality**: `_claim` uses `<=`, `JOB_FINISH` uses `>=`,
-and `JOBS_EXPIRE` uses `<`. That corner remains an explicit unconfirmed obligation;
-this model neither fixes it nor proves those three expressions equivalent.
+and `JOBS_EXPIRE` uses `<`. The companion [exact lease-boundary model](lease-boundaries.md)
+now checks these deliberately different comparisons; the original model remains
+binary and does not prove the three expressions equivalent.
 
 Database isolation/locking correctness, serialization of multiple batches,
 provider circuit state, arbitrary retry/backoff schedules, unbounded IDs,
