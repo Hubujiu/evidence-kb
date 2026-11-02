@@ -1322,11 +1322,14 @@
     },
     {
       "id": "authority_publication",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/core.py",
         "kb_platform/agent_tools.py",
-        "kb_platform/knowledge_service.py"
+        "kb_platform/knowledge_service.py",
+        "kb_platform/semantic_pages_v2.py",
+        "kb_platform/knowledge_semantic_contract.py",
+        "kb_platform/rag_testing/publication_embedding_contracts.py"
       ],
       "states": [
         "authority revision"
@@ -1338,15 +1341,17 @@
         "Platform.search"
       ],
       "invariants": [
-        "Only current revision/content/dependency sealed build publishes; staging cannot become searchable; postflight checks reject changed authority. Search index and relation DB are not one distributed transaction."
+        "Canonical relational publication requires current authority/KB revision and expected manifest, and atomically changes build status plus relational pointer. Staging is not searchable. Semantic publication separately requires complete sealed channels; there is no cross-store distributed transaction.",
+        "Standalone semantic current_manifest and evidence reads reject an authority/current-build change observed by their final postflight. This is not authorization at later network delivery or an instantaneous revocation guarantee."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Two bounded identities with atomic owner-local transactions and immutable generation content; explicit model bounds and inspected primary references are in formal/authority_publication/README.md.",
+        "Manual behavioral abstraction; source fingerprints detect review drift and are not a refinement proof. No fairness or liveness assumption."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No all-input, distributed-atomicity, network-delivery authorization or zero-bug guarantee.",
+        "External storage, OS/filesystem, database isolation and unbounded identities are outside the finite model.",
+        "Postflight AST lint enforces the reviewed synchronous method shape and stable captured state, not arbitrary Python control-flow equivalence or dynamic monkeypatch safety."
       ],
       "source_bindings": [
         {
@@ -1390,18 +1395,104 @@
           "language": "python",
           "symbol": "KnowledgeService.get",
           "sha256": "241046662ff507bb7fbca2ba6acbfe8c9ed284dc28259270e1c880645cec23be"
+        },
+        {
+          "path": "kb_platform/semantic_pages_v2.py",
+          "language": "python",
+          "symbol": "SemanticPageService.current_manifest",
+          "sha256": "ba4a085e9f31ab647818bc7dc8aa84dee3ef2277101e4d71f5e618d1b2138e01"
+        },
+        {
+          "path": "kb_platform/knowledge_semantic_contract.py",
+          "language": "python",
+          "symbol": "SemanticEndpoint.current_manifest",
+          "sha256": "76360d2a08a125a50d1c0378c78fe2d060a8835a87956c2fad0afd3b3f00031f"
+        },
+        {
+          "path": "kb_platform/knowledge_semantic_contract.py",
+          "language": "python",
+          "symbol": "SemanticClient.current_manifest",
+          "sha256": "9954ce3ee527d19dc32b93cbcb882ce0fd8f4727e3548e6ae7c8e4d7b89f141b"
+        },
+        {
+          "path": "kb_platform/agent_tools.py",
+          "language": "python",
+          "symbol": "EvidenceGateway._unchanged",
+          "sha256": "3819c0b1ba0e5efc4e640dfd8752befb2c1c4d757786c26e34e8f920d2ccf890"
+        },
+        {
+          "path": "kb_platform/rag_testing/publication_embedding_contracts.py",
+          "language": "python",
+          "symbol": "PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read",
+          "sha256": "1c006c586fe59c2222b62d6729b5649292e42c167119fa639e6d75019c85eb21"
+        },
+        {
+          "path": "scripts/semantic_manifest_checks.py",
+          "language": "python",
+          "symbol": "semantic_manifest_violations",
+          "sha256": "1a0014425202dfc3e9ef01945ae4b75a90815510cd480809a3d5f835d8c32af5"
+        },
+        {
+          "path": "kb_platform/rag_testing/publication_embedding_contracts.py",
+          "language": "python",
+          "symbol": "PublicationEmbeddingContracts.test_semantic_manifest_structural_gate_rejects_refreshed_hash_bypasses",
+          "sha256": "bc8a6227a74410bfac41db906ace6090c333e26944d95ae033d56a74f65ae68b"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "authority-publication-positive",
+          "module": "formal/authority_publication/AuthorityPublication.tla",
+          "config": "formal/authority_publication/AuthorityPublication.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoStagingVisible",
+            "PublicationFenced",
+            "ReadAuthorityCurrent"
+          ],
+          "properties": [],
+          "bounds": {
+            "builds": 2,
+            "authority_revisions": 3,
+            "readers": 1
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "authority-publication-staleread",
+          "module": "formal/authority_publication/AuthorityPublication.tla",
+          "config": "formal/authority_publication/AuthorityPublicationStaleRead.cfg",
+          "expected_invariant": "ReadAuthorityCurrent",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "authority-publication-stalepublish",
+          "module": "formal/authority_publication/AuthorityPublication.tla",
+          "config": "formal/authority_publication/AuthorityPublicationStalePublish.cfg",
+          "expected_invariant": "PublicationFenced",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Refine real Python/SQL/adapters and concurrent persistence to the model; verify actual PostgreSQL/RLS and power-loss behavior separately.",
+        "Cover all remaining methods, source/ACL/capsule identity, unbounded inputs and physical provider behavior; existing component and integration checks remain mandatory."
+      ]
     },
     {
       "id": "search_generation",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/search_router.py",
         "kb_platform/embedded_search.py",
-        "kb_platform/semantic_pages_v2.py"
+        "kb_platform/semantic_pages_v2.py",
+        "kb_platform/search_evidence.py",
+        "kb_platform/rag_testing/search_router_contracts.py",
+        "kb_platform/rag_testing/publication_embedding_contracts.py"
       ],
       "states": [
         "lexical/dense/source independently staged→verified→sealed→manifest publication"
@@ -1418,12 +1509,12 @@
         "Three channels share immutable content identity; no partial publication; exact source/version/ACL and checksum; semantic capsule build bound to authority snapshot."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Two bounded identities with atomic owner-local transactions and immutable generation content; explicit model bounds and inspected primary references are in formal/search_generation/README.md.",
+        "Manual behavioral abstraction; source fingerprints detect review drift and are not a refinement proof. No fairness or liveness assumption."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No all-input, distributed-atomicity, network-delivery authorization or zero-bug guarantee.",
+        "External storage, OS/filesystem, database isolation and unbounded identities are outside the finite model."
       ],
       "source_bindings": [
         {
@@ -1472,17 +1563,125 @@
           "path": "kb_platform/semantic_pages_v2.py",
           "language": "python",
           "symbol": "SemanticPageService.current_manifest",
-          "sha256": "472d43a55cc0859ac1171ac83c35ada08c8f75439fe118f23b0fb21616759e8d"
+          "sha256": "ba4a085e9f31ab647818bc7dc8aa84dee3ef2277101e4d71f5e618d1b2138e01"
+        },
+        {
+          "path": "kb_platform/search_router.py",
+          "language": "python",
+          "symbol": "SplitSearch._read_generation",
+          "sha256": "dec39026633ebd5ca3b3af37f0c7e33a8afd4b8172256110a57056c6fe7762cf"
+        },
+        {
+          "path": "kb_platform/search_router.py",
+          "language": "python",
+          "symbol": "SplitSearch._seal_token",
+          "sha256": "4ebd1de614cd2714859e0b400d982feb8080ee0b8a2011364f127e7d2a18d8aa"
+        },
+        {
+          "path": "kb_platform/search_router.py",
+          "language": "python",
+          "symbol": "SplitSearch.current_manifest",
+          "sha256": "5302a1df1178e41211bd408bcff814b7f6f61e23f802d6f356391752446a31b0"
+        },
+        {
+          "path": "kb_platform/search_evidence.py",
+          "language": "python",
+          "symbol": "DocumentEvidenceSource.stage",
+          "sha256": "c5424cd38108237eadff912a102cc7505c639b6030d2cff69c7042376b3d1e40"
+        },
+        {
+          "path": "kb_platform/search_evidence.py",
+          "language": "python",
+          "symbol": "DocumentEvidenceSource.seal",
+          "sha256": "fa79e76e5cf818857dfb6304b63da6ae973074a4ce0469a0d2e22f99e7a7e578"
+        },
+        {
+          "path": "kb_platform/search_evidence.py",
+          "language": "python",
+          "symbol": "DocumentEvidenceSource.publish_manifest",
+          "sha256": "15b9aeb5c6a2c3915e02600628746382d8ac5b64945e640eb262315271478cad"
+        },
+        {
+          "path": "kb_platform/search_evidence.py",
+          "language": "python",
+          "symbol": "DocumentEvidenceSource.current_manifest",
+          "sha256": "b06a9838a034863c68eb32b9dbaa1568f974e41d2c214d0683565bcfd6d199fb"
+        },
+        {
+          "path": "kb_platform/rag_testing/search_router_contracts.py",
+          "language": "python",
+          "symbol": "SearchRouterContracts.test_half_seal_is_not_published_and_retry_completes_without_replacing_channels",
+          "sha256": "cf6020acbd2bcdacc33edda1df293a395026ecd361166c06f7572be3f3966771"
+        },
+        {
+          "path": "kb_platform/rag_testing/publication_embedding_contracts.py",
+          "language": "python",
+          "symbol": "PublicationEmbeddingContracts.test_manifest_postflight_removal_is_a_source_lint_mutant",
+          "sha256": "2aad83113108d5630ed5d5dab15a9fe8ef2757ad5e7446b3b636d6c363d3b8cd"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "search-generation-positive",
+          "module": "formal/search_generation/SearchGeneration.tla",
+          "config": "formal/search_generation/SearchGeneration.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoPartialPublication",
+            "CanonicalPublication",
+            "CompareAndSwapPublication",
+            "SealedContentImmutable"
+          ],
+          "properties": [],
+          "bounds": {
+            "generations": 2,
+            "channels": 3,
+            "content_identities": 2,
+            "pointer_revisions": 3
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "search-generation-partial",
+          "module": "formal/search_generation/SearchGeneration.tla",
+          "config": "formal/search_generation/SearchGenerationPartial.cfg",
+          "expected_invariant": "NoPartialPublication",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "search-generation-canonical",
+          "module": "formal/search_generation/SearchGeneration.tla",
+          "config": "formal/search_generation/SearchGenerationCanonical.cfg",
+          "expected_invariant": "CanonicalPublication",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "search-generation-cas",
+          "module": "formal/search_generation/SearchGeneration.tla",
+          "config": "formal/search_generation/SearchGenerationCAS.cfg",
+          "expected_invariant": "CompareAndSwapPublication",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Refine real Python/SQL/adapters and concurrent persistence to the model; verify actual PostgreSQL/RLS and power-loss behavior separately.",
+        "Cover all remaining methods, source/ACL/capsule identity, unbounded inputs and physical provider behavior; existing component and integration checks remain mandatory."
+      ]
     },
     {
       "id": "embedding_jobs",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
-        "kb_platform/embedding_jobs.py"
+        "kb_platform/embedding_jobs.py",
+        "kb_platform/knowledge_sql.py",
+        "kb_platform/knowledge_storage.py",
+        "kb_platform/rag_testing/publication_embedding_contracts.py"
       ],
       "states": [
         "PENDING/RUNNING/COMPLETE/ERROR/UNKNOWN/RETRY"
@@ -1497,12 +1696,12 @@
         "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "One bounded job, two fresh physical IDs and dependency identities, binary definitely-live/expired lease; owner-local SQL transactions atomically change job and attempt.",
+        "Physical execution, local cancellation, durable persistence and caller acknowledgment are distinct; exact matched observations are trusted abstractions, not provider verification."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No claim about exact clock equality, provider circuit generations, unbounded jobs/IDs, arbitrary vectors, actual cancellation, network, database isolation or power-loss durability.",
+        "No machine-checked Python/SQL refinement, eventual success or zero-bug guarantee."
       ],
       "source_bindings": [
         {
@@ -1528,10 +1727,133 @@
           "language": "python",
           "symbol": "EmbeddingJobs.reconcile",
           "sha256": "71b2cf3aa7aeab56fe590e048100c4f89c0357b0d18a1f36d5925b413424d0d8"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "EmbeddingJobs.run",
+          "sha256": "44eb865c765adf68ae2d7b5a0565d4991cd4868d52c1fd8b709ed35376940a59"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "recovered_observation",
+          "sha256": "524f2f1caf3502f9320c3139e643f6dbb0fb798da9e9b72cb0a4da34ba99b338"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "recovered_vectors",
+          "sha256": "8a586c0d6a91d2a05fc14376fdffb1b8ef6c550976f0763e736f252e125d33d1"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "recovered_unsent",
+          "sha256": "75ca6a279afbc12df008bd75c855721b67071da171bf32eabf99a378030a457a"
+        },
+        {
+          "path": "kb_platform/knowledge_sql.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "baf0ac8c7347f63bde73ad8eb327afe2ee9b808aef1d8ce619248457a90e8d28"
+        },
+        {
+          "path": "kb_platform/knowledge_storage.py",
+          "language": "python",
+          "symbol": "KnowledgeRepository.transaction",
+          "sha256": "865e4a4810011ed17f2bd047b2c481d1e96012e5807f00d34df552ac598a3dfe"
+        },
+        {
+          "path": "kb_platform/rag_testing/publication_embedding_contracts.py",
+          "language": "python",
+          "symbol": "PublicationEmbeddingContracts.test_cancelled_worker_is_unknown_not_unsent_or_blindly_replayed",
+          "sha256": "0567c7bdeac4825f5881c9896c80a7b4dfc2a7d375ea912d8ece3da670e182e0"
+        },
+        {
+          "path": "kb_platform/rag_testing/publication_embedding_contracts.py",
+          "language": "python",
+          "symbol": "PublicationEmbeddingContracts.test_late_completion_cannot_settle_successor_request",
+          "sha256": "398d6beb83197eef8e0e71ce52017a79cbf6ae6ed51a2ae9a274b04e51a62fc3"
+        },
+        {
+          "path": "kb_platform/rag_testing/publication_embedding_contracts.py",
+          "language": "python",
+          "symbol": "PublicationEmbeddingContracts.test_recovery_requires_exact_observation_and_never_resends",
+          "sha256": "789b723ab3b748742b92ec60f1246c8d164b695608e191e693edfc50a8d8cf68"
+        },
+        {
+          "path": "kb_platform/rag_testing/publication_embedding_contracts.py",
+          "language": "python",
+          "symbol": "PublicationEmbeddingContracts.test_job_and_attempt_persistence_roll_back_together",
+          "sha256": "a555f77bcba4b050262d36f6aee9a012f85e236a7b1fe7b1bace120dac9c6b23"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/embedding_jobs/EmbeddingJobs.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-jobs-positive",
+          "config": "formal/embedding_jobs/EmbeddingJobs.cfg",
+          "invariants": [
+            "TypeOK",
+            "FrozenDependency",
+            "NoBlindReplay",
+            "SettlementCorrelated",
+            "RecoveryHasEvidence",
+            "AtomicJobAttempt",
+            "CompletionBound"
+          ],
+          "properties": [],
+          "bounds": {
+            "batches": 1,
+            "physical_request_ids": 2,
+            "dependency_identities": 2,
+            "charged_attempts": 2,
+            "lease_classes": 2,
+            "concurrent_sql_transactions": 1
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/embedding_jobs/EmbeddingJobs.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-jobs-finishfence",
+          "config": "formal/embedding_jobs/EmbeddingJobsFinishFenceNegative.cfg",
+          "expected_invariant": "SettlementCorrelated"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingJobs.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-jobs-retryunknown",
+          "config": "formal/embedding_jobs/EmbeddingJobsRetryUnknownNegative.cfg",
+          "expected_invariant": "NoBlindReplay"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingJobs.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-jobs-recoveryevidence",
+          "config": "formal/embedding_jobs/EmbeddingJobsRecoveryEvidenceNegative.cfg",
+          "expected_invariant": "RecoveryHasEvidence"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingJobs.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-jobs-atomiccommit",
+          "config": "formal/embedding_jobs/EmbeddingJobsAtomicCommitNegative.cfg",
+          "expected_invariant": "AtomicJobAttempt"
+        }
+      ],
+      "remaining_obligations": [
+        "Refine production SQLite/PostgreSQL locking, physical evidence integrity, clocks, circuits and cross-batch behavior; preserve unknown physical outcomes independently of worker state.",
+        "Verify lease equality separately: claim uses <=, finish >= and reconcile <; this finite binary-lease model excludes that unconfirmed corner."
+      ]
     },
     {
       "id": "provider_admission",
