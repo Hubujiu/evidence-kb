@@ -128,7 +128,9 @@ def operator_names(value, *, allow_empty: bool) -> bool:
 
 
 def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
-    errors = []
+    from scripts.storage_grant_checks import violations as storage_grant_violations
+
+    errors = storage_grant_violations(root)
     try:
         registry = registry if registry is not None else json.loads(local_file(root, REGISTRY).read_text('utf-8'))
         if registry.get('schema_version') != 1 or not registry.get('machines'):
