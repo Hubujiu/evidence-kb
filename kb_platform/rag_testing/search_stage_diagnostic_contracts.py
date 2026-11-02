@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from kb_platform import embedded_search
 from scripts.check_project import source_quality_violations
-from . import search_router_contracts, search_stage_diagnostics as diagnostics
+from . import embedded_search_contracts, search_router_contracts, search_stage_diagnostics as diagnostics
 
 
 class SearchStageDiagnosticContracts(unittest.TestCase):
@@ -118,3 +118,90 @@ class SearchStageDiagnosticContracts(unittest.TestCase):
                 self.assertNotEqual(mutant, source)
                 path.write_text(mutant, encoding='utf-8')
                 self.assertTrue(any('without retry' in error for error in source_quality_violations(root)))
+
+    def test_embedded_setup_and_generation_loop_keep_original_failure_and_owned_note(self):
+        for phase in ('setup', 'generation-loop'):
+            with self.subTest(phase=phase):
+                fixture = embedded_search_contracts.EmbeddedSearchContracts()
+                self.addCleanup(fixture.doCleanups)
+                if phase == 'generation-loop':
+                    fixture.setUp()
+                error, cause, writers = ValueError('synthetic native commit failure'), OSError('synthetic cause'), []
+                error.__cause__ = cause
+
+                class Index:
+                    def __init__(self, schema, path):
+                        self.calls = 0
+                        writers.append(self)
+
+                    def config_reader(self, **kwargs):
+                        pass
+
+                    def writer(self, **kwargs):
+                        return self
+
+                    def add_document(self, document):
+                        pass
+
+                    def commit(self):
+                        self.calls += 1
+                        raise error
+
+                    def wait_merging_threads(self):
+                        raise AssertionError('failed commit cannot proceed or retry')
+
+                with patch.object(embedded_search.tv, 'Index', Index):
+                    try:
+                        if phase == 'setup':
+                            fixture.setUp()
+                        else:
+                            fixture.test_closed_immutable_readers_release_generations_for_immediate_removal()
+                    except ValueError as observed:
+                        self.assertIs(observed, error)
+                    else:
+                        self.fail('original exception was suppressed')
+                self.assertEqual([writer.calls for writer in writers], [1, 0])
+                self.assertIs(error.__cause__, cause)
+                self.assertEqual(error.args, ('synthetic native commit failure',))
+                self.assertEqual(len(error.__notes__), 1)
+                detail = json.loads(error.__notes__[0].removeprefix(diagnostics.PREFIX))
+                self.assertEqual((detail['channel'], detail['status']), ('lexical', 'observed'))
+                self.assertTrue(detail['staging'].startswith('.staging-'))
+                self.assertNotIn(str(Path(fixture.folder.name)), error.__notes__[0])
+                fixture.doCleanups()
+
+    def test_real_successful_embedded_setup_and_generation_loop_do_not_sample(self):
+        fixture = embedded_search_contracts.EmbeddedSearchContracts()
+        self.addCleanup(fixture.doCleanups)
+        with patch.object(embedded_search_contracts, 'note_stage_failure',
+                          side_effect=AssertionError('successful stage must not sample')) as note:
+            fixture.setUp()
+            fixture.test_closed_immutable_readers_release_generations_for_immediate_removal()
+        note.assert_not_called()
+
+    def test_mandatory_embedded_lint_covers_all_five_call_sites_without_bypass_or_retry(self):
+        source = Path(embedded_search_contracts.__file__).read_text('utf-8')
+        call = 'return backend.stage(index, units, vector_dimension)'
+        note = 'note_stage_failure(error, Path(self.folder.name))'
+        mutants = [
+            source.replace(call, 'backend.stage(index, units, vector_dimension)\n            ' + call),
+            source.replace(note + '\n            raise', note + '\n            raise RuntimeError("masked")'),
+            source.replace('        try:\n            ' + call,
+                           '        note_stage_failure(None, Path(self.folder.name))\n        try:\n            ' + call),
+            source.replace(note, 'note_stage_failure(error, Path(self.folder.name).parent)'),
+            source.replace('self._stage(self.backend, self.index, self.authority.units, 3)',
+                           'self.backend.stage(self.index, self.authority.units, 3)', 1),
+            source.replace('self._stage(backend, index, self.authority.units, 3)',
+                           'backend.stage(index, self.authority.units, 3)'),
+            source.replace('self._stage(backend, index, self.authority.units, 3)', 'None'),
+        ]
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / 'kb_platform/rag_testing/embedded_search_contracts.py'
+            path.parent.mkdir(parents=True)
+            path.write_text(source, encoding='utf-8')
+            self.assertEqual(source_quality_violations(root), [])
+            for mutant in mutants:
+                self.assertNotEqual(mutant, source)
+                path.write_text(mutant, encoding='utf-8')
+                self.assertTrue(source_quality_violations(root))

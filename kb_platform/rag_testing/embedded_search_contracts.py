@@ -7,6 +7,7 @@ from kb_platform.embedded_search import EmbeddedSearch
 from kb_platform.search import SearchUnavailable
 from kb_platform.search_tokens import tokens
 from .product_fixture import Authority
+from .search_stage_diagnostics import note_stage_failure
 
 
 class EmbeddedSearchContracts(unittest.TestCase):
@@ -21,7 +22,14 @@ class EmbeddedSearchContracts(unittest.TestCase):
         self.authority.units.append({**self.authority.units[0], 'kind': 'Page', 'unit_id': 'page', 'citation_id': 'page'})
         for i, unit in enumerate(self.authority.units):
             unit['vector'] = [1.0, float(i + 1), 0.0]
-        self.backend.stage(self.index, self.authority.units, 3)
+        self._stage(self.backend, self.index, self.authority.units, 3)
+
+    def _stage(self, backend, index, units, vector_dimension):
+        try:
+            return backend.stage(index, units, vector_dimension)
+        except Exception as error:
+            note_stage_failure(error, Path(self.folder.name))
+            raise
 
     def test_restart_and_revoke(self):
         backend = EmbeddedSearch(self.folder.name)
@@ -41,7 +49,7 @@ class EmbeddedSearchContracts(unittest.TestCase):
         self.assertTrue(self.backend.is_sealed(self.index, 'manifest-hash'))
         self.assertFalse(self.backend.is_sealed(self.index, 'other-hash'))
         with self.assertRaises(SearchUnavailable):
-            self.backend.stage(self.index, self.authority.units, 3)
+            self._stage(self.backend, self.index, self.authority.units, 3)
         path = Path(self.folder.name) / self.index / 'vectors.npy'
         with path.open('ab') as stream:
             stream.write(b'corrupt')
@@ -58,7 +66,7 @@ class EmbeddedSearchContracts(unittest.TestCase):
     def test_failed_staging_not_visible(self):
         index = self.backend.index_name('tenant', 'scope', '2' * 32)
         with self.assertRaises(SearchUnavailable):
-            self.backend.stage(index, [{**self.authority.units[0], 'vector': [float('inf'), 0, 0]}], 3)
+            self._stage(self.backend, index, [{**self.authority.units[0], 'vector': [float('inf'), 0, 0]}], 3)
         self.assertFalse((Path(self.folder.name) / index).exists())
 
     def test_cjk_boundaries(self):
@@ -68,7 +76,7 @@ class EmbeddedSearchContracts(unittest.TestCase):
 
     def test_pages_do_not_change_block_scores(self):
         index = self.backend.index_name('tenant', 'scope', '3' * 32)
-        self.backend.stage(index, [u for u in self.authority.units if u['kind'] != 'Page'], 3)
+        self._stage(self.backend, index, [u for u in self.authority.units if u['kind'] != 'Page'], 3)
         args = ('tenant', 'scope', self.authority.rows, '企业知识库权限', 20)
         before = self.backend.search(index, *args)
         after = self.backend.search(self.index, *args)
@@ -79,7 +87,7 @@ class EmbeddedSearchContracts(unittest.TestCase):
         for generation in ('4', '5', '6', '7'):
             backend = EmbeddedSearch(root)
             index = backend.index_name('tenant', 'scope', generation * 32)
-            backend.stage(index, self.authority.units, 3)
+            self._stage(backend, index, self.authority.units, 3)
             self.assertTrue(backend.search(index, 'tenant', 'scope', self.authority.rows, '权限', 20))
             self.assertTrue(backend.search(index, 'tenant', 'scope', self.authority.rows, '权限', 20, kind='Page'))
             self.assertTrue(backend.dense(index, 'tenant', 'scope', self.authority.rows, [1, 1, 0], 20))
