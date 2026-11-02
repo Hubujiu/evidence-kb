@@ -1,0 +1,11 @@
+{
+  "decision": "PASS",
+  "non_test_runtime_parent_blobs_and_parent_session_models_unchanged": 260,
+  "stage_1_evidence_blobs_unchanged": 31,
+  "existing_registry_entries": 26,
+  "registry_change_in_old_entries": "Two session_commit remaining-obligation descriptions now cross-reference the separately modeled owners; source bindings/models/controls/known limitations unchanged.",
+  "summary_rows_exact": 38,
+  "raw_logs_exact": 38,
+  "original_hashes_verified": 47,
+  "production_changes": 0
+}

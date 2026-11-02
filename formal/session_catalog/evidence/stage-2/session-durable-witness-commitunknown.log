@@ -1,0 +1,268 @@
+@!@!@STARTMSG 2262:0 @!@!@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+@!@!@ENDMSG 2262 @!@!@
+@!@!@STARTMSG 2187:0 @!@!@
+Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 834] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+@!@!@ENDMSG 2187 @!@!@
+@!@!@STARTMSG 2220:0 @!@!@
+Starting SANY...
+@!@!@ENDMSG 2220 @!@!@
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-final-formal-20261102-2256/formal/session-durable-witness-commitunknown/inputs/DurableAdapter.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module DurableAdapter
+@!@!@STARTMSG 2219:0 @!@!@
+SANY finished.
+@!@!@ENDMSG 2219 @!@!@
+@!@!@STARTMSG 2185:0 @!@!@
+Starting... (2026-11-02 14:56:18)
+@!@!@ENDMSG 2185 @!@!@
+@!@!@STARTMSG 2189:0 @!@!@
+Computing initial states...
+@!@!@ENDMSG 2189 @!@!@
+@!@!@STARTMSG 2190:0 @!@!@
+Finished computing initial states: 2 distinct states generated at 2026-11-02 14:56:18.
+@!@!@ENDMSG 2190 @!@!@
+@!@!@STARTMSG 2110:1 @!@!@
+Invariant NoCommitUnknownWitness is violated.
+@!@!@ENDMSG 2110 @!@!@
+@!@!@STARTMSG 2121:1 @!@!@
+The behavior up to this point is:
+@!@!@ENDMSG 2121 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+1: <Initial predicate>
+s = [ kind |-> TRUE,
+  phase |-> "new",
+  status |-> "absent",
+  result |-> "none",
+  turn |-> 0,
+  user |-> FALSE,
+  tool |-> FALSE,
+  pending |-> FALSE,
+  effects |-> 0,
+  candidate |-> FALSE,
+  final |-> FALSE,
+  committedSuccess |-> FALSE,
+  checked |-> FALSE,
+  cancelled |-> FALSE,
+  closed |-> FALSE,
+  public |-> "none",
+  persistenceError |-> FALSE,
+  replayed |-> FALSE,
+  mode |-> "fresh",
+  cached |-> "none",
+  replayEffects |-> 0,
+  attemptedNew |-> FALSE,
+  unsafeEffect |-> FALSE ]
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+2: <Begin line 12, col 10 to line 13, col 70 of module DurableAdapter>
+s = [ kind |-> TRUE,
+  phase |-> "starting",
+  status |-> "running",
+  result |-> "none",
+  turn |-> 0,
+  user |-> FALSE,
+  tool |-> FALSE,
+  pending |-> FALSE,
+  effects |-> 0,
+  candidate |-> FALSE,
+  final |-> FALSE,
+  committedSuccess |-> FALSE,
+  checked |-> FALSE,
+  cancelled |-> FALSE,
+  closed |-> FALSE,
+  public |-> "none",
+  persistenceError |-> FALSE,
+  replayed |-> FALSE,
+  mode |-> "fresh",
+  cached |-> "none",
+  replayEffects |-> 0,
+  attemptedNew |-> FALSE,
+  unsafeEffect |-> FALSE ]
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+3: <RecordUser line 16, col 15 to line 17, col 67 of module DurableAdapter>
+s = [ kind |-> TRUE,
+  phase |-> "running",
+  status |-> "running",
+  result |-> "none",
+  turn |-> 0,
+  user |-> TRUE,
+  tool |-> FALSE,
+  pending |-> FALSE,
+  effects |-> 0,
+  candidate |-> FALSE,
+  final |-> FALSE,
+  committedSuccess |-> FALSE,
+  checked |-> FALSE,
+  cancelled |-> FALSE,
+  closed |-> FALSE,
+  public |-> "none",
+  persistenceError |-> FALSE,
+  replayed |-> FALSE,
+  mode |-> "fresh",
+  cached |-> "none",
+  replayEffects |-> 0,
+  attemptedNew |-> FALSE,
+  unsafeEffect |-> FALSE ]
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+4: <StageFinal line 32, col 15 to line 33, col 77 of module DurableAdapter>
+s = [ kind |-> TRUE,
+  phase |-> "finish-ready",
+  status |-> "running",
+  result |-> "none",
+  turn |-> 0,
+  user |-> TRUE,
+  tool |-> FALSE,
+  pending |-> FALSE,
+  effects |-> 0,
+  candidate |-> TRUE,
+  final |-> FALSE,
+  committedSuccess |-> FALSE,
+  checked |-> FALSE,
+  cancelled |-> FALSE,
+  closed |-> FALSE,
+  public |-> "none",
+  persistenceError |-> FALSE,
+  replayed |-> FALSE,
+  mode |-> "fresh",
+  cached |-> "none",
+  replayEffects |-> 0,
+  attemptedNew |-> FALSE,
+  unsafeEffect |-> FALSE ]
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+5: <CheckFinish line 36, col 16 to line 38, col 74 of module DurableAdapter>
+s = [ kind |-> TRUE,
+  phase |-> "finish-checked",
+  status |-> "running",
+  result |-> "none",
+  turn |-> 0,
+  user |-> TRUE,
+  tool |-> FALSE,
+  pending |-> FALSE,
+  effects |-> 0,
+  candidate |-> TRUE,
+  final |-> FALSE,
+  committedSuccess |-> FALSE,
+  checked |-> TRUE,
+  cancelled |-> FALSE,
+  closed |-> FALSE,
+  public |-> "none",
+  persistenceError |-> FALSE,
+  replayed |-> FALSE,
+  mode |-> "fresh",
+  cached |-> "none",
+  replayEffects |-> 0,
+  attemptedNew |-> FALSE,
+  unsafeEffect |-> FALSE ]
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+6: <CommitFinish line 41, col 17 to line 43, col 87 of module DurableAdapter>
+s = [ kind |-> TRUE,
+  phase |-> "finish-committed",
+  status |-> "complete",
+  result |-> "success",
+  turn |-> 1,
+  user |-> TRUE,
+  tool |-> FALSE,
+  pending |-> FALSE,
+  effects |-> 0,
+  candidate |-> TRUE,
+  final |-> TRUE,
+  committedSuccess |-> TRUE,
+  checked |-> TRUE,
+  cancelled |-> FALSE,
+  closed |-> FALSE,
+  public |-> "none",
+  persistenceError |-> FALSE,
+  replayed |-> FALSE,
+  mode |-> "fresh",
+  cached |-> "none",
+  replayEffects |-> 0,
+  attemptedNew |-> FALSE,
+  unsafeEffect |-> FALSE ]
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+7: <LoseFinishAck line 48, col 18 to line 49, col 104 of module DurableAdapter>
+s = [ kind |-> TRUE,
+  phase |-> "cleanup",
+  status |-> "complete",
+  result |-> "success",
+  turn |-> 1,
+  user |-> TRUE,
+  tool |-> FALSE,
+  pending |-> FALSE,
+  effects |-> 0,
+  candidate |-> TRUE,
+  final |-> TRUE,
+  committedSuccess |-> TRUE,
+  checked |-> TRUE,
+  cancelled |-> FALSE,
+  closed |-> FALSE,
+  public |-> "unknown",
+  persistenceError |-> TRUE,
+  replayed |-> FALSE,
+  mode |-> "fresh",
+  cached |-> "none",
+  replayEffects |-> 0,
+  attemptedNew |-> FALSE,
+  unsafeEffect |-> FALSE ]
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+8: <RejectTerminalCleanup line 54, col 26 to line 57, col 90 of module DurableAdapter>
+s = [ kind |-> TRUE,
+  phase |-> "uncertain",
+  status |-> "complete",
+  result |-> "success",
+  turn |-> 1,
+  user |-> TRUE,
+  tool |-> FALSE,
+  pending |-> FALSE,
+  effects |-> 0,
+  candidate |-> TRUE,
+  final |-> TRUE,
+  committedSuccess |-> TRUE,
+  checked |-> TRUE,
+  cancelled |-> FALSE,
+  closed |-> FALSE,
+  public |-> "unknown",
+  persistenceError |-> TRUE,
+  replayed |-> FALSE,
+  mode |-> "fresh",
+  cached |-> "none",
+  replayEffects |-> 0,
+  attemptedNew |-> FALSE,
+  unsafeEffect |-> FALSE ]
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2200:0 @!@!@
+Progress(8) at 2026-11-02 14:56:18: 48 states generated (2,969 s/min), 48 distinct states found (2,969 ds/min), 12 states left on queue.
+@!@!@ENDMSG 2200 @!@!@
+@!@!@STARTMSG 2199:0 @!@!@
+48 states generated, 48 distinct states found, 12 states left on queue.
+@!@!@ENDMSG 2199 @!@!@
+@!@!@STARTMSG 2194:0 @!@!@
+The depth of the complete state graph search is 8.
+@!@!@ENDMSG 2194 @!@!@
+@!@!@STARTMSG 2268:0 @!@!@
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+@!@!@ENDMSG 2268 @!@!@
+@!@!@STARTMSG 2186:0 @!@!@
+Finished in 978ms at (2026-11-02 14:56:18)
+@!@!@ENDMSG 2186 @!@!@

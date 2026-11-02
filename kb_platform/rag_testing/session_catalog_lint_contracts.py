@@ -42,6 +42,7 @@ class SessionCatalogLintContracts(unittest.TestCase):
 
     def test_hash_refreshed_owner_content_commit_and_reachability_mutants_are_rejected(self):
         mutations = {
+            'owner-lock-default': ('*, lock=True', '*, lock=False'),
             'tenant': ('sessions.c.tenant == actor.tenant_id', 'sessions.c.tenant == sessions.c.tenant'),
             'principal': ('sessions.c.principal == actor.principal_id', 'sessions.c.principal == sessions.c.principal'),
             'session-key': ('artifacts.c.session == session_id,', 'artifacts.c.session == artifacts.c.session,'),

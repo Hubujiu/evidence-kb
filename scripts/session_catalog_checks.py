@@ -67,6 +67,10 @@ def session_catalog_source_violations(source):
         return ['session catalog owner missing or ambiguous']
     methods = {node.name: node for node in tree.body + owners[0].body if isinstance(node, ast.FunctionDef)}
     errors = []
+    owner = methods.get('_owner')
+    if (owner is None or [item.arg for item in owner.args.kwonlyargs] != ['lock']
+            or [ast.unparse(item) for item in owner.args.kw_defaults] != ['True']):
+        errors.append('session catalog requires default locked owner admission')
     for name, expected in REVIEWED_STATEMENTS.items():
         method = methods.get(name)
         if method is None or len(method.body) != len(expected) or any(
