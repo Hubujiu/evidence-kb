@@ -1,0 +1,26 @@
+test_process_death_after_scope_commit_does_not_replay_after_restart (__main__.AcceptanceWorkflowIntegration.test_process_death_after_scope_commit_does_not_replay_after_restart) ... FAIL
+test_two_process_preparers_cannot_create_two_scopes_for_one_operation (__main__.AcceptanceWorkflowIntegration.test_two_process_preparers_cannot_create_two_scopes_for_one_operation) ... {"scenario": "concurrent-preparers", "scope_count": 1, "contender_exit": 1, "contender_output": "", "scope_ids": ["8096dfa4-5c70-4188-a95b-03215389f63a"]}
+FAIL
+
+======================================================================
+FAIL: test_process_death_after_scope_commit_does_not_replay_after_restart (__main__.AcceptanceWorkflowIntegration.test_process_death_after_scope_commit_does_not_replay_after_restart)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/kb_platform/rag_testing/acceptance_workflow_integration.py", line 178, in test_process_death_after_scope_commit_does_not_replay_after_restart
+    self.assertEqual(crashed.returncode, 72, crashed.stderr)
+AssertionError: 1 != 72 : /workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.venv/bin/python: Error while finding module specification for '__main__' (ValueError: __main__.__spec__ is None)
+
+
+======================================================================
+FAIL: test_two_process_preparers_cannot_create_two_scopes_for_one_operation (__main__.AcceptanceWorkflowIntegration.test_two_process_preparers_cannot_create_two_scopes_for_one_operation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/kb_platform/rag_testing/acceptance_workflow_integration.py", line 161, in test_two_process_preparers_cannot_create_two_scopes_for_one_operation
+    self.assertEqual(contender.returncode, 73, contender.stderr)
+AssertionError: 1 != 73 : /workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.venv/bin/python: Error while finding module specification for '__main__' (ValueError: __main__.__spec__ is None)
+
+
+----------------------------------------------------------------------
+Ran 2 tests in 4.155s
+
+FAILED (failures=2)

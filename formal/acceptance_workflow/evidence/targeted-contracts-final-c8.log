@@ -1,0 +1,9 @@
+test_preparation_holds_real_sqlite_guard_before_loading_any_state (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_preparation_holds_real_sqlite_guard_before_loading_any_state) ... ok
+test_rebinding_exclusive_output_also_owns_shared_preparation_guard (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_rebinding_exclusive_output_also_owns_shared_preparation_guard) ... ok
+test_receipt_flush_failure_never_replaces_durable_state (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_receipt_flush_failure_never_replaces_durable_state) ... ok
+test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 2.442s
+
+OK

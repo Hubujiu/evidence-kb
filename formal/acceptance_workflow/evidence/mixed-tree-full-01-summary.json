@@ -1,0 +1,74 @@
+{
+  "decision": "FAIL",
+  "checks": [
+    {
+      "name": "architecture",
+      "exit_code": 1,
+      "log": "architecture.json"
+    },
+    {
+      "name": "formal-lint",
+      "exit_code": 0,
+      "log": "formal-lint.log"
+    },
+    {
+      "name": "rust-format",
+      "exit_code": 0,
+      "log": "rust-format.log"
+    },
+    {
+      "name": "rust-clippy",
+      "exit_code": 0,
+      "log": "rust-clippy.log"
+    },
+    {
+      "name": "rust-build",
+      "exit_code": 0,
+      "log": "rust-build.log"
+    },
+    {
+      "name": "rust-tests",
+      "exit_code": 0,
+      "log": "rust-tests.log"
+    },
+    {
+      "name": "plugin-process-integration",
+      "exit_code": 0,
+      "log": "plugin-process-integration.log"
+    },
+    {
+      "name": "foundation-integration",
+      "exit_code": 0,
+      "log": "foundation-integration.log"
+    },
+    {
+      "name": "host-integration",
+      "exit_code": 2,
+      "log": "host-integration.log"
+    },
+    {
+      "name": "lint",
+      "exit_code": 0,
+      "log": "lint.log"
+    },
+    {
+      "name": "contracts",
+      "exit_code": 2,
+      "log": "contracts.log"
+    },
+    {
+      "name": "scorer",
+      "exit_code": 0,
+      "log": "scorer.log"
+    }
+  ],
+  "new_model_calls": 0,
+  "new_embedding_calls": 0,
+  "new_judge_calls": 0,
+  "native_library": "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.local/acceptance-stacked-full-01/native/libagent_kernel.so",
+  "host_binary": "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.local/acceptance-stacked-full-01/native/evidence-host",
+  "native_worker": "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.local/acceptance-stacked-full-01/native/native_worker",
+  "controlled_local_integration": false,
+  "controlled_storage_integration": false,
+  "scope": "offline contracts plus controlled localhost host and foundation application integration; component checks and scorer controls reported separately"
+}

@@ -1,0 +1,16 @@
+{
+  "violations": [
+    "kb_platform/rag_testing/acceptance_workflow_integration.py:105: code comments are not allowed",
+    "kb_platform/rag_testing/acceptance_workflow_integration.py:170: code comments are not allowed",
+    "kb_platform/rag_testing/acceptance_workflow_integration.py:190: code comments are not allowed",
+    "kb_platform/rag_testing/acceptance_workflow_integration.py:1: docstrings belong in documentation",
+    "kb_platform/rag_testing/acceptance_workflow_integration.py:22: docstrings belong in documentation",
+    "kb_platform/rag_testing/acceptance_workflow_integration.py:39: code comments are not allowed",
+    "kb_platform/rag_testing/acceptance_workflow_rules.py:1: docstrings belong in documentation",
+    "kb_platform/rag_testing/acceptance_workflow_rules.py:29: code comments are not allowed",
+    "kb_platform/rag_testing/acceptance_workflow_rules.py:57: code comments are not allowed",
+    "kb_platform/rag_testing/delivery_http.py:140: code comments are not allowed",
+    "kb_platform/rag_testing/delivery_http.py:141: code comments are not allowed",
+    "kb_platform/rag_testing/delivery_http.py:142: code comments are not allowed"
+  ]
+}

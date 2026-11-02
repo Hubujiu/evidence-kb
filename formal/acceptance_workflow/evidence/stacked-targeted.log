@@ -1,0 +1,12 @@
+test_preparation_holds_real_sqlite_guard_before_loading_any_state (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_preparation_holds_real_sqlite_guard_before_loading_any_state) ... ok
+test_rebinding_exclusive_output_also_owns_shared_preparation_guard (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_rebinding_exclusive_output_also_owns_shared_preparation_guard) ... ok
+test_receipt_flush_failure_never_replaces_durable_state (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_receipt_flush_failure_never_replaces_durable_state) ... ok
+test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh) ... ok
+test_process_death_after_scope_commit_does_not_replay_after_restart (kb_platform.rag_testing.acceptance_workflow_integration.AcceptanceWorkflowIntegration.test_process_death_after_scope_commit_does_not_replay_after_restart) ... ok
+test_two_process_preparers_cannot_create_two_scopes_for_one_operation (kb_platform.rag_testing.acceptance_workflow_integration.AcceptanceWorkflowIntegration.test_two_process_preparers_cannot_create_two_scopes_for_one_operation) ... {"scenario": "concurrent-preparers", "scope_count": 1, "contender_exit": 73, "contender_output": "{\"error\": \"DatabaseError\", \"code\": \"DATABASE_GUARD_BUSY\"}\n", "scope_ids": ["244a2aed-854c-4da8-8687-bcbadac09203"]}
+ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 37.615s
+
+OK

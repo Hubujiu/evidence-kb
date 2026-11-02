@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import time
 from uuid import uuid4
@@ -11,6 +12,7 @@ import httpx
 
 from ..agent_context import canonical
 from ..core import Actor
+from ..database_providers.sqlite_guard import sqlite_guard
 from .contracts import Fragment, Plan, Suite, Trace, digest
 from .delivery_fixtures import bind_suite, load_delivery_fixtures
 from .runner import run, write_json
@@ -23,9 +25,15 @@ POLICY = {'llm_context': True, 'embedding': True, 'rerank': True, 'ocr': False,
 
 def _atomic_json(path, value):
     path = Path(path)
-    temporary = path.with_suffix(path.suffix + '.tmp')
-    write_json(temporary, value)
-    temporary.replace(path)
+    temporary = path.with_suffix(path.suffix + '.' + uuid4().hex + '.tmp')
+    try:
+        with temporary.open('x', encoding='utf-8') as stream:
+            json.dump(value, stream, ensure_ascii=False, allow_nan=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def physical_records(directory):
@@ -127,10 +135,20 @@ def _bind_prepared_http(client, fixtures, root, *, platform, identity, data_scop
 
 def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, physical_directory,
                  context_budget=118784, channels=('bm25', 'dense', 'hybrid'), policy=None):
-
-    fixtures = load_delivery_fixtures(fixtures['root'] if isinstance(fixtures, dict) else fixtures)
     root = Path(output).resolve()
     root.mkdir(parents=True, exist_ok=True)
+
+
+
+    with sqlite_guard(root / '.prepare.guard.sqlite3', nowait=True):
+        return _prepare_http_locked(client, fixtures, root, platform=platform,
+            expected_tenant_id=expected_tenant_id, physical_directory=physical_directory,
+            context_budget=context_budget, channels=channels, policy=policy)
+
+
+def _prepare_http_locked(client, fixtures, root, *, platform, expected_tenant_id, physical_directory,
+                         context_budget, channels, policy):
+    fixtures = load_delivery_fixtures(fixtures['root'] if isinstance(fixtures, dict) else fixtures)
     path = root / 'prepare-state.json'
     identity = client.get('/identity').raise_for_status().json()
     if identity.get('tenant_id') != expected_tenant_id:
@@ -251,8 +269,12 @@ def rebind_http(client, prepared_directory, output, *, platform, expected_tenant
                         'receipts_sha256': sha256(old_state_path.read_bytes()).hexdigest()}}
     data_scopes = {split: {key: data[key] for key in ('scope_id', 'ingested', 'build', 'published')}
                    for split, data in old['splits'].items()}
-    return _bind_prepared_http(client, fixtures, root, platform=platform, identity=identity, data_scopes=data_scopes,
-                              context_budget=old['context_budget'], state=state, state_path=root / 'prepare-state.json')
+    with sqlite_guard(root / '.prepare.guard.sqlite3', nowait=True):
+        if any(path.name not in {'.prepare.guard.sqlite3', '.prepare.guard.sqlite3-journal',
+                                 '.prepare.guard.sqlite3-wal', '.prepare.guard.sqlite3-shm'} for path in root.iterdir()):
+            raise FileExistsError(root)
+        return _bind_prepared_http(client, fixtures, root, platform=platform, identity=identity, data_scopes=data_scopes,
+                                  context_budget=old['context_budget'], state=state, state_path=root / 'prepare-state.json')
 
 
 def _fragment(binding, source, relative_start=0, text=None):

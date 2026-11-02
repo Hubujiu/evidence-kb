@@ -1,0 +1,36 @@
+test_preparation_holds_real_sqlite_guard_before_loading_any_state (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_preparation_holds_real_sqlite_guard_before_loading_any_state) ... ok
+test_rebinding_exclusive_output_also_owns_shared_preparation_guard (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_rebinding_exclusive_output_also_owns_shared_preparation_guard) ... ERROR
+test_receipt_flush_failure_never_replaces_durable_state (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_receipt_flush_failure_never_replaces_durable_state) ... ok
+test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh) ... FAIL
+
+======================================================================
+ERROR: test_rebinding_exclusive_output_also_owns_shared_preparation_guard (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_rebinding_exclusive_output_also_owns_shared_preparation_guard)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/kb_platform/rag_testing/acceptance_workflow_contracts.py", line 70, in test_rebinding_exclusive_output_also_owns_shared_preparation_guard
+    self.assertEqual(delivery_http.rebind_http(client, previous, output, platform=None,
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/kb_platform/rag_testing/delivery_http.py", line 274, in rebind_http
+    raise FileExistsError(root)
+FileExistsError: /tmp/tmp44ntu64z/new
+
+======================================================================
+FAIL: test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh (kb_platform.rag_testing.acceptance_workflow_contracts.AcceptanceOwnershipContracts.test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/kb_platform/rag_testing/acceptance_workflow_contracts.py", line 114, in test_semantic_lint_rejects_removed_guard_pending_gate_and_reordered_claim_after_hash_refresh
+    self.assertEqual(acceptance_workflow_violations(ROOT), [])
+AssertionError: Lists differ: ['acceptance_workflow: rebind must revalid[48 chars]hip'] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+'acceptance_workflow: rebind must revalidate the empty destination after acquiring ownership'
+
++ []
+- ['acceptance_workflow: rebind must revalidate the empty destination after '
+-  'acquiring ownership']
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.039s
+
+FAILED (failures=1, errors=1)

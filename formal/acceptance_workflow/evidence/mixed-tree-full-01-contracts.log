@@ -1,0 +1,2 @@
+
+TimeoutExpired: Command '['/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.venv/bin/python', '-B', '/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/scripts/check_project.py', '--worker', 'contracts', '--output', '/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.local/acceptance-stacked-full-01']' timed out after 179.98080304497853 seconds
