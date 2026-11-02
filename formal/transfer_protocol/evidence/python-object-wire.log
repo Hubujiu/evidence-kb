@@ -1,0 +1,12 @@
+test_close_refuses_active_operation_and_keeps_failed_cleanup_for_retry (kb_platform.rag_testing.application_storage_contracts.ApplicationStorageContracts.test_close_refuses_active_operation_and_keeps_failed_cleanup_for_retry) ... ok
+test_close_releases_unfinished_transfers_and_rejects_new_calls (kb_platform.rag_testing.application_storage_contracts.ApplicationStorageContracts.test_close_releases_unfinished_transfers_and_rejects_new_calls) ... ok
+test_concurrent_lazy_creation_constructs_one_endpoint (kb_platform.rag_testing.application_storage_contracts.ApplicationStorageContracts.test_concurrent_lazy_creation_constructs_one_endpoint) ... ok
+test_empty_object_roundtrip_and_corrupt_or_incomplete_upload_never_commit (kb_platform.rag_testing.application_storage_contracts.ApplicationStorageContracts.test_empty_object_roundtrip_and_corrupt_or_incomplete_upload_never_commit) ... ok
+test_interrupted_upload_is_cancelled_without_replaying_write (kb_platform.rag_testing.application_storage_contracts.ApplicationStorageContracts.test_interrupted_upload_is_cancelled_without_replaying_write) ... ok
+test_large_object_roundtrip_uses_bounded_json_chunks_and_keeps_tenant_isolation (kb_platform.rag_testing.application_storage_contracts.ApplicationStorageContracts.test_large_object_roundtrip_uses_bounded_json_chunks_and_keeps_tenant_isolation) ... ok
+test_transfer_handle_limits_offsets_and_expiry (kb_platform.rag_testing.application_storage_contracts.ApplicationStorageContracts.test_transfer_handle_limits_offsets_and_expiry) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 2.501s
+
+OK

@@ -382,14 +382,14 @@
         "No new lease on draining owner; no dispose with live descendant work; stale completion/disposer cannot mutate newer generation; cleanup failure is not disposal; dependency/scope ordering."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Inventory baseline is main 8160c051e63952278c5f8a80d1b024ebbe3cea17; only the registered finite PluginLifecycle abstraction has been model-checked, not all concrete coordinator states.",
         "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model.",
         "First provider is active and first consumer init already claimed.",
         "Successor initialization succeeds; first consumer initialization may fail.",
         "Weak fairness for completion, reconciliation, cleanup and cleanup retry."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
+        "The registered model covers only the declared two-plugin, one-update scope; no machine-checked Rust-to-TLA+ refinement proof is provided.",
         "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory.",
         "Nested scopes and multiple dependencies.",
         "Serial-call ancestry, disabled/re-enabled scope, unclaimed init.",
@@ -1144,11 +1144,14 @@
     },
     {
       "id": "storage_value_call",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "rust/storage-service/src/service.rs",
         "kb_platform/storage.py",
-        "kb_platform/storage_adapters/values.py"
+        "kb_platform/storage_adapters/values.py",
+        "kb_platform/storage_protocol.py",
+        "kb_platform/storage_service.py",
+        "rust/storage-service/src/operations.rs"
       ],
       "states": [
         "Input→Executing→Result→Values / Failed"
@@ -1161,12 +1164,13 @@
         "A method's mutability/effect is fixed before execution; response validation cannot erase known write completion; capacity and TTL cleanup."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "One public operation with fixed read/write effect; actual invocation and result-observer/session phase are separate state.",
+        "Driver return success is trusted evidence of completion; driver error may coexist with an actual write, so it remains unknown.",
+        "Validator session may disappear between admission/execution/result phases; Python fallback classification preserves known completed write."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "Bounded behavioral abstraction, not source refinement or a guarantee of zero implementation bugs.",
+        "No external service/database/filesystem correctness or liveness for an indefinitely blocked driver is established."
       ],
       "source_bindings": [
         {
@@ -1204,14 +1208,74 @@
           "language": "python",
           "symbol": "_document",
           "sha256": "c4b969251f8d992e5ac947a2e4a6ebb49fba0e2e81936fb7fae216b081c3dfc1"
+        },
+        {
+          "path": "kb_platform/storage_protocol.py",
+          "language": "python",
+          "symbol": "PreparedCall.complete",
+          "sha256": "0f8b07e58091c7258dc08de35a859ecb7660bb5ead0b34ba8631e63e587f9c38"
+        },
+        {
+          "path": "kb_platform/storage_protocol.py",
+          "language": "python",
+          "symbol": "prepare",
+          "sha256": "770ce080f4a8f7d10fb42a5e88ab08e6c92b9fec4a01d3d5e8c2636bbc675117"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "BoundStorage._execute",
+          "sha256": "2fb1d971d73696643f75ff1dc71d3490019299cd2e335a04052edc088adb41ef"
+        },
+        {
+          "path": "rust/storage-service/src/operations.rs",
+          "language": "rust",
+          "symbol": "result_failure",
+          "sha256": "12995b3303ea312bd59193977b145e32205b94207f10d4afa65cb2af816ffb86"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "storage-value-call-ownership",
+          "module": "formal/storage_value_call/StorageValueCall.tla",
+          "config": "formal/storage_value_call/StorageValueCall.cfg",
+          "invariants": [
+            "TypeOK",
+            "InvokeRequiresAdmission",
+            "NoReplay",
+            "NoErasedWriteCompletion",
+            "CompletionRequiresDriverSuccess",
+            "RejectedInputHasNoEffect"
+          ],
+          "properties": [],
+          "bounds": {
+            "operations": 1,
+            "driver_invocations": 1,
+            "actual_write_count": 1,
+            "validator_sessions": 1
+          },
+          "heap_mb": 128,
+          "timeout_seconds": 30
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "storage-value-call-ownership-negative",
+          "module": "formal/storage_value_call/StorageValueCall.tla",
+          "config": "formal/storage_value_call/StorageValueCallNegative.cfg",
+          "expected_invariant": "NoErasedWriteCompletion",
+          "heap_mb": 128,
+          "timeout_seconds": 30
+        }
+      ],
+      "remaining_obligations": [
+        "Full value codec structure/type/size semantics, multi-session capacity, exact TTL clock arithmetic, Values-only sessions and method catalogue coverage remain outside this model.",
+        "S3/SQL backend internals, SQL revision/CAS rules and arbitrary external-driver behavior are not established by this phase model."
+      ]
     },
     {
       "id": "transfer_protocol",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/contract_transfer.py",
         "kb_platform/storage_object_wire.py"
@@ -1230,12 +1294,13 @@
         "Ordered offsets + length/hash; one dispatch per transfer; in-flight close and result-download failure preserve observed execution facts; transaction-bound transfers cannot outlive lease. #31 changes dispatch fact projection."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "One generic JSON upload plus optional result download, two chunks each; dispatch ownership survives close/cancel/expiration until handler completion.",
+        "Submission-attempt marker is not actual handler execution or model-sent evidence; handler errors may follow an actual effect.",
+        "Hash validity and result capacity are finite booleans; successful handler return is distinct from lost publication/download acknowledgement."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "Bounded behavioral abstraction, not source refinement or a guarantee of zero implementation bugs.",
+        "No external service/database/filesystem correctness or liveness for an indefinitely blocked driver is established."
       ],
       "source_bindings": [
         {
@@ -1267,10 +1332,70 @@
           "language": "python",
           "symbol": "ObjectTransferEndpoint.close",
           "sha256": "bb2bf9ba0768cf2d6f1d6cfabcc0569dac3cc352ddb8f5a6211b79389f403b9e"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonEndpoint._publish",
+          "sha256": "8fe0e0bc53b9cb919768f93294f3e06afc6b36a469f09a33dc450089bca54d0a"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonEndpoint._expire",
+          "sha256": "d83dae6d0025a1a2b821c967481fa8fe5b500008541b70b19819d773b054356b"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonEndpoint.result",
+          "sha256": "ca776d846d6f651f15c5fcf72c31ee6f2e94177762d65a601bbc0142425d9ee0"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonClient.call",
+          "sha256": "4601272cbafa0fc6fb252d3f00356267995fdc7ff3d2c8f6596d6ae280d29d5c"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "transfer-protocol-ownership",
+          "module": "formal/transfer_protocol/TransferOwnership.tla",
+          "config": "formal/transfer_protocol/TransferOwnership.cfg",
+          "invariants": [
+            "TypeOK",
+            "DispatchOwnsStream",
+            "HandlerRequiresIntegrity",
+            "NoReplay",
+            "ClosedOwnsNoIdleResources",
+            "KnownCompletionNeedsReturn"
+          ],
+          "properties": [],
+          "bounds": {
+            "upload_handles": 1,
+            "download_handles": 1,
+            "chunks_per_payload": 2,
+            "handler_invocations": 1
+          },
+          "heap_mb": 128,
+          "timeout_seconds": 30
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "transfer-protocol-ownership-negative",
+          "module": "formal/transfer_protocol/TransferOwnership.tla",
+          "config": "formal/transfer_protocol/TransferOwnershipNegative.cfg",
+          "expected_invariant": "DispatchOwnsStream",
+          "heap_mb": 128,
+          "timeout_seconds": 30
+        }
+      ],
+      "remaining_obligations": [
+        "ObjectTransferEndpoint holds its lock across object writes and is not modeled by the JSON dispatch concurrency abstraction; its existing behavior contracts still run.",
+        "Structured transaction scope/lease invalidation, multi-transfer byte/count limits, cryptographic hashes, exact JSON/base64 codec semantics and payload length arithmetic remain outside the finite model."
+      ]
     },
     {
       "id": "auth_session",

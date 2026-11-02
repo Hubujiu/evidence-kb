@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import time
 import unittest
 
@@ -60,13 +61,14 @@ def source_digest(root: Path, binding: dict) -> str:
         symbols = python_symbols(source)
         if binding['symbol'] not in symbols:
             raise ValueError(f'Missing Python symbol: {binding["symbol"]}')
-        return digest(ast.dump(symbols[binding['symbol']], include_attributes=False).encode())
+        options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
+        return digest(ast.dump(symbols[binding['symbol']], include_attributes=False, **options).encode())
     if binding['language'] != 'rust':
         raise ValueError('Source binding language must be python or rust')
     leaf = binding['symbol'].replace('::', '.').rsplit('.', 1)[-1]
     if leaf != '<module>' and not re.search(r'\b(?:fn|enum|struct)\s+' + re.escape(leaf) + r'\b', source):
         raise ValueError(f'Missing Rust declaration: {binding["symbol"]}')
-    return digest(path.read_bytes())
+    return digest(path.read_bytes().replace(b'\r\n', b'\n'))
 
 
 def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
@@ -119,6 +121,12 @@ def configured_operators(config: str, sections: set[str]) -> set[str]:
     return result
 
 
+def operator_names(value, *, allow_empty: bool) -> bool:
+    return isinstance(value, list) and (allow_empty or bool(value)) and all(
+        isinstance(name, str) and re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', name)
+        for name in value) and len(set(value)) == len(value)
+
+
 def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
     errors = []
     try:
@@ -150,7 +158,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
             controls = machine['negative_controls']
             if (machine['status'] == 'partial') != bool(models):
                 errors.append(f'{identity}: partial requires actual models; unmodeled cannot claim models')
-            if models and not machine.get('remaining_obligations'):
+            if models and (not isinstance(machine.get('remaining_obligations'), list) or
+                           not machine['remaining_obligations'] or not all(
+                               isinstance(item, str) and item.strip() for item in machine['remaining_obligations'])):
                 errors.append(f'{identity}: partial coverage requires explicit remaining obligations')
             if models and not controls:
                 errors.append(f'{identity}: modeled machines require a seeded negative control')
@@ -166,12 +176,19 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                 if not re.search(r'\bMODULE\s+' + re.escape(module.stem) + r'\b', module.read_text('utf-8')):
                     errors.append(f'{identity}: module declaration does not match file name')
                 model_files.update((model['module'], model['config']))
-                if not 1 <= model['timeout_seconds'] <= 120 or not 64 <= model['heap_mb'] <= 512:
+                if (type(model['timeout_seconds']) is not int or type(model['heap_mb']) is not int or
+                        not 1 <= model['timeout_seconds'] <= 120 or not 64 <= model['heap_mb'] <= 512):
                     errors.append(f'{identity}: model exceeds reviewed time/heap limits')
                 text = config.read_text('utf-8')
                 configured = configured_operators(text, {'INVARIANT', 'INVARIANTS'})
                 if model in models:
-                    if not model['bounds'] or set(model['invariants']) != configured:
+                    if not operator_names(model['invariants'], allow_empty=False):
+                        errors.append(f'{identity}: positive models require a nonempty unique invariant-name list')
+                        continue
+                    if not operator_names(model['properties'], allow_empty=True):
+                        errors.append(f'{identity}: temporal properties require a unique property-name list')
+                        continue
+                    if not isinstance(model['bounds'], dict) or not model['bounds'] or set(model['invariants']) != configured:
                         errors.append(f'{identity}: explicit finite bounds and exact configured invariants required')
                     properties = configured_operators(text, {'PROPERTY', 'PROPERTIES'})
                     if set(model['properties']) != properties:

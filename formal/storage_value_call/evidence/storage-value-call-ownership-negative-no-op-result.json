@@ -1,0 +1,153 @@
+{
+  "id": "storage-value-call-ownership-negative",
+  "kind": "negative",
+  "decision": "PASS",
+  "returncode": 12,
+  "timeout": false,
+  "seconds": 1.3231439539813437,
+  "command": [
+    "java",
+    "-Xmx128m",
+    "-XX:MaxMetaspaceSize=128m",
+    "-XX:+UseParallelGC",
+    "-XX:+ExitOnOutOfMemoryError",
+    "-cp",
+    "/tmp/evidence-tla-tools/tla2tools-1.7.4.jar",
+    "tlc2.TLC",
+    "-tool",
+    "-workers",
+    "1",
+    "-seed",
+    "1",
+    "-fp",
+    "0",
+    "-fpmem",
+    "0.25",
+    "-metadir",
+    "/tmp/storage-protocol-no-op-final/storage-value-call-ownership-negative/states",
+    "-config",
+    "StorageValueCallNegative.cfg",
+    "StorageValueCall"
+  ],
+  "input_sha256": {
+    "formal/controls/GateControl.tla": "3873ad49c156a90bb9bef20a7483f99717ebc23d8bab0b8482d7c178a4b0bd1f",
+    "formal/controls/LivenessControl.tla": "6c2afdfbde9fd3cc29515a4a444e803a1b64f0e20145a1b8f1c4d66f9ee488a2",
+    "formal/plugin_lifecycle/PluginLifecycle.tla": "9dd487802012380511687a2588a0105a53fa44e9e18215f3840f86fe4acefeef",
+    "formal/storage_value_call/StorageValueCall.tla": "f7d838f7245d682fecca777f94370b12dedfc80739d0a6fb1fc2046f8b98ddfd",
+    "formal/transfer_protocol/TransferOwnership.tla": "e7bf751d618086594ce6605ce209cf2ea11baae1df665d7ccdd3d7705e655fc0",
+    "formal/storage_value_call/StorageValueCallNegative.cfg": "b8a4e5bb5f4c5bfeb10e748512dcd592b343fc4aed1449f3f0154eae873eac73"
+  },
+  "expected_invariant": "NoErasedWriteCompletion",
+  "expected_property": null,
+  "parsed": {
+    "frames": [
+      {
+        "code": 2262,
+        "severity": 0,
+        "body": "TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)"
+      },
+      {
+        "code": 2187,
+        "severity": 0,
+        "body": "Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 123MB heap and 64MB offheap memory [pid: 237] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue)."
+      },
+      {
+        "code": 2220,
+        "severity": 0,
+        "body": "Starting SANY..."
+      },
+      {
+        "code": 2219,
+        "severity": 0,
+        "body": "SANY finished."
+      },
+      {
+        "code": 2185,
+        "severity": 0,
+        "body": "Starting... (2026-11-02 09:40:47)"
+      },
+      {
+        "code": 2189,
+        "severity": 0,
+        "body": "Computing initial states..."
+      },
+      {
+        "code": 2190,
+        "severity": 0,
+        "body": "Finished computing initial states: 2 distinct states generated at 2026-11-02 09:40:47."
+      },
+      {
+        "code": 2110,
+        "severity": 1,
+        "body": "Invariant NoErasedWriteCompletion is violated."
+      },
+      {
+        "code": 2121,
+        "severity": 1,
+        "body": "The behavior up to this point is:"
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "1: <Initial predicate>\n/\\ actualWrites = 0\n/\\ completionAttempted = FALSE\n/\\ phase = \"Input\"\n/\\ calls = 0\n/\\ effect = \"Write\"\n/\\ driver = \"NotStarted\"\n/\\ admitted = FALSE\n/\\ report = \"None\""
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "2: <Admit line 15, col 5 to line 19, col 77 of module StorageValueCall>\n/\\ actualWrites = 0\n/\\ completionAttempted = FALSE\n/\\ phase = \"Executing\"\n/\\ calls = 0\n/\\ effect = \"Write\"\n/\\ driver = \"NotStarted\"\n/\\ admitted = TRUE\n/\\ report = \"None\""
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "3: <Invoke line 21, col 5 to line 23, col 87 of module StorageValueCall>\n/\\ actualWrites = 0\n/\\ completionAttempted = FALSE\n/\\ phase = \"Executing\"\n/\\ calls = 1\n/\\ effect = \"Write\"\n/\\ driver = \"Running\"\n/\\ admitted = TRUE\n/\\ report = \"None\""
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "4: <CloseValidator line 44, col 5 to line 46, col 95 of module StorageValueCall>\n/\\ actualWrites = 0\n/\\ completionAttempted = FALSE\n/\\ phase = \"Closed\"\n/\\ calls = 1\n/\\ effect = \"Write\"\n/\\ driver = \"Running\"\n/\\ admitted = TRUE\n/\\ report = \"None\""
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "5: <DriverReturns line 25, col 5 to line 30, col 72 of module StorageValueCall>\n/\\ actualWrites = 0\n/\\ completionAttempted = FALSE\n/\\ phase = \"Closed\"\n/\\ calls = 1\n/\\ effect = \"Write\"\n/\\ driver = \"Succeeded\"\n/\\ admitted = TRUE\n/\\ report = \"None\""
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "6: <BeginResult line 32, col 5 to line 36, col 66 of module StorageValueCall>\n/\\ actualWrites = 0\n/\\ completionAttempted = TRUE\n/\\ phase = \"Failed\"\n/\\ calls = 1\n/\\ effect = \"Write\"\n/\\ driver = \"Succeeded\"\n/\\ admitted = TRUE\n/\\ report = \"ValidationError\""
+      },
+      {
+        "code": 2200,
+        "severity": 0,
+        "body": "Progress(6) at 2026-11-02 09:40:47: 40 states generated (2,764 s/min), 32 distinct states found (2,211 ds/min), 7 states left on queue."
+      },
+      {
+        "code": 2199,
+        "severity": 0,
+        "body": "40 states generated, 32 distinct states found, 7 states left on queue."
+      },
+      {
+        "code": 2194,
+        "severity": 0,
+        "body": "The depth of the complete state graph search is 6."
+      },
+      {
+        "code": 2268,
+        "severity": 0,
+        "body": "The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 4)."
+      },
+      {
+        "code": 2186,
+        "severity": 0,
+        "body": "Finished in 876ms at (2026-11-02 09:40:47)"
+      }
+    ],
+    "truncated": false,
+    "states": {
+      "generated": 40,
+      "distinct": 32,
+      "remaining": 7
+    }
+  },
+  "log": "storage-value-call-ownership-negative/tlc.log"
+}
