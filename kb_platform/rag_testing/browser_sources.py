@@ -1,4 +1,5 @@
 from html.parser import HTMLParser
+from hashlib import sha256
 import json
 from pathlib import Path
 import re
@@ -77,18 +78,28 @@ def main():
     errors = placement_violations(ROOT)
     node = shutil.which('node')
     results = []
+    version, control = None, None
     if node is None:
         errors.append('Node is required for actual ECMAScript module syntax checking')
     else:
+        version = subprocess.run([node, '--version'], check=True, capture_output=True,
+                                 text=True, timeout=30).stdout.strip()
         for module, _ in ENTRIES.values():
             result = subprocess.run([node, '--check', str(ROOT / module)], check=False,
                                     capture_output=True, text=True, timeout=30)
             results.append({'module': module, 'returncode': result.returncode,
+                            'source_sha256': sha256((ROOT / module).read_bytes()).hexdigest(),
                             'stdout': result.stdout, 'stderr': result.stderr})
             if result.returncode:
                 errors.append(f'{module}: Node ECMAScript module syntax check failed')
+        invalid = subprocess.run([node, '--input-type=module', '--check'], input='export const = ;',
+                                 check=False, capture_output=True, text=True, timeout=30)
+        control = {'returncode': invalid.returncode, 'stderr': invalid.stderr}
+        if invalid.returncode == 0 or 'SyntaxError' not in invalid.stderr:
+            errors.append('Node must reject the seeded invalid ECMAScript module')
     print(json.dumps({'decision': 'FAIL' if errors else 'PASS', 'violations': errors,
-                      'syntax_checks': results, 'scope': 'Syntax, placement and separate source-review fingerprints; '
+                      'node_version': version, 'syntax_checks': results, 'negative_control': control,
+                      'scope': 'Syntax, placement and separate source-review fingerprints; '
                       'not semantic JavaScript verification or an HTML security sandbox.'}))
     return int(bool(errors))
 

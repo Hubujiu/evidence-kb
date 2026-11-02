@@ -49,6 +49,22 @@ def browser_verdict(path, *, expected=CASES, classname='knowledge.e2e.js'):
     return {'tests': len(cases), 'failures': 0, 'errors': 0, 'skipped': 0}
 
 
+def checked_browser_assets(client, url):
+    observed = {}
+    for path, name, media_type in (('/', 'console.html', 'text/html'),
+                                   ('/console.mjs', 'console.mjs', 'text/javascript')):
+        response = client.get(url + path)
+        expected = (ROOT / 'kb_platform' / name).read_bytes()
+        if (response.status_code != 200 or response.content != expected
+                or response.headers.get('content-type', '').split(';')[0] != media_type
+                or response.headers.get('cache-control') != 'no-store'
+                or response.headers.get('x-content-type-options') != 'nosniff'):
+            raise ValueError(f'Browser asset {path} must expose the exact current source and expected response headers')
+        observed[path] = {'status': response.status_code, 'sha256': sha256(response.content).hexdigest(),
+                          'bytes': len(response.content), 'content_type': response.headers['content-type']}
+    return observed
+
+
 def run(summary, output, dsn, migration_dsn=None):
     migration_dsn = migration_dsn or os.environ['KB_INTEGRATION_MIGRATION_DSN']
     database = acceptance_migration_dsn(dsn, migration_dsn)
@@ -111,6 +127,7 @@ def run(summary, output, dsn, migration_dsn=None):
                         if time.monotonic() >= deadline:
                             raise TimeoutError('Rust host HTTP readiness deadline exceeded')
                         time.sleep(0.1)
+                    report['browser_assets'] = checked_browser_assets(client, url)
                 with (output / 'browser.log').open('w', encoding='utf-8') as log:
                     result = subprocess.run([node, str(cli), 'run', '--output', str(browser_output),
                         '--no-cache', '--retries', '0'], cwd=ROOT / 'e2e', env=env,

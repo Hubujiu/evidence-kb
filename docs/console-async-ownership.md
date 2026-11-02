@@ -57,6 +57,37 @@ the environment rejected its process-singleton socket. No browser baseline or
 fixed pass is claimed from that attempt. The pinned Chromium 156 CDN returned an
 HTML `Site Unavailable` response; no alternate download was attempted.
 
+## Proposed current-selection guards
+
+The implementation captures a fresh opaque citation selection
+identity separately from the existing view/scope/token stamp. It checks that
+owner after metadata completion, after preview-body completion, and before a
+failed request can project an error at the final status write. The current-owner check and preview URL
+replacement run synchronously, so an obsolete selection cannot release the new
+selection's URL. Scope checks remain on both successful and failed body paths; failure ownership is rechecked at its actual mutation boundary.
+
+`action()` suppresses explicitly stale failures and rechecks the captured scope
+and selection attached to asynchronous errors through a module-private WeakMap
+immediately before writing status. Captured tokens are not enumerable properties
+of thrown errors.
+A check in an inner catch is insufficient: its rethrow queues another microtask.
+The queued-error regression selects B between A's rejection handling and the
+final action status write. It does not compare every
+operation to its pre-action scope: connect and search intentionally reset their
+own view, and their genuine current failures must still be shown. A dedicated
+positive browser case protects that distinction.
+
+The bounded model and its limitations are documented in
+[`formal/console_citation_view/model.md`](../formal/console_citation_view/model.md).
+Its positive and four negative outcomes are actual TLC observations. Browser
+baseline/fixed outcomes remain a separate required observation, not something
+that a model result or a source checksum establishes.
+
+Citation selection uses fresh object identity rather than a numeric epoch. The
+existing numeric `viewRevision` is retained; the bounded model assumes scope
+generation does not wrap or lose integer precision. No unbounded counter or
+browser-lifetime guarantee is claimed.
+
 The first PR38 CI baseline reached the console runner only after the original
 knowledge-browser cases passed, but the e2e CLI rejected its output directory
 outside the e2e project root (`INVALID_CONFIG`, exit 2). No console assertions

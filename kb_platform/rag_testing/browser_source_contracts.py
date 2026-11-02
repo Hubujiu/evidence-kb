@@ -1,13 +1,17 @@
+from contextlib import redirect_stdout
+from io import StringIO
 import json
 from pathlib import Path
+from subprocess import CompletedProcess
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
-from subprocess import CompletedProcess
 import xml.etree.ElementTree as ET
 
+from .browser_integration import browser_verdict, checked_browser_assets
+from .browser_sources import ENTRIES, main, markup_violations, placement_violations
 from .console_browser_integration import CASES, run_cases
-from .browser_sources import ENTRIES, markup_violations, placement_violations
 from .formal_state_machines import digest, source_digest, state_candidates
 
 
@@ -61,6 +65,72 @@ class BrowserSourceContracts(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'complete .mjs module'):
                 source_digest(root, {**binding, 'symbol': 'next'})
             self.assertIn(('owner.mjs', '<module>'), state_candidates(root, ['.']))
+
+    def test_syntax_gate_requires_actual_checker_and_rejected_invalid_module(self):
+        for invalid_code, invalid_error, expected in ((1, 'SyntaxError: invalid', 0), (0, '', 1), (2, 'unavailable', 1)):
+            calls = []
+
+            def run(command, **kwargs):
+                calls.append((command, kwargs))
+                if '--version' in command:
+                    return CompletedProcess(command, 0, 'v22.23.1\n', '')
+                if '--input-type=module' in command:
+                    return CompletedProcess(command, invalid_code, '', invalid_error)
+                return CompletedProcess(command, 0, '', '')
+
+            with self.subTest(code=invalid_code, error=invalid_error), patch(
+                    'kb_platform.rag_testing.browser_sources.shutil.which', return_value='/synthetic/node'), patch(
+                    'kb_platform.rag_testing.browser_sources.subprocess.run', side_effect=run), redirect_stdout(StringIO()) as stream:
+                self.assertEqual(expected, main())
+                report = json.loads(stream.getvalue())
+                self.assertEqual('v22.23.1', report['node_version'])
+                self.assertEqual('export const = ;', calls[-1][1]['input'])
+                self.assertTrue(all(row['source_sha256'] for row in report['syntax_checks']))
+        with patch('kb_platform.rag_testing.browser_sources.shutil.which', return_value=None), redirect_stdout(StringIO()):
+            self.assertEqual(1, main())
+
+    def test_every_console_browser_case_is_mandatory_without_skips_or_retries(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'junit.xml'
+            cases = [f'<testcase name="{name}" classname="console-state.e2e.js">{{}}</testcase>' for name in sorted(CASES)]
+            valid = ''.join(case.format('') for case in cases)
+            path.write_text('<testsuite>' + valid + '</testsuite>', encoding='utf-8')
+            self.assertEqual(len(CASES), browser_verdict(path, expected=CASES, classname='console-state.e2e.js')['tests'])
+            for altered in (valid.replace(cases[0].format(''), ''), valid + cases[0].format(''),
+                            valid.replace('console-state.e2e.js', 'other.js'),
+                            *(valid.replace(cases[0].format(''), cases[0].format(tag)) for tag in
+                              ('<failure/>', '<error/>', '<skipped/>', '<system-out>flaky: 1 attempt</system-out>'))):
+                path.write_text('<testsuite>' + altered + '</testsuite>', encoding='utf-8')
+                with self.subTest(altered=altered), self.assertRaises(ValueError):
+                    browser_verdict(path, expected=CASES, classname='console-state.e2e.js')
+
+
+    def test_browser_asset_preflight_rejects_missing_stale_or_mistyped_modules(self):
+        for broken in ('none', 'status', 'content', 'content-type', 'cache-control', 'x-content-type-options'):
+            calls = []
+
+            def get(url):
+                calls.append(url)
+                name = 'console.mjs' if url.endswith('.mjs') else 'console.html'
+                module = name.endswith('.mjs')
+                content = (ROOT / 'kb_platform' / name).read_bytes()
+                headers = {'content-type': 'text/javascript; charset=utf-8' if module else 'text/html; charset=utf-8',
+                           'cache-control': 'no-store', 'x-content-type-options': 'nosniff'}
+                if module and broken in headers:
+                    headers[broken] = 'incorrect'
+                return SimpleNamespace(status_code=404 if module and broken == 'status' else 200,
+                    content=b'stale' if module and broken == 'content' else content, headers=headers)
+
+            with self.subTest(broken=broken):
+                client = SimpleNamespace(get=get)
+                if broken == 'none':
+                    report = checked_browser_assets(client, 'http://fixture')
+                    self.assertEqual(200, report['/console.mjs']['status'])
+                    self.assertEqual(64, len(report['/console.mjs']['sha256']))
+                else:
+                    with self.assertRaisesRegex(ValueError, 'Browser asset /console.mjs'):
+                        checked_browser_assets(client, 'http://fixture')
+                self.assertEqual(['http://fixture/', 'http://fixture/console.mjs'], calls)
 
 
     def test_console_runner_uses_project_output_and_preserves_failed_run_artifacts(self):

@@ -22,6 +22,8 @@ CASES = frozenset(name + ' [chromium]' for name in (
     'stale citation fetch failure does not replace the newer view status',
     'scope switch rejects late error-body status and successful preview body',
     'current errors remain visible and scope reset releases its preview URL once',
+    'current search failure remains visible after its intentional view reset',
+    'queued citation failure rechecks ownership at the final status write',
 ))
 
 
@@ -84,28 +86,28 @@ def run_static(output, chromium=None):
     env['KB_E2E_URL'] = f'http://127.0.0.1:{server.server_port}'
     try:
         with TemporaryDirectory(prefix='evidence-console-browser-') as temporary:
-            if chromium is not None:
-                executable = chromium.resolve(strict=True)
-                version = subprocess.run([str(executable), '--version'], check=True, capture_output=True,
-                                         text=True, timeout=10).stdout.strip()
-                with (output / 'chromium.log').open('w', encoding='utf-8') as log:
-                    process = subprocess.Popen([str(executable), '--headless=new',
-                        '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
-                        '--user-data-dir=' + temporary, '--no-first-run', '--no-default-browser-check',
-                        '--disable-background-networking', 'about:blank'], stdout=log, stderr=subprocess.STDOUT)
-                active = Path(temporary) / 'DevToolsActivePort'
-                deadline = time.monotonic() + 15
-                while not active.is_file():
-                    if process.poll() is not None:
-                        raise RuntimeError('Owned Chromium exited before CDP readiness; no sandbox fallback attempted')
-                    if time.monotonic() >= deadline:
-                        raise TimeoutError('Owned Chromium did not become ready')
-                    time.sleep(0.05)
-                port = int(active.read_text('utf-8').splitlines()[0])
-                if not 1 <= port <= 65535:
-                    raise ValueError('Invalid owned Chromium CDP port')
-                env['KB_E2E_CDP_ENDPOINT'] = f'http://127.0.0.1:{port}'
             try:
+                if chromium is not None:
+                    executable = chromium.resolve(strict=True)
+                    version = subprocess.run([str(executable), '--version'], check=True, capture_output=True,
+                                             text=True, timeout=10).stdout.strip()
+                    with (output / 'chromium.log').open('w', encoding='utf-8') as log:
+                        process = subprocess.Popen([str(executable), '--headless=new',
+                            '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0',
+                            '--user-data-dir=' + temporary, '--no-first-run', '--no-default-browser-check',
+                            '--disable-background-networking', 'about:blank'], stdout=log, stderr=subprocess.STDOUT)
+                    active = Path(temporary) / 'DevToolsActivePort'
+                    deadline = time.monotonic() + 15
+                    while not active.is_file():
+                        if process.poll() is not None:
+                            raise RuntimeError('Owned Chromium exited before CDP readiness; no sandbox fallback attempted')
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError('Owned Chromium did not become ready')
+                        time.sleep(0.05)
+                    port = int(active.read_text('utf-8').splitlines()[0])
+                    if not 1 <= port <= 65535:
+                        raise ValueError('Invalid owned Chromium CDP port')
+                    env['KB_E2E_CDP_ENDPOINT'] = f'http://127.0.0.1:{port}'
                 detail = run_cases(output / 'console-state', env)
             finally:
                 if process is not None and process.poll() is None:
@@ -117,9 +119,6 @@ def run_static(output, chromium=None):
                         process.wait(timeout=5)
     except Exception as error:
         failure = str(error)
-        if process is not None and process.poll() is None:
-            process.terminate()
-            process.wait(timeout=10)
     finally:
         server.shutdown()
         server.server_close()

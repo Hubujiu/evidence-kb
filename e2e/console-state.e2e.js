@@ -171,3 +171,30 @@ test('current errors remain visible and scope reset releases its preview URL onc
     created: window.__consoleFixture.created.length, revoked: window.__consoleFixture.revoked.length})))
     .toEqual({images: 0, created: 1, revoked: 1});
 });
+
+
+test('current search failure remains visible after its intentional view reset', async ({app, screen, browser}) => {
+  await fixture(app, screen, browser);
+  await browser.evaluate(() => { window.fetch = () => Promise.reject(Error('synthetic current search failure')); });
+  await screen.getByRole('button', '在当前库检索').tap();
+  await expect(screen.getByRole('status')).toContainText('synthetic current search failure');
+});
+
+
+test('queued citation failure rechecks ownership at the final status write', async ({app, screen, browser}) => {
+  await fixture(app, screen, browser);
+  await select(browser, 'A');
+  await browser.evaluate(value => {
+    window.__consoleFixture.fail(value, 'fetch');
+    queueMicrotask(() => queueMicrotask(() => queueMicrotask(() => {
+      document.querySelectorAll('#results button')[1].click();
+    })));
+    return window.__consoleFixture.wait('/knowledge-bases/scope/citations/B');
+  }, path('A'));
+  await browser.evaluate(() => window.__consoleFixture.flush());
+  expect((await view(browser)).message).toBe('');
+  await deliverMetadata(browser, 'B');
+  await deliverPreview(browser, 'B');
+  expect(await view(browser)).toEqual({title: 'B.pdf', previews: [{owner: 'B', revoked: false}],
+    downloads: 1, message: ''});
+});

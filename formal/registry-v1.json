@@ -1885,17 +1885,20 @@
     },
     {
       "id": "console_citation_view",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/console.mjs",
         "kb_platform/console.html"
       ],
       "states": [
         "idle",
-        "metadata_pending",
-        "preview_pending",
-        "displayed",
-        "superseded",
+        "metadata-fetch",
+        "metadata-body",
+        "preview-fetch",
+        "preview-body",
+        "complete",
+        "discarded",
+        "error-ready",
         "failed"
       ],
       "transitions": [
@@ -1907,25 +1910,96 @@
         "revoke owned object URL"
       ],
       "invariants": [
-        "Only the current scope and citation selection may update the evidence view or own its object URL."
+        "TypeOK",
+        "NoStaleRender",
+        "NoStaleURLRelease",
+        "NoStaleFailure",
+        "CitationIdentityCoherent",
+        "CurrentURLLive",
+        "AtMostOneLiveURL"
       ],
       "assumptions": [
-        "Browser event-loop callbacks are atomic only between awaits."
+        "Each browser callback is atomic only between awaits; model includes four independent fetch/body await boundaries and a separate queued-error status commit.",
+        "Two one-shot selection generations, two scope generations and two symbolic preview URLs; no fairness assumption.",
+        "Fresh opaque citation identities are not reused; existing numeric viewRevision does not overflow within the modeled lifetime."
       ],
       "exclusions": [
-        "Inventory stage; model and actual browser counterexample are not yet attached.",
-        "JavaScript binding is complete module byte review drift, not a semantic AST or refinement proof."
+        "No automatic JavaScript-to-TLA refinement proof. Syntax, HTML placement and whole-module review drift checks prove narrower facts.",
+        "Non-PDF views, independent original-download timers, DOM allocation failures, more than two selections, browser process lifetime and server mutation semantics are not modeled."
       ],
       "source_bindings": [
         {
           "path": "kb_platform/console.mjs",
           "language": "javascript-module",
           "symbol": "<module>",
-          "sha256": "3ceb6599145a3fc70d26d7fb726a88b6b99b85f0093c72737781b715b981403e"
+          "sha256": "30d5447a8f77d1224ce554cc6504af4e0a00f747ff315b08c86676d05f408a38"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "console-citation-view",
+          "module": "formal/console_citation_view/ConsoleCitationView.tla",
+          "config": "formal/console_citation_view/ConsoleCitationView.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoStaleRender",
+            "NoStaleURLRelease",
+            "NoStaleFailure",
+            "CitationIdentityCoherent",
+            "CurrentURLLive",
+            "AtMostOneLiveURL"
+          ],
+          "properties": [],
+          "bounds": {
+            "selections": 2,
+            "scope_generations": 2,
+            "pending_phases": 4,
+            "urls": 2,
+            "queued_error_commits": 2
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "console-citation-legacy-selection",
+          "module": "formal/console_citation_view/ConsoleCitationView.tla",
+          "config": "formal/console_citation_view/LegacySelectionNegative.cfg",
+          "expected_invariant": "NoStaleRender",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "console-citation-legacy-url-release",
+          "module": "formal/console_citation_view/ConsoleCitationView.tla",
+          "config": "formal/console_citation_view/LegacyURLReleaseNegative.cfg",
+          "expected_invariant": "NoStaleURLRelease",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "console-citation-missing-body-guard",
+          "module": "formal/console_citation_view/ConsoleCitationView.tla",
+          "config": "formal/console_citation_view/MissingPreviewBodyGuardNegative.cfg",
+          "expected_invariant": "CitationIdentityCoherent",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "console-citation-stale-failure",
+          "module": "formal/console_citation_view/ConsoleCitationView.tla",
+          "config": "formal/console_citation_view/StaleFailureNegative.cfg",
+          "expected_invariant": "NoStaleFailure",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "Actual exact-source browser baseline and fixed outcome are NOT_RUN locally because Chromium process-singleton socket creation was denied; awaiting normal CI browser runner.",
+        "Review manually maintained source correspondence when any asynchronous boundary or object URL owner changes.",
+        "Extend bounds and resource/DOM failure behavior before claiming broader coverage."
+      ]
     }
   ]
 }
