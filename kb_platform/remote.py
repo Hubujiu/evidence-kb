@@ -418,13 +418,18 @@ class _Transport:
         deadline = metadata.get('deadline_monotonic')
         execution = current_execution()
         if execution is not None:
-            if execution.cancellation.is_set():
-                raise RemoteModelError('PROVIDER_CANCELLED')
             deadline = min(deadline, execution.deadline) if deadline is not None else execution.deadline
             metadata['deadline_monotonic'] = deadline
-        remaining = deadline - time.monotonic() if deadline is not None else None
-        if remaining is not None and remaining <= 0:
-            raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
+
+        def remaining_time():
+            if execution is not None and execution.cancellation.is_set():
+                raise RemoteModelError('PROVIDER_CANCELLED')
+            remaining = deadline - time.monotonic() if deadline is not None else None
+            if remaining is not None and remaining <= 0:
+                raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
+            return remaining
+
+        remaining_time()
         with self._stats_lock:
             if self._issued_requests >= self.max_requests:
                 raise RemoteModelError('PROVIDER_REQUEST_LIMIT')
@@ -432,6 +437,21 @@ class _Transport:
                 physical_id = self._receipts.begin(logical_id, key, metadata)
             except RuntimePolicyError as exc:
                 raise RemoteModelError(exc.code) from None
+            try:
+                remaining = remaining_time()
+            except RemoteModelError as preflight:
+                facts = {'model_sent': False, 'preflight_code': preflight.code,
+                         'admission_receipt_id': physical_id, 'known_zero_send': True}
+                metadata.update(facts)
+                try:
+                    self._receipts.finish(logical_id, physical_id, 'ERROR', **facts)
+                except BaseException as storage_error:
+                    for name, value in facts.items():
+                        setattr(storage_error, name, value)
+                    raise
+                for name, value in facts.items():
+                    setattr(preflight, name, value)
+                raise
             self._issued_requests += 1
         metadata['physical_request_id'] = physical_id
         started = time.perf_counter()
