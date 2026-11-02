@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import asdict
 import json
 
 from .agent_plugins import ToolContext, ToolPlugin, ToolPlugins, ToolResult
@@ -81,7 +82,7 @@ class KnowledgeApplication:
         return self.knowledge.artifact(actor, session_id, artifact_id)
 
     def sources(self, actor, scope_id):
-        return self.knowledge.gateway.sources(actor, scope_id)
+        return self.knowledge.context.sources({'actor': asdict(actor), 'scope': scope_id})
 
     def authority(self, actor, scope_id):
         return self.knowledge.gateway.authorize(actor, scope_id)

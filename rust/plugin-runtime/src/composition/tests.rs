@@ -35,12 +35,41 @@ fn aliases_compile_into_existing_lifecycle_dependencies() {
     let plan = compile(app, catalog).unwrap();
     assert_eq!(plan.order, ["database", "api"]);
     assert_eq!(plan.bindings["api"]["records"], "8.database:data");
+    assert_eq!(plan.exports["database"]["data"], "8.database:data");
+    assert_eq!(plan.exports["api"]["server"], plan.entrypoint);
     assert_eq!(plan.entrypoint, "3.api:server");
     assert_eq!(plan.commands["database"], ["node", "storage.mjs"]);
     let mut coordinator = crate::Coordinator::default();
     let result = coordinator.request(json!({"protocol": crate::PROTOCOL,
         "command": "runtime_validate", "plugins": plan.plugins}));
     assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn local_executor_has_no_process_command_and_process_executor_requires_one() {
+    let (app, mut catalog) = fixture();
+    catalog[1].executor = Executor::Local;
+    assert_eq!(
+        compile(app.clone(), catalog.clone()).unwrap_err().code,
+        "invalid_composition"
+    );
+    catalog[1].command.clear();
+    let local = compile(app.clone(), catalog.clone()).unwrap();
+    assert!(local.commands["database"].is_empty());
+    assert_eq!(
+        local
+            .plugins
+            .iter()
+            .find(|item| item.id == "database")
+            .unwrap()
+            .config["declaration"]["executor"],
+        "local"
+    );
+    catalog[1].executor = Executor::Process;
+    assert_eq!(
+        compile(app, catalog).unwrap_err().code,
+        "invalid_composition"
+    );
 }
 
 #[test]
@@ -52,6 +81,63 @@ fn provider_can_change_without_changing_consumers() {
     let plan = compile(app, catalog).unwrap();
     assert_eq!(plan.bindings["api"]["records"], "8.database:data");
     assert_eq!(plan.order, ["database", "api"]);
+}
+
+#[test]
+fn configuration_identity_includes_changed_commands_and_contracts() {
+    let (app, catalog) = fixture();
+    let first = compile(app.clone(), catalog.clone()).unwrap();
+    for variant in 0..2 {
+        let mut changed = catalog.clone();
+        if variant == 0 {
+            changed[1].command = vec!["replacement-provider".into()];
+        } else {
+            changed[1]
+                .provides
+                .get_mut("data")
+                .unwrap()
+                .capabilities
+                .insert("transaction".into());
+        }
+        let replacement = compile(app.clone(), changed).unwrap();
+        let previous = first
+            .plugins
+            .iter()
+            .find(|item| item.id == "database")
+            .unwrap();
+        let current = replacement
+            .plugins
+            .iter()
+            .find(|item| item.id == "database")
+            .unwrap();
+        assert_ne!(previous.config, current.config);
+        assert_eq!(previous.provides, current.provides);
+        assert_eq!(previous.requires, current.requires);
+    }
+}
+
+#[test]
+fn two_instances_of_same_contract_have_distinct_exports_and_explicit_bindings() {
+    let (mut app, catalog) = fixture();
+    app.plugins
+        .insert("archive".into(), app.plugins["database"].clone());
+    let original = compile(app.clone(), catalog.clone()).unwrap();
+    assert_ne!(
+        original.exports["archive"]["data"],
+        original.exports["database"]["data"]
+    );
+    app.bindings
+        .get_mut("api")
+        .unwrap()
+        .get_mut("records")
+        .unwrap()
+        .plugin = "archive".into();
+    let rebound = compile(app, catalog).unwrap();
+    assert_eq!(
+        rebound.bindings["api"]["records"],
+        rebound.exports["archive"]["data"]
+    );
+    assert_eq!(original.exports, rebound.exports);
 }
 
 #[test]

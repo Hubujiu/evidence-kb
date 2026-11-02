@@ -25,9 +25,20 @@ pub struct Requirement {
 pub struct Definition {
     pub implementation: String,
     pub version: String,
+    #[serde(default)]
+    pub executor: Executor,
+    #[serde(default)]
     pub command: Vec<String>,
     pub provides: BTreeMap<String, Contract>,
     pub requires: BTreeMap<String, Requirement>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Executor {
+    Local,
+    #[default]
+    Process,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -59,6 +70,7 @@ pub struct Plan {
     pub plugins: Vec<Manifest>,
     pub order: Vec<String>,
     pub bindings: BTreeMap<String, BTreeMap<String, String>>,
+    pub exports: BTreeMap<String, BTreeMap<String, String>>,
     pub commands: BTreeMap<String, Vec<String>>,
     pub entrypoint: String,
 }
@@ -85,7 +97,8 @@ fn valid_contract(contract: &Contract) -> bool {
 fn validate_definition(definition: &Definition) -> Result<(), Error> {
     if !name(&definition.implementation)
         || !name(&definition.version)
-        || definition.command.is_empty()
+        || (definition.executor == Executor::Process && definition.command.is_empty())
+        || (definition.executor == Executor::Local && !definition.command.is_empty())
         || definition.command.len() > 64
         || definition
             .command
@@ -161,6 +174,7 @@ pub fn compile(application: Application, catalog: Vec<Definition>) -> Result<Pla
     let mut plugins = Vec::new();
     let mut aliases = BTreeMap::new();
     let mut commands = BTreeMap::new();
+    let mut exports = BTreeMap::new();
     for (id, definition) in &selected {
         let mut resolved = BTreeMap::new();
         for (alias, requirement) in &definition.requires {
@@ -190,8 +204,8 @@ pub fn compile(application: Application, catalog: Vec<Definition>) -> Result<Pla
             resolved.insert(alias.clone(), service(&target.plugin, &target.export));
         }
         let mut config = application.plugins[id].config.clone();
-        config =
-            json!({"configuration": config, "bindings": resolved, "command": definition.command});
+        config = json!({"configuration": config, "bindings": resolved,
+            "command": definition.command, "declaration": definition});
         plugins.push(Manifest {
             id: id.clone(),
             implementation: definition.implementation.clone(),
@@ -214,12 +228,21 @@ pub fn compile(application: Application, catalog: Vec<Definition>) -> Result<Pla
         });
         aliases.insert(id.clone(), resolved);
         commands.insert(id.clone(), definition.command.clone());
+        exports.insert(
+            id.clone(),
+            definition
+                .provides
+                .keys()
+                .map(|export| (export.clone(), service(id, export)))
+                .collect(),
+        );
     }
     let order = manifest::order(&plugins, &BTreeSet::new())?;
     Ok(Plan {
         plugins,
         order,
         bindings: aliases,
+        exports,
         commands,
         entrypoint: service(
             &application.entrypoint.plugin,

@@ -72,7 +72,40 @@ AGENT_DEPENDENCIES = {
                                   'storage_cache_plugins', 'model_provider_plugins'}),
     'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
     'plugin_contracts': frozenset({'plugin_host', 'plugin_native', 'plugin_process'}),
+    'plugin_deployment': frozenset({'plugin_contracts', 'plugin_native'}),
     'contract_worker': frozenset({'host_protocol', 'host_worker', 'plugin_contracts'}),
+    'application_storage': frozenset({'database_contracts', 'knowledge_schema', 'persistence_schema', 'plugin_contracts',
+        'plugin_host', 'search', 'session_storage', 'storage_catalog', 'storage_object_wire',
+        'storage_plugins', 'storage_process', 'storage_sdk', 'storage_service', 'storage_structured_wire'}),
+    'application_knowledge': frozenset({'agent_context', 'agent_model', 'agent_tools', 'application_composition',
+        'application_storage', 'context_budget', 'core', 'document_parser', 'embedding_jobs',
+        'knowledge_access', 'knowledge_authority_contract', 'knowledge_capabilities', 'knowledge_contracts', 'knowledge_model_ports',
+        'knowledge_platform_contract', 'knowledge_profile', 'knowledge_sessions', 'knowledge_storage',
+        'model_adapters', 'model_configuration', 'model_service', 'platform_plugins',
+        'plugin_configuration', 'remote', 'research', 'retrieval_pipeline', 'search_evidence',
+        'search_router', 'semantic_page_runtime', 'session_identity', 'session_store', 'storage'}),
+    'knowledge_model_ports': frozenset({'embeddings', 'knowledge_contracts', 'model_errors',
+                                      'ocr_contract', 'plugin_contracts', 'session_identity'}),
+    'knowledge_capabilities': frozenset({'agent_context', 'agent_engine', 'knowledge_application', 'knowledge_authority_contract',
+        'knowledge_context', 'knowledge_contracts', 'knowledge_platform_contract', 'knowledge_service',
+        'knowledge_semantic_contract', 'knowledge_workflow', 'plugin_contracts', 'provider_runtime'}),
+    'knowledge_contracts': frozenset({'agent_context', 'agent_model', 'model_errors', 'plugin_configuration', 'plugin_contracts',
+                                     'retrieval_pipeline', 'session_identity'}),
+    'knowledge_context': frozenset({'planning_references', 'session_identity'}),
+    'knowledge_access': frozenset({'core', 'knowledge_queries', 'session_identity'}),
+    'knowledge_authority_contract': frozenset({'database_contracts', 'knowledge_contracts', 'knowledge_schema',
+        'plugin_contracts', 'plugin_native', 'storage_expression_wire', 'storage_sdk', 'storage_structured_wire'}),
+    'knowledge_platform_contract': frozenset({'database_contracts', 'documents', 'embeddings',
+        'knowledge_contracts', 'model_errors', 'plugin_contracts', 'session_identity', 'storage_sdk'}),
+    'knowledge_semantic_contract': frozenset({'knowledge_contracts', 'plugin_contracts',
+                                             'semantic_pages_v2', 'session_identity'}),
+    'ocr_contract': frozenset({'model_errors'}),
+    'storage_expression_wire': frozenset({'database_contracts', 'database_process', 'storage_sdk'}),
+    'storage_structured_wire': frozenset({'database_contracts', 'database_process',
+                                        'storage_expression_wire', 'storage_sdk'}),
+    'storage_object_wire': frozenset({'blob_service', 'storage_object_transfer', 'storage_process', 'storage_sdk'}),
+    'storage_object_transfer': frozenset({'blob_service', 'storage_sdk'}),
+    'storage_reset': frozenset({'storage_catalog', 'storage_sdk'}),
     'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
     'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),
@@ -82,8 +115,9 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'harness_loop', 'harness_services', 'context_budget', 'session_identity', 'session_store',
                            'plugin_profiles', 'harness_graph', 'harness_context', 'harness_model',
                            'harness_application', 'harness_profile', 'model_service', 'plugin_process',
-                           'plugin_configuration', 'host_protocol', 'host_worker'})
-KNOWLEDGE_BUSINESS = frozenset({'core', 'agent_tools', 'semantic_pages_v2', 'embedding_jobs'})
+                           'plugin_configuration', 'host_protocol', 'host_worker',
+                           'plugin_contracts', 'plugin_deployment', 'contract_worker'})
+KNOWLEDGE_BUSINESS = frozenset({'core', 'agent_tools', 'semantic_pages_v2', 'embedding_jobs', 'knowledge_access'})
 NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
                        'agent-harness': {'plugin-runtime', 'plugin-host', 'serde', 'serde_json'},
                        'plugin-host': {'serde', 'serde_json', 'libc', 'windows-sys'},
@@ -596,6 +630,16 @@ def snapshot_native_worker(build: CheckResult, target: Path, output: Path) -> Pa
     return destination
 
 
+def snapshot_contract_provider(build: CheckResult, target: Path, output: Path) -> Path | None:
+    if build.exit_code:
+        return None
+    source = target / 'release/examples' / ('contract_provider.exe' if sys.platform == 'win32' else 'contract_provider')
+    destination = output / 'native' / source.name
+    destination.parent.mkdir(exist_ok=True)
+    shutil.copy2(source, destination)
+    return destination
+
+
 def blocked_contracts(output: Path, reason: str) -> CheckResult:
     log = output / "contracts.log"
     log.write_text(f"BLOCKED: {reason}\n", encoding="utf-8")
@@ -663,6 +707,7 @@ def main() -> int:
         native_library = None
         host_binary = None
         native_worker = None
+        contract_provider = None
         block_reason = "the current Rust release build failed"
         try:
             native_library = snapshot_native_library(build, target, output)
@@ -671,6 +716,7 @@ def main() -> int:
         try:
             host_binary = snapshot_host_binary(build, target, output)
             native_worker = snapshot_native_worker(build, target, output)
+            contract_provider = snapshot_contract_provider(build, target, output)
         except OSError as exc:
             (output / 'host-integration.log').write_text(f'BLOCKED: current host binary unavailable: {exc}\n',
                                                        encoding='utf-8')
@@ -681,6 +727,8 @@ def main() -> int:
         results.append(run_check("rust-tests", cargo + ["test", *native_args], output, env, timeout=600))
         if native_library is not None:
             env["KB_AGENT_KERNEL_LIBRARY"] = str(native_library)
+            if contract_provider is not None:
+                env['KB_CONTRACT_PROVIDER'] = str(contract_provider)
             results.append(run_check('plugin-process-integration',
                 [sys.executable, '-B', '-m', 'kb_platform.rag_testing.plugin_process_integration',
                  '--output', str(output / 'plugin-process-integration')], output, env))

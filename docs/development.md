@@ -34,7 +34,9 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 普通合同仍禁止联网和启动子进程。正式 checker 另外编排受控进程插件与 Rust 主宿主 fixture，包含临时 loopback HTTP 健康检查；这些阶段使用合成数据和本地模型响应。完整知识库 HTTP、解析子进程和 PostgreSQL 验收使用 `--local-integration` 并设置 `KB_INTEGRATION_DSN` 与同库的 `KB_INTEGRATION_MIGRATION_DSN`；前者为受限运行账号，后者只供受控夹具初始化与清理。数据库名须以 `rust_plugin_acceptance_` 开头，且连接 loopback。这个入口保留相同的所有离线检查，不会自动调用真实模型。
 
-先声明 `PluginSpec` 的 `provides`、`requires` 和版本，再把实现加入可信 catalog。profile 的 `use` 只能引用已登记的键，不能写 Python 导入路径或任意代码。默认知识库 profile 在 `config/agent-profiles/knowledge.json`；`KB_AGENT_PROFILE` 允许启动时选择另一个配置。
+知识库应用使用 `config/applications/knowledge.json`：实例指定 implementation/version/config，依赖通过 bindings 绑定消费者别名到提供者具名出口。可信 catalog 声明合同 ID、主版本、能力、requires 和执行方式；Rust 在挂载之前检查缺失、冲突及循环。`KB_APPLICATION_PROFILE` 选择应用配置。公开方法只接收和返回 JSON；原始对象、数据库连接、Python 类和回调不能跨业务插件边界。实现入口见 `knowledge_capabilities.py`，协议及替换示例见 [插件架构](plugin-architecture-v4.md)。
+
+`PluginSpec` 是本地执行器内部及独立文档工作台的低层装配 API，不是知识库用户需要编辑的节点。其存储需求统一放入 requires；不再存在独立 storage_slots 字段。内部组件合同仍直接验证这些底层部件。
 
 业务请求通过 `host.call(service, method, ...)` 取得运行租约。`host.service()` 用于装配，不应保存原始服务并绕过生命周期直接处理请求。插件创建的资源用 `ctx.defer()` 注册释放；借用父作用域或外部调用者的资源不能重复取得关闭所有权。child 覆盖父服务时必须在该条配置的 `overrides` 中声明服务名。
 

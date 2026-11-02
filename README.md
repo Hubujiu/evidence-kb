@@ -39,7 +39,7 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 
 正常停止时，在另一终端执行 `New-Item .local/api.stop -ItemType File`；下次启动前移除该标记。宿主等待在途工作与资源清理，异常退出返回非零状态。Linux 可用 `touch .local/api.stop`。HTTP 路由和页面仍由现有 Python 应用提供。
 
-`bootstrap.py` 显式初始化新的本地存储空间，并生成含数据身份的 `.local/storage.json`；已有文件不覆盖。已有旧数据须先按 [存储迁移](docs/storage-capability-cleanup.md) 导入新空间。配置其他后端时，使用 [公共存储配置](docs/storage-plugins-execution-plan.md)，BM25、dense、正文与原件可分别绑定。可选 Compose 只初始化开发 PostgreSQL 账号和扩展，不安装知识库业务表；包含公开开发密码，仅绑定回环地址。
+`bootstrap.py` 显式初始化新的本地存储空间，并生成含数据身份的 `.local/storage.json`；已有文件不覆盖。新的知识库应用不兼容历史业务数据和配置，使用下面的知识库初始化命令创建空空间。切换后端可按 [业务数据重置](docs/storage-reset.md) 创建新的业务空间，旧目录及费用账本不删除。配置其他后端时，使用 [公共存储配置](docs/storage-plugins-execution-plan.md)，BM25、dense、正文与原件可分别绑定。
 
 已有 OpenSearch 数据必须先显式导入，不能只切换环境变量。导入、回退和备份步骤见 [检索存储](docs/search-storage.md)。
 
@@ -50,18 +50,22 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 ## 配置远程提供者
 
 多提供商及 OCR、Embedding、语音、生图接入使用新的 [公共模型服务](docs/model-services.md)，
-配置示例为 `config/models.example.json`。设置 `KB_MODELS_CONFIG` 后，知识库和辅助插件
-共享模型注册表；下述旧配置仍可继续使用。
+配置示例为 `config/models.example.json`。设置 `KB_MODELS_CONFIG` 后，模型插件拥有提供者、物理请求账本及路由；其他插件通过公共模型合同调用。也可选用下面的 Luna/Google 提供者实现。
 
 将 `config/remote-providers.example.json` 或 `config/vertex-providers.example.json` 复制到 `.local/providers.json`，替换端点、模型和凭据。示例中的模型名称需要你的提供者实际支持，仓库不提供模型账户或额度。
 
 PowerShell 中显式启用后重启服务。
 
 ```powershell
+uv run python scripts/bootstrap.py --application knowledge
 $env:KB_REMOTE_MODELS = '1'
 $env:KB_PROVIDERS_CONFIG = '.local/providers.json'
 uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
+
+知识库默认使用 [`config/applications/knowledge.json`](config/applications/knowledge.json) 的八类插件：入口、工作流、上下文、会话、认证授权、模型、知识库数据与检索、存储。Rust 根据合同版本、能力及显式 `bindings` 编译依赖图并管理生命周期。上下文负责读取会话与授权证据；内部策略和工具适配器不再单独配置为业务插件。设置 `KB_APPLICATION_PROFILE` 可选择另一份应用配置。配置、公开 JSON 接口和语言执行方式见 [插件架构](docs/plugin-architecture-v4.md)。
+
+默认知识库数据配置为 `.local/storage-knowledge.json`；`KB_STORAGE_CONFIG` 可显式覆盖。初始化命令不会复制旧知识库、索引或会话。没有发生自动迁移，也不会因连接错误清空数据。
 
 上传、索引和问答可能产生付费请求。执行真实验收前冻结输入、明确预算，并核对已有账本。固定交付工厂 `kb_platform.delivery:create_delivery_app` 还要求匹配的交付配置和私有运行目录。Windows 的 `scripts/start_delivery.ps1` 属于该高级交付流程，需要显式提供配置参数；本机交付配置不随仓库发布。
 

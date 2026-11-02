@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "root": ".",
+  "definitions": [
+    {
+      "implementation": "example.context.process",
+      "version": "1",
+      "executor": "process",
+      "provides": {
+        "context": {
+          "id": "knowledge.context",
+          "major": 1
+        }
+      },
+      "requires": {
+        "sessions": {
+          "contract": {
+            "id": "knowledge.sessions",
+            "major": 1
+          }
+        },
+        "data": {
+          "contract": {
+            "id": "knowledge.evidence",
+            "major": 1
+          }
+        },
+        "access": {
+          "contract": {
+            "id": "knowledge.access",
+            "major": 1
+          }
+        }
+      },
+      "command": [
+        "python",
+        "worker.py"
+      ]
+    }
+  ],
+  "schemas": [
+    {
+      "implementation": "example.context.process",
+      "version": "1",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "input_budget": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "output_reserve": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "model_window": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "safety_reserve": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "strict_tokens": {
+            "type": "boolean"
+          },
+          "evidence_strategy": {
+            "enum": [
+              "prefix",
+              "query_blocks",
+              "coverage_blocks"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": []
+      }
+    }
+  ]
+}

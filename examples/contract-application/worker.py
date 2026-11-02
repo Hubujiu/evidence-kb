@@ -22,7 +22,8 @@ for line in sys.stdin:
               'parent': request['id'], 'service': 'source', 'method': 'get', 'args': [{}], 'kwargs': {}})
         callback = json.loads(sys.stdin.readline())
         if not callback['ok']:
-            raise RuntimeError(callback['error'])
+            send({'protocol': PROTOCOL, 'id': request['id'], 'ok': False, 'error': callback['error']})
+            continue
         result = config['prefix'] + callback['result']
     elif kind == 'cancel':
         continue

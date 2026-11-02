@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "plugins": {
+    "storage": {
+      "implementation": "knowledge.storage",
+      "version": "1",
+      "config": {
+        "path": ".local/storage-knowledge.json"
+      }
+    },
+    "model": {
+      "implementation": "knowledge.model",
+      "version": "1",
+      "config": {
+        "providers_config": ".local/providers.json",
+        "policy": {
+          "input_budget": 24000,
+          "output_reserve": 1500,
+          "model_window": 32768,
+          "safety_reserve": 1024
+        },
+        "budget": {
+          "max_calls": 10000,
+          "max_tokens": 100000000
+        }
+      }
+    },
+    "sessions": {
+      "implementation": "knowledge.sessions",
+      "version": "1",
+      "config": {
+        "binding": "store.primary"
+      }
+    },
+    "data": {
+      "implementation": "knowledge.data",
+      "version": "1",
+      "config": {
+        "research_root": ".local/research-v4",
+        "rerank": true
+      }
+    },
+    "access": {
+      "implementation": "knowledge.access",
+      "version": "1",
+      "config": {
+        "identities_file": ".local/identities.json"
+      }
+    },
+    "context": {
+      "implementation": "knowledge.context",
+      "version": "1",
+      "config": {
+        "input_budget": 24000,
+        "output_reserve": 1500,
+        "model_window": 32768,
+        "safety_reserve": 1024,
+        "evidence_strategy": "query_blocks"
+      }
+    },
+    "workflow": {
+      "implementation": "knowledge.workflow",
+      "version": "1",
+      "config": {
+        "max_tool_attempts": 2,
+        "retrieval_config": {
+          "channels": [
+            "bm25",
+            "dense"
+          ],
+          "rerank": true,
+          "parent": "paragraph",
+          "top_k": 5
+        }
+      }
+    },
+    "entry": {
+      "implementation": "knowledge.entry",
+      "version": "1",
+      "config": {}
+    }
+  },
+  "bindings": {
+    "model": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      },
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      }
+    },
+    "sessions": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      }
+    },
+    "data": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      },
+      "model": {
+        "plugin": "model",
+        "export": "model"
+      },
+      "models": {
+        "plugin": "model",
+        "export": "capabilities"
+      },
+      "authority": {
+        "plugin": "storage",
+        "export": "authority"
+      }
+    },
+    "access": {
+      "authority": {
+        "plugin": "storage",
+        "export": "authority"
+      }
+    },
+    "context": {
+      "sessions": {
+        "plugin": "sessions",
+        "export": "sessions"
+      },
+      "data": {
+        "plugin": "data",
+        "export": "evidence"
+      },
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      }
+    },
+    "workflow": {
+      "sessions": {
+        "plugin": "sessions",
+        "export": "sessions"
+      },
+      "data": {
+        "plugin": "data",
+        "export": "evidence"
+      },
+      "model": {
+        "plugin": "model",
+        "export": "model"
+      },
+      "context": {
+        "plugin": "context",
+        "export": "context"
+      },
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      },
+      "semantic": {
+        "plugin": "data",
+        "export": "semantic"
+      }
+    },
+    "entry": {
+      "workflow": {
+        "plugin": "workflow",
+        "export": "workflow"
+      },
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      },
+      "platform": {
+        "plugin": "data",
+        "export": "platform"
+      }
+    }
+  },
+  "entrypoint": {
+    "plugin": "entry",
+    "export": "application"
+  }
+}

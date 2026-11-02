@@ -429,8 +429,13 @@ class ProcessTransport:
             if len(payload) > MAX_MESSAGE:
                 raise PluginError('PROCESS_MESSAGE_LIMIT')
         except Exception as error:
+            detail = {'code': getattr(error, 'code', type(error).__name__), 'message': str(error)}
+            if type(getattr(error, 'status_code', None)) is int:
+                detail['status_code'] = error.status_code
+            if isinstance(getattr(error, 'details', None), dict):
+                detail['details'] = error.details
             response = {'protocol': PROTOCOL, 'id': call['id'], 'ok': False,
-                'error': {'code': getattr(error, 'code', type(error).__name__), 'message': str(error)}}
+                'error': detail}
             payload = json.dumps(response, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode() + b'\n'
         if len(payload) > MAX_MESSAGE:
             raise PluginError('PROCESS_MESSAGE_LIMIT')
@@ -540,7 +545,9 @@ class ProcessTransport:
                 self._callbacks.pop(request['id'], None)
         if not response['ok']:
             self._record(request, 'ERROR', error=response.get('error'))
-            raise PluginError('PROCESS_CALL_ERROR', str(response.get('error')))
+            error = PluginError('PROCESS_CALL_ERROR', str(response.get('error')))
+            error.remote_error = response.get('error')
+            raise error
         self._record(request, 'COMPLETE')
         return response.get('result')
 

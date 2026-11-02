@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import sys
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from kb_platform.delivery import (
     DeliveryConfigurationError,
@@ -210,6 +210,73 @@ class DeliveryContracts(unittest.TestCase):
             create_delivery_app(self.config_path, self.provider_path, self.run, app_factory=unexpected_application)
         self.assertEqual(ledger.summary(), before)
 
+    def test_production_delivery_uses_public_metadata_and_mount_time_capture_options(self):
+        from fastapi import FastAPI
+        from kb_platform.rag_testing.provider_capture import request_context
+
+        class PublicWorkflow:
+            __slots__ = ()
+
+            def model_status(self):
+                return {'policy': {'model_window': 131072, 'input_budget': 118784,
+                                   'output_reserve': 4096, 'safety_reserve': 8192}, 'budget': {}}
+
+        def provider(name):
+            return SimpleNamespace(provider_id=name, manifest={'provider': name}, close=Mock(),
+                admission=SimpleNamespace(scope_hash='synthetic', directory=self.run / name))
+
+        captured, embedding = provider('luna'), provider('google_gemini')
+        semantic = provider('semantic')
+        semantic.model, semantic.dimension = 'gemini-embedding-2', 768
+        app = FastAPI()
+        app.state.research, app.state.agent = SimpleNamespace(configured=True), PublicWorkflow()
+        app.state.platform = SimpleNamespace(embedding_provider=SimpleNamespace(
+            provider_id=embedding.provider_id, manifest=deepcopy(embedding.manifest)))
+        def construct(settings, *, semantic_observer, **kwargs):
+            self.assertEqual(observe.call_count, 2)
+            selected = SimpleNamespace(provider=SimpleNamespace(provider_id='google_gemini', remote=semantic))
+            semantic_observer(selected)
+            semantic_observer(selected)
+            return app
+
+        with patch.dict(os.environ, {'KB_DEFER_DEFAULT_APP': '1', 'KB_SEMANTIC_PAGE_CONFIG': 'configured.json'}), \
+                patch('kb_platform.api.create_app', side_effect=construct) as factory, \
+                patch('kb_platform.delivery.CapturedLuna', return_value=captured), \
+                patch('kb_platform.remote.GoogleEmbeddingProvider', return_value=embedding), \
+                patch('kb_platform.delivery.observe_client') as observe, \
+                patch('kb_platform.delivery._serialize_client_sends'):
+            result = create_delivery_app(self.config_path, self.provider_path, self.run)
+        self.assertIs(result, app)
+        self.assertEqual(factory.call_args.kwargs['workflow_options'], {'tool_context': request_context})
+        self.assertEqual([call.kwargs['category'] for call in observe.call_args_list],
+                         ['delivery_model', 'delivery_embedding', 'delivery_semantic_embedding'])
+        self.assertEqual(app.state.delivery['providers'], [captured, embedding, semantic])
+        self.assertEqual(app.state.delivery['ledger'].summary()['pending_or_unknown'], 0)
+        manifest = json.loads((self.run / 'runtime.json').read_text())
+        self.assertEqual(manifest['new_requests_at_startup'], 0)
+        self.assertTrue(manifest['semantic_page_runtime_configured'])
+        for close in app.router.on_shutdown:
+            close()
+        captured.close.assert_called_once_with()
+        embedding.close.assert_called_once_with()
+
+    def test_semantic_observer_rejects_mismatched_provider_before_instrumenting_it(self):
+        captured, embedding = Mock(), Mock()
+        def construct(settings, *, semantic_observer, **kwargs):
+            semantic_observer(SimpleNamespace(provider=SimpleNamespace(provider_id='unexpected', remote=Mock())))
+
+        with patch.dict(os.environ, {'KB_DEFER_DEFAULT_APP': '1', 'KB_SEMANTIC_PAGE_CONFIG': 'configured.json'}), \
+                patch('kb_platform.api.create_app', side_effect=construct), \
+                patch('kb_platform.delivery.CapturedLuna', return_value=captured), \
+                patch('kb_platform.remote.GoogleEmbeddingProvider', return_value=embedding), \
+                patch('kb_platform.delivery.observe_client') as observe, \
+                patch('kb_platform.delivery._serialize_client_sends'):
+            with self.assertRaisesRegex(DeliveryConfigurationError, 'DELIVERY_SEMANTIC_PROVIDER_MISMATCH'):
+                create_delivery_app(self.config_path, self.provider_path, self.run)
+        self.assertEqual(observe.call_count, 2)
+        captured.close.assert_called_once_with()
+        embedding.close.assert_called_once_with()
+
     def test_cli_check_and_help_work_without_services(self):
         help_result = self.cli('--help')
         self.assertEqual(help_result.returncode, 0, help_result.stderr)
@@ -252,18 +319,18 @@ class MountedReadinessContracts(unittest.TestCase):
         from kb_platform.session_identity import Actor
 
         actor = Actor('tenant', 'owner')
-        backend = Mock()
-        backend.index_name.return_value = 'published-index'
         platform = SimpleNamespace(list_kbs=Mock(return_value=[
             {'kb_id': 'published', 'manifest_id': 'build'}, {'kb_id': 'empty', 'manifest_id': None}]),
-            backend=backend)
+            search=Mock(return_value={'manifest_id': 'build'}))
         result = _dependency_probe(platform, actor)
         self.assertTrue(result['repository']['ready'])
         self.assertEqual(result['search']['verified_published_generations'], 1)
         platform.list_kbs.assert_called_once_with(actor)
-        backend.index_name.assert_called_once_with('tenant', 'published', 'build')
-        backend.verify.assert_called_once_with('published-index')
-        backend.verify.side_effect = RuntimeError('mounted backend unavailable')
+        platform.search.assert_called_once_with(actor, 'published', 'delivery-readiness',
+                                               channel='bm25', top_k=1, context_budget=1)
+        platform.search.return_value = {'manifest_id': 'changed'}
+        self.assertFalse(_dependency_probe(platform, actor)['search']['ready'])
+        platform.search.side_effect = RuntimeError('mounted backend unavailable')
         self.assertFalse(_dependency_probe(platform, actor)['search']['ready'])
         platform.list_kbs.side_effect = RuntimeError('mounted repository unavailable')
         self.assertEqual(_dependency_probe(platform, actor), {

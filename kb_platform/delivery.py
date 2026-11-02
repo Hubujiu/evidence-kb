@@ -240,8 +240,10 @@ def _dependency_probe(platform, actor):
         checked = 0
         for scope in scopes:
             if scope['manifest_id'] is not None:
-                index = platform.backend.index_name(actor.tenant_id, scope['kb_id'], scope['manifest_id'])
-                platform.backend.verify(index)
+                found = platform.search(actor, scope['kb_id'], 'delivery-readiness',
+                                         channel='bm25', top_k=1, context_budget=1)
+                if found['manifest_id'] != scope['manifest_id']:
+                    raise ValueError('PUBLISHED_GENERATION_CHANGED')
                 checked += 1
         result['search'] = {'ready': True, 'verified_published_generations': checked}
     except Exception as exc:
@@ -283,7 +285,8 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
     capture_root = Path(batch['capture_root']) if batch else profile.root / 'physical-requests'
     if ledger.summary()['pending_or_unknown']:
         raise DeliveryConfigurationError('DELIVERY_HAS_UNRESOLVED_PHYSICAL_REQUESTS')
-    if app_factory is None:
+    public_application = app_factory is None
+    if public_application:
         from kb_platform.api import create_app
 
         app_factory = create_app
@@ -300,18 +303,8 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
         raise
     owned_clients = OwnedModelClients(captured, embedding)
     cleanup.callback(owned_clients.close_unclaimed)
-    app = app_factory(settings, model_clients=owned_clients)
-    if getattr(app.state, 'root_plugins', None) is not None:
-        cleanup.callback(app.state.root_plugins.close)
-    research, agent, platform = app.state.research, app.state.agent, app.state.platform
-    if research is None or agent is None or platform.embedding_provider is not research.embedding:
-        raise DeliveryConfigurationError('DELIVERY_PROVIDER_WIRING_INVALID')
-    policy = agent.model.policy
-    if (policy.model_window, policy.input_budget, policy.output_reserve, policy.safety_reserve) != (
-            WINDOW['total'], WINDOW['input'], WINDOW['output'], WINDOW['safety']):
-        raise DeliveryConfigurationError('DELIVERY_AGENT_WINDOW_MISMATCH')
-    agent.tool_context = request_context
     providers, seen, lock = [], set(), Lock()
+    semantic_configured = False
 
     def observe(provider, category):
         if id(provider) in seen:
@@ -323,16 +316,48 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
         _serialize_client_sends(provider, lock)
         providers.append(provider)
 
-    observe(captured, 'delivery_model')
-    observe(embedding, 'delivery_embedding')
-    semantic = getattr(agent, 'semantic_pages', None)
-    if semantic is not None:
-        semantic_provider = getattr(semantic, 'provider', None)
+    def observe_semantic(service):
+        nonlocal semantic_configured
+        semantic_provider = getattr(service, 'provider', None)
         remote = getattr(semantic_provider, 'remote', None)
         if (getattr(semantic_provider, 'provider_id', None) != 'google_gemini' or remote is None
                 or remote.model != 'gemini-embedding-2' or remote.dimension != 768):
             raise DeliveryConfigurationError('DELIVERY_SEMANTIC_PROVIDER_MISMATCH')
         observe(remote, 'delivery_semantic_embedding')
+        semantic_configured = True
+
+    observe(captured, 'delivery_model')
+    observe(embedding, 'delivery_embedding')
+    if public_application:
+        app = app_factory(settings, model_clients=owned_clients,
+                          workflow_options={'tool_context': request_context}, semantic_observer=observe_semantic)
+    else:
+        app = app_factory(settings, model_clients=owned_clients)
+    if getattr(app.state, 'root_plugins', None) is not None:
+        cleanup.callback(app.state.root_plugins.close)
+    research, agent, platform = app.state.research, app.state.agent, app.state.platform
+    if research is None or agent is None:
+        raise DeliveryConfigurationError('DELIVERY_PROVIDER_WIRING_INVALID')
+    if public_application:
+        configured = platform.embedding_provider
+        if (not research.configured or configured is None
+                or configured.provider_id != embedding.provider_id or configured.manifest != embedding.manifest):
+            raise DeliveryConfigurationError('DELIVERY_PROVIDER_WIRING_INVALID')
+        policy = agent.model_status()['policy']
+        dimensions = tuple(policy[name] for name in ('model_window', 'input_budget', 'output_reserve', 'safety_reserve'))
+    else:
+        if platform.embedding_provider is not research.embedding:
+            raise DeliveryConfigurationError('DELIVERY_PROVIDER_WIRING_INVALID')
+        policy = agent.model.policy
+        dimensions = policy.model_window, policy.input_budget, policy.output_reserve, policy.safety_reserve
+        agent.tool_context = request_context
+    if dimensions != (
+            WINDOW['total'], WINDOW['input'], WINDOW['output'], WINDOW['safety']):
+        raise DeliveryConfigurationError('DELIVERY_AGENT_WINDOW_MISMATCH')
+    if not public_application:
+        semantic = getattr(agent, 'semantic_pages', None)
+        if semantic is not None:
+            observe_semantic(semantic)
     app.state.delivery = {'profile': profile.public(), 'ledger': ledger,
                           'providers': providers, 'model': captured, 'budget_batch': batch,
                           'capture_root': capture_root}
@@ -421,7 +446,7 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
                     'scope_hash': provider.admission.scope_hash,
                     'control_directory': str(provider.admission.directory),
                     'automatic_probe': False} for provider in providers],
-                'semantic_page_runtime_configured': semantic is not None}
+                'semantic_page_runtime_configured': semantic_configured}
     target = profile.root / 'runtime.json'
     temporary = target.with_suffix('.tmp')
     temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')

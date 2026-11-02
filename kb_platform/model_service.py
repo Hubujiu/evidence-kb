@@ -376,3 +376,7 @@ class StructuredModel:
 
     def complete_json(self, messages, **options):
         return self.complete(messages, **options).to_dict()
+
+    def accept_completion(self, envelope):
+        with self._service.lease(self._name, Capability.CHAT, expected=self._entry):
+            self._model.accept_completion(envelope)
