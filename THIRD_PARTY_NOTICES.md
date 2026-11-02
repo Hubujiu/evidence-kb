@@ -11,3 +11,10 @@ License. The original license is retained in
 Python dependencies and external services retain their respective licenses.
 Dependency versions are recorded in `uv.lock`. Model weights, private datasets,
 provider credentials, and the full external PageIndex SDK are not bundled.
+
+The optional formal-validation prerequisite is the official MIT-licensed
+[TLA+ tools v1.7.4](https://github.com/tlaplus/tlaplus/releases/tag/v1.7.4).
+`formal/toolchain-v1.json` records its source commit, download URL and integrity
+hashes. The jar is not redistributed in this repository; explicit installation
+verifies the locked bytes. TLA+ source licensing is available in the
+[upstream license](https://github.com/tlaplus/tlaplus/blob/5a47802b5c391f59ecdd44117981f4ff8c0656ba/LICENSE).

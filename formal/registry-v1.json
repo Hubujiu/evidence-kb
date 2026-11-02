@@ -1,0 +1,1768 @@
+{
+  "schema_version": 1,
+  "discovery": {
+    "roots": [
+      "kb_platform",
+      "rust"
+    ],
+    "exclusions": [
+      {
+        "path": "kb_platform/agent_api.py",
+        "symbol": "install_agent_routes.runtime_status",
+        "reason": "Read-only HTTP route projection of configured delivery status; local variable is not an independently transitioned lifecycle owner."
+      },
+      {
+        "path": "kb_platform/embeddings.py",
+        "symbol": "EmbeddingCallError.__init__",
+        "reason": "Exception DTO stores observed HTTP status and failure facts; no admission, transition, persistence or asynchronous lifecycle is owned here."
+      },
+      {
+        "path": "kb_platform/rag_testing/browser_integration.py",
+        "symbol": "run",
+        "reason": "Controlled browser integration test orchestrator reports PASS/FAIL of checks, not a production state owner; runtime shutdown behavior is mapped under host_process."
+      },
+      {
+        "path": "kb_platform/rag_testing/contracts.py",
+        "symbol": "Trace",
+        "reason": "Validation-only Trace DTO describes observed outcomes; it does not transition execution state. Actual delivery request orchestration is separately inventoried as acceptance_workflow."
+      },
+      {
+        "path": "kb_platform/rag_testing/harness_performance.py",
+        "symbol": "_rss",
+        "reason": "False positive: status is a pathlib.Path for /proc/self/status used only to read process memory counters."
+      },
+      {
+        "path": "kb_platform/rag_testing/semantic.py",
+        "symbol": "Verdict",
+        "reason": "Validation-only semantic-judgment DTO labels evidence support; no mutable lifecycle transitions. Semantic answer verification owner is knowledge_workflow."
+      },
+      {
+        "path": "kb_platform/rag_testing/storage_integration.py",
+        "symbol": "knowledge_suite.KnowledgeStorageIntegration.test_two_actual_knowledge_spaces_isolate_same_generation_and_rls_connection_reuse",
+        "reason": "Deterministic storage integration test body observes database session variables; not a production transition owner."
+      },
+      {
+        "path": "kb_platform/rag_testing/storage_integration.py",
+        "symbol": "knowledge_suite.KnowledgeStorageIntegration.test_two_actual_knowledge_spaces_isolate_same_generation_and_rls_connection_reuse.observe",
+        "reason": "Nested observer in a deterministic storage integration test reads SQL session variables; not a production transition owner."
+      },
+      {
+        "path": "kb_platform/rag_testing/storage_integration.py",
+        "symbol": "run",
+        "reason": "Storage integration test runner aggregates test PASS/FAIL and cleanup evidence, not a product state machine."
+      }
+    ]
+  },
+  "machines": [
+    {
+      "id": "physical_budget",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/rag_testing/budget.py",
+        "kb_platform/rag_testing/provider_capture.py",
+        "kb_platform/embeddings.py",
+        "kb_platform/google_semantic_provider.py",
+        "kb_platform/model_http.py"
+      ],
+      "states": [
+        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+      ],
+      "transitions": [
+        "BudgetLedger._reserve",
+        "BudgetLedger.finish",
+        "MeteredTransport._handle_admitted"
+      ],
+      "invariants": [
+        "Never send without durable reservation; UNKNOWN or STARTED retains reservation; finish exactly once; a failed reserve acknowledgment does not prove physical send; no blind replay. DB write/guard serialization and external HTTP are distinct atomicity domains."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger._reserve",
+          "sha256": "60c7a90dd70762316f57d7078c03cc53642d9182ae58fca642db0baaaf0b62d0"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger.finish",
+          "sha256": "281f8912e880a77985967b545fdf4e9320aebbd89908d4a5b80d344d73a0b6e7"
+        },
+        {
+          "path": "kb_platform/rag_testing/provider_capture.py",
+          "language": "python",
+          "symbol": "MeteredTransport._handle_admitted",
+          "sha256": "3903308da069fc59c1a1144977a356077be2a6bc47161740ff01c9e588d398d0"
+        },
+        {
+          "path": "kb_platform/embeddings.py",
+          "language": "python",
+          "symbol": "read_embedding_capture",
+          "sha256": "82ad46ae7722f93dc8d984e7db749c618b308ae1a17a3d41e9c402906f4bfbc1"
+        },
+        {
+          "path": "kb_platform/google_semantic_provider.py",
+          "language": "python",
+          "symbol": "GoogleSemanticProvider._observed",
+          "sha256": "5acfe0636090612a42a3153c37a0c1c771732438374cfbbff3ad21592245819a"
+        },
+        {
+          "path": "kb_platform/model_http.py",
+          "language": "python",
+          "symbol": "OpenAICompatibleAdapter.invoke",
+          "sha256": "7aca4fb4a257f49625d294b1542a3cb8a9832b33aa277ad2628ea71ff3fb7dde"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "budget_batches",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/rag_testing/budget_batches.py"
+      ],
+      "states": [
+        "immutable predecessor snapshots"
+      ],
+      "transitions": [
+        "LinkedBudgetLedger.reserve",
+        "LinkedBudgetLedger.cumulative_summary",
+        "ReviewedPredecessorLedger.cumulative_summary"
+      ],
+      "invariants": [
+        "Prior cost/UNKNOWN survives new batch and replacement backend; duplicate physical IDs and changed predecessor hash block admission."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "LinkedBudgetLedger.reserve",
+          "sha256": "55c9fa0eed988ba8f18181d5f969755a55a039d34b6e2ac7ad39e6076a3f6647"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "LinkedBudgetLedger.cumulative_summary",
+          "sha256": "1aaa845b5c3d4df5012676155053ed25df0f0713ba5aed1f7e0f328759578054"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "ReviewedPredecessorLedger.cumulative_summary",
+          "sha256": "a9010aceb4d2a3a25b78dbea5c09e0627169c1c4697e9dec1f040d704b1d8ad6"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "provider_receipts",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/provider_runtime.py",
+        "kb_platform/provider_receipt_database.py",
+        "kb_platform/remote.py"
+      ],
+      "states": [
+        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+      ],
+      "transitions": [
+        "RequestReceipts.begin",
+        "RequestReceipts.finish",
+        "RequestReceipts.reconcile",
+        "ReceiptDatabase.transition"
+      ],
+      "invariants": [
+        "Single pending logical request; new retry gets new physical ID; file `.pending`, physical JSON, `.terminal`, unlink are separate crash windows; DB version has row-locked transaction."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "RequestReceipts.begin",
+          "sha256": "72784a2a41c0418ed583e16af0566d04cb9138736fb042ba719020b8c63ab4b1"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "RequestReceipts.finish",
+          "sha256": "2a5262fd35e3396b520059ef6579b6810e277349bee40aabf379f6dd487ede0a"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "RequestReceipts.reconcile",
+          "sha256": "1be9a3e0348dc6d1267f6c39914bc7b281f564977e9088862e4584366d192ac9"
+        },
+        {
+          "path": "kb_platform/provider_receipt_database.py",
+          "language": "python",
+          "symbol": "ReceiptDatabase.transition",
+          "sha256": "68d95771319ef94fe23c6ef2b3dab38d510b2016eff1e22112f2da7d4fbaf714"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_Transport._send_attempt",
+          "sha256": "c4354fd45b218db3d783ae0716eab5f93ce8328fe6384b49c627cd59e6f18ddc"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "turn_budget",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/agent_model.py"
+      ],
+      "states": [
+        "pending reservation → consumed/released"
+      ],
+      "transitions": [
+        "BudgetLedger.reserve",
+        "BudgetLedger.settle",
+        "AgentModel.complete",
+        "AgentModel.accept_completion"
+      ],
+      "invariants": [
+        "Application calls/tokens are separate from physical ledger; denied preflight is not attempted send; failure after provider result preserves usage. #31 specifically changes this boundary."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.reserve",
+          "sha256": "2357ea31650462f417b1d4022ce52bf589bfae062d46d5740b9d389881b712f1"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.settle",
+          "sha256": "539a52cedcd070ab78751e633d5f3f675132c94e651b16f9012ea7e41a8f8911"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "AgentModel.complete",
+          "sha256": "aa2a137fa0d11394b9aa21aa7868896298a280b77ec83943621a5862587c8c69"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "AgentModel.accept_completion",
+          "sha256": "192811f6b92d436c2c332072864424c9a0f5c8f353ad67b970e899c0b54af0a5"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "session_commit",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/session_store.py",
+        "kb_platform/knowledge_turn.py",
+        "kb_platform/harness_sessions.py"
+      ],
+      "states": [
+        "new/running/interrupted/complete request"
+      ],
+      "transitions": [
+        "SessionStore.begin",
+        "SessionStore._lease",
+        "SessionStore._finish",
+        "KnowledgeTurn.run"
+      ],
+      "invariants": [
+        "One live writer; request fingerprint reuse rejected; assistant event, response and revision atomic; stale token cannot finish; restart does not replay. Session DB and knowledge-authority checks are separate boundaries."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.begin",
+          "sha256": "22af22ad0552c0239895b9cd55949bc1d71360f4f6682449d8a080df9f03e0d6"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore._lease",
+          "sha256": "8b76a78b8062b7e349344a7c2b2e7e291593fd317a6cdffc138072d2b88ef3b1"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore._finish",
+          "sha256": "e82d52ea5fd0b714bdd64cfbc7f43d386c3ee1f5acea954c60ed5e4be4befa8b"
+        },
+        {
+          "path": "kb_platform/knowledge_turn.py",
+          "language": "python",
+          "symbol": "KnowledgeTurn.run",
+          "sha256": "e8a194d7ca5e7ccb93c0994de82cb60a3755cc99a4b38afd751a345f60fb4a3d"
+        },
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "DurableSession.finish",
+          "sha256": "b9b7019b9aedad8df868f6cd757ce43ddf1510f1183f7836700bd1281d6cbbfd"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.create",
+          "sha256": "21a100e4c47e926ea04838b8677f9d1929b7e7497305aa530f6d19d9c2deb1f4"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "plugin_lifecycle",
+      "status": "unmodeled",
+      "owners": [
+        "rust/plugin-runtime/src/protocol.rs",
+        "rust/plugin-runtime/src/coordinator.rs"
+      ],
+      "states": [
+        "Pending, Starting, Active, Draining, Cleaning, CleanupFailed, Failed, Disposed"
+      ],
+      "transitions": [
+        "Phase",
+        "Desired",
+        "Coordinator::reconcile",
+        "Coordinator::complete",
+        "Coordinator::acquire",
+        "Coordinator::drain",
+        "Coordinator::update"
+      ],
+      "invariants": [
+        "No new lease on draining owner; no dispose with live descendant work; stale completion/disposer cannot mutate newer generation; cleanup failure is not disposal; dependency/scope ordering."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/plugin-runtime/src/protocol.rs",
+          "language": "rust",
+          "symbol": "Phase",
+          "sha256": "f63e7b97dd255a3c549b353199a415a4952d17793803888e56bd4eb6391f2a66"
+        },
+        {
+          "path": "rust/plugin-runtime/src/protocol.rs",
+          "language": "rust",
+          "symbol": "Desired",
+          "sha256": "f63e7b97dd255a3c549b353199a415a4952d17793803888e56bd4eb6391f2a66"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::reconcile",
+          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::complete",
+          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::acquire",
+          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::drain",
+          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::update",
+          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "host_process",
+      "status": "unmodeled",
+      "owners": [
+        "rust/plugin-host/src/lib.rs",
+        "kb_platform/plugin_process.py"
+      ],
+      "states": [
+        "start/ready/request in-flight/worker exit/shutdown/escalation/reaped"
+      ],
+      "transitions": [
+        "Event"
+      ],
+      "invariants": [
+        "Death/timeout does not prove business operation unsent; orphan cleanup and cancellation must not release in-flight ownership early. OS-specific kill/reap effects need separate integration evidence."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/plugin-host/src/lib.rs",
+          "language": "rust",
+          "symbol": "Event",
+          "sha256": "3020007f5217f62c832a1a9051e7b1174d39ce02535a76f04d8373de30c29575"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "_Write",
+          "sha256": "d156f75240a3d024b8bae606d6377a8a24b49798cbd895ce6329cc58bc860c24"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "llm_registry",
+      "status": "unmodeled",
+      "owners": [
+        "rust/llm-service/src/registry.rs"
+      ],
+      "states": [
+        "route Active→Draining→Cleaning→removed/CleanupFailed"
+      ],
+      "transitions": [
+        "RoutePhase",
+        "ServicePhase",
+        "Registry::prepare",
+        "Registry::detach",
+        "Registry::begin_cleanup",
+        "Registry::begin_close",
+        "Prepared::admit",
+        "Admission::drop"
+      ],
+      "invariants": [
+        "Prepared identity pins route generation; admission single-use; terminal event != actual task cleanup; old unregister cannot affect new generation."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "RoutePhase",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "ServicePhase",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "Registry::prepare",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "Registry::detach",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "Registry::begin_cleanup",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "Registry::begin_close",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "Prepared::admit",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "Admission::drop",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "llm_stream",
+      "status": "unmodeled",
+      "owners": [
+        "rust/llm-service/src/assembler.rs",
+        "rust/llm-service/src/service.rs"
+      ],
+      "states": [
+        "block start/delta/end"
+      ],
+      "transitions": [
+        "Assembler::push_checked",
+        "Assembler::fail",
+        "Assembler::end",
+        "LlmStream::close",
+        "LlmStream::drop"
+      ],
+      "invariants": [
+        "One terminal; no events after finish; unfinished tool never executable; usage snapshots replace rather than sum; cancellation/close waits actual task completion."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::push_checked",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        },
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::fail",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        },
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::end",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        },
+        {
+          "path": "rust/llm-service/src/service.rs",
+          "language": "rust",
+          "symbol": "LlmStream::close",
+          "sha256": "d5752427512911df2690a8377fa6bd05bbb64c823ea73891cd04ac82b8d02726"
+        },
+        {
+          "path": "rust/llm-service/src/service.rs",
+          "language": "rust",
+          "symbol": "LlmStream::drop",
+          "sha256": "d5752427512911df2690a8377fa6bd05bbb64c823ea73891cd04ac82b8d02726"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "kernel_execution",
+      "status": "unmodeled",
+      "owners": [
+        "rust/agent-kernel/src/lib.rs",
+        "kb_platform/agent_native.py"
+      ],
+      "states": [
+        "READY↔WAITING"
+      ],
+      "transitions": [
+        "transition",
+        "valid_state",
+        "stop"
+      ],
+      "invariants": [
+        "One pending matching operation, monotonic time, deadline and max-operation bounds, terminal absorption."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/agent-kernel/src/lib.rs",
+          "language": "rust",
+          "symbol": "transition",
+          "sha256": "81d127af60f5a3aab15b3193deb0a299a7355e7d8e0cc7785391703fd6334651"
+        },
+        {
+          "path": "rust/agent-kernel/src/lib.rs",
+          "language": "rust",
+          "symbol": "valid_state",
+          "sha256": "81d127af60f5a3aab15b3193deb0a299a7355e7d8e0cc7785391703fd6334651"
+        },
+        {
+          "path": "rust/agent-kernel/src/lib.rs",
+          "language": "rust",
+          "symbol": "stop",
+          "sha256": "81d127af60f5a3aab15b3193deb0a299a7355e7d8e0cc7785391703fd6334651"
+        },
+        {
+          "path": "kb_platform/agent_native.py",
+          "language": "python",
+          "symbol": "_State",
+          "sha256": "5595336e7a03730a169a2b5e896c75c63120dfa39376767943dc1a7e119f89ec"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "loop_graph",
+      "status": "unmodeled",
+      "owners": [
+        "rust/agent-services/src/agent_loop.rs",
+        "rust/agent-services/src/graph.rs",
+        "kb_platform/harness_loop.py"
+      ],
+      "states": [
+        "loop Start/Context/Model/Append/Tool/Complete/Failed"
+      ],
+      "transitions": [
+        "Phase",
+        "ServiceLoop::accept_phase",
+        "ServiceLoop::next",
+        "ServiceLoop::accept",
+        "Graph::next",
+        "Graph::accept"
+      ],
+      "invariants": [
+        "Advance requires matched result; duplicate/stale result rejected; invalid result removes registry handle; no tool on invalid/incomplete model decision."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/agent-services/src/agent_loop.rs",
+          "language": "rust",
+          "symbol": "Phase",
+          "sha256": "f109591d011a5de10206103b478a32407409fa0f7a868f5676565676328aac15"
+        },
+        {
+          "path": "rust/agent-services/src/agent_loop.rs",
+          "language": "rust",
+          "symbol": "ServiceLoop::accept_phase",
+          "sha256": "f109591d011a5de10206103b478a32407409fa0f7a868f5676565676328aac15"
+        },
+        {
+          "path": "rust/agent-services/src/agent_loop.rs",
+          "language": "rust",
+          "symbol": "ServiceLoop::next",
+          "sha256": "f109591d011a5de10206103b478a32407409fa0f7a868f5676565676328aac15"
+        },
+        {
+          "path": "rust/agent-services/src/agent_loop.rs",
+          "language": "rust",
+          "symbol": "ServiceLoop::accept",
+          "sha256": "f109591d011a5de10206103b478a32407409fa0f7a868f5676565676328aac15"
+        },
+        {
+          "path": "rust/agent-services/src/graph.rs",
+          "language": "rust",
+          "symbol": "Graph::next",
+          "sha256": "df4541263d852746244b0c6575e2f9c4c5bd394df33caf294d53c6969dbe23c6"
+        },
+        {
+          "path": "rust/agent-services/src/graph.rs",
+          "language": "rust",
+          "symbol": "Graph::accept",
+          "sha256": "df4541263d852746244b0c6575e2f9c4c5bd394df33caf294d53c6969dbe23c6"
+        },
+        {
+          "path": "kb_platform/harness_loop.py",
+          "language": "python",
+          "symbol": "_NativeProgram.accept",
+          "sha256": "0e78dc8b4978cc43bfa79cc38c42ad69c1eed25222630408f0bcb39932fae7fe"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "knowledge_workflow",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/knowledge_workflow.py",
+        "kb_platform/knowledge_turn.py",
+        "kb_platform/knowledge_state.py",
+        "kb_platform/agent_builtin_tools.py",
+        "kb_platform/agent_work_state.py",
+        "kb_platform/knowledge_answer.py",
+        "kb_platform/rag_testing/context_decisions.py"
+      ],
+      "states": [
+        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+      ],
+      "transitions": [
+        "KnowledgeWorkflow.__init__",
+        "KnowledgeWorkflow._choose_route",
+        "KnowledgeTurn.check_execution",
+        "initial_state"
+      ],
+      "invariants": [
+        "Repair at most once; step budget honored; source switch invalidates stale evidence; answer success distinct from run terminality; failure emits no answer/claims/evidence."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/knowledge_workflow.py",
+          "language": "python",
+          "symbol": "KnowledgeWorkflow.__init__",
+          "sha256": "6ce264c4e7a2d17708895a295bbc46c4f1fc04ea06797f857110f0d5c21fc80d"
+        },
+        {
+          "path": "kb_platform/knowledge_workflow.py",
+          "language": "python",
+          "symbol": "KnowledgeWorkflow._choose_route",
+          "sha256": "455c836f5f0380d177c138a2224590c5dd3dff68e404c4addf8dd4eded50bd0a"
+        },
+        {
+          "path": "kb_platform/knowledge_turn.py",
+          "language": "python",
+          "symbol": "KnowledgeTurn.check_execution",
+          "sha256": "5e8a4cb9034b2c3221c7569e0a0f86352ed610df26199c7840dc0a5a41f3ee89"
+        },
+        {
+          "path": "kb_platform/knowledge_state.py",
+          "language": "python",
+          "symbol": "initial_state",
+          "sha256": "f2c7d599aef0a278580ed10bab03e901489ca8b5b3c0bd53b388b48528c13d7a"
+        },
+        {
+          "path": "kb_platform/agent_builtin_tools.py",
+          "language": "python",
+          "symbol": "BuiltinTools",
+          "sha256": "c7aae54c8a3d3399cccc8ef55f0fc903bbd4996f82fe50653b2c89caaef0fc95"
+        },
+        {
+          "path": "kb_platform/agent_work_state.py",
+          "language": "python",
+          "symbol": "finish_work_state",
+          "sha256": "09f151b94fece33c93a877a52f2859bf45709403441f5a53af294759097bbe57"
+        },
+        {
+          "path": "kb_platform/agent_work_state.py",
+          "language": "python",
+          "symbol": "record_decision",
+          "sha256": "c157a1e75ca72f63ed2b588e313b57d7c73f3582348fa85cb2e75645791cf667"
+        },
+        {
+          "path": "kb_platform/agent_work_state.py",
+          "language": "python",
+          "symbol": "record_receipt",
+          "sha256": "70f0884d228a4935ce9e62626e4328dabaee33277586baef890153a76ba515d3"
+        },
+        {
+          "path": "kb_platform/knowledge_answer.py",
+          "language": "python",
+          "symbol": "KnowledgeAnswer.compose_node",
+          "sha256": "a3d979fe69e8e3335a80d7a6bff0353dbd17316355588cc778454df44d3b6b58"
+        },
+        {
+          "path": "kb_platform/knowledge_answer.py",
+          "language": "python",
+          "symbol": "KnowledgeAnswer.deliver_node",
+          "sha256": "12b09ca03854fdf93df5fac727b2dfbacf433a272ce63b01d5920f4108333669"
+        },
+        {
+          "path": "kb_platform/knowledge_answer.py",
+          "language": "python",
+          "symbol": "KnowledgeAnswer.repair_node",
+          "sha256": "bf418a27ad97d9f05e245fef3a65b3a4d65eac321f798907e5a994db78723f46"
+        },
+        {
+          "path": "kb_platform/rag_testing/context_decisions.py",
+          "language": "python",
+          "symbol": "CanonicalRetentionAdapter.run",
+          "sha256": "1c95f08ea31b4f7688b6a73d8af00025e91b2134c5c6fdcd67a74485dda423e9"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "storage_registry",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/storage_service.py",
+        "kb_platform/database_service.py",
+        "kb_platform/blob_service.py"
+      ],
+      "states": [
+        "registered/granted/bound"
+      ],
+      "transitions": [
+        "StorageService.lease",
+        "StorageService._unregister",
+        "StorageService.close",
+        "DatabaseService._dispose",
+        "DatabaseService.close",
+        "BoundDatabase.seal"
+      ],
+      "invariants": [
+        "Full space/dataset/registration identity; no ABA grant; close/unregister cannot release active calls; schema prepare only before seal."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "StorageService.lease",
+          "sha256": "9e0bd3c0bb9ae4b20db99e20aa757a58eca39f742dc0fa05a59ac8eac610edfa"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "StorageService._unregister",
+          "sha256": "06c0324156902315b0d0e3ff0900611c0a123d94959949b504a86a9ea479798a"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "StorageService.close",
+          "sha256": "df483b1fe503a67951df817130dc12c4fccc69ab33fa2324ee84b71a70bece37"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "DatabaseService._dispose",
+          "sha256": "9997a173f85b456a47d88348a97f1ca20676a529459cc8505ca0bf91744f0620"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "DatabaseService.close",
+          "sha256": "82e66a29a3a03d35d325ffcd6b3b0b2c3a74db549eb2ca2ff6cfffd87b67ac0b"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "BoundDatabase.seal",
+          "sha256": "5cad9ba76c9f108765b36fcbd47c77f29a985e01004b7c8f4d2561fb352b9da1"
+        },
+        {
+          "path": "kb_platform/blob_service.py",
+          "language": "python",
+          "symbol": "BlobService._dispose",
+          "sha256": "cb5ebc653a0983a12bedddade6793dc1581fa20ec9e6b2f43c546f0916ca710f"
+        },
+        {
+          "path": "kb_platform/blob_service.py",
+          "language": "python",
+          "symbol": "_Route",
+          "sha256": "dee70c802aa6ae1d81220e870289b42e0c583fd7dd12a0acc0a68eb2cca6df5b"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "_Route",
+          "sha256": "211dcbb76274228ced07bbfdfc02199062ad88623a2dbeb17c3ca72e22dc630c"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "storage_transaction",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/storage_structured_wire.py",
+        "rust/storage-service/src/transaction.rs"
+      ],
+      "states": [
+        "begin→held→executing→commit/rollback"
+      ],
+      "transitions": [
+        "_Handle._run",
+        "_Handle.call",
+        "PortableStructuredEndpoint._execute",
+        "PortableStructuredClient.transaction",
+        "CommitOutcome",
+        "resolve_commit"
+      ],
+      "invariants": [
+        "Lost/malformed commit evidence stays UNKNOWN with original operation_id and replay_allowed=false; handle ownership, resource limits and scope preserved; write result serialization failure is not rollback."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "_Handle._run",
+          "sha256": "10727ecfdf5953603527e5aa22a4d56e7f30ce5d752898b843ca9d58e5e4a4ea"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "_Handle.call",
+          "sha256": "395f9d5c712ee755053e25e7fed03fadd5b81f41058e401ff5cad9552f4d320f"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredEndpoint._execute",
+          "sha256": "782eaceaa37b42decc885937b367f22d1e99f925c108c6ea8f195a76266db22e"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredClient.transaction",
+          "sha256": "c7f0c04cbd1029c9a13758e5c6679736ad6ca810b01069516c457a528da95f61"
+        },
+        {
+          "path": "rust/storage-service/src/transaction.rs",
+          "language": "rust",
+          "symbol": "CommitOutcome",
+          "sha256": "b0e151b10dacbcbc18f913293dd234b79fce1e63dd4d98f0bcb737cf2d47caa8"
+        },
+        {
+          "path": "rust/storage-service/src/transaction.rs",
+          "language": "rust",
+          "symbol": "resolve_commit",
+          "sha256": "b0e151b10dacbcbc18f913293dd234b79fce1e63dd4d98f0bcb737cf2d47caa8"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "storage_value_call",
+      "status": "unmodeled",
+      "owners": [
+        "rust/storage-service/src/service.rs",
+        "kb_platform/storage.py",
+        "kb_platform/storage_adapters/values.py"
+      ],
+      "states": [
+        "Input→Executing→Result→Values / Failed"
+      ],
+      "transitions": [
+        "Phase",
+        "dispatch"
+      ],
+      "invariants": [
+        "A method's mutability/effect is fixed before execution; response validation cannot erase known write completion; capacity and TTL cleanup."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/storage-service/src/service.rs",
+          "language": "rust",
+          "symbol": "Phase",
+          "sha256": "a013a2c271dec5692025f5d4dea1af6b2492881b73a8d784e328d9d1f0db8555"
+        },
+        {
+          "path": "rust/storage-service/src/service.rs",
+          "language": "rust",
+          "symbol": "dispatch",
+          "sha256": "a013a2c271dec5692025f5d4dea1af6b2492881b73a8d784e328d9d1f0db8555"
+        },
+        {
+          "path": "kb_platform/storage.py",
+          "language": "python",
+          "symbol": "S3BlobProvider.put_if_absent",
+          "sha256": "005c140cfdc06d229542119ceb49376f89b2370e290e8b780f14f0f95a119d75"
+        },
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "SqlDocumentStore.delete",
+          "sha256": "0d0e79417332a6770b90110e7feac18519a9ea9f69f71282b32bbaa1cfa537b4"
+        },
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "SqlDocumentStore.put",
+          "sha256": "005e73a7c811ef4930616d21b622a5b457e347e9fd9176d85391e752b21002e6"
+        },
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "_document",
+          "sha256": "c4b969251f8d992e5ac947a2e4a6ebb49fba0e2e81936fb7fae216b081c3dfc1"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "transfer_protocol",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/contract_transfer.py",
+        "kb_platform/storage_object_wire.py"
+      ],
+      "states": [
+        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+      ],
+      "transitions": [
+        "JsonEndpoint.execute",
+        "JsonEndpoint.close",
+        "JsonClient._call",
+        "ObjectTransferEndpoint.execute",
+        "ObjectTransferEndpoint.close"
+      ],
+      "invariants": [
+        "Ordered offsets + length/hash; one dispatch per transfer; in-flight close and result-download failure preserve observed execution facts; transaction-bound transfers cannot outlive lease. #31 changes dispatch fact projection."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonEndpoint.execute",
+          "sha256": "eeef3078396601c772b98a8c5f245d171af19604f78c5b1bcf9bf9835f569c34"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonEndpoint.close",
+          "sha256": "eba8d88bdf58917e31651b2901b1a81fb846e30283568edf279964e926eb7022"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonClient._call",
+          "sha256": "acbc112e1da50988c06943f1e3c9ff440729ddc9165133f89f008f7b51bfcf96"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferEndpoint.execute",
+          "sha256": "555727cf2e7ff2e87e5c574f4fabc859aa376d2bee529ed25b62e7478aa5eb24"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferEndpoint.close",
+          "sha256": "bb2bf9ba0768cf2d6f1d6cfabcc0569dac3cc352ddb8f5a6211b79389f403b9e"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "auth_session",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/authentication.py"
+      ],
+      "states": [
+        "absent→issued→expired/revoked"
+      ],
+      "transitions": [
+        "SessionAuthentication.issue",
+        "SessionAuthentication.authenticate",
+        "SessionAuthentication.revoke"
+      ],
+      "invariants": [
+        "Token hash resolves only actor+tenant; TTL and own expiry checked; no malformed/expired auth accepted; revoke/read race requires explicit linearization contract."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/authentication.py",
+          "language": "python",
+          "symbol": "SessionAuthentication.issue",
+          "sha256": "26a204179be65f05f1717c80a724e77c1b98361c912902fbe7b1cab07db08951"
+        },
+        {
+          "path": "kb_platform/authentication.py",
+          "language": "python",
+          "symbol": "SessionAuthentication.authenticate",
+          "sha256": "0ca36b6d80466bccebf753766e1cadf35e55d23b908a78f2f842d961027a1b2d"
+        },
+        {
+          "path": "kb_platform/authentication.py",
+          "language": "python",
+          "symbol": "SessionAuthentication.revoke",
+          "sha256": "324356cae09cd051b9e2b4639d977d5dc8970d372c572e1a42bd6eb8a18e8cf2"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "authority_publication",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/core.py",
+        "kb_platform/agent_tools.py",
+        "kb_platform/knowledge_service.py"
+      ],
+      "states": [
+        "authority revision"
+      ],
+      "transitions": [
+        "Platform.stage",
+        "Platform.resume_build",
+        "Platform.publish",
+        "Platform.search"
+      ],
+      "invariants": [
+        "Only current revision/content/dependency sealed build publishes; staging cannot become searchable; postflight checks reject changed authority. Search index and relation DB are not one distributed transaction."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.stage",
+          "sha256": "39551f39e957e9c216065d08b1a56bab3b623b64eda471c5d250a19a4d69cb3d"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.resume_build",
+          "sha256": "4c95fcb5f74818f4d61e675b0093ad09bfa0c80e87caac0e64e1139de6fa8f2c"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.publish",
+          "sha256": "106ea4435dbfef4b3382e8ed8d38778790ce15fe50e22a9545d534225cdf96b9"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.search",
+          "sha256": "fcaa96754484bad7534afd3b8a4b409cd8b2deb3ac366531767acb4937d6dd35"
+        },
+        {
+          "path": "kb_platform/agent_tools.py",
+          "language": "python",
+          "symbol": "EvidenceGateway._state",
+          "sha256": "d76ff50767916a98d1f90d18c1577c47adbd2c48a0ff7f09c2cc976cf0e6344b"
+        },
+        {
+          "path": "kb_platform/knowledge_service.py",
+          "language": "python",
+          "symbol": "KnowledgeService._allowed_evidence",
+          "sha256": "aa1c77a572c9db219e5f5f9a8e416ff624e3b543cf29c3450b502abf5136895e"
+        },
+        {
+          "path": "kb_platform/knowledge_service.py",
+          "language": "python",
+          "symbol": "KnowledgeService.get",
+          "sha256": "241046662ff507bb7fbca2ba6acbfe8c9ed284dc28259270e1c880645cec23be"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "search_generation",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/search_router.py",
+        "kb_platform/embedded_search.py",
+        "kb_platform/semantic_pages_v2.py"
+      ],
+      "states": [
+        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+      ],
+      "transitions": [
+        "SplitSearch.stage",
+        "SplitSearch.seal",
+        "SplitSearch.publish_manifest",
+        "EmbeddedSearch.stage",
+        "EmbeddedSearch.seal",
+        "SemanticPageService.build"
+      ],
+      "invariants": [
+        "Three channels share immutable content identity; no partial publication; exact source/version/ACL and checksum; semantic capsule build bound to authority snapshot."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/search_router.py",
+          "language": "python",
+          "symbol": "SplitSearch.stage",
+          "sha256": "173775dcbac86c2cf3e2166d4436f1e56b08970c46baa3a51db2318bcf1352f6"
+        },
+        {
+          "path": "kb_platform/search_router.py",
+          "language": "python",
+          "symbol": "SplitSearch.seal",
+          "sha256": "b09b7737b2d8e72a77e8aa743913c5fde5064c38dc309d5e97fc3ca96bbe63f8"
+        },
+        {
+          "path": "kb_platform/search_router.py",
+          "language": "python",
+          "symbol": "SplitSearch.publish_manifest",
+          "sha256": "73b23b72457243cd4e06aec8bb4cd2c822275667197722903e560b5812467258"
+        },
+        {
+          "path": "kb_platform/embedded_search.py",
+          "language": "python",
+          "symbol": "EmbeddedSearch.stage",
+          "sha256": "84173ddcfe96e5e29848c17439ea82a4b72ef551af1cb5271f0e5ea2e1682a7a"
+        },
+        {
+          "path": "kb_platform/embedded_search.py",
+          "language": "python",
+          "symbol": "EmbeddedSearch.seal",
+          "sha256": "35954b9d0c82b3a9e475d65eda2442b601c31588aceaaf1fa31978777a127b58"
+        },
+        {
+          "path": "kb_platform/semantic_pages_v2.py",
+          "language": "python",
+          "symbol": "SemanticPageService.build",
+          "sha256": "d46b54a996f386521583f292f8779d34537bcc4e38f08d36e586095215aef7be"
+        },
+        {
+          "path": "kb_platform/semantic_pages_v2.py",
+          "language": "python",
+          "symbol": "SemanticPageAuthority.locked",
+          "sha256": "3e8e8095732ede8a07b51b02057ce37739339e34e529a38c7289d6d1223884ee"
+        },
+        {
+          "path": "kb_platform/semantic_pages_v2.py",
+          "language": "python",
+          "symbol": "SemanticPageService.current_manifest",
+          "sha256": "472d43a55cc0859ac1171ac83c35ada08c8f75439fe118f23b0fb21616759e8d"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "embedding_jobs",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/embedding_jobs.py"
+      ],
+      "states": [
+        "PENDING/RUNNING/COMPLETE/ERROR/UNKNOWN/RETRY"
+      ],
+      "transitions": [
+        "EmbeddingJobs._prepare",
+        "EmbeddingJobs._claim",
+        "EmbeddingJobs._finish",
+        "EmbeddingJobs.reconcile"
+      ],
+      "invariants": [
+        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "EmbeddingJobs._prepare",
+          "sha256": "558d810a9f9a2f679529dcd1655d693df8a524223929c2f501300441d130dc35"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "EmbeddingJobs._claim",
+          "sha256": "efddb9a273ec9c5937567d083d967b080fe79524f18b86caa64bb6c8da02c25d"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "EmbeddingJobs._finish",
+          "sha256": "79e7c8da8212b5bda389e1f406ed93000c182a86eade764ac11f16c3dd311c20"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "EmbeddingJobs.reconcile",
+          "sha256": "71b2cf3aa7aeab56fe590e048100c4f89c0357b0d18a1f36d5925b413424d0d8"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "provider_admission",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/provider_admission.py",
+        "kb_platform/delivery.py",
+        "kb_platform/provider_runtime.py",
+        "kb_platform/remote.py"
+      ],
+      "states": [
+        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+      ],
+      "transitions": [
+        "ProviderAdmission.block",
+        "ProviderAdmission.require_available",
+        "ProviderAdmission.snapshot",
+        "ProviderAdmission.acknowledge"
+      ],
+      "invariants": [
+        "Restart/new session/new provider wrapper cannot evade unacknowledged denial; immutable journal event; failed persistence still locally blocked; changed checkpoint invalidates acknowledgment."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/provider_admission.py",
+          "language": "python",
+          "symbol": "ProviderAdmission.block",
+          "sha256": "ff99f7f54ab9ebe0d4fb514c6d09bcfe754730ba96f5fc436a0d60ed4d136edf"
+        },
+        {
+          "path": "kb_platform/provider_admission.py",
+          "language": "python",
+          "symbol": "ProviderAdmission.require_available",
+          "sha256": "34e5d3ecd6d9075c1b0b97fc77e0ba7e595b0c853da088fb01d1beddd24a0469"
+        },
+        {
+          "path": "kb_platform/provider_admission.py",
+          "language": "python",
+          "symbol": "ProviderAdmission.snapshot",
+          "sha256": "09d2a9df51c78e2726e7dcc7f63e677edbd185e4100709fe421c69b9a9dd63f8"
+        },
+        {
+          "path": "kb_platform/provider_admission.py",
+          "language": "python",
+          "symbol": "ProviderAdmission.acknowledge",
+          "sha256": "7a7ed444077a6a97f46b221152ed5b54ae40439f0f996cb1fc847e078ca3c0a5"
+        },
+        {
+          "path": "kb_platform/delivery.py",
+          "language": "python",
+          "symbol": "check_delivery_configuration",
+          "sha256": "a5bd5e736d87c5ccda8256a66644da06ae32642815f34b25d6f1b6ac7982f855"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "classify_failure",
+          "sha256": "3c2f067657f416d0625091df29d3ebf9858af75c4aab2f189fb4ddbeb0195273"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "GoogleEmbeddingProvider._post",
+          "sha256": "4f6eb4f2e5cbd0068852763c994817a17c9caaaa7f11189bef6141aa37476bc7"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "circuit_tool_retry",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/provider_runtime.py"
+      ],
+      "states": [
+        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+      ],
+      "transitions": [
+        "ProviderCircuit.acquire",
+        "ProviderCircuit.finish",
+        "ToolExecutor.execute"
+      ],
+      "invariants": [
+        "One half-open probe; retries only permitted/read-only classes; one request fingerprint; interruption and late result not success; deadline and total-wait budget. Tool idempotency is memory-only and cannot be represented as durable restart guarantee."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ProviderCircuit.acquire",
+          "sha256": "a2640dbb48811efa2b4c3d1d4273c450bf00fc549990384cf82833efa9929e8d"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ProviderCircuit.finish",
+          "sha256": "bc814b2d80248206ee7ab20031c8db9821cfdff484d042adf04ea59663c14ff6"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ToolExecutor.execute",
+          "sha256": "54de6c4d4282f26a91d6c9e5b86a066569b9a38d9a8725b667a44098ca9eec4c"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ProviderCircuit.snapshot",
+          "sha256": "543ac6e070a0aa73d445a19a2af34b76a44a5c86907e7f8ea5d10c8d88557e6c"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ToolOutcome",
+          "sha256": "8a6dfd586c7b05a2d632e7c1a7302b6a9d7934cb19b1a92c9e1a281caf04472a"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "cache_evidence",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/rag_testing/cache.py",
+        "kb_platform/knowledge_contracts.py"
+      ],
+      "states": [
+        "cache absent/indexed/payload-present-or-lost"
+      ],
+      "transitions": [
+        "StageCache.put",
+        "StageCache.get",
+        "EvidenceEndpoint.prepare_pipeline",
+        "EvidenceEndpoint.finish_pipeline",
+        "ModelEndpoint.complete",
+        "ModelEndpoint.settle"
+      ],
+      "invariants": [
+        "Exact immutable dependency key + content hash + current auth; TTL disappearance is miss, never budget reset; one-shot actor-bound retrieval continuation; result cached only after successful validation/confirmation."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/rag_testing/cache.py",
+          "language": "python",
+          "symbol": "StageCache.put",
+          "sha256": "a6db9e797586b9af9e5836c28132986818cffc141377aac5b5e81d2f23724513"
+        },
+        {
+          "path": "kb_platform/rag_testing/cache.py",
+          "language": "python",
+          "symbol": "StageCache.get",
+          "sha256": "ebcb2d061a202b0fc0e9702998ab91c59aa5411881d96394e38b8189648b5d13"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "EvidenceEndpoint.prepare_pipeline",
+          "sha256": "3a87d5761f49c4ab042c219f486a229d5715dbe4164d97d10893135ee8b8ede4"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "EvidenceEndpoint.finish_pipeline",
+          "sha256": "bed15c825408b0f18c91e6268e99636533f068acd51c9ce282aa6babfeb01e17"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "ModelEndpoint.complete",
+          "sha256": "5abf9663da57dfcbff2d5d0672a37fca867f2e2b251e17b1b2d859cab1469753"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "ModelEndpoint.settle",
+          "sha256": "69615a702c47762f784103735e3bf3994bac118482dc5bf0ab95c42acbe0f474"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "ingestion_migration",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/documents.py",
+        "kb_platform/core.py",
+        "kb_platform/knowledge_transfer.py",
+        "kb_platform/ocr.py",
+        "kb_platform/page_parsing.py",
+        "kb_platform/parsing_backends.py"
+      ],
+      "states": [
+        "parsed READY/PARTIAL/BLOCKED"
+      ],
+      "transitions": [
+        "_Bundle.missing",
+        "parse_native_document",
+        "Platform.ingest",
+        "Platform.bind_source"
+      ],
+      "invariants": [
+        "No READY index on partial/blocked parse; immutable original hash/offset identity; object copy and DB reference switch are separate effects; migrations/reset must not silently erase budgets or accept wrong dataset identity."
+      ],
+      "assumptions": [
+        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+      ],
+      "exclusions": [
+        "No model or formal proof exists for this inventory entry yet.",
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/documents.py",
+          "language": "python",
+          "symbol": "_Bundle.missing",
+          "sha256": "284b2e7d09c54faaf7064ee8a07c7277e304003e2a1c67911c44b50a5298f5d5"
+        },
+        {
+          "path": "kb_platform/documents.py",
+          "language": "python",
+          "symbol": "parse_native_document",
+          "sha256": "32bbdec522999bd33dbac374b065d46464491e5d7dcf4356323be821069a8dcf"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.ingest",
+          "sha256": "e2c3cb95a8e29c1db09506b9463cc1252198d5b0ca0fc7b2c48a29511fbe7d7f"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.bind_source",
+          "sha256": "fa128104b011c8144859f45a401248c50fcb3f912bf01c0dffe22005fe1daeb2"
+        },
+        {
+          "path": "kb_platform/knowledge_transfer.py",
+          "language": "python",
+          "symbol": "import_knowledge",
+          "sha256": "204fd6895a9e68d680055048fa845d7eabe590b020a4c1aed079975a9257a452"
+        },
+        {
+          "path": "kb_platform/ocr.py",
+          "language": "python",
+          "symbol": "augment_ocr",
+          "sha256": "3ee9e9e1b338a68480e59faea32259dcebd444981ebb2a3adac7dc2aaf5a8fce"
+        },
+        {
+          "path": "kb_platform/page_parsing.py",
+          "language": "python",
+          "symbol": "assemble_pdf_pages",
+          "sha256": "77fdf494be373ca02271b40230887d37bf7dc41972dafd061b96b02ba5087b62"
+        },
+        {
+          "path": "kb_platform/parsing_backends.py",
+          "language": "python",
+          "symbol": "routed_document",
+          "sha256": "3b8310c8ed9dcf27688e58ea292ab19802b2e5cc7afcff00bf6909b3030345da"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    },
+    {
+      "id": "acceptance_workflow",
+      "status": "unmodeled",
+      "purpose": "Durable HTTP preparation/rebinding and acceptance execution receipts; STARTED/UNKNOWN operations cannot silently replay; publication and authority binding phases are separately persisted.",
+      "owners": [
+        "kb_platform/rag_testing/delivery_http.py"
+      ],
+      "states": [
+        "unprepared",
+        "prepared",
+        "bound",
+        "STARTED",
+        "COMPLETE",
+        "ERROR",
+        "UNKNOWN"
+      ],
+      "transitions": [
+        "prepare_http",
+        "rebind_http",
+        "DeliveryHTTPAdapter.run"
+      ],
+      "invariants": [
+        "A durable STARTED/UNKNOWN request is not silently replayed; authority/request bindings are explicit before physical execution."
+      ],
+      "assumptions": [
+        "Inventory only; durable state updates and external HTTP completion are separate failure domains."
+      ],
+      "exclusions": [
+        "No finite TLA+ model exists for this family yet.",
+        "Provider, database and operating-system correctness are outside this inventory."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "DeliveryHTTPAdapter.run",
+          "sha256": "6d484a68d23b9a56ffed4dad0c38aadd0e4f7e9ec55fb3f6a3dc48f7a95dd1c1"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_bind_prepared_http",
+          "sha256": "a9e00584722d1ee92f9397f3d746ef829e67c623193181101d80197a2de17703"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "prepare_http",
+          "sha256": "61c745c7ace11a28ad94bc0169db43f46a805a4f6062801711dc459c00da133a"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "rebind_http",
+          "sha256": "37a781b2791496d09f7da162918c72dac46897232e4e98bd96a8b0fe5b283456"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
+    }
+  ]
+}

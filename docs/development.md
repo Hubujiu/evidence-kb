@@ -30,6 +30,8 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 ## 修改或新增插件
 
+状态机源码还受[有限模型与源码映射门禁](formal-state-machines.md)约束。默认 checker 检查登记与源码漂移；`uv run --no-sync python scripts/check_project.py --formal-only` 单独执行固定 TLC、实际正负控及证据合同，必须另外通过，不能用它代替普通质量检查。CI 的 `formal` job 是 `required` 的第四个必需依赖。
+
 生命周期、配置 schema、进程插件和显式恢复接口以 [插件运行时](plugin-runtime.md) 为准。`plugin-runtime` 仅依赖固定的 Serde、serde_json 和 Tokio；harness 通过 workspace 路径依赖它。通用运行时不得反向依赖 Agent 或知识库，精确边界由 checker 和架构合同检查。
 
 普通合同仍禁止联网和启动子进程。正式 checker 另外编排受控进程插件与 Rust 主宿主 fixture，包含临时 loopback HTTP 健康检查；这些阶段使用合成数据和本地模型响应。完整知识库 HTTP、解析子进程和 PostgreSQL 验收使用 `--local-integration` 并设置 `KB_INTEGRATION_DSN` 与同库的 `KB_INTEGRATION_MIGRATION_DSN`；前者为受限运行账号，后者只供受控夹具初始化与清理。数据库名须以 `rust_plugin_acceptance_` 开头，且连接 loopback。这个入口保留相同的所有离线检查，不会自动调用真实模型。
