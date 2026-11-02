@@ -57,6 +57,11 @@ RULES = {
     'diagnostic operation runtime': ('diagnostic', '.is_none_or(|operation| operation.action.runtime != runtime)'),
     'diagnostic bounded FIFO': ('diagnostic', 'if self.diagnostics.len() == 1024 { self.diagnostics.remove(0); }'),
     'diagnostic runtime projection': ('inspect', '.filter(|diagnostic| diagnostic["runtime"] == scope.runtime)'),
+    'failed init explicit terminal': ('complete', '_ if instance.failed_init => Phase::Failed'),
+    'failed init dispatch fence': ('reconcile', '&& !instance.failed_init && self.open_ancestors(Some(instance.host)).is_ok()'),
+    'retry owner selection': ('retry', '.filter(|(name, _)| plugin.as_ref().is_none_or(|plugin| *name == plugin))'),
+    'retry clears failed init': ('retry', 'instance.failed_init = false; instance.failure = None;'),
+    'retry new generation': ('retry', 'instance.generation += 1;'),
     'deadline minimum': ('acquire', '(Some(a), Some(b)) => Some(a.min(b))'),
     'expired admission': ('acquire', 'if deadline.is_some_and(|deadline| deadline <= self.now) { return Err(Error::new("deadline", "deadline already elapsed")); }'),
 }

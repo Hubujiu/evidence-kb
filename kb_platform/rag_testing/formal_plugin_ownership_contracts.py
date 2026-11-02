@@ -69,6 +69,11 @@ class PluginOwnershipLintContracts(unittest.TestCase):
             'diagnostic bounded FIFO': ('self.diagnostics.remove(0);', 'self.diagnostics.pop();'),
             'diagnostic runtime projection': ('diagnostic["runtime"] == scope.runtime', 'diagnostic["runtime"] != scope.runtime'),
             'diagnostic validation before eviction': ('if instance.is_some_and(|instance| {', 'if self.diagnostics.len() == 1024 { self.diagnostics.remove(0); } if instance.is_some_and(|instance| {'),
+            'failed init explicit terminal': ('_ if instance.failed_init => Phase::Failed', '_ if instance.failed_init => Phase::Pending'),
+            'failed init dispatch fence': ('&& !instance.failed_init', '&& instance.failed_init'),
+            'retry owner selection': ('plugin.as_ref().is_none_or(|plugin| *name == plugin)', 'plugin.as_ref().is_none_or(|plugin| *name != plugin)'),
+            'retry clears failed init': ('instance.failed_init = false;', 'instance.failed_init = true;'),
+            'retry new generation': ('instance.generation += 1;', 'instance.generation += 0;'),
             'deadline minimum': ('Some(a.min(b))', 'Some(a.max(b))'),
             'expired admission': ('deadline <= self.now', 'deadline < self.now'),
         }

@@ -1042,3 +1042,99 @@ fn diagnostic_global_capacity_rejects_foreign_identity_without_eviction_and_coll
         foreign_events
     );
 }
+
+#[test]
+fn failed_init_retry_selects_owner_advances_generation_and_respects_closed_scope() {
+    for closed in [false, true] {
+        let mut runtime = Coordinator::default();
+        let host = create(
+            &mut runtime,
+            vec![plugin("a", &["a"], &[]), plugin("b", &["b"], &[])],
+            None,
+        );
+        let old = poll(&mut runtime, host);
+        for action in &old {
+            complete(&mut runtime, action, "error", &[]);
+        }
+        loop {
+            let actions = poll(&mut runtime, host);
+            if actions.is_empty() {
+                break;
+            }
+            for action in actions {
+                assert_eq!(action["kind"], "cleanup");
+                complete(&mut runtime, &action, "ok", &[]);
+            }
+        }
+        let failed = call(&mut runtime, "inspect", json!({"host":host})).unwrap();
+        assert!(
+            failed["instances"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|instance| instance["state"] == "failed" && instance["generation"] == 1)
+        );
+        assert!(poll(&mut runtime, host).is_empty());
+        assert_eq!(
+            call(
+                &mut runtime,
+                "retry",
+                json!({"host":host,"plugin":"unknown"})
+            )
+            .unwrap_err()
+            .code,
+            "unknown_plugin"
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":host})).unwrap(),
+            failed
+        );
+        if closed {
+            call(&mut runtime, "drain", json!({"host":host,"remove":false})).unwrap();
+            call(&mut runtime, "retry", json!({"host":host})).unwrap();
+            assert!(poll(&mut runtime, host).is_empty());
+            let after = call(&mut runtime, "inspect", json!({"host":host})).unwrap();
+            assert!(after["instances"].as_array().unwrap().iter().all(
+                |instance| instance["state"] == "pending"
+                    && instance["desired"] == "disabled"
+                    && instance["generation"] == 2
+                    && instance["failure"].is_null()
+            ));
+            assert_eq!(
+                call(&mut runtime, "create", json!({"parent":host,"plugins":[]}))
+                    .unwrap_err()
+                    .code,
+                "scope_unavailable"
+            );
+        } else {
+            call(&mut runtime, "retry", json!({"host":host,"plugin":"a"})).unwrap();
+            let actions = poll(&mut runtime, host);
+            assert_eq!(actions.len(), 1);
+            let a = &actions[0];
+            assert_eq!(a["plugin"], "a");
+            assert_eq!(a["generation"], 2);
+            for action in &old {
+                assert_ne!(a["operation"], action["operation"]);
+            }
+            let before_duplicate = call(&mut runtime, "inspect", json!({"host":host})).unwrap();
+            for action in &old {
+                complete(&mut runtime, action, "error", &[]);
+            }
+            assert_eq!(
+                call(&mut runtime, "inspect", json!({"host":host})).unwrap(),
+                before_duplicate
+            );
+            complete(&mut runtime, a, "ok", &["a"]);
+            call(&mut runtime, "retry", json!({"host":host})).unwrap();
+            let actions = poll(&mut runtime, host);
+            assert_eq!(actions.len(), 1);
+            assert_eq!(actions[0]["plugin"], "b");
+            assert_eq!(actions[0]["generation"], 2);
+            complete(&mut runtime, &actions[0], "ok", &["b"]);
+            assert_eq!(
+                call(&mut runtime, "inspect", json!({"host":host})).unwrap()["state"],
+                "ready"
+            );
+        }
+    }
+}

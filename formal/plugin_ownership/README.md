@@ -311,16 +311,43 @@ checks identity validation precedes the **first** eviction, with an actual early
 eviction mutation; merely finding both code fragments is insufficient. No new
 production defect was found, and ordinary full remains NOT_RUN.
 
+## Stage 9: explicit failed-initialization retry (model-only)
+
+Pinned Cordis `_setEpoch` refuses to recover a failed fiber while `_error` remains;
+its explicit update path clears that failure before a new activation. Rust has
+an explicit `retry` command instead. That mature terminal-failure distinction was
+read first, without importing different configuration/update semantics.
+`FailedInitRetry` separates current init failure, cleanup failure/retry, terminal
+Failed, explicit init retry, fresh generation/operation and successful activation.
+`FailInit`, cleanup actions, `RetryInit`, `Dispatch` and `DuplicateOld` map to
+`complete`, cleanup/retry, `retry`'s Failed branch, `reconcile`, and immutable
+completion replay. Cleanup resource details are composed with stage 3.
+
+Four seeded negatives target automatic recovery, uncleared failure, reused
+generation and dispatch into a closed scope. The closed-scope negative abstracts
+both desired-state and open-ancestor defenses; neither is claimed independently
+reachable when the other remains intact. Three reached witnesses require real
+failed cleanup retry plus explicit activation recovery, terminal failure retained
+before that retry, and a closed scope accepting local failure reset while still
+refusing any new init dispatch. The original error receipt remains unchanged.
+
+Two actual controlled runtimes verify selected-owner versus all-owner retry,
+unknown selection without mutation, generation increment, fresh operation identity,
+old completion replay leaving the successor untouched, and closed-scope retry
+without reopening or admitting a child. Existing current-error/cancelled-init
+retry tests remain unchanged. All 59 native contracts, 20 targeted methods /
+61 refreshed-hash mutants and 81 unified formal runs plus two evidence contracts
+pass. This stage is model-only, not a newly reproduced bug.
+
 ## Explicit remaining work and boundaries
 
 This feature is still WIP. Concrete next owners, not merely external assumptions:
 
-- explicit failed-initialization retry (distinct from already modeled cleanup retry);
 - initialization-bound lease lifetime and current cleanup/consumer resolve authority.
 
 Their source bindings are inventory/review anchors only until separate registered
 models and actual contracts cover their transitions. Remaining work is not
-silently declared covered by the eight existing slices.
+silently declared covered by the nine existing slices.
 
 Unbounded scopes/plugins/calls and arbitrary recursive intercept payloads,
 arbitrary callback effects, process transport, allocation exhaustion, OS failure,
