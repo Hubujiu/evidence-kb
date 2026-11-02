@@ -1,10 +1,14 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
-from .formal_state_machines import configured_operators, digest, parse_tlc, registry_violations, source_digest, tlc_verdict
+from .formal_state_machines import (configured_operators, digest, parse_tlc, registry_violations,
+                                    run_model, source_digest, tlc_verdict)
 
 
 def frame(code, severity, body):
@@ -209,6 +213,145 @@ class FormalVerdictContracts(unittest.TestCase):
                                      expected_property='EventuallyActive'))
 
 
+class FormalLimitationContracts(unittest.TestCase):
+    def fixture(self, root):
+        registry = FormalRegistryContracts().modeled_fixture(root)
+        (root / 'formal/ModelLimit.cfg').write_text('SPECIFICATION Spec\nINVARIANT KnownLimit\n', encoding='utf-8')
+        limitation = {'id': 'sample-limitation', 'kind': 'limitation', 'model_id': 'sample-model',
+            'module': 'formal/Model.tla', 'config': 'formal/ModelLimit.cfg', 'expected_invariant': 'KnownLimit',
+            'purpose': 'Synthetic stronger property outside the declared positive model contract',
+            'timeout_seconds': 30, 'heap_mb': 128}
+        registry['machines'][0]['known_limitations'] = [limitation]
+        return registry, limitation
+
+    def test_limitation_requires_association_explanation_and_separate_named_invariant_config(self):
+        mutations = [('kind', 'negative'), ('model_id', 'missing-model'), ('module', 'formal/Other.tla'),
+                     ('purpose', ''), ('purpose', None), ('config', 'formal/Model.cfg'),
+                     ('expected_invariant', 'OtherLimit'), ('expected_property', 'EventuallySafe')]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry, limitation = self.fixture(root)
+            self.assertEqual([], registry_violations(root, registry))
+            for key, value in mutations:
+                with self.subTest(key=key, value=value):
+                    changed = deepcopy(registry)
+                    changed['machines'][0]['known_limitations'][0][key] = value
+                    self.assertTrue(registry_violations(root, changed))
+            for extra in ('\nINVARIANT AnotherInvariant\n', '\nPROPERTY EventuallySafe\n'):
+                (root / limitation['config']).write_text('SPECIFICATION Spec\nINVARIANT KnownLimit\n' + extra,
+                                                         encoding='utf-8')
+                self.assertTrue(any('must isolate its named safety invariant' in error
+                                    for error in registry_violations(root, registry)))
+
+    def test_limitation_cannot_replace_negative_control_or_register_an_unmodeled_family(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry, limitation = self.fixture(root)
+            registry['machines'][0]['negative_controls'] = []
+            self.assertTrue(any('require a seeded negative control' in error
+                                for error in registry_violations(root, registry)))
+            registry['machines'][0]['negative_controls'] = [limitation]
+            self.assertTrue(any('cannot change their expected failure kind' in error
+                                for error in registry_violations(root, registry)))
+            registry['machines'][0].update(status='unmodeled', models=[], negative_controls=[])
+            self.assertTrue(any('must name a positive model' in error
+                                for error in registry_violations(root, registry)))
+
+    def test_limitation_configuration_remains_subject_to_registration_and_positive_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry, _ = self.fixture(root)
+            changed = deepcopy(registry)
+            changed['machines'][0]['known_limitations'] = []
+            self.assertIn('Unregistered model input: formal/ModelLimit.cfg', registry_violations(root, changed))
+            registry['machines'][0]['models'][0]['invariants'] = []
+            (root / 'formal/Model.cfg').write_text('SPECIFICATION Spec\n', encoding='utf-8')
+            self.assertTrue(any('positive models require a nonempty' in error
+                                for error in registry_violations(root, registry)))
+
+    def test_limitation_cannot_mutate_the_associated_positive_model_behavior(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry, limitation = self.fixture(root)
+            path = root / limitation['config']
+            original = path.read_text('utf-8')
+            for changed in (original + '\nCONSTANT Unsafe = TRUE\n', original + '\nCONSTRAINT HideBug\n',
+                            original.replace('SPECIFICATION Spec', 'SPECIFICATION OtherSpec')):
+                with self.subTest(configuration=changed):
+                    path.write_text(changed, encoding='utf-8')
+                    self.assertTrue(any('must preserve its positive model configuration behavior' in error
+                                        for error in registry_violations(root, registry)))
+
+    def test_run_model_reports_only_actual_named_limitation_as_observed_never_pass(self):
+        cases = [(sample_log(violation='KnownLimit', success=False), 12, 'OBSERVED_LIMITATION'),
+                 (sample_log(violation='OtherLimit', success=False), 12, 'FAIL'),
+                 (sample_log(), 0, 'FAIL'), (sample_log(success=False), 151, 'FAIL'),
+                 (sample_log(violation='KnownLimit', success=False), 151, 'FAIL')]
+        for log, code, decision in cases:
+            with self.subTest(code=code, decision=decision), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                _, spec = self.fixture(root)
+                output = root / 'output'
+                output.mkdir()
+
+                def invoke(*args, **kwargs):
+                    kwargs['stdout'].write(log)
+                    return SimpleNamespace(returncode=code)
+
+                with patch('kb_platform.rag_testing.formal_state_machines.subprocess.run', side_effect=invoke):
+                    result = run_model(root, root / 'unused.jar', output, spec)
+                self.assertEqual(decision, result['decision'])
+                self.assertEqual('limitation', result['kind'])
+                self.assertEqual(spec['purpose'], result['purpose'])
+                self.assertEqual(spec['model_id'], result['model_id'])
+                self.assertEqual(result, json.loads((output / spec['id'] / 'result.json').read_text('utf-8')))
+
+    def test_timeout_is_not_an_observed_limitation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, spec = self.fixture(root)
+            output = root / 'output'
+            output.mkdir()
+            with patch('kb_platform.rag_testing.formal_state_machines.subprocess.run',
+                       side_effect=subprocess.TimeoutExpired('java', 30)):
+                result = run_model(root, root / 'unused.jar', output, spec)
+            self.assertEqual('FAIL', result['decision'])
+            self.assertTrue(result['timeout'])
+
+    def test_evidence_keeps_limitations_visible_and_ordinary_runs_required(self):
+        ordinary = [{'id': 'sample-model', 'kind': 'positive', 'decision': 'PASS', 'returncode': 0},
+                    {'id': 'sample-bug', 'kind': 'negative', 'decision': 'PASS', 'returncode': 12}]
+        metadata = {'model_id': 'sample-model', 'expected_invariant': 'KnownLimit', 'purpose': 'Explicit limitation'}
+        observation = {'id': 'sample-limitation', 'kind': 'limitation', 'decision': 'OBSERVED_LIMITATION',
+                       'returncode': 12, **metadata}
+        for row in ordinary + [observation]:
+            row.update(timeout=False, input_sha256={'formal/Model.tla': 'synthetic-input-hash'})
+        report = {'results': ordinary, 'expected_runs': {row['id']: row['kind'] for row in ordinary},
+                  'coverage': {'sample': 'partial'}, 'violations': [], 'known_limitations': [observation],
+                  'expected_limitations': {'sample-limitation': metadata}}
+        result = unittest.TestResult()
+        live_suite(report).run(result)
+        self.assertTrue(result.wasSuccessful(), (result.errors, result.failures))
+        for mutation in ('hide', 'relabel', 'replace-negative', 'mix-positive', 'unexpected-success', 'unnamed'):
+            changed = deepcopy(report)
+            if mutation == 'hide':
+                changed['known_limitations'] = []
+            elif mutation == 'relabel':
+                changed['known_limitations'][0]['decision'] = 'PASS'
+            elif mutation == 'replace-negative':
+                changed['results'].pop()
+            elif mutation == 'mix-positive':
+                changed['results'].append(changed['known_limitations'].pop())
+            elif mutation == 'unexpected-success':
+                changed['known_limitations'][0]['returncode'] = 0
+            else:
+                changed['known_limitations'][0]['expected_invariant'] = 'OtherInvariant'
+            with self.subTest(mutation=mutation):
+                result = unittest.TestResult()
+                live_suite(changed).run(result)
+                self.assertFalse(result.wasSuccessful())
+
+
 def live_suite(report):
     class ActualFormalEvidenceContracts(unittest.TestCase):
         def test_every_registered_run_executed_exactly_once(self):
@@ -226,4 +369,21 @@ def live_suite(report):
                     self.assertTrue(row['input_sha256'])
                     self.assertEqual({'positive': 0, 'negative': 12, 'liveness-negative': 13, 'invalid': 151}[row['kind']],
                                      row['returncode'])
+
+        def test_known_limitations_are_separate_observations_not_model_passes(self):
+            actual = {row['id']: {key: row[key] for key in ('model_id', 'expected_invariant', 'purpose')}
+                      for row in report['known_limitations']}
+            self.assertEqual(report['expected_limitations'], actual)
+            self.assertEqual(len(actual), len(report['known_limitations']))
+            self.assertFalse(set(actual).intersection(report['expected_runs']))
+            positive_models = {row['id'] for row in report['results'] if row['kind'] == 'positive'}
+            for row in report['known_limitations']:
+                with self.subTest(limitation=row['id']):
+                    self.assertEqual('limitation', row['kind'])
+                    self.assertEqual('OBSERVED_LIMITATION', row['decision'], json.dumps(row))
+                    self.assertEqual(12, row['returncode'])
+                    self.assertFalse(row['timeout'])
+                    self.assertTrue(row['input_sha256'])
+                    self.assertIn(row['model_id'], positive_models)
+                    self.assertTrue(row['purpose'].strip())
     return unittest.defaultTestLoader.loadTestsFromTestCase(ActualFormalEvidenceContracts)

@@ -121,6 +121,18 @@ def configured_operators(config: str, sections: set[str]) -> set[str]:
     return result
 
 
+def configuration_behavior(config: str) -> list[str]:
+    tokens = re.sub(r'\\\*[^\n]*', '', config).split()
+    result = []
+    checking = False
+    for token in tokens:
+        if token in CFG_SECTIONS:
+            checking = token in {'INVARIANT', 'INVARIANTS', 'PROPERTY', 'PROPERTIES'}
+        if not checking:
+            result.append(token)
+    return result
+
+
 def operator_names(value, *, allow_empty: bool) -> bool:
     return isinstance(value, list) and (allow_empty or bool(value)) and all(
         isinstance(name, str) and re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', name)
@@ -156,6 +168,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
             models = machine['models']
             controls = machine['negative_controls']
+            limitations = machine.get('known_limitations', [])
+            if not all(isinstance(items, list) for items in (models, controls, limitations)):
+                raise ValueError(f'{identity}: models, negative controls and known limitations must be lists')
             if (machine['status'] == 'partial') != bool(models):
                 errors.append(f'{identity}: partial requires actual models; unmodeled cannot claim models')
             if models and (not isinstance(machine.get('remaining_obligations'), list) or
@@ -166,7 +181,21 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                 errors.append(f'{identity}: modeled machines require a seeded negative control')
             if any(control.get('kind', 'negative') not in {'negative', 'liveness-negative'} for control in controls):
                 errors.append(f'{identity}: negative controls cannot change their expected failure kind')
-            for model in models + controls:
+            if any(control.get('known_limitation', False) for control in controls):
+                errors.append(f'{identity}: known limitations cannot count as negative controls')
+            for limitation in limitations:
+                associated = [model for model in models if model['id'] == limitation.get('model_id')]
+                if (limitation.get('kind') != 'limitation' or len(associated) != 1 or
+                        associated[0]['module'] != limitation.get('module')):
+                    errors.append(f'{identity}: known limitation must name a positive model using the same module')
+                elif configuration_behavior(local_file(root, limitation['config']).read_text('utf-8')) != (
+                        configuration_behavior(local_file(root, associated[0]['config']).read_text('utf-8'))):
+                    errors.append(f'{identity}: known limitation must preserve its positive model configuration behavior')
+                if not isinstance(limitation.get('purpose'), str) or not limitation['purpose'].strip():
+                    errors.append(f'{identity}: known limitation requires an explicit explanation')
+                if limitation.get('config') in {model['config'] for model in models + controls}:
+                    errors.append(f'{identity}: known limitation requires a separate configuration')
+            for model in models + controls + limitations:
                 if not re.fullmatch(r'[a-z][a-z0-9_-]+', model['id']):
                     raise ValueError(f'{identity}: invalid model run id')
                 module = local_file(root, model['module'])
@@ -193,6 +222,11 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                     properties = configured_operators(text, {'PROPERTY', 'PROPERTIES'})
                     if set(model['properties']) != properties:
                         errors.append(f'{identity}: configured temporal properties differ from registry')
+                elif model in limitations:
+                    if (not operator_names([model['expected_invariant']], allow_empty=False) or
+                            configured != {model['expected_invariant']} or
+                            configured_operators(text, {'PROPERTY', 'PROPERTIES'}) or model.get('expected_property')):
+                        errors.append(f'{identity}: known limitation must isolate its named safety invariant')
                 elif model.get('kind') == 'liveness-negative':
                     if configured_operators(text, {'PROPERTY', 'PROPERTIES'}) != {model['expected_property']}:
                         errors.append(f'{identity}: liveness negative control must isolate its named property')
@@ -269,6 +303,8 @@ def control_specs() -> list[dict]:
 
 
 def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
+    if spec['kind'] not in {'positive', 'negative', 'liveness-negative', 'invalid', 'limitation'}:
+        raise ValueError('Unknown formal run kind')
     directory = output / spec['id']
     directory.mkdir()
     inputs = directory / 'inputs'
@@ -284,6 +320,9 @@ def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
     properties = configured_operators(config.read_text('utf-8'), {'PROPERTY', 'PROPERTIES'})
     if spec['kind'] == 'liveness-negative' and properties != {spec['expected_property']}:
         raise ValueError('Liveness negative control must isolate its named temporal property')
+    if spec['kind'] == 'limitation' and (properties or spec.get('expected_property') or
+            configured_operators(config.read_text('utf-8'), {'INVARIANT', 'INVARIANTS'}) != {spec['expected_invariant']}):
+        raise ValueError('Known limitation must isolate its named safety invariant')
     shutil.copy2(config, inputs / config.name)
     snapshots[spec['config']] = digest(config.read_bytes())
     command = ['java', f'-Xmx{spec["heap_mb"]}m', '-XX:MaxMetaspaceSize=128m', '-XX:+UseParallelGC',
@@ -309,11 +348,14 @@ def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
         accepted = accepted and {2192, 2267} <= {frame['code'] for frame in parse_tlc(log)['frames']}
     if spec['kind'] == 'invalid':
         accepted = not timed_out and returncode in {150, 151, 75} and not tlc_verdict(log, returncode, expected)
-    record = {'id': spec['id'], 'kind': spec['kind'], 'decision': 'PASS' if accepted else 'FAIL',
+    decision = ('OBSERVED_LIMITATION' if spec['kind'] == 'limitation' else 'PASS') if accepted else 'FAIL'
+    record = {'id': spec['id'], 'kind': spec['kind'], 'decision': decision,
               'returncode': returncode, 'timeout': timed_out, 'seconds': time.monotonic() - started,
               'command': command, 'input_sha256': snapshots, 'expected_invariant': expected,
               'expected_property': expected_property,
               'parsed': parse_tlc(log), 'log': (directory / 'tlc.log').relative_to(output).as_posix()}
+    if spec['kind'] == 'limitation':
+        record.update(model_id=spec['model_id'], purpose=spec['purpose'])
     (directory / 'result.json').write_text(json.dumps(record, indent=2), encoding='utf-8')
     return record
 
@@ -322,7 +364,7 @@ def run_formal(root: Path, output: Path, jar: Path | None = None) -> int:
     output.mkdir(parents=True, exist_ok=False)
     errors = registry_violations(root)
     report = {'decision': 'FAIL',
-              'violations': errors, 'results': [], 'new_provider_calls': 0,
+              'violations': errors, 'results': [], 'known_limitations': [], 'new_provider_calls': 0,
               'scope': 'Finite TLC abstractions plus source review-drift lint; not implementation refinement or all-state-machine proof.'}
     try:
         if errors:
@@ -342,16 +384,23 @@ def run_formal(root: Path, output: Path, jar: Path | None = None) -> int:
         if version.returncode or not re.search(r'version "' + str(lock['java_major']) + r'(?:\.|\")', report['java_version']):
             raise ValueError(f'Java {lock["java_major"]} is required; observed runtime saved in report')
         specs = control_specs()
+        limitations = []
         for machine in registry['machines']:
             specs.extend(dict(model, kind='positive') for model in machine['models'])
             specs.extend(dict(model, kind=model.get('kind', 'negative')) for model in machine['negative_controls'])
-        if len({spec['id'] for spec in specs}) != len(specs):
+            limitations.extend(dict(model, kind='limitation') for model in machine.get('known_limitations', []))
+        if len({spec['id'] for spec in specs + limitations}) != len(specs) + len(limitations):
             raise ValueError('Every model/control run requires a unique id')
         if not any(machine['status'] == 'partial' for machine in registry['machines']):
             raise ValueError('At least one real registered machine model is required; control fixtures are not coverage')
         report['expected_runs'] = {spec['id']: spec['kind'] for spec in specs}
+        report['expected_limitations'] = {spec['id']: {
+            key: spec[key] for key in ('model_id', 'expected_invariant', 'purpose')} for spec in limitations}
+        report['registered_model_count'] = sum(len(machine['models']) for machine in registry['machines'])
         for spec in specs:
             report['results'].append(run_model(root, jar, output, spec))
+        for spec in limitations:
+            report['known_limitations'].append(run_model(root, jar, output, spec))
         from kb_platform.rag_testing.formal_state_machine_contracts import live_suite
         stream = io.StringIO()
         result = unittest.TextTestRunner(stream=stream, verbosity=2).run(live_suite(report))
