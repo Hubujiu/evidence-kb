@@ -1,0 +1,355 @@
+{
+  "schema": "historical-formal-verification-summary/1",
+  "scope": "Additional unified formal gate and targeted contracts only; not ordinary full-project acceptance.",
+  "decision": "PASS",
+  "violations": [],
+  "coverage": {
+    "physical_budget": "unmodeled",
+    "budget_batches": "partial",
+    "provider_receipts": "unmodeled",
+    "turn_budget": "partial",
+    "session_commit": "unmodeled",
+    "plugin_lifecycle": "partial",
+    "host_process": "unmodeled",
+    "llm_registry": "unmodeled",
+    "llm_stream": "unmodeled",
+    "kernel_execution": "unmodeled",
+    "loop_graph": "unmodeled",
+    "knowledge_workflow": "unmodeled",
+    "storage_registry": "unmodeled",
+    "storage_transaction": "unmodeled",
+    "storage_value_call": "unmodeled",
+    "transfer_protocol": "unmodeled",
+    "auth_session": "unmodeled",
+    "authority_publication": "unmodeled",
+    "search_generation": "unmodeled",
+    "embedding_jobs": "unmodeled",
+    "provider_admission": "unmodeled",
+    "circuit_tool_retry": "unmodeled",
+    "cache_evidence": "unmodeled",
+    "ingestion_migration": "unmodeled",
+    "acceptance_workflow": "unmodeled"
+  },
+  "evidence_contracts": {
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "registry_sha256": "38d1d62591f887a0656dc21afdf5f873cb1aaeb6dcb30e81ab48f4416659bbff",
+  "toolchain_sha256": "64e5c1ffd1918624fff881a1c38eb6fcc53e3a4c8a53e44c900dc127b289daa8",
+  "java_version": "openjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)\n",
+  "new_provider_calls": 0,
+  "original_artifact": "/workspace/scratch/75c2273f6a80/evidence-kb-linked-turn-formal/.local/budget-turn-formal-20261102-2023/formal",
+  "runs": [
+    {
+      "id": "gate-control-positive",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 3,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-seeded-bug",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "NoPrematureRelease",
+      "expected_property": null,
+      "states": {
+        "generated": 2,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-invalid-spec",
+      "kind": "invalid",
+      "decision": "PASS",
+      "returncode": 151,
+      "timeout": false,
+      "expected_invariant": "NoPrematureRelease",
+      "expected_property": null,
+      "states": null
+    },
+    {
+      "id": "gate-control-liveness-positive",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 3,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-liveness-bug",
+      "kind": "liveness-negative",
+      "decision": "PASS",
+      "returncode": 13,
+      "timeout": false,
+      "expected_invariant": null,
+      "expected_property": "EventuallyActive",
+      "states": {
+        "generated": 2,
+        "distinct": 1,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "batch_sealing",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 13232,
+        "distinct": 7136,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "ledger_import_intent",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 140,
+        "distinct": 84,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "batch_sealing_duplicate",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "DistinctPhysicalIds",
+      "expected_property": null,
+      "states": {
+        "generated": 2668,
+        "distinct": 1422,
+        "remaining": 199
+      }
+    },
+    {
+      "id": "batch_sealing_reviewedcost",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "ReviewedUnknownRetained",
+      "expected_property": null,
+      "states": {
+        "generated": 39,
+        "distinct": 39,
+        "remaining": 35
+      }
+    },
+    {
+      "id": "batch_sealing_seal",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "PersistentFenceBeforeAdmission",
+      "expected_property": null,
+      "states": {
+        "generated": 2155,
+        "distinct": 1222,
+        "remaining": 327
+      }
+    },
+    {
+      "id": "ledger_import_intent_seal",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "DestinationWorkFenced",
+      "expected_property": null,
+      "states": {
+        "generated": 13,
+        "distinct": 13,
+        "remaining": 7
+      }
+    },
+    {
+      "id": "ledger_import_intent_marker",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "AtomicRowsAndMarker",
+      "expected_property": null,
+      "states": {
+        "generated": 38,
+        "distinct": 33,
+        "remaining": 11
+      }
+    },
+    {
+      "id": "ledger_import_intent_unknown",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "CompleteImportRetainsUnknown",
+      "expected_property": null,
+      "states": {
+        "generated": 38,
+        "distinct": 33,
+        "remaining": 11
+      }
+    },
+    {
+      "id": "turn_reservations",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 53653,
+        "distinct": 19429,
+        "remaining": 0
+      },
+      "raw_log": "turn_reservations.log",
+      "input_checksums": "input-checksums/turn_reservations/SHA256SUMS"
+    },
+    {
+      "id": "turn_reservations_rollback",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "TerminalOwnsNoReservation",
+      "expected_property": null,
+      "states": {
+        "generated": 953,
+        "distinct": 454,
+        "remaining": 259
+      },
+      "raw_log": "turn_reservations_rollback.log",
+      "input_checksums": "input-checksums/turn_reservations_rollback/SHA256SUMS"
+    },
+    {
+      "id": "turn_reservations_usage",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "ObservedUsageRetained",
+      "expected_property": null,
+      "states": {
+        "generated": 270,
+        "distinct": 158,
+        "remaining": 96
+      },
+      "raw_log": "turn_reservations_usage.log",
+      "input_checksums": "input-checksums/turn_reservations_usage/SHA256SUMS"
+    },
+    {
+      "id": "turn_reservations_unknown",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "UnknownAttemptsRetained",
+      "expected_property": null,
+      "states": {
+        "generated": 255,
+        "distinct": 143,
+        "remaining": 84
+      },
+      "raw_log": "turn_reservations_unknown.log",
+      "input_checksums": "input-checksums/turn_reservations_unknown/SHA256SUMS"
+    },
+    {
+      "id": "turn_reservations_cache",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "CacheHasNoPhysicalCost",
+      "expected_property": null,
+      "states": {
+        "generated": 2,
+        "distinct": 2,
+        "remaining": 0
+      },
+      "raw_log": "turn_reservations_cache.log",
+      "input_checksums": "input-checksums/turn_reservations_cache/SHA256SUMS"
+    },
+    {
+      "id": "turn_reservations_reservation",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "NoUnreservedSend",
+      "expected_property": null,
+      "states": {
+        "generated": 50,
+        "distinct": 29,
+        "remaining": 16
+      },
+      "raw_log": "turn_reservations_reservation.log",
+      "input_checksums": "input-checksums/turn_reservations_reservation/SHA256SUMS"
+    },
+    {
+      "id": "plugin_lifecycle",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 10307,
+        "distinct": 4821,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "plugin_lifecycle_legacy_superseded_failure",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "expected_invariant": "NoSupersededFailure",
+      "expected_property": null,
+      "states": {
+        "generated": 11,
+        "distinct": 10,
+        "remaining": 7
+      }
+    }
+  ],
+  "focused_contracts": {
+    "tests": 46,
+    "decision": "PASS",
+    "log": "focused-contracts.log"
+  },
+  "ordinary_full_project_gate": "NOT_RUN on this budget candidate; no overlapping full runs authorized.",
+  "source_note": "Compact historical artifacts were appended after the gate; registered source, models/configs and registry bytes are unchanged. Live runner results/input snapshots remain complete and unchanged."
+}

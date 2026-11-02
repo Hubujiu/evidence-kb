@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -100,7 +100,7 @@
           "path": "kb_platform/rag_testing/provider_capture.py",
           "language": "python",
           "symbol": "MeteredTransport._handle_admitted",
-          "sha256": "3903308da069fc59c1a1144977a356077be2a6bc47161740ff01c9e588d398d0"
+          "sha256": "92ae8197031b951c91e0298be3fe05c703d8401952216b4effba79caadbb778a"
         },
         {
           "path": "kb_platform/embeddings.py",
@@ -118,7 +118,19 @@
           "path": "kb_platform/model_http.py",
           "language": "python",
           "symbol": "OpenAICompatibleAdapter.invoke",
-          "sha256": "7aca4fb4a257f49625d294b1542a3cb8a9832b33aa277ad2628ea71ff3fb7dde"
+          "sha256": "a9047f20ed44f5cd7a713d865dc17dc22e58b6eefff77c68fb35be69a71786c0"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger.status_snapshot",
+          "sha256": "ff200a4a4324111948e27b43a91e90420bc0da15c1e0ce0bdc046f1be728380e"
+        },
+        {
+          "path": "kb_platform/delivery.py",
+          "language": "python",
+          "symbol": "_budget_status",
+          "sha256": "74aa7173e5ef96f98c816f353631dc13db08b551a174d3591c0362e74ccd3bfe"
         }
       ],
       "models": [],
@@ -126,28 +138,38 @@
     },
     {
       "id": "budget_batches",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
-        "kb_platform/rag_testing/budget_batches.py"
+        "kb_platform/rag_testing/budget_batches.py",
+        "kb_platform/persistence_migration.py"
       ],
       "states": [
-        "immutable predecessor snapshots"
+        "Frozen predecessor rows and compatible persistent seals; partial construction and same-child recovery.",
+        "STARTED/COMPLETE/ERROR/UNKNOWN child rows; reviewed UNKNOWN remains reserved.",
+        "Pinned import intent, atomic target rows+marker, same-dataset replay or fail-closed conflict."
       ],
       "transitions": [
+        "LinkedBudgetLedger.__init__",
         "LinkedBudgetLedger.reserve",
         "LinkedBudgetLedger.cumulative_summary",
-        "ReviewedPredecessorLedger.cumulative_summary"
+        "ReviewedPredecessorLedger._review_summary",
+        "producer_guard",
+        "import_ledger",
+        "validate_ledger_binding"
       ],
       "invariants": [
-        "Prior cost/UNKNOWN survives new batch and replacement backend; duplicate physical IDs and changed predecessor hash block admission."
+        "Compatible persistent parent fences before returned-child admission; no duplicate parent/child physical IDs.",
+        "Reviewed UNKNOWN retains original effective cost; independent caps are never merged into a spendable pool.",
+        "Import intent pins destination; rows and marker commit together; UNKNOWN survives; nonempty targets are not overwritten."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "All local producers use producer_guard; SQLite guards commit independently in reverse ExitStack order.",
+        "Backend transaction atomicity, dataset identities and canonical snapshot digests are trusted.",
+        "Finite two-parent/four-ID batch and one-source/two-destination import abstractions; no fairness or progress claim."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "Physical-provider sends, monetary billing, arbitrary resource vectors and unbounded predecessor graphs are not modeled.",
+        "Whole ingestion migration remains unmodeled; only physical-ledger import intent is covered here."
       ],
       "source_bindings": [
         {
@@ -160,17 +182,270 @@
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "LinkedBudgetLedger.cumulative_summary",
-          "sha256": "1aaa845b5c3d4df5012676155053ed25df0f0713ba5aed1f7e0f328759578054"
+          "sha256": "8bc9ce672c0c1b1b9ea7bf3cd6ddbf15e5f0c232a3859d22697dbbd10b56ae6d"
         },
         {
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "ReviewedPredecessorLedger.cumulative_summary",
-          "sha256": "a9010aceb4d2a3a25b78dbea5c09e0627169c1c4697e9dec1f040d704b1d8ad6"
+          "sha256": "ebd3cf86acc17f17991ec25e5723c08f6e14cb8b58ccbf98f238fde46d786410"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "ReviewedPredecessorLedger._review_summary",
+          "sha256": "ffa7746235cec3d7556a89ee943dbd77be7b9cd3620b27b648dd9fdc0e5c2282"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "LinkedBudgetLedger.status_snapshot",
+          "sha256": "a61efc966353ac5251ba3080be2bf6e84d589257f0f24cf9ea227b05141ac4ba"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "LinkedBudgetLedger._review_summary",
+          "sha256": "423abc7680242b17da021f6fbac4e55774900a4342f0c291c2bea075808d1115"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "_cumulative_summary",
+          "sha256": "f580b515e80f199e4e9287bc2683a2c60620e2c4d564a1e9827f42b7d645b0d9"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "LinkedBudgetLedger.__init__",
+          "sha256": "2e9c63cefcbe9a5569ce07c7a3472927c12f05e6bfa391f829b10bada1a382a5"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "LinkedBudgetLedger._parents",
+          "sha256": "e028fb97f9cc28bf92b1834301f2a21bce1336aa309966d112c53dc10c1f47ad"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "_snapshot",
+          "sha256": "3e8d6f595fc8758c4596e8f604f999d6649ce2cab3d30548d328069df73fe4a5"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "freeze_predecessor",
+          "sha256": "36a5db9bc99175bc4b913a3e6a24f5d078b800dcf49d7ac39a72c62a5b21d5c5"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "_validate_frozen",
+          "sha256": "f04aa18e8897ef95176dc57aa41d3337208896d851ad2b16e238a32da7913f47"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "_unique",
+          "sha256": "64c6ad7b6472ff444db26678bad604081993fc5e232a335459a0990fa63bff3d"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "freeze_reviewed_predecessor",
+          "sha256": "6021902de7c65e0b2cec1a22172f7ae01fd54aa57c297f44b321e56ebc997b26"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "_validate_reviewed",
+          "sha256": "3433def60206f9772a2d1cf196426e82d1cc654c21464b382c1a17b667bf6c77"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "validate_predecessor",
+          "sha256": "c3729a8f8e8914a37a018d17124ce11b480214253962dfae0f87513d4c04c2ef"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "producer_guard",
+          "sha256": "e433e76ca48453e0b53902a48daf2e449a8720224ac901934f85ad6d89de2a40"
+        },
+        {
+          "path": "kb_platform/persistence_migration.py",
+          "language": "python",
+          "symbol": "inspect_ledger_import",
+          "sha256": "ed5fe0872bb0f93c0e913d097464c453911a825952e0c7a29619dcc6aaeb4376"
+        },
+        {
+          "path": "kb_platform/persistence_migration.py",
+          "language": "python",
+          "symbol": "import_ledger",
+          "sha256": "d5d955b1496e6e41938ec4c84c3c96361e4874e77ed8626dac242c2818eb3212"
+        },
+        {
+          "path": "kb_platform/persistence_migration.py",
+          "language": "python",
+          "symbol": "validate_ledger_binding",
+          "sha256": "98c1b77ff1e7516eff8a10a3d785cd6af202ff2113b88ab428c9e8de17895922"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_transition_contracts.py",
+          "language": "python",
+          "symbol": "BatchSealingTransitionContracts",
+          "sha256": "a2f9944710d0811e7022fb1626b1ef965add0ef35ffe23cd605a12fb805d12e7"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_transition_contracts.py",
+          "language": "python",
+          "symbol": "LedgerImportTransitionContracts",
+          "sha256": "b0b0f1e7da1c2f2ccaf6e6080529a192ed295c2c7c498783ae18ffa7474ff74c"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "_validate_frozen_identity",
+          "sha256": "c2e52b5a76ae0bef99bbe57d98b903dd0ab89f7bd525378d7b3f0626dfcea8c1"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "ReviewedPredecessorLedger._parents",
+          "sha256": "1572572c75267387a6b724fe927f08363a6ff857153c9beec22f262a6eb0eb82"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "LinkedBudgetLedger.finish",
+          "sha256": "69a5958c37365354b0e07c8a5e00f8f1a23fb012a88ef3c84468b7c695dfc7d2"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "LinkedBudgetLedger.admission",
+          "sha256": "99da00b197411dec29e440147844b364d504e6c15ed482e3999fa124a51144bd"
+        },
+        {
+          "path": "kb_platform/rag_testing/reviewed_predecessor_contracts.py",
+          "language": "python",
+          "symbol": "ReviewedPredecessorContracts.test_review_retains_unknown_reservation_and_links_new_physical_request",
+          "sha256": "f8e3956a905386a4ab1187d9d077f8cd3178d65de0e65101b035ef018a10731b"
+        },
+        {
+          "path": "kb_platform/rag_testing/reviewed_predecessor_contracts.py",
+          "language": "python",
+          "symbol": "ReviewedPredecessorContracts.test_new_unknown_is_not_covered_by_old_review",
+          "sha256": "1ca4dfeb4cf3ac0df46fdbe7625eb003667a2728028d570f946df633fc544854"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "batch_sealing",
+          "module": "formal/budget_batches/BatchSealing.tla",
+          "config": "formal/budget_batches/BatchSealing.cfg",
+          "invariants": [
+            "TypeOK",
+            "PersistentFenceBeforeAdmission",
+            "DistinctPhysicalIds",
+            "ReviewedUnknownRetained",
+            "SingleUnresolvedChild"
+          ],
+          "properties": [],
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "bounds": {
+            "parents": 2,
+            "chosen_child": 1,
+            "competing_child": 1,
+            "physical_request_ids": 4,
+            "child_capacity": 2,
+            "resource_dimensions": 1,
+            "cost_per_row_maximum": 1
+          }
+        },
+        {
+          "id": "ledger_import_intent",
+          "module": "formal/budget_batches/ImportIntent.tla",
+          "config": "formal/budget_batches/ImportIntent.cfg",
+          "invariants": [
+            "TypeOK",
+            "DestinationWorkFenced",
+            "AtomicRowsAndMarker",
+            "CompleteImportRetainsUnknown",
+            "NeverOverwriteOccupied",
+            "NoMigrationFork"
+          ],
+          "properties": [],
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "bounds": {
+            "source_ledgers": 1,
+            "source_rows": 2,
+            "unknown_source_rows": 1,
+            "destination_identities": 2,
+            "destination_initial_occupancy_classes": 2
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "batch_sealing_duplicate",
+          "module": "formal/budget_batches/BatchSealing.tla",
+          "config": "formal/budget_batches/BatchSealingDuplicateNegative.cfg",
+          "expected_invariant": "DistinctPhysicalIds",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "batch_sealing_reviewedcost",
+          "module": "formal/budget_batches/BatchSealing.tla",
+          "config": "formal/budget_batches/BatchSealingReviewedCostNegative.cfg",
+          "expected_invariant": "ReviewedUnknownRetained",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "batch_sealing_seal",
+          "module": "formal/budget_batches/BatchSealing.tla",
+          "config": "formal/budget_batches/BatchSealingSealNegative.cfg",
+          "expected_invariant": "PersistentFenceBeforeAdmission",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "ledger_import_intent_seal",
+          "module": "formal/budget_batches/ImportIntent.tla",
+          "config": "formal/budget_batches/ImportIntentSealNegative.cfg",
+          "expected_invariant": "DestinationWorkFenced",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "ledger_import_intent_marker",
+          "module": "formal/budget_batches/ImportIntent.tla",
+          "config": "formal/budget_batches/ImportIntentMarkerNegative.cfg",
+          "expected_invariant": "AtomicRowsAndMarker",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "ledger_import_intent_unknown",
+          "module": "formal/budget_batches/ImportIntent.tla",
+          "config": "formal/budget_batches/ImportIntentUnknownNegative.cfg",
+          "expected_invariant": "CompleteImportRetainsUnknown",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Unbounded parent graphs, arbitrary dimensions, overreported actual usage and distributed backend replacement.",
+        "Filesystem/WAL behavior and cryptographic integrity; physical file hash is not a WAL snapshot.",
+        "Availability and operator recovery for incompatible/nonempty pinned import targets; fresh handles required after preparation sealing.",
+        "Destination or predecessor mutation outside the fencing-aware protocol; concurrent marker identity conflicts and source changes after target commit."
+      ]
     },
     {
       "id": "provider_receipts",
@@ -181,7 +456,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -237,36 +512,43 @@
     },
     {
       "id": "turn_budget",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation → consumed/released"
+        "New/cache-hit/denied invocation; turn-held then both-held reservation.",
+        "Active bounded provider attempts; observed/unobserved last-response usage.",
+        "Global settlement followed by turn settlement; terminal reservations released without refunding incurred usage."
       ],
       "transitions": [
         "BudgetLedger.reserve",
         "BudgetLedger.settle",
+        "BudgetLedger.turn_budget",
         "AgentModel.complete",
         "AgentModel.accept_completion"
       ],
       "invariants": [
-        "Application calls/tokens are separate from physical ledger; denied preflight is not attempted send; failure after provider result preserves usage. #31 specifically changes this boundary."
+        "Both reservations precede physical send; terminal outcomes own no pending reservations.",
+        "Known usage and conservative unknown-attempt charges survive downstream failures.",
+        "Completed global and turn accounting agree; intermediate snapshots need not.",
+        "Application cache uses zero attempts; physical call admission counts used plus pending reservations."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Finite three invocations/two turns with complete context, fixed provider attempt bounds and trusted attempt reporting.",
+        "Each ledger lock section is atomic; normalized usage and valid reservation tokens make settlement nonthrowing.",
+        "Physical-request ledger, application ledger and token-pressure measurement are distinct authorities."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No durable restart/process-death or arbitrary asynchronous interruption inside cleanup proof.",
+        "No strict token-spend upper bound after provider-reported usage exceeds an estimate; actual cost must be retained."
       ],
       "source_bindings": [
         {
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "BudgetLedger.reserve",
-          "sha256": "2357ea31650462f417b1d4022ce52bf589bfae062d46d5740b9d389881b712f1"
+          "sha256": "fa3509f0aff7395119d5f37623b1d9373fa6e369698d4f34d9e001c67f81cd05"
         },
         {
           "path": "kb_platform/agent_model.py",
@@ -278,17 +560,148 @@
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "AgentModel.complete",
-          "sha256": "aa2a137fa0d11394b9aa21aa7868896298a280b77ec83943621a5862587c8c69"
+          "sha256": "f1f33d434ac14332452b2a1393f5dfc62bf203827a292120e4def670abe4d85d"
         },
         {
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "AgentModel.accept_completion",
           "sha256": "192811f6b92d436c2c332072864424c9a0f5c8f353ad67b970e899c0b54af0a5"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.__init__",
+          "sha256": "21e524b3936e05d9b8fdaa6450bc3a63914d8734ffa047f1b0c4ab388bbb9d37"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.snapshot",
+          "sha256": "8a17f397f5ac7b35900b24ef95a185540786f145215da330043ab1f935ec1bdb"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.turn_budget",
+          "sha256": "4031d93bc725fd83c055038e228e61ea4e0ea22a37b3c496690deb24e651f532"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.turn_budget_snapshot",
+          "sha256": "1c8e09f67f90962e34a107e8fdbad373fce542bec0d5e78d8937cc4b564bfe3b"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "_usage",
+          "sha256": "13c6e969f3f23b52b88e073376cd2890e136b2b69881e8d162bf723e67ee6d84"
+        },
+        {
+          "path": "kb_platform/rag_testing/turn_budget_transition_contracts.py",
+          "language": "python",
+          "symbol": "TurnReservationTransitionContracts",
+          "sha256": "ae0c269527b3964a87055961003e6552a86342bfd6b772538134a25bc0e1a34e"
+        },
+        {
+          "path": "kb_platform/rag_testing/turn_budget_contracts.py",
+          "language": "python",
+          "symbol": "TurnBudgetContracts",
+          "sha256": "7401ead4c4c2a9c2c122981cb3445742d281f78bc164e0bec89d32de2eb93aa1"
+        },
+        {
+          "path": "kb_platform/rag_testing/structured_budget_contracts.py",
+          "language": "python",
+          "symbol": "StructuredBudgetContracts",
+          "sha256": "68c0e468d64f76f8fcab585923d5410d534bbd58b469bc9a948f4b14dddff790"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "turn_reservations",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservations.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoUnreservedSend",
+            "TerminalOwnsNoReservation",
+            "ObservedUsageRetained",
+            "UnknownAttemptsRetained",
+            "CompletedLedgersAgree",
+            "CacheHasNoPhysicalCost",
+            "GlobalCallsBound",
+            "TurnCallsBound"
+          ],
+          "properties": [],
+          "bounds": {
+            "invocations": 3,
+            "turns": 2,
+            "maximum_attempts_per_invocation": [
+              2,
+              1,
+              1
+            ],
+            "global_call_cap": 3,
+            "per_turn_call_cap": 2,
+            "token_admission_cap": 6,
+            "per_attempt_reservation": 2,
+            "known_usage_classes": [
+              0,
+              3
+            ]
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "turn_reservations_rollback",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsRollbackNegative.cfg",
+          "expected_invariant": "TerminalOwnsNoReservation",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "turn_reservations_usage",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsUsageNegative.cfg",
+          "expected_invariant": "ObservedUsageRetained",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "turn_reservations_unknown",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsUnknownNegative.cfg",
+          "expected_invariant": "UnknownAttemptsRetained",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "turn_reservations_cache",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsCacheNegative.cfg",
+          "expected_invariant": "CacheHasNoPhysicalCost",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "turn_reservations_reservation",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsReservationNegative.cfg",
+          "expected_invariant": "NoUnreservedSend",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Unbounded turns/invocations, cap20 induction, UUID collision, malformed traces and changing per-turn limits.",
+        "Context-free invocations, arbitrary usage/resource dimensions, precise monetary billing and internal settlement failure.",
+        "Full RPC/trace/event refinement, provider timing guarantees and durable physical-request accounting."
+      ]
     },
     {
       "id": "session_commit",
@@ -603,7 +1016,7 @@
         "rust/llm-service/src/registry.rs"
       ],
       "states": [
-        "route Active→Draining→Cleaning→removed/CleanupFailed"
+        "route Active\u2192Draining\u2192Cleaning\u2192removed/CleanupFailed"
       ],
       "transitions": [
         "RoutePhase",
@@ -750,7 +1163,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY↔WAITING"
+        "READY\u2194WAITING"
       ],
       "transitions": [
         "transition",
@@ -887,7 +1300,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1080,7 +1493,7 @@
         "rust/storage-service/src/transaction.rs"
       ],
       "states": [
-        "begin→held→executing→commit/rollback"
+        "begin\u2192held\u2192executing\u2192commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1151,7 +1564,7 @@
         "kb_platform/storage_adapters/values.py"
       ],
       "states": [
-        "Input→Executing→Result→Values / Failed"
+        "Input\u2192Executing\u2192Result\u2192Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1217,7 +1630,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1242,7 +1655,7 @@
           "path": "kb_platform/contract_transfer.py",
           "language": "python",
           "symbol": "JsonEndpoint.execute",
-          "sha256": "eeef3078396601c772b98a8c5f245d171af19604f78c5b1bcf9bf9835f569c34"
+          "sha256": "1ef6cbfc1375770cd12b34ad516d92550f0759112990700852fcf37f1d395d3d"
         },
         {
           "path": "kb_platform/contract_transfer.py",
@@ -1254,7 +1667,7 @@
           "path": "kb_platform/contract_transfer.py",
           "language": "python",
           "symbol": "JsonClient._call",
-          "sha256": "acbc112e1da50988c06943f1e3c9ff440729ddc9165133f89f008f7b51bfcf96"
+          "sha256": "1592a38c7eed38286c22b331f20b9bdea75d35fa4ce21129ac167172edb30727"
         },
         {
           "path": "kb_platform/storage_object_wire.py",
@@ -1267,6 +1680,18 @@
           "language": "python",
           "symbol": "ObjectTransferEndpoint.close",
           "sha256": "bb2bf9ba0768cf2d6f1d6cfabcc0569dac3cc352ddb8f5a6211b79389f403b9e"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonEndpoint._execute",
+          "sha256": "b0ad073359b8a42ac24f59b65db7163f094ce227de3487c7ad0032888856115b"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonClient._dispatch",
+          "sha256": "de92a0af92927696e26e2343653e62d0be2f9d8b5f70f19647a09a9cc72d4c02"
         }
       ],
       "models": [],
@@ -1279,7 +1704,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent→issued→expired/revoked"
+        "absent\u2192issued\u2192expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1404,7 +1829,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1494,7 +1919,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1543,7 +1968,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1573,7 +1998,7 @@
           "path": "kb_platform/provider_admission.py",
           "language": "python",
           "symbol": "ProviderAdmission.require_available",
-          "sha256": "34e5d3ecd6d9075c1b0b97fc77e0ba7e595b0c853da088fb01d1beddd24a0469"
+          "sha256": "84ec750df0b82f73a4284f7d42babf4c16829ac8a73125d418bdd29a8f8c3ea4"
         },
         {
           "path": "kb_platform/provider_admission.py",
@@ -1597,13 +2022,19 @@
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "classify_failure",
-          "sha256": "3c2f067657f416d0625091df29d3ebf9858af75c4aab2f189fb4ddbeb0195273"
+          "sha256": "4adc66c521182b504c421700567b44159cf359595ba8f96ec5156830a58632ef"
         },
         {
           "path": "kb_platform/remote.py",
           "language": "python",
           "symbol": "GoogleEmbeddingProvider._post",
           "sha256": "4f6eb4f2e5cbd0068852763c994817a17c9caaaa7f11189bef6141aa37476bc7"
+        },
+        {
+          "path": "kb_platform/model_errors.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "a73f6a45159f6c0f92f02c9f521778470dbee7f530b9cace64e728e50a7384ec"
         }
       ],
       "models": [],
@@ -1616,7 +2047,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",
@@ -1727,7 +2158,7 @@
           "path": "kb_platform/knowledge_contracts.py",
           "language": "python",
           "symbol": "ModelEndpoint.complete",
-          "sha256": "5abf9663da57dfcbff2d5d0672a37fca867f2e2b251e17b1b2d859cab1469753"
+          "sha256": "4d88494cb04af4727e3a66d503926b33c8109e93db2c39de3873686c3d7a6894"
         },
         {
           "path": "kb_platform/knowledge_contracts.py",
