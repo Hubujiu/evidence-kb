@@ -278,6 +278,8 @@ def source_quality_violations(root: Path) -> list[str]:
             module = relative.removesuffix('.py').replace('/', '.')
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
+            if relative == 'kb_platform/rag_testing/search_router_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in search_stage_diagnostic_violations(tree))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -291,6 +293,21 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def search_stage_diagnostic_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse('def stage(self):\n'
+        '    try:\n'
+        '        self.router.stage(self.index, self.units, vector_dimension=3)\n'
+        '    except Exception as error:\n'
+        '        note_stage_failure(error, self.root)\n'
+        '        raise\n').body[0]
+    stages = [node for owner in tree.body if isinstance(owner, ast.ClassDef)
+              and owner.name == 'SearchRouterContracts' for node in owner.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == 'stage']
+    if len(stages) != 1 or ast.dump(stages[0]) != ast.dump(expected):
+        return ['search-stage diagnostics require one original call, failure-only note, and bare raise without retry']
+    return []
 
 
 def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
