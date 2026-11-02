@@ -1,0 +1,223 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 110 and seed -3667008616443023396 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 64] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-host-formal/formal/host_process/HostSupervisorLifecycle.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module HostSupervisorLifecycle
+Starting... (2026-11-02 12:19:56)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 12:19:56.
+Error: Invariant SuccessRequiresCleanup is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = FALSE
+/\ reaped = FALSE
+/\ run = "idle"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ runResponse = "none"
+/\ cleanup = "none"
+/\ phase = "new"
+/\ shutdownReply = FALSE
+
+State 2: <Boot line 11, col 9 to line 14, col 107 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = FALSE
+/\ reaped = FALSE
+/\ run = "idle"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ runResponse = "none"
+/\ cleanup = "none"
+/\ phase = "handshaken"
+/\ shutdownReply = FALSE
+
+State 3: <Boot line 11, col 9 to line 14, col 107 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "idle"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ runResponse = "none"
+/\ cleanup = "none"
+/\ phase = "ready"
+/\ shutdownReply = FALSE
+
+State 4: <StartRun line 15, col 13 to line 16, col 112 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "running"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ runResponse = "none"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 5: <RunReturns line 22, col 15 to line 23, col 121 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "returned"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ runResponse = "none"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 6: <ClaimStop line 17, col 14 to line 19, col 109 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "returned"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "none"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 7: <BeginClose line 24, col 15 to line 26, col 121 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "closing"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "none"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 8: <CloseReturns line 27, col 17 to line 28, col 123 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "closed"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "none"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 9: <EmitRunReply line 29, col 17 to line 31, col 115 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "closed"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "ok"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 10: <SettleRun line 32, col 14 to line 33, col 120 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "settled"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "ok"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 11: <RunAcknowledged line 34, col 20 to line 35, col 121 of module HostSupervisorLifecycle>
+/\ runReply = "ok"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "settled"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "ok"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 12: <ShutdownAcknowledged line 36, col 25 to line 38, col 121 of module HostSupervisorLifecycle>
+/\ runReply = "ok"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "settled"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "ok"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = TRUE
+
+State 13: <CollectRoot line 39, col 16 to line 41, col 121 of module HostSupervisorLifecycle>
+/\ runReply = "ok"
+/\ result = "none"
+/\ root = FALSE
+/\ reaped = FALSE
+/\ run = "settled"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "ok"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = TRUE
+
+State 14: <Reap line 42, col 9 to line 43, col 112 of module HostSupervisorLifecycle>
+/\ runReply = "ok"
+/\ result = "none"
+/\ root = FALSE
+/\ reaped = TRUE
+/\ run = "settled"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "ok"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = TRUE
+
+State 15: <Cleanup line 44, col 12 to line 45, col 114 of module HostSupervisorLifecycle>
+/\ runReply = "ok"
+/\ result = "none"
+/\ root = FALSE
+/\ reaped = TRUE
+/\ run = "settled"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "ok"
+/\ cleanup = "error"
+/\ phase = "running"
+/\ shutdownReply = TRUE
+
+State 16: <Publish line 46, col 12 to line 49, col 115 of module HostSupervisorLifecycle>
+/\ runReply = "ok"
+/\ result = "completed"
+/\ root = FALSE
+/\ reaped = TRUE
+/\ run = "settled"
+/\ shutdown = TRUE
+/\ stop = "done"
+/\ runResponse = "ok"
+/\ cleanup = "error"
+/\ phase = "running"
+/\ shutdownReply = TRUE
+
+407 states generated, 167 distinct states found, 13 states left on queue.
+The depth of the complete state graph search is 16.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 4).
+Finished in 01s at (2026-11-02 12:19:56)

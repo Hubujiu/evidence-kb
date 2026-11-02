@@ -1,0 +1,119 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 106 and seed -7040879874643806945 with 1 worker on 9 cores with 2215MB heap and 64MB offheap memory [pid: 217] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-host-formal/formal/host_process/ProviderPhysicalKnowledge.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module ProviderPhysicalKnowledge
+Starting... (2026-11-02 12:12:03)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 12:12:03.
+Error: Invariant NoReplayAfterUnknown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ joined = FALSE
+/\ cancelled = FALSE
+/\ readerStopped = FALSE
+/\ effects = 0
+/\ writerStopped = FALSE
+/\ processExited = FALSE
+/\ pluginClosed = FALSE
+/\ attempt = 1
+/\ receipt = "pending"
+/\ transportClosed = FALSE
+/\ stage = "prepared"
+
+State 2: <ClaimIntent line 12, col 16 to line 14, col 92 of module ProviderPhysicalKnowledge>
+/\ joined = FALSE
+/\ cancelled = FALSE
+/\ readerStopped = FALSE
+/\ effects = 0
+/\ writerStopped = FALSE
+/\ processExited = FALSE
+/\ pluginClosed = FALSE
+/\ attempt = 1
+/\ receipt = "pending"
+/\ transportClosed = FALSE
+/\ stage = "intent"
+
+State 3: <Lose line 28, col 9 to line 31, col 85 of module ProviderPhysicalKnowledge>
+/\ joined = FALSE
+/\ cancelled = FALSE
+/\ readerStopped = FALSE
+/\ effects = 0
+/\ writerStopped = FALSE
+/\ processExited = FALSE
+/\ pluginClosed = FALSE
+/\ attempt = 1
+/\ receipt = "unknown"
+/\ transportClosed = FALSE
+/\ stage = "intent"
+
+State 4: <Exit line 41, col 9 to line 43, col 70 of module ProviderPhysicalKnowledge>
+/\ joined = FALSE
+/\ cancelled = FALSE
+/\ readerStopped = FALSE
+/\ effects = 0
+/\ writerStopped = FALSE
+/\ processExited = TRUE
+/\ pluginClosed = FALSE
+/\ attempt = 1
+/\ receipt = "unknown"
+/\ transportClosed = FALSE
+/\ stage = "intent"
+
+State 5: <StopReader line 44, col 15 to line 46, col 76 of module ProviderPhysicalKnowledge>
+/\ joined = FALSE
+/\ cancelled = FALSE
+/\ readerStopped = TRUE
+/\ effects = 0
+/\ writerStopped = FALSE
+/\ processExited = TRUE
+/\ pluginClosed = FALSE
+/\ attempt = 1
+/\ receipt = "unknown"
+/\ transportClosed = FALSE
+/\ stage = "intent"
+
+State 6: <StopWriter line 47, col 15 to line 49, col 76 of module ProviderPhysicalKnowledge>
+/\ joined = FALSE
+/\ cancelled = FALSE
+/\ readerStopped = TRUE
+/\ effects = 0
+/\ writerStopped = TRUE
+/\ processExited = TRUE
+/\ pluginClosed = FALSE
+/\ attempt = 1
+/\ receipt = "unknown"
+/\ transportClosed = FALSE
+/\ stage = "intent"
+
+State 7: <CloseTransport line 50, col 19 to line 53, col 78 of module ProviderPhysicalKnowledge>
+/\ joined = FALSE
+/\ cancelled = FALSE
+/\ readerStopped = TRUE
+/\ effects = 0
+/\ writerStopped = TRUE
+/\ processExited = TRUE
+/\ pluginClosed = FALSE
+/\ attempt = 1
+/\ receipt = "unknown"
+/\ transportClosed = TRUE
+/\ stage = "intent"
+
+State 8: <Retry line 54, col 10 to line 58, col 57 of module ProviderPhysicalKnowledge>
+/\ joined = FALSE
+/\ cancelled = FALSE
+/\ readerStopped = FALSE
+/\ effects = 0
+/\ writerStopped = FALSE
+/\ processExited = FALSE
+/\ pluginClosed = FALSE
+/\ attempt = 2
+/\ receipt = "pending"
+/\ transportClosed = FALSE
+/\ stage = "prepared"
+
+250 states generated, 130 distinct states found, 35 states left on queue.
+The depth of the complete state graph search is 8.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-11-02 12:12:03)

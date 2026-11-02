@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -181,7 +181,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -242,7 +242,7 @@
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation → consumed/released"
+        "pending reservation \u2192 consumed/released"
       ],
       "transitions": [
         "BudgetLedger.reserve",
@@ -557,27 +557,43 @@
     },
     {
       "id": "host_process",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "rust/plugin-host/src/lib.rs",
+        "rust/plugin-host/src/process_plugin.rs",
+        "rust/plugin-host/src/process_tree.rs",
+        "rust/plugin-host/src/process_tree/unix.rs",
+        "rust/plugin-host/src/process_tree/windows.rs",
+        "kb_platform/host_protocol.py",
+        "kb_platform/host_worker.py",
         "kb_platform/plugin_process.py"
       ],
       "states": [
-        "start/ready/request in-flight/worker exit/shutdown/escalation/reaped"
+        "application new/handshaken/ready/running/closing/settled; stop busy/done",
+        "native allocated/sent/dispatched/replied and pending/complete/unknown futures",
+        "process-provider prepared/intent/wire/invoked/returned; actual effects; observed receipt; joined/closed"
       ],
       "transitions": [
-        "Event"
+        "HostSupervisorLifecycle: Boot/StartRun/ClaimStop/StopDone/RunReturns/BeginClose/CloseReturns/EmitRunReply/SettleRun/RunAcknowledged/ShutdownAcknowledged/CollectRoot/Reap/Cleanup/Publish/Fail",
+        "HostRequestCorrelation: Allocate/Send/Dispatch/Reply/Receive/Fail",
+        "ProviderPhysicalKnowledge: ClaimIntent/WriteFrame/Invoke/Return/Observe/Lose/Cancel/Join/ClosePlugin/Exit/StopReader/StopWriter/CloseTransport"
       ],
       "invariants": [
-        "Death/timeout does not prove business operation unsent; orphan cleanup and cancellation must not release in-flight ownership early. OS-specific kill/reap effects need separate integration evidence."
+        "Stop and app close cannot overlap; success requires acknowledgements, root collection, leader reap and successful cleanup result.",
+        "Exact response identity settles only its pending future; unique allocation permits arbitrary wire ordering.",
+        "Sent intent is not proof of bytes or invocation; UNKNOWN permits zero or one actual effect; no automatic replay.",
+        "Plugin close follows handler join; transport close follows process and I/O cleanup observations."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Three distinct protocol abstractions, not a generic merged transport. Trusted native client uses unique numeric IDs; process client uses fresh physical UUIDs.",
+        "One application/run/shutdown/root and finite scalar cleanup outcomes. Two native requests; one provider logical operation with second physical ID only under seeded retry.",
+        "No liveness fairness for arbitrary app/provider code; blocking, lost responses and unconfirmed cleanup may remain pending.",
+        "Source reviewed from c8ef758; Rust whole-file and Python AST bindings plus mandatory semantic guards are review evidence, not refinement proof."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "Native malicious duplicate frames and provider recent-ID cache eviction are outside model bounds; no durable idempotency guarantee.",
+        "Unix Group::is_empty returns true; cleanup acknowledgement is not proof all OS descendants are physically gone.",
+        "Arbitrary callbacks, multiple roots/providers, partial JSON frames, filesystem durability, OS syscall correctness and unbounded retries are not modeled."
       ],
       "source_bindings": [
         {
@@ -587,14 +603,347 @@
           "sha256": "3020007f5217f62c832a1a9051e7b1174d39ce02535a76f04d8373de30c29575"
         },
         {
+          "path": "rust/plugin-host/src/lib.rs",
+          "language": "rust",
+          "symbol": "Worker::send",
+          "sha256": "3020007f5217f62c832a1a9051e7b1174d39ce02535a76f04d8373de30c29575"
+        },
+        {
+          "path": "rust/plugin-host/src/lib.rs",
+          "language": "rust",
+          "symbol": "Worker::event",
+          "sha256": "3020007f5217f62c832a1a9051e7b1174d39ce02535a76f04d8373de30c29575"
+        },
+        {
+          "path": "rust/plugin-host/src/lib.rs",
+          "language": "rust",
+          "symbol": "Worker::reap",
+          "sha256": "3020007f5217f62c832a1a9051e7b1174d39ce02535a76f04d8373de30c29575"
+        },
+        {
+          "path": "rust/plugin-host/src/lib.rs",
+          "language": "rust",
+          "symbol": "Host::run",
+          "sha256": "3020007f5217f62c832a1a9051e7b1174d39ce02535a76f04d8373de30c29575"
+        },
+        {
+          "path": "rust/plugin-host/src/lib.rs",
+          "language": "rust",
+          "symbol": "next_response",
+          "sha256": "3020007f5217f62c832a1a9051e7b1174d39ce02535a76f04d8373de30c29575"
+        },
+        {
+          "path": "rust/plugin-host/src/lib.rs",
+          "language": "rust",
+          "symbol": "dispatch_call",
+          "sha256": "3020007f5217f62c832a1a9051e7b1174d39ce02535a76f04d8373de30c29575"
+        },
+        {
+          "path": "rust/plugin-host/src/process_plugin.rs",
+          "language": "rust",
+          "symbol": "CallContext::check",
+          "sha256": "466d31355ce18f251413957e9748c386c9983d6d2844ca160f0214fc65e0bb4d"
+        },
+        {
+          "path": "rust/plugin-host/src/process_plugin.rs",
+          "language": "rust",
+          "symbol": "RequestIds::insert",
+          "sha256": "466d31355ce18f251413957e9748c386c9983d6d2844ca160f0214fc65e0bb4d"
+        },
+        {
+          "path": "rust/plugin-host/src/process_plugin.rs",
+          "language": "rust",
+          "symbol": "join",
+          "sha256": "466d31355ce18f251413957e9748c386c9983d6d2844ca160f0214fc65e0bb4d"
+        },
+        {
+          "path": "rust/plugin-host/src/process_plugin.rs",
+          "language": "rust",
+          "symbol": "serve",
+          "sha256": "466d31355ce18f251413957e9748c386c9983d6d2844ca160f0214fc65e0bb4d"
+        },
+        {
+          "path": "rust/plugin-host/src/process_tree.rs",
+          "language": "rust",
+          "symbol": "ProcessTree::shutdown",
+          "sha256": "6550d9328af2124e29571012ec8719e6dfc4bafc61984cb8601652fcb381faf1"
+        },
+        {
+          "path": "rust/plugin-host/src/process_tree.rs",
+          "language": "rust",
+          "symbol": "ProcessTree::try_wait",
+          "sha256": "6550d9328af2124e29571012ec8719e6dfc4bafc61984cb8601652fcb381faf1"
+        },
+        {
+          "path": "rust/plugin-host/src/process_tree/unix.rs",
+          "language": "rust",
+          "symbol": "Group::terminate",
+          "sha256": "965b2bf7d3bd48c758977c7afaeb31391ae300f5fff7a559ed52c79b585ecdec"
+        },
+        {
+          "path": "rust/plugin-host/src/process_tree/unix.rs",
+          "language": "rust",
+          "symbol": "Group::is_empty",
+          "sha256": "965b2bf7d3bd48c758977c7afaeb31391ae300f5fff7a559ed52c79b585ecdec"
+        },
+        {
+          "path": "rust/plugin-host/src/process_tree/windows.rs",
+          "language": "rust",
+          "symbol": "Group::terminate",
+          "sha256": "9e086f83672d88492006d32dd34b8440837863778f9113a8a562762bab68f6ee"
+        },
+        {
+          "path": "rust/plugin-host/src/process_tree/windows.rs",
+          "language": "rust",
+          "symbol": "Group::is_empty",
+          "sha256": "9e086f83672d88492006d32dd34b8440837863778f9113a8a562762bab68f6ee"
+        },
+        {
+          "path": "kb_platform/host_protocol.py",
+          "language": "python",
+          "symbol": "HostConnection.request",
+          "sha256": "dfba505dccdf1217c3ed3165d1add983702db70c8c5e8186acd36d0b26a028d6"
+        },
+        {
+          "path": "kb_platform/host_protocol.py",
+          "language": "python",
+          "symbol": "HostConnection.send",
+          "sha256": "8ddf39092982f241f1fd7d1875f964295e7e01a006028debaa7de812ad3f18c0"
+        },
+        {
+          "path": "kb_platform/host_protocol.py",
+          "language": "python",
+          "symbol": "HostConnection.receive",
+          "sha256": "455261ec191fc369bce484812245f1437b7169220da0a140fa12c7bc2eddd4e7"
+        },
+        {
+          "path": "kb_platform/host_protocol.py",
+          "language": "python",
+          "symbol": "HostConnection.fail",
+          "sha256": "dcc6ac24774adaa5129ad5a69e042e51930b65c6309f27074b79b96a5572d312"
+        },
+        {
+          "path": "kb_platform/host_worker.py",
+          "language": "python",
+          "symbol": "ApplicationWorker._claim",
+          "sha256": "54d3c08894e70ef4998121d0edf01bf4472d61606b9e85d105c1270a71995645"
+        },
+        {
+          "path": "kb_platform/host_worker.py",
+          "language": "python",
+          "symbol": "ApplicationWorker.accept",
+          "sha256": "87b4de4edc509a14cba90d1b8be9895029234b22cc98e092dd190009ed52465e"
+        },
+        {
+          "path": "kb_platform/host_worker.py",
+          "language": "python",
+          "symbol": "ApplicationWorker._run",
+          "sha256": "746000cd66e738cdaaa343353516bdd86006641547722bf14a35fda74bc3e0c9"
+        },
+        {
+          "path": "kb_platform/host_worker.py",
+          "language": "python",
+          "symbol": "ApplicationWorker._shutdown",
+          "sha256": "12f1f596b73ffbe43638802c14a43b9ba732fefa2ebdd75d5fe7f9030414af88"
+        },
+        {
+          "path": "kb_platform/host_worker.py",
+          "language": "python",
+          "symbol": "ApplicationWorker._execute",
+          "sha256": "e21089314902a4e83414c275701d129af3a860c3ae8ef1aca2158d3f04a2aa96"
+        },
+        {
+          "path": "kb_platform/host_worker.py",
+          "language": "python",
+          "symbol": "receive_messages",
+          "sha256": "b7a7b820f082704cad6758f25ef9a129d07631ac912916724d1f62a5d0f6f4d2"
+        },
+        {
           "path": "kb_platform/plugin_process.py",
           "language": "python",
           "symbol": "_Write",
           "sha256": "d156f75240a3d024b8bae606d6377a8a24b49798cbd895ce6329cc58bc860c24"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport._write",
+          "sha256": "ca9b2251f94a8eb30aa78dd27a3347a9f86d1394a6248b308ee65df1a43d70e6"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport.request",
+          "sha256": "080a1acec4850f872c4738e928861f6438ace97ccf74ad92453205a628a362a0"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport._read",
+          "sha256": "fdeecab9b6ec5351b57160f6f56229633fd8f589b29065eb5e24b5a62ffe3856"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport._watch_writes",
+          "sha256": "303970f8dbfa0ed9b8993421e70a915f92c74f92e29f74f8b3c7a45d2eaa0600"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport._stop_writer",
+          "sha256": "027f10c5a0efd7dfac267c684f1163cee6691fcbffab47b7f37388f1ccb035e5"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport._terminate",
+          "sha256": "3012ce56bee5ceb962744beeabd6d131928f2a5f8177e4fba68a609225e9d551"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport.close",
+          "sha256": "82b26351d98d5140cac67dcf41f225909c5faeb8a89a6247df301c5c13cd947b"
+        },
+        {
+          "path": "kb_platform/host_protocol.py",
+          "language": "python",
+          "symbol": "encode_frame",
+          "sha256": "bdd353cc7ca578e8d64a4fa53b6346117d443ac822638df2b86e41fa5dfff0dc"
+        },
+        {
+          "path": "kb_platform/host_protocol.py",
+          "language": "python",
+          "symbol": "read_frame",
+          "sha256": "4cdf013ec15a4fd3e629bfd5779212ee4e7865f122a4d64fa38a9d5ea32c3265"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport._enqueue",
+          "sha256": "3dfd48fc75708f4fb6b521fd26182415d0377cbd1d192136441ba70cca1afddc"
+        },
+        {
+          "path": "rust/plugin-host/src/process_tree.rs",
+          "language": "rust",
+          "symbol": "ProcessTree::spawn",
+          "sha256": "6550d9328af2124e29571012ec8719e6dfc4bafc61984cb8601652fcb381faf1"
+        },
+        {
+          "path": "rust/plugin-host/src/process_tree/unix.rs",
+          "language": "rust",
+          "symbol": "Group::status",
+          "sha256": "965b2bf7d3bd48c758977c7afaeb31391ae300f5fff7a559ed52c79b585ecdec"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "host_supervisor",
+          "module": "formal/host_process/HostSupervisorLifecycle.tla",
+          "config": "formal/host_process/HostSupervisorLifecycle.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoConcurrentStopClose",
+            "ShutdownWaitsForSettlement",
+            "SuccessRequiresCleanup"
+          ],
+          "properties": [],
+          "bounds": {
+            "apps": 1,
+            "runs": 1,
+            "shutdowns": 1,
+            "roots": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "host_correlation",
+          "module": "formal/host_process/HostRequestCorrelation.tla",
+          "config": "formal/host_process/HostRequestCorrelation.cfg",
+          "invariants": [
+            "TypeOK",
+            "ExactCorrelation",
+            "FailureSettlesPending"
+          ],
+          "properties": [],
+          "bounds": {
+            "requests": 2,
+            "connections": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "provider_physical",
+          "module": "formal/host_process/ProviderPhysicalKnowledge.tla",
+          "config": "formal/host_process/ProviderPhysicalKnowledge.cfg",
+          "invariants": [
+            "TypeOK",
+            "NotSentMeansNoInvocation",
+            "NoReplayAfterUnknown",
+            "NoDuplicateInvocation",
+            "PluginCloseWaitsForJoin",
+            "TransportCloseWaitsForIo"
+          ],
+          "properties": [],
+          "bounds": {
+            "logical_operations": 1,
+            "physical_ids": 2,
+            "worker": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "host_stop_seeded",
+          "module": "formal/host_process/HostSupervisorLifecycle.tla",
+          "config": "formal/host_process/HostSupervisorStopSeeded.cfg",
+          "expected_invariant": "NoConcurrentStopClose",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "host_cleanup_seeded",
+          "module": "formal/host_process/HostSupervisorLifecycle.tla",
+          "config": "formal/host_process/HostSupervisorCleanupSeeded.cfg",
+          "expected_invariant": "SuccessRequiresCleanup",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "host_correlation_seeded",
+          "module": "formal/host_process/HostRequestCorrelation.tla",
+          "config": "formal/host_process/HostRequestCorrelationSeeded.cfg",
+          "expected_invariant": "ExactCorrelation",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "provider_notsent_seeded",
+          "module": "formal/host_process/ProviderPhysicalKnowledge.tla",
+          "config": "formal/host_process/ProviderNotSentSeeded.cfg",
+          "expected_invariant": "NotSentMeansNoInvocation",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "provider_replay_seeded",
+          "module": "formal/host_process/ProviderPhysicalKnowledge.tla",
+          "config": "formal/host_process/ProviderReplaySeeded.cfg",
+          "expected_invariant": "NoDuplicateInvocation",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Real platform process-tree/timeout integration remains mandatory; Windows behavior is not executed by local Linux tests.",
+        "Expand startup failure and multi-root protocols, callback ancestry, recent-ID cache eviction and malformed-frame model coverage.",
+        "No machine-checked source refinement or unbounded state/zero-bug claim."
+      ]
     },
     {
       "id": "llm_registry",
@@ -603,7 +952,7 @@
         "rust/llm-service/src/registry.rs"
       ],
       "states": [
-        "route Active→Draining→Cleaning→removed/CleanupFailed"
+        "route Active\u2192Draining\u2192Cleaning\u2192removed/CleanupFailed"
       ],
       "transitions": [
         "RoutePhase",
@@ -750,7 +1099,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY↔WAITING"
+        "READY\u2194WAITING"
       ],
       "transitions": [
         "transition",
@@ -887,7 +1236,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1080,7 +1429,7 @@
         "rust/storage-service/src/transaction.rs"
       ],
       "states": [
-        "begin→held→executing→commit/rollback"
+        "begin\u2192held\u2192executing\u2192commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1151,7 +1500,7 @@
         "kb_platform/storage_adapters/values.py"
       ],
       "states": [
-        "Input→Executing→Result→Values / Failed"
+        "Input\u2192Executing\u2192Result\u2192Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1217,7 +1566,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1279,7 +1628,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent→issued→expired/revoked"
+        "absent\u2192issued\u2192expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1404,7 +1753,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1494,7 +1843,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1543,7 +1892,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1616,7 +1965,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",

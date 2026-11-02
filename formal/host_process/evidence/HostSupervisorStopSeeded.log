@@ -1,0 +1,99 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 47 and seed -7788497838449769390 with 1 worker on 9 cores with 2215MB heap and 64MB offheap memory [pid: 42] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-host-formal/formal/host_process/HostSupervisorLifecycle.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module HostSupervisorLifecycle
+Starting... (2026-11-02 12:11:53)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 12:11:53.
+Error: Invariant NoConcurrentStopClose is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = FALSE
+/\ reaped = FALSE
+/\ run = "idle"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ cleanup = "none"
+/\ phase = "new"
+/\ shutdownReply = FALSE
+
+State 2: <Boot line 11, col 9 to line 14, col 94 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = FALSE
+/\ reaped = FALSE
+/\ run = "idle"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ cleanup = "none"
+/\ phase = "handshaken"
+/\ shutdownReply = FALSE
+
+State 3: <Boot line 11, col 9 to line 14, col 94 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "idle"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ cleanup = "none"
+/\ phase = "ready"
+/\ shutdownReply = FALSE
+
+State 4: <StartRun line 15, col 13 to line 16, col 99 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "running"
+/\ shutdown = FALSE
+/\ stop = "idle"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 5: <ClaimStop line 17, col 14 to line 19, col 96 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "running"
+/\ shutdown = TRUE
+/\ stop = "busy"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 6: <RunReturns line 22, col 15 to line 23, col 108 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "returned"
+/\ shutdown = TRUE
+/\ stop = "busy"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+State 7: <BeginClose line 24, col 15 to line 26, col 108 of module HostSupervisorLifecycle>
+/\ runReply = "none"
+/\ result = "none"
+/\ root = TRUE
+/\ reaped = FALSE
+/\ run = "closing"
+/\ shutdown = TRUE
+/\ stop = "busy"
+/\ cleanup = "none"
+/\ phase = "running"
+/\ shutdownReply = FALSE
+
+26 states generated, 18 distinct states found, 5 states left on queue.
+The depth of the complete state graph search is 7.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 01s at (2026-11-02 12:11:53)

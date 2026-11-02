@@ -1,0 +1,29 @@
+[
+  {
+    "mode": "effect-without-reply",
+    "decision": "PASS",
+    "outcome": "PROCESS_RESULT_UNKNOWN",
+    "statuses": [
+      "PREPARED",
+      "SENT",
+      "UNKNOWN"
+    ],
+    "actual_effects": 1,
+    "physical_requests": 1,
+    "child_exit": 7,
+    "io_threads_stopped": true
+  },
+  {
+    "mode": "intent-without-bytes",
+    "decision": "PASS",
+    "outcome": "PROCESS_RESULT_UNKNOWN",
+    "statuses": [
+      "PREPARED",
+      "UNKNOWN"
+    ],
+    "actual_effects": 0,
+    "physical_requests": 1,
+    "child_exit": -15,
+    "io_threads_stopped": true
+  }
+]
