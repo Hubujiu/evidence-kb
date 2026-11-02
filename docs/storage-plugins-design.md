@@ -27,6 +27,10 @@ PostgreSQL 的 vector 和 lexical 出口使用独立通用 schema。vector 只�
 
 document、vector、lexical 合同还要求 `dependency_manifest()`，声明实现依赖与持久数据身份。缺失方法或非法声明在绑定时拒绝。公共服务组合稳定配置指纹，排除运行注册代次；检索构建据此判断依赖是否改变，不再按提供商类名选择哈希文件。KV、object、relational 不要求该方法。
 
+合同接口使用 Python `Protocol` 声明，运行准入复用标准库 `inspect.signature`，不引入另一套类型系统。`Contract.validate()` 在业务取得句柄之前检查全部继承接口：方法必须支持协议规定的位置参数、关键字参数和可省略参数；同步接口拒绝 coroutine、generator 和 async-generator 函数，直接继承而未实现的 Protocol 占位方法也不能通过。错误返回 `STORAGE_IMPLEMENTATION_INVALID`，详情包含合同与方法名称。签名检查不执行存储操作，也不能代替适配器的事务、权限、持久化和故障恢复验收。
+
+`StorageProvider` 的 factory 和 `StorageExport.open_space` 同样检查调用签名。实例启动时先取得合法的 `close()` 释放函数，再检查 `exports()` 返回的每一项都是 `StorageExport`，出口名称唯一且与目录声明完全一致。无效出口在消费者挂载前失败，并通过现有宿主清理已取得的资源；不会把声明缺失或错误的方法推迟到首次业务请求才发现。
+
 ## 装配与调用
 
 ```mermaid
@@ -118,6 +122,8 @@ PLUGIN = PluginSpec("example.consumer", (), (CACHE,), mount)
 | `storage.cache.volatile` | 关系索引与 Redis payload | 显式使用可丢失缓存，miss 或断线返回未命中 |
 
 BM25 与 dense 可以使用同一 PostgreSQL、两个 PostgreSQL 数据库、PostgreSQL 与 embedded，或两个 embedded 通道。`SplitSearch` 分别接收词法和向量投影，从独立 source 读取权威文档。封存绑定三个数据身份与内容哈希，只有全部校验和封存成功后才允许发布。检索结果仍由业务层按当前权限过滤和复核。
+
+Milvus、Elasticsearch 和 OpenSearch 当前没有内置提供商，不属于已验证的可选配置。接入时优先使用各项目官方客户端，在适配器内实现 `VECTOR_V1` 或 `LEXICAL_BM25_V1`，再通过 `provider_catalog` 注入；知识库消费槽位和业务代码保持相同接口。除了查询，还必须实现隔离的数据身份、写入后的读回校验、不可变封存、过滤条件、依赖声明和错误映射。不能只包装一个向量查询或 BM25 查询方法就宣称满足公共合同；切换已有数据仍需显式迁移与核验。
 
 `KB_SEARCH_CHANNELS_CONFIG`、`KB_SEARCH_BACKEND` 和业务层 `KB_DSN` 已移除。旧选择器明确报错，检索只通过 v2 的 BM25、dense、source 槽位绑定。
 

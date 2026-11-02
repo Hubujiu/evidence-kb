@@ -1,10 +1,11 @@
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
+from inspect import isawaitable, isgenerator, isasyncgen
 from threading import Event, RLock, Timer, current_thread
 from types import MappingProxyType
 from time import monotonic
@@ -12,7 +13,9 @@ import warnings
 
 from jsonschema import Draft202012Validator, validators
 
+from .plugin_configuration import config_schema, valid_plugin_name
 from .plugin_native import PluginError, native_call
+from .protocol_validation import valid_callable
 from .storage_sdk import StorageSlot
 
 
@@ -20,8 +23,17 @@ _leases = ContextVar('plugin_scope_leases', default=())
 _executing = ContextVar('plugin_lifecycle_action', default=None)
 _current_call = ContextVar('plugin_current_call', default=None)
 _clock_lock = RLock()
+PLUGIN_PROTOCOL = 'evidence-plugin/1'
 _ConfigValidator = validators.extend(Draft202012Validator, type_checker=
     Draft202012Validator.TYPE_CHECKER.redefine('integer', lambda checker, value: type(value) is int))
+
+
+def _synchronous_result(value, code):
+    if isawaitable(value) or isgenerator(value) or isasyncgen(value):
+        if callable(getattr(value, 'close', None)):
+            value.close()
+        raise PluginError(code)
+    return value
 
 
 def _advance_clock(host):
@@ -81,18 +93,43 @@ class PluginSpec:
     config_schema: dict | None = None
     config_check: Callable | None = None
     config_inputs: Callable | None = None
+    protocol: str = PLUGIN_PROTOCOL
 
     def __post_init__(self):
+        if self.protocol != PLUGIN_PROTOCOL:
+            raise PluginError('UNSUPPORTED_PLUGIN_PROTOCOL', str(self.protocol))
+        if (not valid_plugin_name(self.key) or not valid_plugin_name(self.version)
+                or not isinstance(self.concurrency, str)
+                or self.concurrency not in {'serial', 'concurrent'}):
+            raise PluginError('INVALID_PLUGIN_SPEC')
+        if isinstance(self.requires, (tuple, list)):
+            if any(not isinstance(item, (str, StorageSlot)) for item in self.requires):
+                raise ValueError('INVALID_PLUGIN_REQUIREMENTS')
+            names = [item.name if isinstance(item, StorageSlot) else item for item in self.requires]
+            if any(isinstance(item, StorageSlot) for item in self.requires) and (
+                    any(not name for name in names) or len(set(names)) != len(names)):
+                raise ValueError('INVALID_PLUGIN_REQUIREMENTS')
+        for entries in (self.provides, self.requires):
+            if not isinstance(entries, (tuple, list)) or len(entries) > 256:
+                raise PluginError('INVALID_PLUGIN_SERVICES', self.key)
+            names = [item.name if isinstance(item, StorageSlot) else item for item in entries]
+            if (any(not valid_plugin_name(name) for name in names)
+                    or len(set(names)) != len(names)):
+                raise PluginError('INVALID_PLUGIN_SERVICES', self.key)
+        if any(not isinstance(name, str) for name in self.provides):
+            raise PluginError('INVALID_PLUGIN_SERVICES', self.key)
+        if not valid_callable(self.mount, object(), {}):
+            raise PluginError('INVALID_PLUGIN_MOUNT', self.key)
+        for hook in (self.config_check, self.config_inputs):
+            if hook is not None and not valid_callable(hook, {}):
+                raise PluginError('INVALID_PLUGIN_CONFIG_HOOK', self.key)
         object.__setattr__(self, 'provides', tuple(self.provides))
         object.__setattr__(self, 'requires', tuple(self.requires))
-        if any(not isinstance(requirement, (str, StorageSlot)) for requirement in self.requires):
-            raise ValueError('INVALID_PLUGIN_REQUIREMENTS')
-        names = [item.name if isinstance(item, StorageSlot) else item for item in self.requires]
-        if any(not name for name in names) or len(set(names)) != len(names):
-            raise ValueError('INVALID_PLUGIN_REQUIREMENTS')
-        if self.config_schema is not None:
-            Draft202012Validator.check_schema(self.config_schema)
-            object.__setattr__(self, 'config_schema', deepcopy(self.config_schema))
+        schema = self.config_schema if self.config_schema is not None else config_schema()
+        if not isinstance(schema, dict) or schema.get('type') != 'object':
+            raise PluginError('INVALID_PLUGIN_CONFIG_SCHEMA', self.key)
+        Draft202012Validator.check_schema(schema)
+        object.__setattr__(self, 'config_schema', deepcopy(schema))
 
 
 class PluginContext:
@@ -138,7 +175,7 @@ class PluginContext:
             return resource
 
     def defer(self, dispose):
-        if not callable(dispose):
+        if not valid_callable(dispose):
             raise PluginError('INVALID_PLUGIN_DISPOSER')
         with self.host._lock:
             resource = self.registration_id('disposer')
@@ -148,7 +185,7 @@ class PluginContext:
     def effect(self, dispose):
         call = self.host.current_call
         if (call is None or call['instance'] != self.identity['instance']
-                or call['generation'] != self.identity['generation'] or not callable(dispose)):
+                or call['generation'] != self.identity['generation'] or not valid_callable(dispose)):
             raise PluginError('INVALID_PLUGIN_EFFECT_CONTEXT')
         with self.host._lock:
             resource = native_call('runtime_resource', host=call['host'],
@@ -204,7 +241,7 @@ class ServiceBinding:
 
 class PluginHost:
     def __init__(self, profile: dict, catalog: Iterable[PluginSpec], *, parent=None, dynamic=False,
-                 isolated=(), intercept=None):
+                 isolated=(), intercept=None, service_validators=None):
         self.parent = parent
         self.dynamic = dynamic
         self._lock = parent._lock if parent is not None else RLock()
@@ -216,7 +253,19 @@ class PluginHost:
         self._final_snapshot = None
         self._collection = None
         self.isolated, self.intercept = tuple(isolated), deepcopy(intercept or {})
+        validators = dict(parent.service_validators) if parent is not None else {}
+        if service_validators is not None:
+            if not isinstance(service_validators, Mapping):
+                raise PluginError('INVALID_SERVICE_VALIDATORS')
+            for name, validator in service_validators.items():
+                if (not valid_plugin_name(name) or not valid_callable(validator, object())
+                        or name in validators and validators[name] is not validator):
+                    raise PluginError('INVALID_SERVICE_VALIDATORS')
+                validators[name] = validator
+        self.service_validators = MappingProxyType(validators)
         specs = list(catalog)
+        if any(not isinstance(spec, PluginSpec) for spec in specs):
+            raise PluginError('INVALID_PLUGIN_CATALOG')
         self.catalog = MappingProxyType({spec.key: spec for spec in specs})
         if len(self.catalog) != len(specs):
             raise PluginError('DUPLICATE_PLUGIN_IMPLEMENTATION')
@@ -287,16 +336,16 @@ class PluginHost:
 
     @staticmethod
     def _validate_config(spec, config):
-        if spec.config_schema is not None:
-            failures = list(_ConfigValidator(spec.config_schema).iter_errors(config))
-            if failures:
-                raise PluginError('INVALID_PLUGIN_CONFIG', f'{spec.key}: {failures[0].message}')
+        failures = list(_ConfigValidator(spec.config_schema).iter_errors(config))
+        if failures:
+            raise PluginError('INVALID_PLUGIN_CONFIG', f'{spec.key}: {failures[0].message}')
         if spec.config_check is not None:
-            spec.config_check(deepcopy(config))
+            _synchronous_result(spec.config_check(deepcopy(config)), 'INVALID_PLUGIN_CONFIG_HOOK_RESULT')
 
     @staticmethod
     def _configuration_inputs(spec, config):
-        return spec.config_inputs(deepcopy(config)) if spec.config_inputs is not None else {}
+        return (_synchronous_result(spec.config_inputs(deepcopy(config)), 'INVALID_PLUGIN_CONFIG_HOOK_RESULT')
+            if spec.config_inputs is not None else {})
 
     def _find_scope(self, identity):
         scopes = [self._root]
@@ -326,9 +375,13 @@ class PluginHost:
             try:
                 if self._configuration_inputs(spec, action['config']) != action['configuration_inputs']:
                     raise PluginError('CONFIGURATION_INPUT_CHANGED', action['plugin'])
-                spec.mount(context, deepcopy(action['config']))
+                _synchronous_result(spec.mount(context, deepcopy(action['config'])), 'INVALID_PLUGIN_MOUNT_RESULT')
                 if set(context._services) != set(spec.provides):
                     raise PluginError('PLUGIN_SERVICES_INCOMPLETE', action['plugin'])
+                for name, implementation in context._services.items():
+                    validator = scope.service_validators.get(name)
+                    if validator is not None:
+                        _synchronous_result(validator(implementation), 'INVALID_SERVICE_VALIDATOR_RESULT')
             finally:
                 context._sealed = True
             return list(context._services)
@@ -346,7 +399,7 @@ class PluginHost:
                 else:
                     callback = context._resources.get(resource)
                     if callback is not None:
-                        callback()
+                        _synchronous_result(callback(), 'INVALID_PLUGIN_DISPOSER_RESULT')
                     with self._lock:
                         context._resources.pop(resource, None)
                         context._listeners.pop(resource, None)
@@ -609,9 +662,9 @@ class PluginHost:
     def emit(self, event, payload):
         return self.dispatch(event, payload)
 
-    def scope(self, profile, catalog=None, *, dynamic=False, isolated=(), intercept=None):
+    def scope(self, profile, catalog=None, *, dynamic=False, isolated=(), intercept=None, service_validators=None):
         return PluginHost(profile, self.catalog.values() if catalog is None else catalog,
-            parent=self, dynamic=dynamic, isolated=isolated, intercept=intercept)
+            parent=self, dynamic=dynamic, isolated=isolated, intercept=intercept, service_validators=service_validators)
 
     def _lifecycle_allowed(self):
         action = _executing.get()

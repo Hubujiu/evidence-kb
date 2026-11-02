@@ -6,6 +6,7 @@ from types import MappingProxyType
 
 from .plugin_configuration import config_schema, environment_inputs
 from .plugin_host import PluginSpec
+from .protocol_validation import valid_callable
 from .storage_sdk import (
     EphemeralCacheSpace, ExistingDataset, SpaceKey, StorageError, StorageProvider, StorageSlot,
 )
@@ -138,14 +139,10 @@ def _instance_plugin(marker, provider, definition, exports, provider_name):
             raise
         except Exception:
             raise StorageError('STORAGE_PROVIDER_UNAVAILABLE') from None
-        if not callable(getattr(instance, 'close', None)):
+        if not valid_callable(getattr(instance, 'close', None)):
             raise StorageError('STORAGE_PROVIDER_INVALID')
         ctx.defer(instance.close)
-        actual = tuple(instance.exports())
-        lookup = {export.name: export for export in actual}
-        if (len(actual) != len(lookup) or set(lookup) != set(provider.exports)
-                or any(lookup[name].contracts != tuple(contracts) for name, contracts in provider.exports.items())):
-            raise StorageError('STORAGE_PROVIDER_EXPORT_MISMATCH')
+        lookup = provider.validate_exports(instance)
         registry = ctx.require('storage.registry')
         registrations = {}
         configuration_sha256 = _fingerprint([provider_name, definition,

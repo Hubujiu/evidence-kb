@@ -1,10 +1,10 @@
 from copy import deepcopy
 import json
 from pathlib import Path
-import secrets
 from types import SimpleNamespace
 
 from .application_storage import ApplicationStorage, StorageClient, storage_methods
+from .authentication import StaticAuthentication
 from .knowledge_capabilities import build_knowledge_application
 from .knowledge_contracts import ModelClient, domain_call
 from .knowledge_authority_contract import authority_database
@@ -232,11 +232,12 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
 
     def authenticate(token, config):
         values = json.loads(Path(config['identities_file']).read_text('utf-8'))
-        if not values or any(not isinstance(key, str) or len(key) < 32 for key in values):
+        if not isinstance(values, dict) or not values:
             raise ValueError('INVALID_IDENTITY_CONFIGURATION')
-        for expected, actor in values.items():
-            if secrets.compare_digest(token, expected):
-                return Actor(**actor)
+        selected = StaticAuthentication({key: Actor(**actor) for key, actor in values.items()})
+        actor = selected.authenticate(token)
+        if actor is not None:
+            return actor
         raise PlatformError('AUTHENTICATION_FAILED', 'Identity verification failed', 401)
 
     def access_factory(ctx, config):

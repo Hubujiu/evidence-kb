@@ -13,6 +13,7 @@ from threading import Condition, RLock, Thread, current_thread
 from time import monotonic
 from uuid import uuid4
 
+from .plugin_configuration import config_schema, valid_plugin_name
 from .plugin_host import PluginSpec
 from .plugin_native import PluginError
 
@@ -32,9 +33,9 @@ def _document(path):
             or not {'protocol', 'name', 'version', 'services'} <= set(value)
             or value['protocol'] != PROTOCOL or not isinstance(value['name'], str)
             or not value['name'] or any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789._-' for c in value['name'])
-            or not isinstance(value['version'], str) or not value['version']
+            or not valid_plugin_name('process.' + value['name']) or not valid_plugin_name(value['version'])
             or not isinstance(value['services'], dict)
-            or not value['services']):
+            or not 0 < len(value['services']) <= 256):
         raise PluginError('INVALID_PROCESS_MANIFEST')
     if 'command' in value:
         command = value['command']
@@ -52,12 +53,13 @@ def _document(path):
         if not entry.is_relative_to(path.parent.resolve()) or not entry.is_file():
             raise PluginError('INVALID_PROCESS_ENTRY')
     for service, methods in value['services'].items():
-        if (not isinstance(service, str) or not service or not isinstance(methods, list) or not methods
-                or any(not isinstance(method, str) or not method.isidentifier() or method.startswith('_')
-                    for method in methods)):
+        if (not valid_plugin_name(service) or not isinstance(methods, list) or not methods
+                or any(not valid_plugin_name(method) or not method.isidentifier() or method.startswith('_')
+                    for method in methods) or len(set(methods)) != len(methods)):
             raise PluginError('INVALID_PROCESS_CAPABILITY')
     requires = value.get('requires', [])
-    if (not isinstance(requires, list) or any(not isinstance(service, str) or not service for service in requires)
+    if (not isinstance(requires, list) or len(requires) > 256
+            or any(not valid_plugin_name(service) for service in requires)
             or len(set(requires)) != len(requires)):
         raise PluginError('INVALID_PROCESS_DEPENDENCY')
     return value
@@ -183,9 +185,8 @@ class ProcessPackages:
             for service, methods in manifest['services'].items():
                 ctx.provide(service, ProcessService(transport, service, tuple(methods), ctx))
         return PluginSpec(f'process.{manifest["name"]}', tuple(manifest['services']), tuple(manifest.get('requires', ())), mount,
-            version=manifest['version'], concurrency='concurrent', config_schema={
-                'type': 'object', 'properties': {'timeout': {'type': 'number', 'exclusiveMinimum': 0,
-                    'maximum': 300}}, 'additionalProperties': False})
+            version=manifest['version'], config_schema=config_schema({
+                'timeout': {'type': 'number', 'exclusiveMinimum': 0, 'maximum': 300}}))
 
 
 @dataclass(frozen=True)

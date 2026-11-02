@@ -1,12 +1,23 @@
 from copy import deepcopy
 from tempfile import TemporaryFile
 import unittest
+from unittest.mock import MagicMock, patch
 
 from kb_platform.host_protocol import PipeReader, encode_frame, read_frame
 from .storage_integration import configuration
+from .storage_resources import sql_ready
 
 
 class StorageAcceptanceContracts(unittest.TestCase):
+    def test_readiness_uses_installed_sql_drivers_without_an_unlocked_psycopg2_dependency(self):
+        connection = MagicMock()
+        connection.execute.return_value.scalar.return_value = 1
+        connection.__enter__.return_value = connection
+        for url in ('postgresql://fixture:synthetic@127.0.0.1:55432/rust_plugin_acceptance_main',
+                    'mysql+pymysql://fixture:synthetic@127.0.0.1:55436/rust_plugin_acceptance_mysql'):
+            with self.subTest(url=url), patch('sqlalchemy.engine.Engine.connect', return_value=connection):
+                self.assertTrue(sql_ready(url))
+
     def environment(self):
         return {
             'KB_STORAGE_TEST_POSTGRES_URL': 'postgresql://fixture:synthetic@127.0.0.1:55432/rust_plugin_acceptance_main',

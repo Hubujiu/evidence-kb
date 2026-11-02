@@ -1,6 +1,16 @@
 # 产品模块与评测边界
 
+Rust 核心及公共服务的当前分层见 [DSH / Cordis 架构基础](dsh-rust-foundation.md)。`plugin-runtime` 是生命周期内核，`plugin-host` 是进程监督，`agent-harness` 是装配与协议入口；默认 loop/graph、LLM、存储分别位于独立的 `agent-services`、`llm-service`、`storage-service`。各公共服务不依赖生命周期内核，内核也不依赖公共服务或知识库。
+
 当前知识库应用的八类插件、公共 JSON 合同及配置见 [插件架构](plugin-architecture-v4.md)。[低层组件目录](plugin-catalog.md) 列出可独立复用和测试的内部适配器，不代表知识库用户需要装配这些细粒度节点。公共存储提供 relational、document、kv、vector、lexical、object 合同；内置 PostgreSQL、MySQL、SQLite 实现相同的领域持久化语义。
+
+整体装配与调用关系见 [当前插件架构图](plugin-architecture.md)。
+
+插件在进入 Rust 生命周期之前必须满足 `evidence-plugin/1` 的声明和同步调用约定；配置仍由 JSON Schema 验证。共享 `protocol_validation` 只使用标准库检查调用签名，不执行插件探测请求。公共模型类型与适配器合同位于独立 `model_sdk`；公共存储合同仍位于 `storage_sdk`，两者不依赖知识库或宿主。实际响应、授权、存储身份和调用租约仍在运行时边界核验，启用前结构检查不替代这些行为合同。
+
+HTTP 身份解析已通过 `authentication` 服务访问。[认证会话](authentication.md) 可绑定公共 TTL KV 合同，由现有 Redis 适配器或第三方提供商承载；API 不直接读取 token 文件或导入 Redis。文件认证保留为默认插件，对话历史仍通过独立关系合同管理。
+
+当前内置实现、服务依赖和公开 profile 见 [插件目录](plugin-catalog.md)。公共存储按 relational、document、kv、vector、lexical、object 六类合同连接消费插件与提供商，结构见 [存储插件设计](storage-plugins-design.md)，执行、验收和搬迁步骤见 [执行方案](storage-plugins-execution-plan.md)。知识库领域仓储、会话、预算、缓存索引和请求回执均消费 structured 关系合同；内置 PostgreSQL、MySQL、SQLite 实现同一业务协议。第三轮边界见 [改造方案](plugin-boundaries-v3-plan.md)。
 
 共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由由 Rust 生命周期管理。
 
@@ -62,7 +72,7 @@ flowchart TD
 
 主宿主模式中，Python 的 `plugin_native.native_call` 通过 `plugin-host/1` 请求主进程，插件状态唯一位于主进程。单次 Agent 的 `Kernel` 是独立值状态，仍通过同一构建的 C ABI 动态库计算；它不创建第二套插件生命周期。直接 Python 嵌入入口继续使用原有 C ABI，供组件调用与离线验证使用。
 
-`rust/plugin-runtime` 独占实例、代次、依赖、服务注册、作用域、调用租约、配置与资源清理。`rust/agent-kernel` 保留单次运行的操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-harness` 保留通用 loop 和 graph，将版本化生命周期命令交给 plugin-runtime。Python 只执行派发动作并回报结果，不再通知 ready 或最终 disposed。loop 发出会话、提示词、模型和工具效果，由 Python 适配器执行。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。
+`rust/plugin-runtime` 独占实例、代次、依赖、服务注册、作用域、调用租约、配置与资源清理。`rust/agent-kernel` 保留单次运行的操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-services` 实现默认 loop 和 graph，`rust/agent-harness` 按版本化命令分派到生命周期内核与可选服务。Python 执行派发动作并回报结果，不通知 ready 或最终 disposed。loop 发出会话、提示词、模型和工具效果，由适配器执行。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。
 
 默认 HTTP 路径通过 `ApplicationClient` 调用入口的 application.run 合同，入口将已声明操作交给工作流。工作流内部运行知识库图程序；工具、驱动和策略类不再成为独立业务节点。绑定保留身份、session、request ID、expected revision、来源策略和用户约束，不增加外层模型规划调用。模型结果在工作流验证通过并确认后才进入应用响应缓存，费用先按实际调用结算。
 

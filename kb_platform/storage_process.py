@@ -5,6 +5,7 @@ import re
 
 from .storage_sdk import DOCUMENT_V1, Document, RELATIONAL_V1, StorageError
 from .database_contracts import CommitUnknown
+from .storage_protocol import WRITE_METHODS, validate_invocation, validate_values
 
 
 MAX_REQUEST_BYTES = 512 * 1024
@@ -108,6 +109,8 @@ def call_json(bound, request):
         allowed = allowed & {'query_json', 'batch_json'}
     if method.startswith('_') or method not in allowed:
         raise StorageError('STORAGE_PROCESS_METHOD_REJECTED')
+    validate_invocation(bound, method, request.get('args', []), request.get('kwargs', {}))
+    validate_values([*request.get('args', []), *request.get('kwargs', {}).values()], max_nodes=MAX_NODES)
     budget = [MAX_NODES]
     args = [decode_value(value, _budget=budget) for value in request.get('args', [])]
     kwargs = {key: decode_value(value, _budget=budget) for key, value in request.get('kwargs', {}).items()}
@@ -137,8 +140,9 @@ def call_json(bound, request):
     try:
         result = encode_value(result)
         _size(result, MAX_RESULT_BYTES)
+        validate_values([result], max_nodes=MAX_NODES)
     except StorageError:
-        if method in {'put', 'set', 'delete', 'put_expiring', 'stage', 'seal', 'batch_json'}:
+        if method in WRITE_METHODS:
             raise StorageError('STORAGE_WRITE_RESULT_UNAVAILABLE', method=method, outcome='COMPLETED') from None
         raise
     return result

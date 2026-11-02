@@ -30,6 +30,14 @@ EXCLUDED_IMPORTS = frozenset({"output", "outputs", "reports"})
 AGENT_DEPENDENCIES = {
     'agent_provider': frozenset(),
     'model_errors': frozenset(),
+    'protocol_validation': frozenset(),
+    'model_sdk': frozenset({'model_errors', 'protocol_validation'}),
+    'model_completion': frozenset({'agent_provider', 'model_sdk', 'protocol_validation'}),
+    'llm_protocol': frozenset({'plugin_native', 'model_errors'}),
+    'storage_protocol': frozenset({'plugin_native', 'database_contracts', 'storage_sdk'}),
+    'authentication': frozenset({'session_identity', 'storage_sdk', 'protocol_validation'}),
+    'authentication_plugins': frozenset({'authentication', 'plugin_configuration', 'plugin_host',
+                                         'storage_plugins', 'storage_sdk'}),
     'agent_model': frozenset({'agent_provider', 'context_budget', 'agent_schema', 'model_errors'}),
     'agent_engine': frozenset({'agent_native'}),
     'agent_native': frozenset(),
@@ -39,7 +47,7 @@ AGENT_DEPENDENCIES = {
     'plugin_native': frozenset({'agent_native'}),
     'host_protocol': frozenset(),
     'host_worker': frozenset({'host_protocol', 'plugin_native'}),
-    'plugin_host': frozenset({'plugin_native', 'storage_sdk'}),
+    'plugin_host': frozenset({'plugin_native', 'storage_sdk', 'protocol_validation', 'plugin_configuration'}),
     'harness_sessions': frozenset({'agent_engine', 'agent_plugins', 'session_identity', 'session_store'}),
     'harness_loop': frozenset({'agent_engine', 'plugin_native', 'plugin_host', 'session_identity'}),
     'harness_services': frozenset({'agent_decisions', 'agent_engine', 'agent_plugins', 'harness_sessions',
@@ -54,10 +62,12 @@ AGENT_DEPENDENCIES = {
     'database_migrations': frozenset({'database_contracts'}),
     'database_service': frozenset({'database_contracts', 'database_migrations', 'database_process'}),
     'database_process': frozenset({'database_contracts'}),
-    'storage_sdk': frozenset({'database_contracts'}),
-    'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts', 'implementation_dependencies'}),
-    'storage_plugins': frozenset({'storage_sdk', 'storage_service', 'plugin_configuration', 'plugin_host'}),
-    'storage_process': frozenset({'storage_sdk', 'blob_service', 'database_contracts'}),
+    'storage_sdk': frozenset({'database_contracts', 'protocol_validation'}),
+    'storage_service': frozenset({'storage_sdk', 'storage_process', 'database_contracts', 'implementation_dependencies',
+                                 'protocol_validation'}),
+    'storage_plugins': frozenset({'storage_sdk', 'storage_service', 'plugin_configuration', 'plugin_host',
+                                 'protocol_validation'}),
+    'storage_process': frozenset({'storage_sdk', 'blob_service', 'database_contracts', 'storage_protocol'}),
     'storage_cache_plugins': frozenset({'storage_sdk', 'storage_plugins', 'plugin_host',
                                        'plugin_configuration', 'rag_testing'}),
     'persistence_schema': frozenset({'database_contracts', 'storage_sdk'}),
@@ -70,15 +80,16 @@ AGENT_DEPENDENCIES = {
     'harness_profile': frozenset({'harness_application', 'harness_services', 'plugin_host', 'plugin_profiles',
                                   'model_plugins', 'storage_catalog', 'storage_plugins', 'storage_sdk',
                                   'storage_cache_plugins', 'model_provider_plugins'}),
-    'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
-    'plugin_contracts': frozenset({'plugin_host', 'plugin_native', 'plugin_process'}),
+    'plugin_process': frozenset({'plugin_host', 'plugin_native', 'plugin_configuration'}),
+    'plugin_contracts': frozenset({'plugin_host', 'plugin_native', 'plugin_process', 'protocol_validation'}),
     'plugin_deployment': frozenset({'plugin_contracts', 'plugin_native'}),
     'contract_worker': frozenset({'host_protocol', 'host_worker', 'plugin_contracts'}),
     'application_storage': frozenset({'database_contracts', 'knowledge_schema', 'persistence_schema', 'plugin_contracts',
         'plugin_host', 'search', 'session_storage', 'storage_catalog', 'storage_object_wire',
-        'storage_json_wire', 'storage_plugins', 'storage_process', 'storage_sdk', 'storage_service', 'storage_structured_wire'}),
+        'storage_json_wire', 'storage_plugins', 'storage_process', 'storage_protocol', 'storage_sdk',
+        'storage_service', 'storage_structured_wire'}),
     'application_knowledge': frozenset({'agent_context', 'agent_model', 'agent_tools', 'application_composition',
-        'application_storage', 'context_budget', 'core', 'document_parser', 'embedding_jobs',
+        'application_storage', 'authentication', 'context_budget', 'core', 'document_parser', 'embedding_jobs',
         'knowledge_access', 'knowledge_authority_contract', 'knowledge_capabilities', 'knowledge_contracts', 'knowledge_model_ports',
         'knowledge_platform_contract', 'knowledge_profile', 'knowledge_sessions', 'knowledge_storage',
         'model_adapters', 'model_configuration', 'model_service', 'platform_plugins',
@@ -104,11 +115,12 @@ AGENT_DEPENDENCIES = {
     'storage_expression_wire': frozenset({'database_contracts', 'database_process', 'storage_sdk'}),
     'storage_json_wire': frozenset({'database_contracts'}),
     'storage_structured_wire': frozenset({'database_contracts', 'database_process',
-                                        'storage_expression_wire', 'storage_json_wire', 'storage_sdk'}),
+                                        'storage_expression_wire', 'storage_json_wire', 'storage_protocol', 'storage_sdk'}),
     'storage_object_wire': frozenset({'blob_service', 'storage_object_transfer', 'storage_process', 'storage_sdk'}),
     'storage_object_transfer': frozenset({'blob_service', 'storage_sdk'}),
     'storage_reset': frozenset({'storage_catalog', 'storage_sdk'}),
-    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
+    'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors', 'model_sdk', 'model_completion',
+                               'protocol_validation', 'llm_protocol'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
     'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),
 }
@@ -121,7 +133,11 @@ HARNESS_MODULES = frozenset({'agent_decisions', 'agent_engine', 'agent_native', 
                            'plugin_contracts', 'plugin_deployment', 'contract_worker'})
 KNOWLEDGE_BUSINESS = frozenset({'core', 'agent_tools', 'semantic_pages_v2', 'embedding_jobs', 'knowledge_access'})
 NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
-                       'agent-harness': {'plugin-runtime', 'plugin-host', 'serde', 'serde_json'},
+                       'agent-harness': {'plugin-runtime', 'plugin-host', 'agent-services',
+                                         'llm-service', 'storage-service', 'serde', 'serde_json'},
+                       'agent-services': {'serde', 'serde_json'},
+                       'llm-service': {'serde', 'serde_json', 'tokio'},
+                       'storage-service': {'serde', 'serde_json'},
                        'plugin-host': {'serde', 'serde_json', 'libc', 'windows-sys'},
                        'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
@@ -231,7 +247,7 @@ def native_architecture_violations(root: Path) -> list[str]:
             spec = spec if isinstance(spec, dict) else {'version': spec}
             if name not in allowed or spec.get('package', name) != name:
                 errors.append(f'{relative}: {name}: native harness cannot depend on business implementations')
-            elif name in {'agent-harness', 'plugin-runtime', 'plugin-host'}:
+            elif name in NATIVE_DEPENDENCIES:
                 expected = (root / 'rust' / name).resolve()
                 if not spec.get('path') or (directory / spec['path']).resolve() != expected:
                     errors.append(f'{relative}: {name} must resolve to the reviewed workspace crate')
@@ -372,7 +388,7 @@ def architecture_violations(root: Path) -> list[str]:
             reason = None
             layer = AGENT_DEPENDENCIES.get(path.stem) if not evaluation else None
             if module.startswith('kb_platform.storage_sdk.'):
-                layer = frozenset({'storage_sdk', 'database_contracts'})
+                layer = frozenset({'storage_sdk', 'database_contracts', 'protocol_validation'})
             elif module.startswith('kb_platform.storage_adapters.'):
                 layer = frozenset({'storage_sdk', 'storage_adapters', 'database_contracts',
                                    'database_migrations', 'database_providers', 'database_process',

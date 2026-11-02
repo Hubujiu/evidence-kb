@@ -1,5 +1,6 @@
 from copy import deepcopy
 from hashlib import sha256
+from inspect import isasyncgen, isawaitable, isgenerator
 import json
 from pathlib import Path
 from types import MappingProxyType
@@ -9,6 +10,7 @@ from jsonschema import Draft202012Validator
 from .plugin_host import PluginHost, PluginSpec
 from .plugin_native import PluginError, native_call
 from .plugin_process import ProcessService, ProcessTransport
+from .protocol_validation import valid_callable
 
 
 def wire(value):
@@ -127,7 +129,7 @@ class ContractRegistry:
 class ServiceEndpoint:
     def __init__(self, implementation, methods):
         self._implementation, self._methods = implementation, methods
-        if any(not callable(getattr(implementation, name, None)) for name in methods):
+        if any(not valid_callable(getattr(implementation, name, None), {}) for name in methods):
             raise PluginError('CONTRACT_IMPLEMENTATION_INVALID')
 
     def __getattr__(self, name):
@@ -139,6 +141,10 @@ class ServiceEndpoint:
             request = method.validate(request)
             try:
                 result = getattr(self._implementation, name)(request)
+                if isawaitable(result) or isgenerator(result) or isasyncgen(result):
+                    if callable(getattr(result, 'close', None)):
+                        result.close()
+                    raise PluginError('CONTRACT_IMPLEMENTATION_ASYNC_RESULT')
             except ContractError:
                 raise
             except PluginError as error:
@@ -219,6 +225,8 @@ class ContractContext:
 
 
 def _spec(definition, manifest, registry, mount, validator):
+    if not valid_callable(mount, None, {}):
+        raise PluginError('INVALID_PLUGIN_MOUNT')
     manifest = deepcopy(manifest)
 
     def validate_config(envelope):
@@ -227,7 +235,7 @@ def _spec(definition, manifest, registry, mount, validator):
             raise PluginError('INVALID_PLUGIN_CONFIG', error.message)
 
     def initialize(context, envelope):
-        mount(ContractContext(context, definition, manifest, registry), wire(envelope['configuration']))
+        return mount(ContractContext(context, definition, manifest, registry), wire(envelope['configuration']))
     identity = json.dumps([manifest['id'], manifest['implementation'], manifest['version']], separators=(',', ':'))
     key = 'contract.' + sha256(identity.encode('utf-8')).hexdigest()
     properties = {name: {'const': value} for name, value in manifest['config'].items()

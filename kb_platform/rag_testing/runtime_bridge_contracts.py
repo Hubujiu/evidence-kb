@@ -86,7 +86,7 @@ class RuntimeBridgeContracts(unittest.TestCase):
                     raise RuntimeError('test barrier timed out')
             ctx.defer(lambda: disposed.append(config['value']))
             ctx.provide('value', config['value'])
-        spec = PluginSpec('value', ('value',), (), mount)
+        spec = PluginSpec('value', ('value',), (), mount, config_schema={'type': 'object'})
         def start():
             try:
                 hosts.append(PluginHost(profile(entry('value', config={'value': 1})), [spec]))
@@ -189,7 +189,7 @@ class RuntimeBridgeContracts(unittest.TestCase):
                 if blocked[0]:
                     raise RuntimeError('synthetic cleanup busy')
             ctx.defer(close)
-        catalog = [PluginSpec('value', ('value',), (), mount),
+        catalog = [PluginSpec('value', ('value',), (), mount, config_schema={'type': 'object'}),
             PluginSpec('broken', (), ('missing',), lambda ctx, config: None)]
         host = PluginHost(profile(entry('value')), catalog)
         try:

@@ -14,6 +14,7 @@ from .storage_expression_wire import (
     Decoder, decoded_value, expression, fields, schema_descriptor, schema_semantics, statement,
 )
 from .storage_sdk.relational import StructuredSchema
+from .storage_protocol import resolve_commit, validate_identity, validate_structured
 from .storage_json_wire import (
     MAX_MESSAGE_BYTES as MAX_MESSAGE_BYTES, MAX_VALUE_BYTES, StorageJsonClient, StorageJsonEndpoint,
     wire as _wire,
@@ -171,6 +172,7 @@ class PortableStructuredEndpoint:
         self._store, self._schemas = store, tuple(schemas)
         if not self._schemas or any(not isinstance(item, StructuredSchema) for item in self._schemas):
             raise ValueError('STORAGE_WIRE_TRUSTED_SCHEMA_REQUIRED')
+        validate_identity(asdict(store.identity))
         self._lock, self._handles, self._outcomes = RLock(), {}, {}
         self._package, self._sealed, self._closed = None, False, False
         self._transport = StorageJsonEndpoint(self._execute, self._validate_transfer_transaction)
@@ -207,6 +209,7 @@ class PortableStructuredEndpoint:
         request = _wire(request, maximum=MAX_VALUE_BYTES)
         if type(request) is not dict or request.get('version') != 1 or type(request.get('version')) is not int:
             raise DatabaseError('STORAGE_WIRE_VERSION_INVALID')
+        validate_structured(request)
         with self._lock:
             if self._closed:
                 raise DatabaseError('STORAGE_WIRE_CLOSED')
@@ -344,6 +347,7 @@ class _Transaction:
 class PortableStructuredClient:
     def __init__(self, call, *, identity):
         self._send, self.identity = call, identity
+        validate_identity(asdict(identity))
         self._transport = StorageJsonClient(lambda request: self._send(request))
 
     def _call(self, request):
@@ -392,11 +396,7 @@ class PortableStructuredClient:
                         'STORAGE_WIRE_JSON_REQUIRED', 'STORAGE_WIRE_MESSAGE_LIMIT', 'STORAGE_WIRE_STRUCTURE_LIMIT'}:
                     raise CommitUnknown(opened['operation_id']) from error
                 raise
-            if (type(result) is not dict or result.get('operation_id') != opened['operation_id']
-                    or result.get('status') not in ('COMMITTED', 'ROLLED_BACK')):
-                raise CommitUnknown(opened['operation_id'])
-            if result['status'] == 'ROLLED_BACK':
-                raise DatabaseError('STORAGE_TRANSACTION_ROLLED_BACK')
+            resolve_commit(opened['operation_id'], result)
 
     @contextmanager
     def guard(self, name, *, nowait=True):

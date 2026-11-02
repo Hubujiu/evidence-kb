@@ -1,0 +1,322 @@
+{
+  "version": 1,
+  "protocol": "dsh-llm-semantic-reference/1",
+  "source": {
+    "repository": "deepseek-ai/deepseek-harness",
+    "commit": "ce7073d51254c26cd63b22a60835b8f948deb447",
+    "kind": "synthetic_semantic_cases",
+    "provenance": "config/plugin-runtime/dsh-llm-reference-provenance.json"
+  },
+  "execution": {
+    "command": "llm_stream_apply",
+    "provider": "fixture",
+    "model": "reference",
+    "protocol": "llm-service/1"
+  },
+  "cases": [
+    {
+      "id": "usage_snapshot_replaces_previous",
+      "alignment": "upstream",
+      "events": [
+        {
+          "type": "text-delta",
+          "index": 0,
+          "text": "完成"
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "inputTokens": 10,
+            "outputTokens": 2,
+            "totalTokens": 17,
+            "cacheReadTokens": 5,
+            "reasoningTokens": 1
+          }
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "inputTokens": 9,
+            "outputTokens": 4,
+            "totalTokens": 22,
+            "cacheReadTokens": 7,
+            "cacheWriteTokens": 2,
+            "reasoningTokens": 2
+          }
+        },
+        {
+          "type": "finish",
+          "reason": {
+            "kind": "stop"
+          }
+        }
+      ],
+      "expected": {
+        "content": [
+          {
+            "type": "text",
+            "text": "完成"
+          }
+        ],
+        "finish": "stop",
+        "usage": {
+          "inputTokens": 9,
+          "outputTokens": 4,
+          "totalTokens": 22,
+          "cacheReadTokens": 7,
+          "cacheWriteTokens": 2,
+          "reasoningTokens": 2
+        }
+      }
+    },
+    {
+      "id": "tool_arguments_remain_raw_json",
+      "alignment": "upstream",
+      "events": [
+        {
+          "type": "block-start",
+          "index": 0,
+          "blockType": "tool-call"
+        },
+        {
+          "type": "tool-call-delta",
+          "index": 0,
+          "id": "call-reference",
+          "name": "retrieve",
+          "argumentsDelta": "{\"query\": \"海水\", "
+        },
+        {
+          "type": "tool-call-delta",
+          "index": 0,
+          "id": "call-reference",
+          "argumentsDelta": "\"limit\": 2}"
+        },
+        {
+          "type": "finish",
+          "reason": {
+            "kind": "tool-calls"
+          }
+        }
+      ],
+      "expected": {
+        "content": [
+          {
+            "type": "tool-call",
+            "id": "call-reference",
+            "name": "retrieve",
+            "arguments": "{\"query\": \"海水\", \"limit\": 2}"
+          }
+        ],
+        "finish": "tool-calls",
+        "usage": null
+      }
+    },
+    {
+      "id": "missing_usage_remains_unknown",
+      "alignment": "upstream",
+      "events": [
+        {
+          "type": "text-delta",
+          "index": 0,
+          "text": "没有供应商用量"
+        },
+        {
+          "type": "finish",
+          "reason": {
+            "kind": "stop"
+          }
+        }
+      ],
+      "expected": {
+        "content": [
+          {
+            "type": "text",
+            "text": "没有供应商用量"
+          }
+        ],
+        "finish": "stop",
+        "usage": null
+      }
+    },
+    {
+      "id": "max_tokens_removes_tool_and_replay_entry",
+      "alignment": "upstream",
+      "events": [
+        {
+          "type": "text-delta",
+          "index": 0,
+          "text": "先检查资料"
+        },
+        {
+          "type": "tool-call-delta",
+          "index": 1,
+          "id": "call-incomplete",
+          "name": "retrieve",
+          "argumentsDelta": "{\"unfinished\":"
+        },
+        {
+          "type": "finish",
+          "reason": {
+            "kind": "max-tokens"
+          },
+          "replayState": {
+            "response": {
+              "id": "response-fixture"
+            },
+            "blocks": [
+              {
+                "kind": "text-metadata"
+              },
+              {
+                "kind": "tool-metadata"
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "content": [
+          {
+            "type": "text",
+            "text": "先检查资料"
+          }
+        ],
+        "finish": "max-tokens",
+        "usage": null,
+        "replayState": {
+          "response": {
+            "id": "response-fixture"
+          },
+          "blocks": [
+            {
+              "kind": "text-metadata"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "usage_after_finish_is_rejected",
+      "alignment": "project_stricter_validation",
+      "events": [
+        {
+          "type": "text-delta",
+          "index": 0,
+          "text": "已完成"
+        },
+        {
+          "type": "finish",
+          "reason": {
+            "kind": "stop"
+          }
+        }
+      ],
+      "rejected_events": [
+        {
+          "event": {
+            "type": "usage",
+            "usage": {
+              "inputTokens": 1,
+              "outputTokens": 1
+            }
+          },
+          "code": "LLM_STREAM_FINISHED"
+        }
+      ],
+      "expected": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已完成"
+          }
+        ],
+        "finish": "stop",
+        "usage": null
+      }
+    },
+    {
+      "id": "duplicate_finish_is_rejected",
+      "alignment": "project_stricter_validation",
+      "events": [
+        {
+          "type": "finish",
+          "reason": {
+            "kind": "stop"
+          }
+        }
+      ],
+      "rejected_events": [
+        {
+          "event": {
+            "type": "finish",
+            "reason": {
+              "kind": "stop"
+            }
+          },
+          "code": "LLM_STREAM_FINISHED"
+        }
+      ],
+      "expected": {
+        "content": [],
+        "finish": "stop",
+        "usage": null
+      }
+    },
+    {
+      "id": "eof_without_finish_retains_observations",
+      "alignment": "project_stricter_validation",
+      "events": [
+        {
+          "type": "text-delta",
+          "index": 0,
+          "text": "已收到的内容"
+        },
+        {
+          "type": "tool-call-delta",
+          "index": 1,
+          "id": "call-cut",
+          "name": "retrieve",
+          "argumentsDelta": "{\"query\":"
+        },
+        {
+          "type": "usage",
+          "usage": {
+            "inputTokens": 5,
+            "outputTokens": 1
+          }
+        }
+      ],
+      "eof": true,
+      "expected": {
+        "content": [
+          {
+            "type": "text",
+            "text": "已收到的内容"
+          }
+        ],
+        "finish": "error",
+        "failure_code": "LLM_STREAM_MISSING_FINISH",
+        "usage": {
+          "inputTokens": 5,
+          "outputTokens": 1
+        }
+      }
+    },
+    {
+      "id": "partial_usage_cannot_be_reported_as_known",
+      "alignment": "upstream",
+      "events": [],
+      "rejected_events": [
+        {
+          "event": {
+            "type": "usage",
+            "usage": {
+              "inputTokens": 5
+            }
+          },
+          "code": "INVALID_LLM_EVENT"
+        }
+      ]
+    }
+  ]
+}

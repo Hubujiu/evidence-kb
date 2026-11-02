@@ -5,6 +5,7 @@ from threading import RLock
 from .database_contracts import CommitUnknown, DatabaseError
 from .plugin_contracts import ContractError, Method
 from .storage_process import decode_value, encode_value
+from .storage_protocol import WRITE_METHODS, validate_binding, validate_identity, validate_invocation, validate_values
 from .storage_sdk import (DOCUMENT_V1, EphemeralCacheSpace, ExistingDataset,
                           LEXICAL_BM25_V1, OBJECT_V1, SpaceKey, StorageError, VECTOR_V1)
 from .storage_sdk.relational import GUARDED_RELATIONAL_V1
@@ -74,7 +75,9 @@ class ApplicationStorage:
                               else EphemeralCacheSpace(binding['cache_id']))
                     grant = self._registry.grant(binding['service'], REQUIREMENTS[consumer][alias],
                                                  space, consumer, target=target)
-                    self._bound[consumer + '.' + alias] = self._registry.bind(grant)
+                    bound = self._registry.bind(grant)
+                    validate_binding(bound)
+                    self._bound[consumer + '.' + alias] = bound
         except BaseException:
             self.close()
             raise
@@ -126,17 +129,24 @@ class ApplicationStorage:
         method = request['method']
         if method.startswith('_') or method not in bound._methods or method in {'prepare', 'transaction', 'guard'}:
             raise StorageError('STORAGE_PROCESS_METHOD_REJECTED')
+        validate_invocation(bound, method, request['args'], request['kwargs'])
+        validate_values([*request['args'], *request['kwargs'].values()], max_nodes=MAX_INVOKE_NODES)
         budget = [MAX_INVOKE_NODES]
         args = [decode_value(item, _budget=budget) for item in request['args']]
         kwargs = {key: decode_value(item, _budget=budget) for key, item in request['kwargs'].items()}
         try:
             result = getattr(bound, method)(*args, **kwargs)
-            return encode_value(result, _budget=[MAX_INVOKE_NODES])
         except (SearchUnavailable, FileNotFoundError) as error:
             kind = ('incomplete' if isinstance(error, SearchGenerationIncomplete) else
                     'search' if isinstance(error, SearchUnavailable) else 'missing')
             raise ContractError('STORAGE_OPERATION_FAILED', str(error), status_code=503,
                                 details={'kind': kind}) from error
+        try:
+            return encode_value(result, _budget=[MAX_INVOKE_NODES])
+        except StorageError:
+            if method in WRITE_METHODS:
+                raise StorageError('STORAGE_WRITE_RESULT_UNAVAILABLE', method=method, outcome='COMPLETED') from None
+            raise
 
     def relational(self, request):
         try:
@@ -205,6 +215,7 @@ class StorageClient:
         self._dependency, self._binding = dependency, binding
         metadata = self._call('describe', {'binding': binding})
         identity = metadata['identity']
+        validate_identity(identity)
         self.identity = StorageIdentity(SpaceKey(**identity['space']), identity['dataset_id'])
         self._methods = frozenset(metadata['methods'])
         self._values = StorageJsonClient(lambda request: self._call('invoke',
@@ -247,5 +258,12 @@ class StorageClient:
             request = {'version': 1, 'op': 'invoke', 'method': method,
                 'args': [encode_value(item, _budget=budget) for item in args],
                 'kwargs': {key: encode_value(item, _budget=budget) for key, item in kwargs.items()}}
-            return decode_value(self._values.call(request), _budget=[MAX_INVOKE_NODES])
+            result = self._values.call(request)
+            try:
+                validate_values([result], max_nodes=MAX_INVOKE_NODES)
+                return decode_value(result, _budget=[MAX_INVOKE_NODES])
+            except StorageError:
+                if method in WRITE_METHODS:
+                    raise StorageError('STORAGE_WRITE_RESULT_UNAVAILABLE', method=method, outcome='COMPLETED') from None
+                raise
         return invoke

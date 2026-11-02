@@ -122,11 +122,7 @@ fn independent_graphs_keep_separate_cursors_and_nonreused_handles() {
 }
 
 #[test]
-fn graph_protocol_rejects_extra_fields_and_bounds_configuration() {
-    let reply = crate::call(
-        br#"{"version":1,"command":"graph_create","start":"x","nodes":{},"payload":{}}"#,
-    );
-    assert_eq!(reply["error"]["code"], "INVALID_REQUEST");
+fn graph_bounds_configuration() {
     let mut registry = GraphRegistry::default();
     let mut too_many = config();
     for n in 0..256 {

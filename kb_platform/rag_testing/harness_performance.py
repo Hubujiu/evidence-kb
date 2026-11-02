@@ -335,7 +335,7 @@ def _command(*args):
 
 def _metadata(args):
     paths = ['kb_platform/plugin_host.py', 'kb_platform/plugin_native.py',
-             'kb_platform/harness_loop.py', 'rust/agent-harness/src/agent_loop.rs', 'Cargo.lock']
+             'kb_platform/harness_loop.py', 'rust/agent-services/src/agent_loop.rs', 'Cargo.lock']
     paths.extend(str(path.relative_to(ROOT)).replace('\\', '/') for path in
                  sorted((ROOT / 'rust/plugin-runtime').rglob('*.rs')))
     paths.extend(str(path.relative_to(ROOT)).replace('\\', '/') for path in

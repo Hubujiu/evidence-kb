@@ -4,22 +4,22 @@
 `models` 或结构化文本服务 `llm`；供应商 SDK、HTTP 格式和认证停留在适配器中。内部协议
 为 `model-service/1`，采用同步请求/响应。模型能力是显式声明，不因接口兼容而推定支持。
 
-参考 DSH 固定提交 [f3803c9 的 LLM 注册与调用边界](https://github.com/deepseek-ai/deepseek-harness/blob/f3803c96974ad4a94195fb97e5c637e9c2a3afe3/packages/llm/llm/src/index.ts)。
-本实现借鉴其注册、绑定和共享服务方式，不依赖 Cordis，也不声称兼容 DSH 插件或流式协议。
+Rust 公共层位于 `rust/llm-service`，参考 DSH 固定提交 [ce7073d 的 LLM 协议](https://github.com/deepseek-ai/deepseek-harness/tree/ce7073d51254c26cd63b22a60835b8f948deb447/packages/llm/llm)。它提供独立异步 Adapter、注册表、准备调用、七类流事件与响应组装，不依赖生命周期内核或知识库。Python 的 CHAT 调用和结构化 completion port 通过 `llm_protocol` 复用 Rust 请求检查与结果规范化，保留原始 usage，并增加规范化 usage/finish 信息。SDK 的原生异步能力与内置同步 Provider 分别验收；固定语义、上游差异和参考合同见 [Rust 服务基础](dsh-rust-foundation.md)。
 
 ## 实例与生命周期
 
 `compile_model_plugins` 在启动前把模型配置展开为普通 Rust 插件节点。`models.service` 只提供中立注册表，`models.budget` 拥有唯一共享物理账本，每个配置的提供商 endpoint 对应一个实例插件，拥有自己的 HTTP 客户端和多个模型路由。消费方通过路由标记声明真实依赖，提供商替换会重建受影响的消费方，其他提供商和预算资源保持原代次。提供商的路由注册使用自身 Rust 身份与租约；卸载先排空调用，再移除路由和关闭客户端。
 
-原配置中的服务实例 ID 留给预算节点，因此现有 `KB_STORAGE_CONFIG` 的预算消费绑定不变；注册表使用派生 ID。独立使用 `PluginHost` 时，先调用 `compile_model_plugins(profile, catalog)` 再构造宿主。直接注入借用服务或客户端仍受支持。`from_config` 和 `from_clients` 是显式独立构造入口，不再由已托管的公共服务内部调用。
+原配置中的服务实例 ID 留给预算节点，因此现有 `KB_STORAGE_CONFIG` 的预算消费绑定不变；注册表使用派生 ID。独立使用 `PluginHost` 时，先调用 `compile_model_plugins(profile, catalog)` 再构造宿主。直接注入借用服务或客户端仍受支持。`from_config` 和 `from_clients` 是显式独立构造入口，不再由已托管的公共服务内部调用。`from_config` 返回的服务拥有内部创建的预算账本，先关闭全部模型适配器再关闭账本；适配器清理失败时保留账本，沿用现有关闭重试。
 
 保持依赖图形状的凭据、端点和模型配置变更可替换相应实例。增删提供商或路由、更改 Embedding 维度需要重新编译组合并启动，原图会明确返回 `MODEL_PROVIDER_GRAPH_RECOMPILE_REQUIRED`。
 
 `requires: ["models"]` 取得注册表，提供商本身也使用这个依赖注册路由。在挂载函数中立即绑定路由的第三方插件，还须声明相应的 `models.route.generation`、`models.route.embedding` 或 `model_route_marker(name)` 返回的具名路由依赖。这样 Rust 在目标提供商就绪后才挂载消费方，并只在该提供商变更时重建它。只需在应用启动后动态查询注册表的插件可以仅依赖 `models`。内置视图由配置编译器添加对应路由依赖。
 
-## 内部合同
+## 公共 SDK 与准入合同
 
-`ModelInfo` 声明 provider、model、能力、输入模态和实现/端点修订；`ModelRequest` 包含能力、
+`model_sdk` 是独立公共协议模块，只依赖中立错误类型与标准库签名校验，不导入宿主、知识库、Agent 或供应商 SDK。
+`ModelInfo.protocol` 显式声明 `model-service/1`；provider、model、能力、输入模态和实现/端点修订均属于注册信息；`ModelRequest` 包含能力、
 能力专属 payload 和调用上下文；`ModelResult` 包含提供商身份、结果、可选 usage 和请求 ID。
 `Media` 传递有限大小的 bytes 与 MIME；图片 URL 仅作为结果引用，不自动下载。
 
@@ -33,8 +33,14 @@
 | `image` | `prompt`，可选 `count`、`size` | `images`，含媒体或 HTTPS URL |
 
 聊天目前支持 system/user/assistant 文本；原生 tool-call、流式、图像编辑、实时音频和异步
-生成作业未实现。`streaming=False`，未支持的请求选项明确拒绝。工具决策继续通过结构化
+生成作业未实现。`streaming=False`，未支持的请求选项明确拒绝；chat 消息对象只接受 `role` 和文本 `content`，不透传未准入的嵌套工具或媒体字段。工具决策继续通过结构化
 文本合同完成，不能把这些能力宣传为提供商原生工具协议。
+
+注册时验证协议版本、`invoke(request)` 的同步调用签名，以及自有资源的 `close()`。
+异步函数、生成器、继承但未实现的 Protocol 方法、额外必填参数和未知版本均拒绝，失败不发布路由。
+`close()` 必须同步完成并返回 `None`；返回未执行的协程等值保持清理失败，不能报告已卸载。
+存在 `completion_port()` 扩展时也检查工厂签名；绑定结构化服务时验证返回端口的方法与预算参数。
+这些检查不执行试探性模型请求，也不证明任意插件代码的语义正确性；结果仍在每次调用边界检查。
 
 请求先校验能力与参数再发送；结果校验身份、向量形状和媒体类型。不同能力不强制使用
 同一个聊天响应格式。注册返回 disposer；调用持有租约，活跃调用期间不能卸载或关闭。
@@ -156,7 +162,7 @@ Embedding 的 `ModelInfo.preferred_batch_size` 用于任务调度；HTTP 配置�
 消费者声明依赖 `models`，然后使用公共合同：
 
 ```python
-from kb_platform.model_service import Capability, ModelRequest
+from kb_platform.model_sdk import Capability, ModelRequest
 
 models = ctx.require('models')
 result = models.invoke('voice', ModelRequest(
@@ -183,12 +189,25 @@ def mount_provider(ctx, config):
     ctx.defer(dispose)
 ```
 
-插件需声明 `requires=('models',)`；只注册模型能力可以不提供额外服务。需要供结构化 LLM
-使用的 chat 适配器还实现 `completion_port()`，满足现有 `ModelProvider` 的调用与计量合同。
+插件需声明 `requires=('models',)`；只注册模型能力可以不提供额外服务。只实现公共 `info` 和
+`invoke` 的 chat 适配器即可通过 `models.structured(route)` 服务结构化消费者。`model_completion`
+把公共请求/结果接到现有 AgentModel 的 JSON Schema 校验与逻辑预算，不重新实现结构化生成。
+同一注册的租约、结果身份、内容合同和重注册失效规则仍有效。标准 chat 结果须返回
+`finish_reason='stop'` 才能完成结构化回答。
+
+`completion_port()` 是可选扩展，供 Luna 等保留已有缓存、重试和物理计量；显式扩展端口经验证后原样保留，不按具体类型重新包装或丢失其缓存、预算声明。公共 HTTP 适配器直接使用标准结构化桥接，经过 `ModelService` 结果校验。通用桥接不实现供应商缓存或自动重试。
+第三方调用抛出异常但没有明确发送状态时，逻辑预算保守记为已调用、usage 未知；确定未发送
+应抛出 `ModelPreflightError` 或保留既有 `model_sent=False` 分类。不能把未观测状态当作零费用。
+Luna OCR 无法按单次请求设置 `max_tokens`，因此明确拒绝该选项，不再静默忽略。
 SDK 插件必须接入既有物理账本，并声明/约束 SDK 内部重试，不能仅在外层记一次费用。
 注册表是可信插件的工程边界，不是阻止恶意插件自行联网的安全沙箱。
 
 ## 验证
+
+`model_protocol_contracts.py` 使用合成适配器验证协议版本、同步签名、资源所有权、清理完成、
+重复路由、结构化桥接、绑定失效、结果身份、未知 usage 和明确未发送分类，新增远程调用为零。
+上述准入原则参考 [DSH 适配器义务](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-an-llm-adapter.md)：
+能力和选项显式拒绝、路由唯一、生命周期约束和共享消费者协议。此处仍是同步 v1，不声称支持 DSH SSE/stream chunk 协议。
 
 `model_service_contracts.py` 使用真实 HTTP 编码和合成 transport 验证六类能力、两个厂商
 协议、统一结构化消费者、插件共享服务、权限封锁、UNKNOWN、预算拒绝、租约和配置。

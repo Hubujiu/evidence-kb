@@ -134,8 +134,8 @@ class StorageObjectTransferContracts(unittest.TestCase):
             def __getattr__(self, name):
                 return getattr(target, name)
 
-            def put(self, tenant, data):
-                ref = target.put(tenant, data)
+            def put(self, tenant_id, data):
+                ref = target.put(tenant_id, data)
                 root.joinpath(*ref.object_key.split('/')).write_bytes(b'corrupt after acknowledged write')
                 return ref
 

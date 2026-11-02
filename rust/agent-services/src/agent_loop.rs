@@ -426,10 +426,7 @@ struct AcceptRequest {
     result: Value,
 }
 
-pub(crate) fn dispatch(
-    command: &str,
-    request: serde_json::Map<String, Value>,
-) -> Result<Value, Error> {
+pub fn dispatch(command: &str, request: serde_json::Map<String, Value>) -> Result<Value, Error> {
     static LOOPS: OnceLock<Mutex<LoopRegistry>> = OnceLock::new();
     let request = Value::Object(request);
     let mut registry = LOOPS

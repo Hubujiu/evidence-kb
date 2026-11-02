@@ -4,6 +4,12 @@
 
 当前版本为 `0.2.0`，回答方案固定为 `evidence_release_candidate`。这是本地部署和工程验证项目，合成测试通过不代表企业业务金标验收或生产准入。
 
+## Rust 插件基座
+
+项目按 DeepSeek Harness / Cordis 的服务边界组织，以 Rust 实现生命周期与公共协议；不依赖 TypeScript 运行时。`plugin-runtime` 管理作用域、依赖、服务和资源，`plugin-host` 管理进程，`agent-harness` 负责应用装配。默认 loop/graph 位于独立 `agent-services`，统一 LLM 和存储协议分别位于 `llm-service`、`storage-service`，通用内核不依赖这些可选服务。
+
+知识库由配置绑定业务插件，具体模型 SDK、数据库驱动和知识库算法作为实现接入。现有 Python 模型与存储调用路径使用 Rust 公共协议检查；Rust LLM SDK 另提供真实异步流接口。当前内置 HTTP/Luna 供应商仍使用同步响应，前端尚未提供增量流输出。固定上游版本、所有权、用量语义及接入方式见 [Rust 插件与服务基础](docs/dsh-rust-foundation.md)。
+
 ## 能力
 
 - 原件上传、多格式解析、原文子单元检索与引用定位。

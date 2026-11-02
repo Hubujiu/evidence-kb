@@ -54,6 +54,8 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 删除测试前，记录被删除用例的行为、保留用例的位置及两者的覆盖关系。只覆盖重复行为的用例可以合并参数。不能因当前实现失败而删掉权限、预算、证据完整性或请求身份的边界检查。
 
+`authentication_contracts.AuthenticationContracts.test_http_uses_replaceable_ttl_store_without_reading_identity_file` 已完整迁至同模块 `live_suite()` 的 `AuthenticationIntegration`，由统一入口的受控 `host-integration` 阶段执行。有效身份、无文件启动、503、撤销后 401、缺失 token 401 和资源关闭断言全部保留。Windows 的 asyncio 内部唤醒 socketpair 使用 loopback connect，因此 ASGI 用例不能放在禁止所有 socket.connect 的离线工作进程中；网络禁令、超时和通过门槛保持不变。纯认证逻辑及插件准入仍由离线合同执行。
+
 本轮把 `repair_contracts.PackingContracts.test_unmatched_bridge_is_not_arbitrarily_cut` 合并至 `default_path_contracts.DefaultPathContracts.test_unmatched_bridge_can_use_spare_context_budget`。保留两种文本长度及预算上限断言。超大表格不可截断的独立用例继续保留。历史归档的 208 个测试不恢复，也不删除其证据。
 
 ## 运行需要外部资源的验收

@@ -47,6 +47,34 @@ def _record(fixtures, scenario, **details):
 
 def suite(fixtures):
     class StorageContractIntegration(unittest.TestCase):
+        def test_authentication_sessions_on_real_redis(self):
+            from kb_platform.authentication import SessionAuthentication
+            from kb_platform.session_identity import Actor
+
+            provider, tracked = self.redis()
+            space = SpaceKey('authentication-acceptance', 'authentication', 'sessions')
+            target = EphemeralCacheSpace('authentication-' + fixtures.run_id)
+            registry = self.registry()
+            _register(registry, 'authentication', provider, 'kv')
+            grant = registry.grant('authentication', KV_EXPIRING_V1, space, 'authentication', target=target)
+            bound = registry.bind(grant)
+            raw = provider.open_space(space, target)
+            auth = SessionAuthentication(bound)
+            actor = Actor('synthetic-tenant', 'synthetic-user')
+            session = auth.issue(actor, ttl_seconds=0.15)
+            tracked.append((raw, [auth._key(session.token)]))
+            self.assertEqual(auth.authenticate(session.token), actor)
+            sleep(0.2)
+            self.assertIsNone(raw.get(auth._key(session.token)))
+            self.assertIsNone(auth.authenticate(session.token))
+            session = auth.issue(actor, ttl_seconds=30)
+            tracked.append((raw, [auth._key(session.token)]))
+            self.assertEqual(SessionAuthentication(bound).authenticate(session.token), actor)
+            self.assertTrue(auth.revoke(session.token))
+            self.assertIsNone(auth.authenticate(session.token))
+            _record(fixtures, 'authentication-real-redis', ttl_expired=True, revoked=True,
+                    storage_identity=asdict(bound.identity), model_calls=0, embedding_calls=0, judge_calls=0)
+
         def registry(self):
             registry = StorageService()
             self.addCleanup(registry.close)

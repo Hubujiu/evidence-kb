@@ -5,6 +5,7 @@ import re
 from typing import Generic, Protocol, TypeVar
 
 from ..database_contracts import QueryLimits, SchemaPackage, SpaceKey, StorageIdentity
+from ..protocol_validation import callable_accepts, valid_callable
 
 
 T = TypeVar('T')
@@ -31,6 +32,8 @@ class Contract(Generic[T]):
         object.__setattr__(self, 'extends', tuple(self.extends))
         if any(not isinstance(parent, Contract) or parent.key == self.key for parent in self.extends):
             raise ValueError('INVALID_STORAGE_CONTRACT_PARENT')
+        if self.interface is not None and not isinstance(self.interface, type):
+            raise ValueError('INVALID_STORAGE_CONTRACT_INTERFACE')
 
     @property
     def key(self):
@@ -47,10 +50,11 @@ class Contract(Generic[T]):
         for parent in self.extends:
             parent.validate(implementation)
         if self.interface is not None:
-            methods = {name for cls in self.interface.__mro__ for name, value in vars(cls).items()
+            methods = {name: value for cls in reversed(self.interface.__mro__) for name, value in vars(cls).items()
                        if not name.startswith('_') and callable(value)}
-            if any(not callable(getattr(implementation, name, None)) for name in methods):
-                raise StorageError('STORAGE_IMPLEMENTATION_INVALID', contract=self.key)
+            for name, method in methods.items():
+                if not callable_accepts(getattr(implementation, name, None), method):
+                    raise StorageError('STORAGE_IMPLEMENTATION_INVALID', contract=self.key, method=name)
 
 
 @dataclass(frozen=True)
@@ -95,7 +99,7 @@ class StorageExport(Generic[T]):
         if (not isinstance(self.name, str) or not self.name or not self.contracts
                 or any(not isinstance(contract, Contract) for contract in self.contracts)
                 or len({contract.key for contract in self.contracts}) != len(self.contracts)
-                or not callable(self.open_space)):
+                or not valid_callable(self.open_space, None, None)):
             raise ValueError('INVALID_STORAGE_EXPORT')
 
 
@@ -193,11 +197,27 @@ class StorageProvider:
     def __post_init__(self):
         from types import MappingProxyType
 
-        if not callable(self.factory) or not isinstance(self.exports, Mapping) or not self.exports:
+        if not valid_callable(self.factory, {}) or not isinstance(self.exports, Mapping) or not self.exports:
             raise ValueError('INVALID_STORAGE_PROVIDER')
         exports = {name: tuple(contracts) for name, contracts in self.exports.items()}
         if any(not isinstance(name, str) or not name or not contracts
                or any(not isinstance(contract, Contract) for contract in contracts)
+               or len({contract.key for contract in contracts}) != len(contracts)
                for name, contracts in exports.items()):
             raise ValueError('INVALID_STORAGE_PROVIDER')
         object.__setattr__(self, 'exports', MappingProxyType(exports))
+
+    def validate_exports(self, instance):
+        if not valid_callable(getattr(instance, 'exports', None)):
+            raise StorageError('STORAGE_PROVIDER_INVALID')
+        try:
+            actual = tuple(instance.exports())
+        except Exception:
+            raise StorageError('STORAGE_PROVIDER_INVALID') from None
+        if any(not isinstance(export, StorageExport) for export in actual):
+            raise StorageError('STORAGE_PROVIDER_EXPORT_MISMATCH')
+        lookup = {export.name: export for export in actual}
+        if (len(actual) != len(lookup) or set(lookup) != set(self.exports)
+                or any(lookup[name].contracts != contracts for name, contracts in self.exports.items())):
+            raise StorageError('STORAGE_PROVIDER_EXPORT_MISMATCH')
+        return lookup

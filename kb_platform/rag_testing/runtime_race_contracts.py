@@ -33,7 +33,7 @@ class RuntimeRaceContracts(unittest.TestCase):
             return {'value': sha256(str(config['value']).encode()).hexdigest()}
 
         profile = {'version': 1, 'plugins': [{'id': 'p', 'use': 'p', 'config': {'value': 0}}]}
-        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount, config_inputs=inputs)])
+        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount, config_inputs=inputs, config_schema={'type': 'object'})])
         host._lock = OrderedLock()
         native = plugin_host.native_call
 
@@ -101,7 +101,7 @@ class RuntimeRaceContracts(unittest.TestCase):
             context.provide('service', Service())
 
         profile = {'version': 1, 'plugins': [{'id': 'p', 'use': 'p'}]}
-        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount)])
+        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount, config_schema={'type': 'object'})])
         host._lock = AdmissionLock()
         native = plugin_host.native_call
 
@@ -174,7 +174,7 @@ class RuntimeRaceContracts(unittest.TestCase):
             context.provide('service', config['value'])
 
         profile = {'version': 1, 'plugins': [{'id': 'p', 'use': 'p', 'config': {'value': 0}}]}
-        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount, config_inputs=inputs)])
+        host = PluginHost(profile, [PluginSpec('p', ('service',), (), mount, config_inputs=inputs, config_schema={'type': 'object'})])
 
         def enable():
             try:
@@ -383,7 +383,7 @@ class RuntimeRaceContracts(unittest.TestCase):
 
         root = PluginHost({'version': 1, 'plugins': []}, [])
         sibling = root.scope({'version': 1, 'plugins': [{'id': 'unstable', 'use': 'unstable'}]},
-            [PluginSpec('unstable', ('unstable',), (), unstable)])
+            [PluginSpec('unstable', ('unstable',), (), unstable, config_schema={'type': 'object'})])
 
         def create():
             try:

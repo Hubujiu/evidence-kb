@@ -105,6 +105,9 @@ class ContractApplicationContracts(unittest.TestCase):
         with self.assertRaises(PlatformError) as caught:
             composition.authenticate('wrong-token')
         self.assertEqual(caught.exception.code, 'AUTHENTICATION_FAILED')
+        with self.assertRaises(PlatformError) as caught:
+            composition.authenticate('非ASCII' * 40)
+        self.assertEqual(caught.exception.code, 'AUTHENTICATION_FAILED')
         scope, source = self.publish(composition)
         hits = composition.platform.search(self.actor, scope, 'Original rule')['hits']
         self.assertTrue(hits)

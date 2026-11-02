@@ -57,6 +57,7 @@ class StructuredBudgetContracts(unittest.TestCase):
         provider = _Provider([])
         dispose = service.register('generation', SimpleNamespace(
             info=ModelInfo('synthetic', 'controlled', frozenset({Capability.CHAT})),
+            invoke=lambda request: self.fail('Reading a budget must not invoke the model'),
             completion_port=lambda: provider))
         model = service.structured('generation')
         self.assertIsNone(model.turn_budget_snapshot('session', 'turn'))

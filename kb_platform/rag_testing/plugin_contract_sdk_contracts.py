@@ -1,6 +1,8 @@
 import unittest
 from copy import deepcopy
+from inspect import CORO_CLOSED, getcoroutinestate
 from threading import Event, Thread
+from types import SimpleNamespace
 
 from kb_platform.plugin_contracts import ContractApplication, ContractError, ContractRegistry, Method, wire
 from kb_platform.plugin_native import PluginError
@@ -16,6 +18,83 @@ def definition(name, provides, requires):
 
 
 class PluginContractSDKContracts(unittest.TestCase):
+    def test_contract_mount_checks_original_signature_before_any_initialization(self):
+        async def asynchronous(ctx, config):
+            return None
+
+        for mount in (lambda: None, asynchronous):
+            with self.subTest(mount=mount):
+                application, catalog, args, events = self.setup_application()
+                args['mounts'][('provider', '1')] = mount
+                with self.assertRaisesRegex(PluginError, 'INVALID_PLUGIN_MOUNT'):
+                    ContractApplication(application, catalog, **args)
+                self.assertEqual(events, [])
+
+    def test_contract_mount_returned_coroutine_is_closed_and_rolls_back_exports(self):
+        application, catalog, args, events = self.setup_application()
+        returned = []
+
+        async def pending():
+            events.append('not-awaited')
+
+        def provider(ctx, config):
+            ctx.defer(lambda: events.append('closed'))
+            ctx.provide('greeting', SimpleNamespace(get=lambda request: 'unexpected'))
+            result = pending()
+            returned.append(result)
+            return result
+
+        args['mounts'][('provider', '1')] = provider
+        with self.assertRaisesRegex(PluginError, 'INVALID_PLUGIN_MOUNT_RESULT'):
+            ContractApplication(application, catalog, **args)
+        self.assertEqual(events, ['closed'])
+        self.assertEqual(len(returned), 1)
+        self.assertEqual(getcoroutinestate(returned[0]), CORO_CLOSED)
+
+    def test_contract_admission_rejects_invalid_methods_and_rolls_back_provider(self):
+        async def asynchronous(request):
+            return 'unexpected'
+
+        def generator(request):
+            yield 'unexpected'
+
+        for callback in (lambda: 'unexpected', asynchronous, generator):
+            with self.subTest(callback=callback):
+                application, catalog, args, events = self.setup_application()
+
+                def provider(ctx, config):
+                    ctx.defer(lambda: events.append('closed'))
+                    ctx.provide('greeting', SimpleNamespace(get=callback))
+
+                args['mounts'][('provider', '1')] = provider
+                with self.assertRaisesRegex(PluginError, 'CONTRACT_IMPLEMENTATION_INVALID'):
+                    ContractApplication(application, catalog, **args)
+                self.assertEqual(events, ['closed'])
+
+    def test_sync_contract_closes_accidentally_returned_coroutine_and_releases_lease(self):
+        application, catalog, args, events = self.setup_application()
+        returned = []
+
+        async def asynchronous():
+            return 'unexpected'
+
+        def get(request):
+            result = asynchronous()
+            returned.append(result)
+            return result
+
+        def provider(ctx, config):
+            ctx.provide('greeting', SimpleNamespace(get=get))
+
+        args['mounts'][('provider', '1')] = provider
+        app = ContractApplication(application, catalog, **args)
+        self.addCleanup(app.close)
+        with self.assertRaisesRegex(PluginError, 'CONTRACT_IMPLEMENTATION_ASYNC_RESULT'):
+            app.run({})
+        self.assertEqual(len(returned), 1)
+        self.assertEqual(getcoroutinestate(returned[0]), CORO_CLOSED)
+        self.assertEqual(app.host.inspect()['leases'], 0)
+
     def setup_application(self, *, response='hello', config=None, replacement='provider'):
         events = []
         registry = ContractRegistry({('application.run', 1): {'run': Method(EMPTY, TEXT)},

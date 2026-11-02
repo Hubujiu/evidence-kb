@@ -1,5 +1,4 @@
-pub mod agent_loop;
-pub mod graph;
+pub use agent_services::{agent_loop, graph};
 
 use serde_json::{Value, json};
 use std::sync::{Mutex, OnceLock};
@@ -26,11 +25,23 @@ fn dispatch(request: Value) -> Result<Value, Error> {
         .to_owned();
     if command.starts_with("loop_") {
         object.remove("command");
-        return agent_loop::dispatch(&command, object);
+        return agent_loop::dispatch(&command, object)
+            .map_err(|error| Error::new(error.code, error.message));
     }
     if command.starts_with("graph_") {
         object.remove("command");
-        return graph::dispatch(&command, object);
+        return graph::dispatch(&command, object)
+            .map_err(|error| Error::new(error.code, error.message));
+    }
+    if command.starts_with("llm_") {
+        object.remove("command");
+        return llm_service::dispatch(&command, object)
+            .map_err(|error| Error::new(error.code, error.message));
+    }
+    if command.starts_with("storage_") {
+        object.remove("command");
+        return storage_service::dispatch(&command, object)
+            .map_err(|error| Error::new(error.code, error.message));
     }
     if !command.starts_with("runtime_") {
         return Err(Error::new(
@@ -66,6 +77,19 @@ pub fn call(bytes: &[u8]) -> Value {
 #[cfg(test)]
 mod protocol_tests {
     use super::*;
+
+    #[test]
+    fn agent_service_bridge_rejects_undeclared_loop_and_graph_fields() {
+        let request = json!({"version": 1, "command": "loop_create", "mode": "model-tools",
+            "message": "x", "tools": [], "history": []});
+        assert_eq!(
+            call(request.to_string().as_bytes())["error"]["code"],
+            "INVALID_REQUEST"
+        );
+        let reply =
+            call(br#"{"version":1,"command":"graph_create","start":"x","nodes":{},"payload":{}}"#);
+        assert_eq!(reply["error"]["code"], "INVALID_REQUEST");
+    }
 
     #[test]
     fn abi_rejects_invalid_json_version_fields_and_oversized_requests() {

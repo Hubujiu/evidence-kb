@@ -144,7 +144,7 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
 
     from .storage_sdk.relational import STRUCTURED_RELATIONAL_V1
 
-    checks = {'platform.model_clients.remote': lambda config: client_inputs(config)}
+    checks = {'platform.model_clients.remote': client_inputs}
     return configured_plugins((
         PluginSpec('platform.model_clients.remote', ('model.clients',), (), clients),
         PluginSpec('platform.embedding.client', ('embedding',), ('models', 'model.clients', 'models.route.embedding'), embedding_client),
