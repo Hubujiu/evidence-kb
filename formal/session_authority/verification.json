@@ -1,0 +1,120 @@
+{
+  "source_base": "8160c051e63952278c5f8a80d1b024ebbe3cea17",
+  "status": "bounded_partial_coverage",
+  "tlc_release": "1.7.4",
+  "tlc_engine": "2.19",
+  "java_major": 21,
+  "jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+  "invocation": {
+    "tool_mode": true,
+    "seed": 1,
+    "fp": 0,
+    "workers": 1,
+    "heap_mb": 256,
+    "per_model_timeout_seconds": 120
+  },
+  "runs": [
+    {
+      "config": "SessionWriterLease.cfg",
+      "module": "SessionWriterLease.tla",
+      "kind": "positive",
+      "exit_code": 0,
+      "result": "PASS",
+      "expected_invariant": null,
+      "generated_states": 152181,
+      "distinct_states": 44129,
+      "states_left": 0,
+      "depth": 13,
+      "module_sha256": "a7b4451c201c49610a6e5001143b5e3c3d21d83b70f65d559e1fffe07148ec2c",
+      "config_sha256": "16eaabbb33b001685b223be1f10013314816e93ef7919e22e41a13c31b6426de"
+    },
+    {
+      "config": "SessionWriterLeaseStaleWriter.cfg",
+      "module": "SessionWriterLease.tla",
+      "kind": "mutation",
+      "exit_code": 12,
+      "result": "EXPECTED_INVARIANT_VIOLATION",
+      "expected_invariant": "NoSupersededCompletion",
+      "generated_states": 409,
+      "distinct_states": 285,
+      "states_left": 192,
+      "depth": 6,
+      "module_sha256": "a7b4451c201c49610a6e5001143b5e3c3d21d83b70f65d559e1fffe07148ec2c",
+      "config_sha256": "4bb999235f36df42741a7af818d52c4c9c711d1fa556a81cb02669bbab5846af"
+    },
+    {
+      "config": "SessionWriterLeasePartialCommit.cfg",
+      "module": "SessionWriterLease.tla",
+      "kind": "mutation",
+      "exit_code": 12,
+      "result": "EXPECTED_INVARIANT_VIOLATION",
+      "expected_invariant": "AtomicCompletion",
+      "generated_states": 53,
+      "distinct_states": 42,
+      "states_left": 31,
+      "depth": 4,
+      "module_sha256": "a7b4451c201c49610a6e5001143b5e3c3d21d83b70f65d559e1fffe07148ec2c",
+      "config_sha256": "5c55fd3af01375118ab03d493065780374321755210e6fe179e4a99f1ac76103"
+    },
+    {
+      "config": "PostflightAuthority.cfg",
+      "module": "PostflightAuthority.tla",
+      "kind": "positive",
+      "exit_code": 0,
+      "result": "PASS",
+      "expected_invariant": null,
+      "generated_states": 349,
+      "distinct_states": 216,
+      "states_left": 0,
+      "depth": 12,
+      "module_sha256": "e96a2b319453fe4cae40ca41df129bbbb66771ec11dd3962f3513fceb7f3eb17",
+      "config_sha256": "462d2dc93c9786921634fa85f902472f8dd72cff98467d317591e7eecaad64d7"
+    },
+    {
+      "config": "PostflightAuthorityUncheckedReplay.cfg",
+      "module": "PostflightAuthority.tla",
+      "kind": "mutation",
+      "exit_code": 12,
+      "result": "EXPECTED_INVARIANT_VIOLATION",
+      "expected_invariant": "ReplayResponseWasRevalidated",
+      "generated_states": 34,
+      "distinct_states": 29,
+      "states_left": 19,
+      "depth": 3,
+      "module_sha256": "e96a2b319453fe4cae40ca41df129bbbb66771ec11dd3962f3513fceb7f3eb17",
+      "config_sha256": "991fb675bb57f11200389f4b9d52132c0e53d8e141bc7a9ae6d955f83f84d662"
+    },
+    {
+      "config": "PostflightAuthorityCommitLimit.cfg",
+      "module": "PostflightAuthority.tla",
+      "kind": "limitation",
+      "exit_code": 12,
+      "result": "EXPECTED_INVARIANT_VIOLATION",
+      "expected_invariant": "CurrentAuthorityAtCommit",
+      "generated_states": 320,
+      "distinct_states": 203,
+      "states_left": 18,
+      "depth": 11,
+      "module_sha256": "e96a2b319453fe4cae40ca41df129bbbb66771ec11dd3962f3513fceb7f3eb17",
+      "config_sha256": "8cdddafc8d307c34b6dbd86fd6cb914ecffeaff36d8dfecd3e3b27ee3478e7c0"
+    }
+  ],
+  "source_regressions": {
+    "command": "python -m unittest kb_platform.rag_testing.session_store_contracts kb_platform.rag_testing.session_database_contracts -v",
+    "python_version": "3.12.14",
+    "tests": 13,
+    "status": "PASS",
+    "database": "local SQLite",
+    "duration_seconds": 1.403
+  },
+  "not_run": [
+    "Fresh native-runtime knowledge contract tests (Rust artifact build managed by parent task)",
+    "PostgreSQL and MySQL integration",
+    "Unbounded proof or liveness checking",
+    "Provider, embedding or judge calls"
+  ],
+  "development_note": "Optional-assistant refinement initially produced TLC exit 75 for an omitted UNCHANGED variable; corrected and all three lease configurations rerun. That modeling error was not accepted as a negative-control success.",
+  "product_changes": false,
+  "new_provider_calls": 0,
+  "known_limitation": "CurrentAuthorityAtCommit is not guaranteed by the existing separate authority/session transactions; this is not a fixed product defect."
+}

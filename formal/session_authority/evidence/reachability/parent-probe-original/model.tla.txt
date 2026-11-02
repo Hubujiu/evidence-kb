@@ -1,0 +1,146 @@
+------------------------- MODULE PostflightAuthority -------------------------
+EXTENDS Naturals
+
+CONSTANT ValidateReplay
+ASSUME ValidateReplay \in BOOLEAN
+
+VARIABLES mode, phase, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, authorityChecked, evidenceChecked,
+          cancelChecked, authorityAtCheck, evidenceAtCheck,
+          commitAuthority, commitAllowed
+
+vars == <<mode, phase, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, authorityChecked, evidenceChecked,
+          cancelChecked, authorityAtCheck, evidenceAtCheck,
+          commitAuthority, commitAllowed>>
+
+Phases == {"start", "native", "post_native", "authorize", "evidence",
+           "after_evidence", "build_state", "before_commit", "ready",
+           "replay_evidence", "complete", "error"}
+
+Init ==
+    /\ mode \in {"fresh", "replay"} /\ phase = "start"
+    /\ authorityRevision = 0 /\ scopeAllowed = TRUE /\ evidenceAllowed = TRUE
+    /\ cancelled = FALSE /\ initialRevision = 0
+    /\ authorityChecked = FALSE /\ evidenceChecked = FALSE /\ cancelChecked = FALSE
+    /\ authorityAtCheck = 0 /\ evidenceAtCheck = 0
+    /\ commitAuthority = 0 /\ commitAllowed = FALSE
+
+Preflight ==
+    /\ phase = "start"
+    /\ phase' = IF ~scopeAllowed THEN "error"
+                   ELSE IF mode = "fresh" THEN "native" ELSE "replay_evidence"
+    /\ initialRevision' = authorityRevision
+    /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, authorityChecked, evidenceChecked, cancelChecked,
+          authorityAtCheck, evidenceAtCheck, commitAuthority, commitAllowed>>
+
+NativeComplete ==
+    /\ phase = "native" /\ phase' = "post_native"
+    /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, authorityChecked, evidenceChecked,
+          cancelChecked, authorityAtCheck, evidenceAtCheck, commitAuthority, commitAllowed>>
+
+CheckExecution(from, destination) ==
+    /\ phase = from
+    /\ phase' = IF cancelled THEN "error" ELSE destination
+    /\ cancelChecked' = ~cancelled
+    /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, authorityChecked, evidenceChecked,
+          authorityAtCheck, evidenceAtCheck, commitAuthority, commitAllowed>>
+
+Authorize ==
+    /\ phase = "authorize"
+    /\ LET valid == scopeAllowed /\ authorityRevision = initialRevision IN
+       /\ phase' = IF valid THEN "evidence" ELSE "error"
+       /\ authorityChecked' = valid
+    /\ authorityAtCheck' = authorityRevision
+    /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, evidenceChecked, cancelChecked,
+          evidenceAtCheck, commitAuthority, commitAllowed>>
+
+Revalidate ==
+    /\ phase = "evidence"
+    /\ LET valid == scopeAllowed /\ evidenceAllowed IN
+       /\ phase' = IF valid THEN "after_evidence" ELSE "error"
+       /\ evidenceChecked' = valid
+    /\ evidenceAtCheck' = authorityRevision
+    /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, authorityChecked, cancelChecked,
+          authorityAtCheck, commitAuthority, commitAllowed>>
+
+BuildState ==
+    /\ phase = "build_state" /\ phase' = "before_commit"
+    /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, authorityChecked, evidenceChecked,
+          cancelChecked, authorityAtCheck, evidenceAtCheck, commitAuthority, commitAllowed>>
+
+\* SessionStore's separate transaction does not lock authority storage. Its
+\* own lease, ownership and atomic durability contract is modeled separately.
+Commit ==
+    /\ phase = "ready" /\ phase' = "complete"
+    /\ commitAuthority' = authorityRevision
+    /\ commitAllowed' = scopeAllowed /\ evidenceAllowed
+    /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, authorityChecked, evidenceChecked,
+          cancelChecked, authorityAtCheck, evidenceAtCheck>>
+
+Replay ==
+    /\ phase = "replay_evidence"
+    /\ LET valid == scopeAllowed /\ evidenceAllowed IN
+       /\ phase' = IF ~ValidateReplay \/ valid THEN "complete" ELSE "error"
+       /\ evidenceChecked' = ValidateReplay /\ valid
+    /\ evidenceAtCheck' = authorityRevision
+    /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
+          cancelled, initialRevision, authorityChecked, cancelChecked,
+          authorityAtCheck, commitAuthority, commitAllowed>>
+
+\* One authority mutation is enough to expose every ordering around the checks.
+ChangeAuthority(scope, evidence) ==
+    /\ authorityRevision = 0 /\ authorityRevision' = 1
+    /\ scopeAllowed' = scope /\ evidenceAllowed' = evidence
+    /\ UNCHANGED <<mode, phase, cancelled, initialRevision, authorityChecked,
+          evidenceChecked, cancelChecked, authorityAtCheck, evidenceAtCheck,
+          commitAuthority, commitAllowed>>
+
+Cancel ==
+    /\ ~cancelled /\ cancelled' = TRUE
+    /\ UNCHANGED <<mode, phase, authorityRevision, scopeAllowed, evidenceAllowed,
+          initialRevision, authorityChecked, evidenceChecked, cancelChecked,
+          authorityAtCheck, evidenceAtCheck, commitAuthority, commitAllowed>>
+
+Next ==
+    \/ Preflight \/ NativeComplete
+    \/ CheckExecution("post_native", "authorize")
+    \/ Authorize \/ Revalidate
+    \/ CheckExecution("after_evidence", "build_state")
+    \/ BuildState \/ CheckExecution("before_commit", "ready")
+    \/ Commit \/ Replay \/ Cancel
+    \/ \E scope, evidence \in BOOLEAN : ChangeAuthority(scope, evidence)
+
+TypeOK ==
+    /\ mode \in {"fresh", "replay"} /\ phase \in Phases
+    /\ authorityRevision \in 0..1 /\ initialRevision \in 0..1
+    /\ authorityAtCheck \in 0..1 /\ evidenceAtCheck \in 0..1
+    /\ commitAuthority \in 0..1
+    /\ scopeAllowed \in BOOLEAN /\ evidenceAllowed \in BOOLEAN /\ cancelled \in BOOLEAN
+    /\ authorityChecked \in BOOLEAN /\ evidenceChecked \in BOOLEAN
+    /\ cancelChecked \in BOOLEAN /\ commitAllowed \in BOOLEAN
+FreshResponseWasChecked ==
+    (mode = "fresh" /\ phase = "complete") =>
+        (authorityChecked /\ evidenceChecked /\ cancelChecked
+         /\ authorityAtCheck = initialRevision)
+ReplayResponseWasRevalidated ==
+    (mode = "replay" /\ phase = "complete") => evidenceChecked
+
+\* Deliberately stronger than the source contract. Its expected counterexample
+\* documents the absence of a cross-store authority/session transaction.
+CurrentAuthorityAtCommit ==
+    (mode = "fresh" /\ phase = "complete") =>
+        (commitAllowed /\ commitAuthority = evidenceAtCheck)
+
+NoDeniedReplayWitness == ~(mode = "replay" /\ phase = "error" /\ scopeAllowed /\ ~evidenceAllowed /\ evidenceAtCheck = authorityRevision)
+NoEvidenceRevokedCommitWitness == ~(mode = "fresh" /\ phase = "complete" /\ ~evidenceAllowed /\ ~commitAllowed)
+
+Spec == Init /\ [][Next]_vars
+=============================================================================

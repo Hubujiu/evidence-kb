@@ -1,0 +1,33 @@
+{
+  "schema": "historical-independent-tlc-probe-summary/1",
+  "source_base": "aa909eef335cc95f75cff3fc5e76e6f87b723b51",
+  "provenance": "Parent independent probe formal-audit-postflight-20261102; original and grouped source differ only in the two Boolean RHS parentheses. Original command and measured wall duration were not recorded in these probe files.",
+  "runs": [
+    {
+      "id": "NoDeniedReplayWitness",
+      "expected_invariant": "NoDeniedReplayWitness",
+      "returncode": 12,
+      "states": {
+        "generated": 94,
+        "distinct": 69,
+        "remaining": 36
+      },
+      "raw_log": "NoDeniedReplayWitness.log",
+      "input_checksums": "NoDeniedReplayWitness-SHA256SUMS",
+      "interpretation": "Named terminal witness reached after only the two RHS grouping changes."
+    },
+    {
+      "id": "NoEvidenceRevokedCommitWitness",
+      "expected_invariant": "NoEvidenceRevokedCommitWitness",
+      "returncode": 12,
+      "states": {
+        "generated": 330,
+        "distinct": 211,
+        "remaining": 20
+      },
+      "raw_log": "NoEvidenceRevokedCommitWitness.log",
+      "input_checksums": "NoEvidenceRevokedCommitWitness-SHA256SUMS",
+      "interpretation": "Named terminal witness reached after only the two RHS grouping changes."
+    }
+  ]
+}

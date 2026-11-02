@@ -1,0 +1,1 @@
+The second auxiliary legacy run completed TLC but run_model report construction raised KeyError: model_id because the caller omitted required limitation metadata. Its raw log and input snapshot are retained at results/legacy-evidencerevokedcommit. No formal gate result is relabeled. A corrected explicit limitation spec uses a separate results-v2 output.
