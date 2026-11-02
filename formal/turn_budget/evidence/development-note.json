@@ -1,0 +1,6 @@
+{
+  "scope": "Historical test-fixture development failure; not a product bug or current verdict.",
+  "log": "development-exception-fixture-failure.log",
+  "reason": "The initial test incorrectly expected ModelPreflightError to inherit RemoteModelError; canonical behavior intentionally preserves the original ValueError subclass.",
+  "correction": "Assert the actual class and original exception identity; current targeted contracts pass."
+}

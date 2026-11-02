@@ -1,0 +1,122 @@
+@!@!@STARTMSG 2262:0 @!@!@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+@!@!@ENDMSG 2262 @!@!@
+@!@!@STARTMSG 2187:0 @!@!@
+Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 544] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+@!@!@ENDMSG 2187 @!@!@
+@!@!@STARTMSG 2220:0 @!@!@
+Starting SANY...
+@!@!@ENDMSG 2220 @!@!@
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-linked-turn-formal/.local/budget-turn-formal-20261102-2023/formal/turn_reservations_reservation/inputs/TurnReservations.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TurnReservations
+@!@!@STARTMSG 2219:0 @!@!@
+SANY finished.
+@!@!@ENDMSG 2219 @!@!@
+@!@!@STARTMSG 2185:0 @!@!@
+Starting... (2026-11-02 12:23:29)
+@!@!@ENDMSG 2185 @!@!@
+@!@!@STARTMSG 2189:0 @!@!@
+Computing initial states...
+@!@!@ENDMSG 2189 @!@!@
+@!@!@STARTMSG 2190:0 @!@!@
+Finished computing initial states: 1 distinct state generated at 2026-11-02 12:23:30.
+@!@!@ENDMSG 2190 @!@!@
+@!@!@STARTMSG 2110:1 @!@!@
+Invariant NoUnreservedSend is violated.
+@!@!@ENDMSG 2110 @!@!@
+@!@!@STARTMSG 2121:1 @!@!@
+The behavior up to this point is:
+@!@!@ENDMSG 2121 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+1: <Initial predicate>
+/\ phase = <<"new", "new", "new">>
+/\ attempts = <<0, 0, 0>>
+/\ reported = <<0, 0, 0>>
+/\ settledGlobal = {}
+/\ pendingTurn = {}
+/\ reservedAtSend = <<FALSE, FALSE, FALSE>>
+/\ observed = <<FALSE, FALSE, FALSE>>
+/\ turnUnknown = <<0, 0, 0>>
+/\ pendingGlobal = {}
+/\ failed = <<FALSE, FALSE, FALSE>>
+/\ globalUnknown = <<0, 0, 0>>
+/\ globalKnown = <<0, 0, 0>>
+/\ settledTurn = {}
+/\ turnKnown = <<0, 0, 0>>
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+2: <ReserveTurn line 46, col 19 to line 49, col 109 of module TurnReservations>
+/\ phase = <<"turn-held", "new", "new">>
+/\ attempts = <<0, 0, 0>>
+/\ reported = <<0, 0, 0>>
+/\ settledGlobal = {}
+/\ pendingTurn = {1}
+/\ reservedAtSend = <<FALSE, FALSE, FALSE>>
+/\ observed = <<FALSE, FALSE, FALSE>>
+/\ turnUnknown = <<0, 0, 0>>
+/\ pendingGlobal = {}
+/\ failed = <<FALSE, FALSE, FALSE>>
+/\ globalUnknown = <<0, 0, 0>>
+/\ globalKnown = <<0, 0, 0>>
+/\ settledTurn = {}
+/\ turnKnown = <<0, 0, 0>>
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+3: <ReserveGlobal line 53, col 21 to line 57, col 111 of module TurnReservations>
+/\ phase = <<"active", "new", "new">>
+/\ attempts = <<0, 0, 0>>
+/\ reported = <<0, 0, 0>>
+/\ settledGlobal = {}
+/\ pendingTurn = {1}
+/\ reservedAtSend = <<FALSE, FALSE, FALSE>>
+/\ observed = <<FALSE, FALSE, FALSE>>
+/\ turnUnknown = <<0, 0, 0>>
+/\ pendingGlobal = {}
+/\ failed = <<FALSE, FALSE, FALSE>>
+/\ globalUnknown = <<0, 0, 0>>
+/\ globalKnown = <<0, 0, 0>>
+/\ settledTurn = {}
+/\ turnKnown = <<0, 0, 0>>
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+4: <Attempt line 63, col 15 to line 67, col 89 of module TurnReservations>
+/\ phase = <<"active", "new", "new">>
+/\ attempts = <<1, 0, 0>>
+/\ reported = <<0, 0, 0>>
+/\ settledGlobal = {}
+/\ pendingTurn = {1}
+/\ reservedAtSend = <<FALSE, FALSE, FALSE>>
+/\ observed = <<FALSE, FALSE, FALSE>>
+/\ turnUnknown = <<0, 0, 0>>
+/\ pendingGlobal = {}
+/\ failed = <<FALSE, FALSE, FALSE>>
+/\ globalUnknown = <<0, 0, 0>>
+/\ globalKnown = <<0, 0, 0>>
+/\ settledTurn = {}
+/\ turnKnown = <<0, 0, 0>>
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2200:0 @!@!@
+Progress(4) at 2026-11-02 12:23:30: 50 states generated (3,211 s/min), 29 distinct states found (1,862 ds/min), 16 states left on queue.
+@!@!@ENDMSG 2200 @!@!@
+@!@!@STARTMSG 2199:0 @!@!@
+50 states generated, 29 distinct states found, 16 states left on queue.
+@!@!@ENDMSG 2199 @!@!@
+@!@!@STARTMSG 2194:0 @!@!@
+The depth of the complete state graph search is 4.
+@!@!@ENDMSG 2194 @!@!@
+@!@!@STARTMSG 2268:0 @!@!@
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 6 and the 95th percentile is 6).
+@!@!@ENDMSG 2268 @!@!@
+@!@!@STARTMSG 2186:0 @!@!@
+Finished in 954ms at (2026-11-02 12:23:30)
+@!@!@ENDMSG 2186 @!@!@

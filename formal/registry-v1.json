@@ -512,29 +512,36 @@
     },
     {
       "id": "turn_budget",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation \u2192 consumed/released"
+        "New/cache-hit/denied invocation; turn-held then both-held reservation.",
+        "Active bounded provider attempts; observed/unobserved last-response usage.",
+        "Global settlement followed by turn settlement; terminal reservations released without refunding incurred usage."
       ],
       "transitions": [
         "BudgetLedger.reserve",
         "BudgetLedger.settle",
+        "BudgetLedger.turn_budget",
         "AgentModel.complete",
         "AgentModel.accept_completion"
       ],
       "invariants": [
-        "Application calls/tokens are separate from physical ledger; denied preflight is not attempted send; failure after provider result preserves usage. #31 specifically changes this boundary."
+        "Both reservations precede physical send; terminal outcomes own no pending reservations.",
+        "Known usage and conservative unknown-attempt charges survive downstream failures.",
+        "Completed global and turn accounting agree; intermediate snapshots need not.",
+        "Application cache uses zero attempts; physical call admission counts used plus pending reservations."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Finite three invocations/two turns with complete context, fixed provider attempt bounds and trusted attempt reporting.",
+        "Each ledger lock section is atomic; normalized usage and valid reservation tokens make settlement nonthrowing.",
+        "Physical-request ledger, application ledger and token-pressure measurement are distinct authorities."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No durable restart/process-death or arbitrary asynchronous interruption inside cleanup proof.",
+        "No strict token-spend upper bound after provider-reported usage exceeds an estimate; actual cost must be retained."
       ],
       "source_bindings": [
         {
@@ -560,10 +567,141 @@
           "language": "python",
           "symbol": "AgentModel.accept_completion",
           "sha256": "192811f6b92d436c2c332072864424c9a0f5c8f353ad67b970e899c0b54af0a5"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.__init__",
+          "sha256": "21e524b3936e05d9b8fdaa6450bc3a63914d8734ffa047f1b0c4ab388bbb9d37"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.snapshot",
+          "sha256": "8a17f397f5ac7b35900b24ef95a185540786f145215da330043ab1f935ec1bdb"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.turn_budget",
+          "sha256": "4031d93bc725fd83c055038e228e61ea4e0ea22a37b3c496690deb24e651f532"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "BudgetLedger.turn_budget_snapshot",
+          "sha256": "1c8e09f67f90962e34a107e8fdbad373fce542bec0d5e78d8937cc4b564bfe3b"
+        },
+        {
+          "path": "kb_platform/agent_model.py",
+          "language": "python",
+          "symbol": "_usage",
+          "sha256": "13c6e969f3f23b52b88e073376cd2890e136b2b69881e8d162bf723e67ee6d84"
+        },
+        {
+          "path": "kb_platform/rag_testing/turn_budget_transition_contracts.py",
+          "language": "python",
+          "symbol": "TurnReservationTransitionContracts",
+          "sha256": "ae0c269527b3964a87055961003e6552a86342bfd6b772538134a25bc0e1a34e"
+        },
+        {
+          "path": "kb_platform/rag_testing/turn_budget_contracts.py",
+          "language": "python",
+          "symbol": "TurnBudgetContracts",
+          "sha256": "7401ead4c4c2a9c2c122981cb3445742d281f78bc164e0bec89d32de2eb93aa1"
+        },
+        {
+          "path": "kb_platform/rag_testing/structured_budget_contracts.py",
+          "language": "python",
+          "symbol": "StructuredBudgetContracts",
+          "sha256": "68c0e468d64f76f8fcab585923d5410d534bbd58b469bc9a948f4b14dddff790"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "turn_reservations",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservations.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoUnreservedSend",
+            "TerminalOwnsNoReservation",
+            "ObservedUsageRetained",
+            "UnknownAttemptsRetained",
+            "CompletedLedgersAgree",
+            "CacheHasNoPhysicalCost",
+            "GlobalCallsBound",
+            "TurnCallsBound"
+          ],
+          "properties": [],
+          "bounds": {
+            "invocations": 3,
+            "turns": 2,
+            "maximum_attempts_per_invocation": [
+              2,
+              1,
+              1
+            ],
+            "global_call_cap": 3,
+            "per_turn_call_cap": 2,
+            "token_admission_cap": 6,
+            "per_attempt_reservation": 2,
+            "known_usage_classes": [
+              0,
+              3
+            ]
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "turn_reservations_rollback",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsRollbackNegative.cfg",
+          "expected_invariant": "TerminalOwnsNoReservation",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "turn_reservations_usage",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsUsageNegative.cfg",
+          "expected_invariant": "ObservedUsageRetained",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "turn_reservations_unknown",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsUnknownNegative.cfg",
+          "expected_invariant": "UnknownAttemptsRetained",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "turn_reservations_cache",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsCacheNegative.cfg",
+          "expected_invariant": "CacheHasNoPhysicalCost",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "turn_reservations_reservation",
+          "module": "formal/turn_budget/TurnReservations.tla",
+          "config": "formal/turn_budget/TurnReservationsReservationNegative.cfg",
+          "expected_invariant": "NoUnreservedSend",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Unbounded turns/invocations, cap20 induction, UUID collision, malformed traces and changing per-turn limits.",
+        "Context-free invocations, arbitrary usage/resource dimensions, precise monetary billing and internal settlement failure.",
+        "Full RPC/trace/event refinement, provider timing guarantees and durable physical-request accounting."
+      ]
     },
     {
       "id": "session_commit",

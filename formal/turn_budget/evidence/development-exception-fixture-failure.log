@@ -1,0 +1,23 @@
+.....E.
+======================================================================
+ERROR: test_observed_last_usage_and_unknown_prior_attempt_survive_validation_and_cache_errors (kb_platform.rag_testing.turn_budget_transition_contracts.TurnReservationTransitionContracts.test_observed_last_usage_and_unknown_prior_attempt_survive_validation_and_cache_errors) (mode='cache')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-linked-turn-formal/kb_platform/rag_testing/turn_budget_transition_contracts.py", line 78, in test_observed_last_usage_and_unknown_prior_attempt_survive_validation_and_cache_errors
+    model.complete(self.messages, **options)
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-linked-turn-formal/kb_platform/agent_model.py", line 287, in complete
+    self.provider.cache_put(key, {"value": value, "usage": usage, "finish_reason": finish})
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/unittest/mock.py", line 1139, in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/unittest/mock.py", line 1143, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/unittest/mock.py", line 1198, in _execute_mock_call
+    raise effect
+kb_platform.model_errors.ModelPreflightError: SYNTHETIC_CACHE_FAILURE
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.027s
+
+FAILED (errors=1)
