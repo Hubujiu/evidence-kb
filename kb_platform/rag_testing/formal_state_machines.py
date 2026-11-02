@@ -14,6 +14,8 @@ import sys
 import time
 import unittest
 
+from .formal_inline_boolean import inline_boolean_findings, inline_control_fixtures, finding_signature
+
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'formal/registry-v1.json'
 LOCK = 'formal/toolchain-v1.json'
@@ -318,6 +320,84 @@ def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
     return record
 
 
+def run_inline_export(jar: Path, output: Path, inputs: Path, identity: str, module: str,
+                      snapshots: dict, expected: list[tuple]) -> dict:
+    directory = output / identity
+    directory.mkdir()
+    scratch = directory / 'tmp'
+    scratch.mkdir()
+    command = ['java', '-Xmx256m', '-XX:MaxMetaspaceSize=128m', '-XX:+UseParallelGC',
+               '-XX:+ExitOnOutOfMemoryError', f'-Djava.io.tmpdir={scratch}', '-cp', str(jar),
+               'tla2sany.xml.XMLExporter', '-o', str(inputs / f'{module}.tla')]
+    record = {'id': identity, 'module': module, 'decision': 'ERROR', 'timeout': False,
+              'returncode': None, 'command': command, 'input_sha256': snapshots,
+              'expected_findings': [list(item) for item in expected], 'findings': None,
+              'xml': (directory / 'module.xml').relative_to(output).as_posix(),
+              'log': (directory / 'sany.log').relative_to(output).as_posix(),
+              'timeout_seconds': 30, 'heap_mb': 256}
+    started = time.monotonic()
+    try:
+        with (directory / 'module.xml').open('wb') as xml, (directory / 'sany.log').open('wb') as log:
+            result = subprocess.run(command, cwd=inputs, stdout=xml, stderr=log, timeout=30, check=False)
+        record['returncode'] = result.returncode
+        if result.returncode:
+            raise ValueError('Official SANY XML export failed; see preserved stderr')
+        xml = (directory / 'module.xml').read_bytes()
+        record['xml_sha256'] = digest(xml)
+        record['findings'] = inline_boolean_findings(xml, module)
+        actual = finding_signature(record['findings'])
+        record['decision'] = 'PASS' if actual == expected else 'FAIL'
+        if actual != expected:
+            record['blocker'] = 'Inline Boolean assignment review did not match the required findings'
+    except subprocess.TimeoutExpired:
+        record.update(timeout=True, blocker='Official SANY XML export timed out')
+    except (OSError, ValueError) as exc:
+        record['blocker'] = str(exc)
+    if (directory / 'module.xml').is_file():
+        record['xml_sha256'] = digest((directory / 'module.xml').read_bytes())
+    record['seconds'] = time.monotonic() - started
+    (directory / 'result.json').write_text(json.dumps(record, indent=2), encoding='utf-8')
+    return record
+
+
+def run_inline_review(root: Path, jar: Path, output: Path, specs: list[dict]) -> dict:
+    output.mkdir()
+    inputs = output / 'inputs'
+    inputs.mkdir()
+    snapshots = {}
+    for path in sorted((root / 'formal').rglob('*.tla')):
+        target = inputs / path.name
+        if target.exists():
+            raise ValueError(f'Duplicate TLA module filename: {path.name}')
+        shutil.copy2(path, target)
+        snapshots[path.relative_to(root).as_posix()] = digest(path.read_bytes())
+    modules = sorted({spec['module'] for spec in specs})
+    fixtures = inline_control_fixtures(root)
+    report = {'decision': 'FAIL', 'expected_modules': modules,
+              'expected_controls': [fixture['id'] for fixture in fixtures], 'modules': [], 'controls': [],
+              'scope': 'Direct same-line conjunction review from official SANY XML; '
+                       'not intent inference, branch coverage or implementation refinement.'}
+    for module in modules:
+        identity = 'model-' + Path(module).stem
+        row = run_inline_export(jar, output, inputs, identity, Path(module).stem, snapshots, [])
+        row['source_path'] = module
+        report['modules'].append(row)
+    for fixture in fixtures:
+        identity = 'control-' + fixture['id']
+        control_inputs = output / (identity + '-inputs')
+        control_inputs.mkdir()
+        (control_inputs / f'{fixture["module"]}.tla').write_bytes(fixture['source'])
+        row = run_inline_export(jar, output, control_inputs, identity, fixture['module'],
+            {fixture['source_path']: fixture['source_sha256']}, fixture['expected'])
+        row['fixture_id'] = fixture['id']
+        row['fixture_xml_sha256'] = fixture['xml_sha256']
+        report['controls'].append(row)
+    rows = report['modules'] + report['controls']
+    report['decision'] = 'PASS' if rows and all(row['decision'] == 'PASS' for row in rows) else 'FAIL'
+    (output / 'summary.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+    return report
+
+
 def run_formal(root: Path, output: Path, jar: Path | None = None) -> int:
     output.mkdir(parents=True, exist_ok=False)
     errors = registry_violations(root)
@@ -350,6 +430,9 @@ def run_formal(root: Path, output: Path, jar: Path | None = None) -> int:
         if not any(machine['status'] == 'partial' for machine in registry['machines']):
             raise ValueError('At least one real registered machine model is required; control fixtures are not coverage')
         report['expected_runs'] = {spec['id']: spec['kind'] for spec in specs}
+        report['inline_boolean_review'] = run_inline_review(root, jar, output / 'inline-boolean-review', specs)
+        if report['inline_boolean_review']['decision'] != 'PASS':
+            raise ValueError('Official SANY inline Boolean assignment review failed; TLC is not claimed as executed')
         for spec in specs:
             report['results'].append(run_model(root, jar, output, spec))
         from kb_platform.rag_testing.formal_state_machine_contracts import live_suite
