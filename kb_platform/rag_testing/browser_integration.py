@@ -38,14 +38,14 @@ def checked_native(summary_path):
     return tuple(selected)
 
 
-def browser_verdict(path):
+def browser_verdict(path, *, expected=CASES, classname='knowledge.e2e.js'):
     document = ET.parse(path).getroot()
     cases = list(document.iter('testcase'))
-    if (len(cases) != len(CASES) or {case.get('name') for case in cases} != CASES
-            or any(case.get('classname') != 'knowledge.e2e.js' for case in cases)
+    if (len(cases) != len(expected) or {case.get('name') for case in cases} != expected
+            or any(case.get('classname') != classname for case in cases)
             or any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
             or any((case.findtext('system-out') or '').startswith('flaky:') for case in cases)):
-        raise ValueError('Both browser cases must pass without skips or retries')
+        raise ValueError('Every expected browser case must pass without skips or retries')
     return {'tests': len(cases), 'failures': 0, 'errors': 0, 'skipped': 0}
 
 
@@ -125,6 +125,9 @@ def run(summary, output, dsn, migration_dsn=None):
                         or browser_run['usage']['modelTokens'] != 0
                         or browser_run['usage']['maxModelCallsInStep'] != 0):
                     raise RuntimeError('Browser acceptance requires deterministic steps without model calls')
+                from .console_browser_integration import run_cases
+
+                report['console_state'] = run_cases(output / 'console-state', env)
             finally:
                 stop.touch()
                 try:

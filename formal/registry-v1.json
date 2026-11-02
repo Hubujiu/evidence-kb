@@ -1882,6 +1882,50 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "console_citation_view",
+      "status": "unmodeled",
+      "owners": [
+        "kb_platform/console.mjs",
+        "kb_platform/console.html"
+      ],
+      "states": [
+        "idle",
+        "metadata_pending",
+        "preview_pending",
+        "displayed",
+        "superseded",
+        "failed"
+      ],
+      "transitions": [
+        "select citation",
+        "complete metadata",
+        "complete preview body",
+        "fail request or body",
+        "change identity or scope",
+        "revoke owned object URL"
+      ],
+      "invariants": [
+        "Only the current scope and citation selection may update the evidence view or own its object URL."
+      ],
+      "assumptions": [
+        "Browser event-loop callbacks are atomic only between awaits."
+      ],
+      "exclusions": [
+        "Inventory stage; model and actual browser counterexample are not yet attached.",
+        "JavaScript binding is complete module byte review drift, not a semantic AST or refinement proof."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/console.mjs",
+          "language": "javascript-module",
+          "symbol": "<module>",
+          "sha256": "3ceb6599145a3fc70d26d7fb726a88b6b99b85f0093c72737781b715b981403e"
+        }
+      ],
+      "models": [],
+      "negative_controls": []
     }
   ]
 }
