@@ -1,5 +1,7 @@
 from contextlib import redirect_stdout
 from io import StringIO
+from hashlib import sha256
+from html.parser import HTMLParser
 import json
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -19,6 +21,57 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class BrowserSourceContracts(unittest.TestCase):
+    def test_browser_baseline_snapshot_preserves_existing_and_new_sources(self):
+        snapshot = json.loads((ROOT / 'docs/browser-state-baseline-v1.json').read_text('utf-8'))
+        expected = {'kb_platform/agent_console.html', 'kb_platform/console.html', 'kb_platform/console.mjs',
+                    'e2e/knowledge.e2e.js', 'e2e/console-state.e2e.js'}
+        self.assertEqual({row['path'] for row in snapshot['production_files_and_existing_cases']}, expected)
+        for row in snapshot['production_files_and_existing_cases']:
+            content = (ROOT / row['path']).read_text('utf-8').encode('utf-8')
+            self.assertEqual(sha256(content).hexdigest(), row['sha256'], row['path'])
+            self.assertEqual(len(content), row['bytes'], row['path'])
+            self.assertTrue(row['byte_identical_to_combination_base'])
+        self.assertEqual(set(snapshot['new_suites']), {'agent-draft-state.e2e.js', 'console-scope-state.e2e.js'})
+        for name, cases in (('agent-draft-state.e2e.js', DRAFT_CASES), ('console-scope-state.e2e.js', SCOPE_CASES)):
+            content = (ROOT / 'e2e' / name).read_text('utf-8').encode('utf-8')
+            self.assertEqual(snapshot['new_suites'][name]['cases'], len(cases))
+            self.assertEqual(snapshot['new_suites'][name]['source_sha256'], sha256(content).hexdigest())
+
+    def test_budget_disclosure_has_one_real_summary_for_visible_fixture_checks(self):
+        class Disclosure(HTMLParser):
+            def __init__(self):
+                super().__init__(convert_charrefs=True)
+                self.stack, self.disclosures, self.summary = [], [], None
+
+            def handle_starttag(self, tag, attrs):
+                values = dict(attrs)
+                if tag == 'details':
+                    item = {'open': 'open' in values, 'runtime_nodes': 0, 'summaries': []}
+                    self.stack.append(item)
+                    self.disclosures.append(item)
+                if self.stack and values.get('id') == 'runtimeStatus':
+                    self.stack[-1]['runtime_nodes'] += 1
+                if tag == 'summary' and self.stack:
+                    self.summary = self.stack[-1]
+                    self.summary['summaries'].append('')
+
+            def handle_endtag(self, tag):
+                if tag == 'summary':
+                    self.summary = None
+                if tag == 'details':
+                    self.stack.pop()
+
+            def handle_data(self, text):
+                if self.summary is not None:
+                    self.summary['summaries'][-1] += text
+
+        parser = Disclosure()
+        parser.feed((ROOT / 'kb_platform/agent_console.html').read_text('utf-8'))
+        parser.close()
+        targets = [item for item in parser.disclosures if item['runtime_nodes']]
+        self.assertEqual(targets, [{'open': False, 'runtime_nodes': 1, 'summaries': ['服务状态与用量']}])
+        self.assertEqual(parser.stack, [])
+
     def test_current_markup_has_one_explicit_mapped_owner(self):
         self.assertEqual([], placement_violations(ROOT))
 

@@ -114,3 +114,30 @@ reproduction head. Any subsequent correction must have its own bounded model,
 named negative controls, source review and mandatory lint, preserving PR31's
 budget semantics and PR38's already checked citation behavior. No visual design
 or new frontend feature is part of this work.
+
+## First normal CI baseline and fixture correction
+
+PR52 run `41527311466` executed the frozen reproduction tree. The original two
+knowledge and seven citation cases passed. The scope suite produced its intended
+upload final-mutation assertion failure and two passing controls: an old upload
+actually wrote READY while the normal Create/refresh path had selected the next
+scope. This confirms that component race, not a backend authorization leak.
+
+All five draft cases instead stopped at the same setup assertion, before sending
+or editing any draft. The existing budget panel is inside a closed `details`,
+and the pinned browser engine excludes folded-away text from visible observation.
+The baseline-only correction taps its exact existing summary before retaining
+both original visible budget assertions. This follows the standard
+[details disclosure behavior](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/details);
+it does not read hidden text, weaken assertions, change timeouts/retries, or alter
+production markup. Draft-loss remains unconfirmed until a subsequent actual CI
+run reaches the intended assertions.
+
+The mandatory snapshot contract binds the original production/acceptance files
+and both new suite sources, normalizing text newlines for cross-platform review.
+A standard HTMLParser contract checks the unique existing closed disclosure and
+its summary. These are source-review/markup constraints, not semantic JavaScript
+proof. Raw CI report/JUnit/trace and all 13 attachment hashes were audited; all
+four suites recorded complete zero model usage. The root browser report did not
+record a host exit code on its failure path; the separate host stdout reported
+completed/stopped. The missing exit code is not reconstructed as zero.

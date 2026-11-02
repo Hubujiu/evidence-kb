@@ -40,13 +40,24 @@
     "agent-draft-state.e2e.js": {
       "cases": 5,
       "expected_candidate_failures": 4,
-      "expected_positive_controls": 1
+      "expected_positive_controls": 1,
+      "source_sha256": "e45d955a8a2b11ecb0313519c36dce30991dbbb0d9cef6980bdd13dafaf06f5c"
     },
     "console-scope-state.e2e.js": {
       "cases": 3,
       "candidate_failure_hypotheses": 1,
-      "expected_positive_controls": 2
+      "expected_positive_controls": 2,
+      "source_sha256": "342cde3d3a50b073b8d8f6da313616f4c3136a767f49cb0da0dbc50649c27a98"
     }
   },
-  "proof_boundary": "Actual normal CI DOM assertion results required. Source inspection and intended schedules are not verified browser bugs. No local browser, model, embedding or judge calls."
+  "proof_boundary": "Actual normal CI DOM assertion results required. Source inspection and intended schedules are not verified browser bugs. No local browser, model, embedding or judge calls.",
+  "source_snapshot_normalization": "UTF-8 text with universal-newline normalization",
+  "prior_ci_observation": {
+    "run_id": 41527311466,
+    "head": "f7f6a8a28c1362824acbd6ca3b005854e7d79fc0",
+    "scope": "1 intended assertion failure and 2 positive controls passed",
+    "draft": "5 setup failures; draft assertions NOT_REACHED; existing closed disclosure must be opened before visible budget checks",
+    "original_cases": "knowledge 2 and citation 7 passed",
+    "host_exit_code": "NOT_OBSERVED in root report; separate host stdout reports completed/stopped"
+  }
 }

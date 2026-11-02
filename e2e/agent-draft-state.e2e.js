@@ -48,6 +48,7 @@ async function fixture(app, screen, browser, createSession = true) {
   });
   await app.open('/agent');
   await expect(screen.getByRole('status')).toContainText('已连接，可直接提问。');
+  await browser.locator('details:has(#runtimeStatus) > summary').tap();
   await expect(browser.locator('#runtimeStatus')).toContainText('预算账本暂不可读取');
   await expect(browser.locator('#runtimeStatus')).toContainText('模型 未知 次');
   if (createSession) {
