@@ -14,6 +14,8 @@ import sys
 import time
 import unittest
 
+from scripts.formal_provider_lint import provider_circuit_violations
+
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'formal/registry-v1.json'
 LOCK = 'formal/toolchain-v1.json'
@@ -130,6 +132,9 @@ def operator_names(value, *, allow_empty: bool) -> bool:
 def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
     errors = []
     try:
+        if (root / 'kb_platform/provider_runtime.py').exists():
+            source = local_file(root, 'kb_platform/provider_runtime.py').read_text('utf-8')
+            errors.extend(provider_circuit_violations(source))
         registry = registry if registry is not None else json.loads(local_file(root, REGISTRY).read_text('utf-8'))
         if registry.get('schema_version') != 1 or not registry.get('machines'):
             raise ValueError('Registry v1 requires a nonempty machine inventory')

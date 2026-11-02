@@ -104,7 +104,7 @@ def _provider_guard(operation):
 
     def guarded(self, *args, **kwargs):
         try:
-            probe = self._circuit.acquire()
+            permit = self._circuit.acquire()
         except RuntimePolicyError as exc:
             raise RemoteModelError(exc.code) from None
         try:
@@ -114,10 +114,10 @@ def _provider_guard(operation):
             admission = getattr(exc, 'code', '') in {
                 'PROVIDER_RATE_LIMIT_WAIT_EXCEEDED', 'PROVIDER_RETRY_WAIT_EXCEEDED',
                 'PROVIDER_DEADLINE_EXCEEDED', 'PROVIDER_REQUEST_LIMIT', 'PROVIDER_REQUEST_UNRESOLVED'}
-            self._circuit.finish(probe, failure=not admission and (failure.retryable or failure.outcome == 'UNKNOWN'
+            self._circuit.finish(permit, failure=not admission and (failure.retryable or failure.outcome == 'UNKNOWN'
                 or getattr(exc, 'code', '') == 'PROVIDER_TRANSPORT_ERROR'))
             raise
-        self._circuit.finish(probe, success=True)
+        self._circuit.finish(permit, success=True)
         return result
     return guarded
 

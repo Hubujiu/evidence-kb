@@ -73,6 +73,11 @@ def retry_after_seconds(value, *, wall_clock=time.time):
     return delay if math.isfinite(delay) and delay >= 0 else None
 
 
+@dataclass(frozen=True, eq=False)
+class _CircuitPermit:
+    generation: int
+
+
 class ProviderCircuit:
 
     def __init__(self, failure_threshold=3, cooldown_seconds=30.0, *, clock=time.monotonic):
@@ -85,31 +90,50 @@ class ProviderCircuit:
         self._lock = threading.Lock()
         self._failures = 0
         self._opened_at = None
-        self._probe = False
+        self._probe = None
+        self._generation = 0
+        self._active = set()
+
+    def _advance(self):
+        self._generation += 1
+        self._active.clear()
+
+    def _permit(self):
+        permit = _CircuitPermit(self._generation)
+        self._active.add(permit)
+        return permit
 
     def acquire(self):
         with self._lock:
             if self._opened_at is None:
-                return False
-            if self.clock() - self._opened_at < self.cooldown or self._probe:
+                return self._permit()
+            if self.clock() - self._opened_at < self.cooldown or self._probe is not None:
                 raise RuntimePolicyError('PROVIDER_CIRCUIT_OPEN')
-            self._probe = True
-            return True
+            self._advance()
+            self._probe = self._permit()
+            return self._probe
 
-    def finish(self, probe, *, failure=False, success=False):
+    def finish(self, permit, *, failure=False, success=False):
         with self._lock:
+            if permit not in self._active or permit.generation != self._generation:
+                return
+            self._active.remove(permit)
+            probing = permit is self._probe
             if success:
                 self._failures, self._opened_at = 0, None
             elif failure:
                 self._failures += 1
-                if probe or self._failures >= self.threshold:
+                if probing or self._failures >= self.threshold:
                     self._opened_at = self.clock()
-            if probe:
-                self._probe = False
+                    if not probing:
+                        self._advance()
+            if probing:
+                self._probe = None
+                self._advance()
 
     def snapshot(self):
         with self._lock:
-            state = 'HALF_OPEN' if self._probe else 'OPEN' if self._opened_at is not None else 'CLOSED'
+            state = 'HALF_OPEN' if self._probe is not None else 'OPEN' if self._opened_at is not None else 'CLOSED'
             return {'state': state, 'consecutive_failures': self._failures,
                     'failure_threshold': self.threshold, 'cooldown_seconds': self.cooldown}
 
