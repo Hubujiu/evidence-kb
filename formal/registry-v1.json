@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -100,7 +100,7 @@
           "path": "kb_platform/rag_testing/provider_capture.py",
           "language": "python",
           "symbol": "MeteredTransport._handle_admitted",
-          "sha256": "3903308da069fc59c1a1144977a356077be2a6bc47161740ff01c9e588d398d0"
+          "sha256": "92ae8197031b951c91e0298be3fe05c703d8401952216b4effba79caadbb778a"
         },
         {
           "path": "kb_platform/embeddings.py",
@@ -118,7 +118,7 @@
           "path": "kb_platform/model_http.py",
           "language": "python",
           "symbol": "OpenAICompatibleAdapter.invoke",
-          "sha256": "7aca4fb4a257f49625d294b1542a3cb8a9832b33aa277ad2628ea71ff3fb7dde"
+          "sha256": "a9047f20ed44f5cd7a713d865dc17dc22e58b6eefff77c68fb35be69a71786c0"
         }
       ],
       "models": [],
@@ -160,13 +160,19 @@
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "LinkedBudgetLedger.cumulative_summary",
-          "sha256": "1aaa845b5c3d4df5012676155053ed25df0f0713ba5aed1f7e0f328759578054"
+          "sha256": "8bc9ce672c0c1b1b9ea7bf3cd6ddbf15e5f0c232a3859d22697dbbd10b56ae6d"
         },
         {
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "ReviewedPredecessorLedger.cumulative_summary",
-          "sha256": "a9010aceb4d2a3a25b78dbea5c09e0627169c1c4697e9dec1f040d704b1d8ad6"
+          "sha256": "ebd3cf86acc17f17991ec25e5723c08f6e14cb8b58ccbf98f238fde46d786410"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "symbol": "ReviewedPredecessorLedger._review_summary",
+          "language": "python",
+          "sha256": "ffa7746235cec3d7556a89ee943dbd77be7b9cd3620b27b648dd9fdc0e5c2282"
         }
       ],
       "models": [],
@@ -181,7 +187,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -242,7 +248,7 @@
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation → consumed/released"
+        "pending reservation \u2192 consumed/released"
       ],
       "transitions": [
         "BudgetLedger.reserve",
@@ -266,7 +272,7 @@
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "BudgetLedger.reserve",
-          "sha256": "2357ea31650462f417b1d4022ce52bf589bfae062d46d5740b9d389881b712f1"
+          "sha256": "fa3509f0aff7395119d5f37623b1d9373fa6e369698d4f34d9e001c67f81cd05"
         },
         {
           "path": "kb_platform/agent_model.py",
@@ -278,7 +284,7 @@
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "AgentModel.complete",
-          "sha256": "aa2a137fa0d11394b9aa21aa7868896298a280b77ec83943621a5862587c8c69"
+          "sha256": "f1f33d434ac14332452b2a1393f5dfc62bf203827a292120e4def670abe4d85d"
         },
         {
           "path": "kb_platform/agent_model.py",
@@ -367,7 +373,10 @@
         "rust/plugin-runtime/src/coordinator.rs"
       ],
       "states": [
-        "Pending, Starting, Active, Draining, Cleaning, CleanupFailed, Failed, Disposed"
+        "Pending, Starting, Active, Draining, Cleaning, CleanupFailed, Failed, Disposed",
+        "Unallocated/live/completed lease identities and retained ancestor chains.",
+        "Pending/queued/claimed/suppressed/completed activation identities across two generations.",
+        "Claimed/completed/acknowledged operations, active/failed/retried resources and retained/retired/collected instance identities."
       ],
       "transitions": [
         "Phase",
@@ -376,25 +385,35 @@
         "Coordinator::complete",
         "Coordinator::acquire",
         "Coordinator::drain",
-        "Coordinator::update"
+        "Coordinator::update",
+        "Coordinator::cancel_unclaimed_init",
+        "Coordinator::retained_by_consumer",
+        "Coordinator::listeners",
+        "Coordinator::resource",
+        "Coordinator::ack",
+        "Coordinator::prune_retired"
       ],
       "invariants": [
-        "No new lease on draining owner; no dispose with live descendant work; stale completion/disposer cannot mutate newer generation; cleanup failure is not disposal; dependency/scope ordering."
+        "No unrelated fresh admission on a draining owner; an already-admitted live chain may acquire nested leases. Cancellation is notification, not completion or resource release.",
+        "No dispose with live descendant work; retained dependency identities outlive consumer cleanup; serial concurrent executions share ancestry.",
+        "Suppressed unclaimed init cannot dispatch, stale completion cannot publish the replacement epoch, and generation identities are not reused.",
+        "Cleanup failure retains the resource; successful cleanup follows reverse registration identity order. Terminal completion is immutable; acknowledgement validates the whole owned terminal batch before deletion.",
+        "Listener snapshots sort priority, scope order, then resource registration identity. Retired instance records remain until operation ownership references are removed."
       ],
       "assumptions": [
-        "Inventory baseline is main 8160c051e63952278c5f8a80d1b024ebbe3cea17; only the registered finite PluginLifecycle abstraction has been model-checked, not all concrete coordinator states.",
+        "Inventory originated at main 8160c051e63952278c5f8a80d1b024ebbe3cea17; this batch uses dependency base 27c4180 and only its explicitly registered finite slices, not all coordinator states.",
         "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model.",
-        "First provider is active and first consumer init already claimed.",
-        "Successor initialization succeeds; first consumer initialization may fail.",
-        "Weak fairness for completion, reconciliation, cleanup and cleanup retry."
+        "Original PluginLifecycle model only: First provider is active and first consumer init already claimed.",
+        "Original PluginLifecycle model only: Successor initialization succeeds; first consumer initialization may fail.",
+        "Original PluginLifecycle model only: Weak fairness for completion, reconciliation, cleanup and cleanup retry.",
+        "ScopeLeaseAdmission starts three active owners with two bound dependencies, abstracts their fixed generations, and models serialized coordinator requests; cancellation notifies without releasing live work.",
+        "ActivationDispatch has two operation/generation identities and one disable/re-enable pair; FinalizationOwnership has three child resources, one retained ancestor listener, one failure/retry and two acknowledgement batches.",
+        "New ownership slices are safety/reachability abstractions without fairness or a general liveness claim. Commands are serialized; arbitrary callback/process execution and cross-model composition are not proved."
       ],
       "exclusions": [
-        "The registered model covers only the declared two-plugin, one-update scope; no machine-checked Rust-to-TLA+ refinement proof is provided.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory.",
-        "Nested scopes and multiple dependencies.",
-        "Serial-call ancestry, disabled/re-enabled scope, unclaimed init.",
-        "Operation acknowledgment, listener ordering, process transport.",
-        "Resource identity/LIFO order, compiler-level refinement proof."
+        "All models are finite behavioral abstractions, not Rust-to-TLA+ refinement proofs.",
+        "The original superseded-initialization model remains unchanged; the three additional ownership slices cover only their declared finite transitions.",
+        "Arbitrary plugin graphs, all service lookup/isolation/intercept values, process transport and external callbacks are not proved."
       ],
       "source_bindings": [
         {
@@ -504,6 +523,144 @@
           "language": "rust",
           "symbol": "current_init_failure_and_explicit_cancellation_remain_terminal",
           "sha256": "e8a6cf2372cbb1684034dbb55ef8bc90506ff5b1c20060ebe64a59df9e9c0880"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Lease",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Scope",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::retained_by_consumer",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::closing_scope_busy",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::open_ancestors",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::is_ancestor",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::lookup_binding",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "cancelled_serial_chain_in_child_retains_both_providers_until_real_completion",
+          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "inherited_deadline_and_foreign_runtime_rejections_do_not_allocate_leases",
+          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Operation",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::cancel_unclaimed_init",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::request",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "all_dependencies_gate_unclaimed_disable_and_reenable_dispatch",
+          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "claimed_disabled_epoch_cannot_publish_after_reenable_or_overwrite_successor",
+          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Resource",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::ack",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::prune_retired",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::resource",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::listeners",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::apply",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::collect",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "acknowledgement_validates_entire_batch_before_forgetting_any_completion",
+          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "listener_order_lifo_failure_retry_and_retirement_preserve_resource_identity",
+          "sha256": "cb4e084e90d6699c3c64b4f2cb661a5e833ad687774c346adfa75a1c945d8ca5"
         }
       ],
       "models": [
@@ -536,6 +693,81 @@
           },
           "timeout_seconds": 60,
           "heap_mb": 256
+        },
+        {
+          "id": "plugin-scope-lease",
+          "module": "formal/plugin_ownership/ScopeLeaseAdmission.tla",
+          "config": "formal/plugin_ownership/ScopeLeaseAdmission.cfg",
+          "invariants": [
+            "TypeOK",
+            "ImmutableLeaseAncestry",
+            "SerialChainOnly",
+            "NoForeignOwner",
+            "NoEarlyCleanup",
+            "DependenciesRetained"
+          ],
+          "properties": [],
+          "bounds": {
+            "root_scopes": 2,
+            "child_scopes": 1,
+            "owners": 3,
+            "dependency_edges": 2,
+            "unique_leases": 4,
+            "clock_ticks": 2,
+            "root_drains": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-activation-dispatch",
+          "module": "formal/plugin_ownership/ActivationDispatch.tla",
+          "config": "formal/plugin_ownership/ActivationDispatch.cfg",
+          "invariants": [
+            "AllDependenciesBeforeDispatch",
+            "FailedEpochNeverPublishes",
+            "NoGenerationReuse",
+            "NoSupersededPublication",
+            "NoSuppressedInitDispatch",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "instances": 1,
+            "generations": 2,
+            "dependency_edges": 2,
+            "disable": 1,
+            "reenable": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationOwnership.cfg",
+          "invariants": [
+            "CompletionImmutable",
+            "DisposedOwnsNoResource",
+            "FailureRetainsResource",
+            "ListenerOrder",
+            "NoForeignAcknowledgement",
+            "NoPendingAcknowledgement",
+            "NoPrematureRetirement",
+            "ReverseResourceCompletion",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "cleaned_instances": 1,
+            "ancestor_listener_owners": 1,
+            "child_resources": 3,
+            "operation_ids": 8,
+            "cleanup_failures": 1,
+            "ack_batches": 2
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 128
         }
       ],
       "negative_controls": [
@@ -546,13 +778,196 @@
           "expected_invariant": "NoSupersededFailure",
           "timeout_seconds": 60,
           "heap_mb": 256
+        },
+        {
+          "id": "plugin-scope-serial",
+          "module": "formal/plugin_ownership/ScopeLeaseAdmission.tla",
+          "config": "formal/plugin_ownership/ScopeLeaseSerial.cfg",
+          "expected_invariant": "SerialChainOnly",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-scope-foreign",
+          "module": "formal/plugin_ownership/ScopeLeaseAdmission.tla",
+          "config": "formal/plugin_ownership/ScopeLeaseForeign.cfg",
+          "expected_invariant": "NoForeignOwner",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-scope-early-cleanup",
+          "module": "formal/plugin_ownership/ScopeLeaseAdmission.tla",
+          "config": "formal/plugin_ownership/ScopeLeaseEarlyCleanup.cfg",
+          "expected_invariant": "NoEarlyCleanup",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-scope-dependency",
+          "module": "formal/plugin_ownership/ScopeLeaseAdmission.tla",
+          "config": "formal/plugin_ownership/ScopeLeaseDependency.cfg",
+          "expected_invariant": "DependenciesRetained",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-scope-nested-success",
+          "module": "formal/plugin_ownership/ScopeLeaseAdmission.tla",
+          "config": "formal/plugin_ownership/ScopeLeaseNestedSuccess.cfg",
+          "expected_invariant": "NestedCancelSuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-scope-drain-success",
+          "module": "formal/plugin_ownership/ScopeLeaseAdmission.tla",
+          "config": "formal/plugin_ownership/ScopeLeaseDrainSuccess.cfg",
+          "expected_invariant": "DrainSuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-activation-unclaimed",
+          "module": "formal/plugin_ownership/ActivationDispatch.tla",
+          "config": "formal/plugin_ownership/ActivationUnclaimed.cfg",
+          "expected_invariant": "NoSuppressedInitDispatch",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-activation-dependencies",
+          "module": "formal/plugin_ownership/ActivationDispatch.tla",
+          "config": "formal/plugin_ownership/ActivationDependencies.cfg",
+          "expected_invariant": "AllDependenciesBeforeDispatch",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-activation-stale",
+          "module": "formal/plugin_ownership/ActivationDispatch.tla",
+          "config": "formal/plugin_ownership/ActivationStale.cfg",
+          "expected_invariant": "NoSupersededPublication",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-activation-generation",
+          "module": "formal/plugin_ownership/ActivationDispatch.tla",
+          "config": "formal/plugin_ownership/ActivationGeneration.cfg",
+          "expected_invariant": "NoGenerationReuse",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-activation-unclaimed-success",
+          "module": "formal/plugin_ownership/ActivationDispatch.tla",
+          "config": "formal/plugin_ownership/ActivationUnclaimedSuccess.cfg",
+          "expected_invariant": "UnclaimedRecoveryUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-activation-claimed-success",
+          "module": "formal/plugin_ownership/ActivationDispatch.tla",
+          "config": "formal/plugin_ownership/ActivationClaimedSuccess.cfg",
+          "expected_invariant": "ClaimedRecoveryUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-activation-cancelled-success",
+          "module": "formal/plugin_ownership/ActivationDispatch.tla",
+          "config": "formal/plugin_ownership/ActivationCancelledSuccess.cfg",
+          "expected_invariant": "CancelledFailureUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-order",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationOrder.cfg",
+          "expected_invariant": "ReverseResourceCompletion",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-failure",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationFailure.cfg",
+          "expected_invariant": "FailureRetainsResource",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-pending-ack",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationPendingAck.cfg",
+          "expected_invariant": "NoPendingAcknowledgement",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-foreign-ack",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationForeignAck.cfg",
+          "expected_invariant": "NoForeignAcknowledgement",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-overwrite",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationOverwrite.cfg",
+          "expected_invariant": "CompletionImmutable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-retirement",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationRetirement.cfg",
+          "expected_invariant": "NoPrematureRetirement",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-listeners",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationListeners.cfg",
+          "expected_invariant": "ListenerOrder",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-success",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationSuccess.cfg",
+          "expected_invariant": "FinalizationSuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-failure-success",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationFailureSuccess.cfg",
+          "expected_invariant": "FailureRetentionUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "plugin-finalization-ack-success",
+          "module": "formal/plugin_ownership/FinalizationOwnership.tla",
+          "config": "formal/plugin_ownership/FinalizationAckSuccess.cfg",
+          "expected_invariant": "AckRejectionsUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
         }
       ],
       "remaining_obligations": [
-        "Nested scopes and multiple dependencies.",
-        "Serial-call ancestry, disabled/re-enabled scope, unclaimed init.",
-        "Operation acknowledgment, listener ordering, process transport.",
-        "Resource identity/LIFO order, compiler-level refinement proof."
+        "Current WIP next owners: apply desired_revision/observed_revision and affected closure; dynamic shadowing/isolation/intercept visibility; subtree collection; instance_exited identity; diagnostic bounded retention. These are actual unmodeled transitions, not merely unbounded-system assumptions.",
+        "Arbitrary plugin graphs and repeated reconfiguration, all resource/callback payloads, process transport and cross-slice composed execution remain outside the currently registered bounds.",
+        "Allocation exhaustion, operating-system/backend guarantees, compiler-level refinement and unbounded progress remain assumptions, not established by hashes or finite safety runs."
       ]
     },
     {
@@ -603,7 +1018,7 @@
         "rust/llm-service/src/registry.rs"
       ],
       "states": [
-        "route Active→Draining→Cleaning→removed/CleanupFailed"
+        "route Active\u2192Draining\u2192Cleaning\u2192removed/CleanupFailed"
       ],
       "transitions": [
         "RoutePhase",
@@ -750,7 +1165,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY↔WAITING"
+        "READY\u2194WAITING"
       ],
       "transitions": [
         "transition",
@@ -887,7 +1302,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1080,7 +1495,7 @@
         "rust/storage-service/src/transaction.rs"
       ],
       "states": [
-        "begin→held→executing→commit/rollback"
+        "begin\u2192held\u2192executing\u2192commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1151,7 +1566,7 @@
         "kb_platform/storage_adapters/values.py"
       ],
       "states": [
-        "Input→Executing→Result→Values / Failed"
+        "Input\u2192Executing\u2192Result\u2192Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1217,7 +1632,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1242,7 +1657,7 @@
           "path": "kb_platform/contract_transfer.py",
           "language": "python",
           "symbol": "JsonEndpoint.execute",
-          "sha256": "eeef3078396601c772b98a8c5f245d171af19604f78c5b1bcf9bf9835f569c34"
+          "sha256": "1ef6cbfc1375770cd12b34ad516d92550f0759112990700852fcf37f1d395d3d"
         },
         {
           "path": "kb_platform/contract_transfer.py",
@@ -1254,7 +1669,7 @@
           "path": "kb_platform/contract_transfer.py",
           "language": "python",
           "symbol": "JsonClient._call",
-          "sha256": "acbc112e1da50988c06943f1e3c9ff440729ddc9165133f89f008f7b51bfcf96"
+          "sha256": "1592a38c7eed38286c22b331f20b9bdea75d35fa4ce21129ac167172edb30727"
         },
         {
           "path": "kb_platform/storage_object_wire.py",
@@ -1279,7 +1694,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent→issued→expired/revoked"
+        "absent\u2192issued\u2192expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1404,7 +1819,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1494,7 +1909,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1543,7 +1958,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1573,7 +1988,7 @@
           "path": "kb_platform/provider_admission.py",
           "language": "python",
           "symbol": "ProviderAdmission.require_available",
-          "sha256": "34e5d3ecd6d9075c1b0b97fc77e0ba7e595b0c853da088fb01d1beddd24a0469"
+          "sha256": "84ec750df0b82f73a4284f7d42babf4c16829ac8a73125d418bdd29a8f8c3ea4"
         },
         {
           "path": "kb_platform/provider_admission.py",
@@ -1597,7 +2012,7 @@
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "classify_failure",
-          "sha256": "3c2f067657f416d0625091df29d3ebf9858af75c4aab2f189fb4ddbeb0195273"
+          "sha256": "4adc66c521182b504c421700567b44159cf359595ba8f96ec5156830a58632ef"
         },
         {
           "path": "kb_platform/remote.py",
@@ -1616,7 +2031,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",
@@ -1727,7 +2142,7 @@
           "path": "kb_platform/knowledge_contracts.py",
           "language": "python",
           "symbol": "ModelEndpoint.complete",
-          "sha256": "5abf9663da57dfcbff2d5d0672a37fca867f2e2b251e17b1b2d859cab1469753"
+          "sha256": "4d88494cb04af4727e3a66d503926b33c8109e93db2c39de3873686c3d7a6894"
         },
         {
           "path": "kb_platform/knowledge_contracts.py",

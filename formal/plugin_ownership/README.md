@@ -1,0 +1,172 @@
+# Plugin protocol ownership: additional finite slices
+
+Base: `27c4180e1a66d0b7c9d554eff9620ef16a49023b` (PR31 and PR32 dependency
+integration). This independent, model-only batch leaves the existing
+`formal/plugin_lifecycle/PluginLifecycle.tla` and its superseded-initialization
+fix unchanged. No new production defect is claimed by a seeded counterexample.
+
+## Mature reference before modeling
+
+The pinned [DSH Cordis fiber](https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/vendor/cordis/src/fiber.ts)
+was read at `_refresh` (all required implementations contribute to the epoch),
+`_reload` (committed dependency identities), and `_unload` (dependent teardown
+before provider release). The matching
+[events implementation](https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/vendor/cordis/src/events.ts)
+was read for owned registration, snapshot dispatch and listener cleanup.
+`config/plugin-runtime/cordis-reference-lock.json` pins these original files;
+this task does not execute upstream JavaScript or paid providers.
+
+This project's Rust protocol is not an exact Cordis port. It explicitly refuses
+parallel sibling executions of a serial plugin, permits admitted nested work,
+retains resources until real completion, and stops cleanup at a failed resource
+until explicit retry. Upstream cleanup logs individual disposer errors and uses
+concurrent promise joining; it does not establish the stronger Rust retry/LIFO
+contract. See `docs/plugin-runtime.md` and `docs/plugin-harness.md`.
+
+## Stage 1: ScopeLeaseAdmission
+
+Three initially active owners occupy a root and child scope. The child consumer
+holds two distinct provider identities. A separate runtime is represented by a
+foreign-owner admission attempt. Four never-reused lease identities include an
+optional scope pin and up to three serial executions; parent ancestry is copied
+at acquisition and remains valid even if the parent later completes. Requests
+are atomic coordinator commands, not atomic callback/network executions.
+
+| Model action or state | Actual owner |
+| --- | --- |
+| `ScopePin`, `Call`, immutable allocated lease/ancestor identities | `Coordinator::acquire`, `Lease` |
+| `ForeignCall` | runtime and scope ancestry guards in `acquire` |
+| `Cancel`, `Drain` | `cancel`, `drain_instance`, `drain`; notification only |
+| `Tick` | `RuntimeTick`, inherited minimum deadline check in `acquire` |
+| `Complete` | invoke completion / non-operation scope `RuntimeRelease` |
+| `bindings`, `CleanConsumer`, `CleanProvider` | `retained_by_consumer`, `closing_scope_busy`, cleanup eligibility in `reconcile` |
+
+Safety checks enforce comparable ancestry for simultaneous serial executions,
+no foreign-owner admission, live-lease cleanup pins, and retention of both
+providers until consumer release. The two success witnesses require an actual
+cancelled parent to admit a nested child and then allow all owners to drain after
+real completion. This intentionally does **not** assert that cancellation
+revokes the whole admitted chain. Expired deadlines still reject new work.
+
+The four negative profiles independently remove serial, scope, live-work or
+consumer-binding protection. A named invariant violation with TLC exit 12 is the
+expected negative result; parser errors, timeouts, zero-state runs and unrelated
+invariants cannot pass. Success witnesses also intentionally exit 12, but prove
+reachability of the named positive outcome rather than a bug.
+
+Actual Rust contracts in `ownership_tests.rs` combine a cancelled child-scope
+serial chain, both retained dependencies, refused sibling execution, deferred
+cleanup, foreign runtime rejection, and inherited deadline expiry. Existing
+contracts for nested inherited calls, serial ancestry, visibility/isolation and
+real completion remain in `tests.rs` and are not removed or weakened.
+
+The mandatory `formal_plugin_ownership` token-shape lint is called by the ordinary
+formal registry gate. Its eight source mutations refresh source-binding hashes
+before invoking that gate on the actual plugin source and registered model
+slice. This is a semantic review tripwire, **not** a Rust parser, compiler-level
+proof or a guarantee against every syntactically different unsafe implementation.
+
+## Stage 2: ActivationDispatch
+
+This slice starts with two unavailable dependencies and one pending instance.
+Each dependency becomes ready independently; init is queued only after both are
+bound. `Claim` represents `RuntimePoll`, not callback completion. One disable
+and one re-enable can race a queued or claimed init. Unclaimed cancellation
+removes both the queued action and its operation identity; claimed work keeps
+ownership until actual completion and cannot publish into the replacement epoch.
+`Start`, `Disable`, `Enable`, `CancelInit`, `Complete`, and `Clean` map respectively
+to `reconcile`, `update`, `cancel_unclaimed_init`, `cancel`, and `complete`'s init
+and final-cleanup arms. IDs 1 and 2 abstract distinct init operations/generations;
+allocation history is never reset or reused. Cleanup resource details are deferred
+to stage 3, not silently assumed proved by this abstraction.
+
+Four independent negative profiles target incomplete dependency admission,
+dispatched suppressed init, stale-epoch publication, and generation reuse. Three
+success witnesses reach unclaimed replacement recovery, claimed replacement
+recovery, and an explicitly cancelled init's late success remaining failed.
+All three were actually reached. The positive profile explores 82 states; this
+small bound intentionally includes only two generations, so a re-enable after
+cleanup has already advanced to generation 2 (which requires generation 3 in the
+implementation), repeated updates, and final-generation teardown are outside it.
+It makes no liveness claim or claim that every command succeeds.
+
+Two additional actual Rust contracts cover both dependencies gating dispatch,
+unclaimed disable/re-enable, claimed late success, resource retention, new action
+identity, duplicate old completion not changing the successor, and stale-generation
+admission rejection. Six additional mandatory source-shape mutants are rejected
+after source hashes are refreshed. The full native plugin suite passes 50 tests;
+20 gate/lint tests and all 22 unified formal runs plus two evidence contracts pass
+in `.local/*stage2*`. An interrupted authoring tool before registration produced
+no stage-2 test logs or completed validation; only the subsequently completed
+runs are counted. No production coordinator change was needed.
+
+## Stage 3: FinalizationOwnership
+
+One active child instance owns three ordered resource identities and one already
+claimed invocation; one ancestor listener remains independently active. Cleanup
+operations use monotonically allocated IDs 3 through 7, with one possible failure
+and retry. ID 0 is a foreign terminal operation and IDs 1/2 are child init/invoke.
+The fixed IDs abstract identity only; they are not copied across owner boundaries.
+
+`Register`, `ReadListeners`, `Schedule`, `ClaimCleanup`, `FinishCleanup`, `Retry`,
+`Ack`, `CompleteAgain`, `Retire` and `Prune` map to `resource`, `listeners`,
+`reconcile`'s reversed resource selection, `RuntimePoll`, `complete`, `retry`,
+`ack`, immutable completion handling, `apply`'s retired set and `prune_retired`.
+The model allows an invocation to register a late resource while draining until
+real completion, but never after that operation completes. Listener results are
+snapshots, not live mutable enumerators or proofs of callback execution.
+
+The seven seeded profiles target FIFO cleanup, failed-resource release, pending
+or foreign acknowledgement, completion overwrite, premature retirement and wrong
+listener sorting. Three positive-outcome witnesses reach complete failed-cleanup
+retry/ordered resource removal/ack/retirement, a failed cleanup retaining its
+resource, and both mixed-batch ack rejections without deleting the earlier valid
+operation. The full success trace has resources `{2,3,4}` done, only foreign
+operation 0 retained, and distinct failed/retry operation IDs; duplicate completion
+and conflicting completion rejection are both actually reached.
+
+Positive exploration has 17,800 states. All 33 unified formal runs and two evidence
+contracts pass. The native plugin suite passes 52 tests, including six new combined
+real coordinator tests. Twenty gate/lint tests pass, with 23 refreshed-hash source
+mutations across the three slices. Raw authoring evidence is in `.local/*stage3*`.
+The production coordinator is byte-identical to the dependency base; this is
+model-only, not a newly reproduced implementation bug.
+
+## Explicit remaining work and boundaries
+
+This feature is still WIP. Concrete next owners, not merely external assumptions:
+
+- `apply`/`reconcile` desired and observed revisions, affected-subgraph closure;
+- dynamic service shadowing, isolation and intercept visibility;
+- `collect` subtree-level reclamation (distinct from modeled `prune_retired`);
+- stale/current `instance_exited` events and bounded diagnostic retention.
+
+Their source bindings are inventory/review anchors only until separate registered
+models and actual contracts cover their transitions. Remaining work is not
+silently declared covered by the three existing slices.
+
+Unbounded scopes/plugins/calls, dynamic shadowing/isolation/intercept payloads,
+arbitrary callback effects, process transport, allocation exhaustion, OS failure,
+and implementation refinement remain outside the finite scope. The model has
+no fairness/liveness assertion; terminal deadlock checking is disabled deliberately.
+A positive safety result and a happy-path witness do not prove all branches are
+reachable or that cooperative callbacks must finish.
+
+The base contained eleven stale Python source hashes after PR31 composition and
+one newly extracted `ReviewedPredecessorLedger._review_summary` inventory owner.
+Their actual symbols were reviewed and inventory bindings refreshed. This does
+not add model coverage for budget, RPC, provider admission or cache owners.
+
+## Evidence
+
+Stage 1 authoring validation: `cargo test --locked --offline -p plugin-runtime`
+passed 48 tests (including two new combined protocol contracts); the mandatory
+formal registry/verdict/lint contracts passed 20 tests, including eight refreshed-hash
+source mutations. The unified formal runner passed all 14 registered runs and
+two evidence contracts. ScopeLeaseAdmission explored 149,994 distinct states;
+four named negative profiles and both positive-outcome witnesses were reached.
+The initial formatting check failed on the new Rust test formatting and was corrected;
+an earlier shell redirection failed before Java started, and is not a model run.
+Raw authoring evidence is retained in `.local/plugin-*stage1.log` and
+`.local/formal-stage1/`. Final-tree verification follows after all three slices;
+no ordinary full gate or remote CI is claimed yet.
