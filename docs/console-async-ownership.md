@@ -56,3 +56,11 @@ CI-pinned browser. The local Chromium 155 attempt did not reach the tests becaus
 the environment rejected its process-singleton socket. No browser baseline or
 fixed pass is claimed from that attempt. The pinned Chromium 156 CDN returned an
 HTML `Site Unavailable` response; no alternate download was attempted.
+
+The first PR38 CI baseline reached the console runner only after the original
+knowledge-browser cases passed, but the e2e CLI rejected its output directory
+outside the e2e project root (`INVALID_CONFIG`, exit 2). No console assertions
+executed, so that run is infrastructure evidence, not a race counterexample.
+The harness correction uses the existing `e2e/.artifacts/<unique-id>` convention
+and copies artifacts into the requested report directory even after failure.
+It leaves the five desired browser assertions and legacy module bytes unchanged.

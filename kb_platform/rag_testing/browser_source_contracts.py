@@ -1,7 +1,12 @@
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+from subprocess import CompletedProcess
+import xml.etree.ElementTree as ET
 
+from .console_browser_integration import CASES, run_cases
 from .browser_sources import ENTRIES, markup_violations, placement_violations
 from .formal_state_machines import digest, source_digest, state_candidates
 
@@ -56,3 +61,39 @@ class BrowserSourceContracts(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'complete .mjs module'):
                 source_digest(root, {**binding, 'symbol': 'next'})
             self.assertIn(('owner.mjs', '<module>'), state_candidates(root, ['.']))
+
+
+    def test_console_runner_uses_project_output_and_preserves_failed_run_artifacts(self):
+        for returncode in (0, 2):
+            with self.subTest(returncode=returncode), TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'e2e').mkdir()
+                (root / 'kb_platform').mkdir()
+                for name in ('console.html', 'console.mjs'):
+                    (root / 'kb_platform' / name).write_text('synthetic source', encoding='utf-8')
+                output = root / 'reports/console'
+
+                def run(command, **kwargs):
+                    target = Path(command[command.index('--output') + 1])
+                    self.assertTrue(target.is_relative_to(root / 'e2e'))
+                    self.assertEqual(root / 'e2e', kwargs['cwd'])
+                    self.assertEqual('console-state.e2e.js', kwargs['env']['KB_E2E_TESTS'])
+                    target.mkdir(parents=True)
+                    (target / 'partial.txt').write_text('preserve even on failure', encoding='utf-8')
+                    document = ET.Element('testsuite')
+                    for name in CASES:
+                        ET.SubElement(document, 'testcase', name=name, classname='console-state.e2e.js')
+                    ET.ElementTree(document).write(target / 'junit.xml')
+                    (target / 'report.json').write_text(json.dumps({'run': {'status': 'passed', 'errors': [],
+                        'usage': {'modelTokens': 0, 'maxModelCallsInStep': 0}}}), encoding='utf-8')
+                    return CompletedProcess(command, returncode)
+
+                with patch('kb_platform.rag_testing.console_browser_integration.ROOT', root), patch(
+                        'kb_platform.rag_testing.console_browser_integration.shutil.which', return_value='/synthetic/node'), patch(
+                        'kb_platform.rag_testing.console_browser_integration.subprocess.run', side_effect=run):
+                    if returncode:
+                        with self.assertRaisesRegex(RuntimeError, 'failed with exit 2'):
+                            run_cases(output, {})
+                    else:
+                        self.assertEqual(len(CASES), run_cases(output, {})['tests'])
+                self.assertEqual('preserve even on failure', (output / 'browser/partial.txt').read_text('utf-8'))

@@ -9,6 +9,7 @@ import subprocess
 from tempfile import TemporaryDirectory
 from threading import Thread
 import time
+from uuid import uuid4
 
 from .browser_integration import browser_verdict
 from .runner import write_json
@@ -29,22 +30,28 @@ def run_cases(output, env):
     node = shutil.which('node')
     if node is None:
         raise ValueError('Node is required for controlled console browser checks')
+    browser_output = ROOT / 'e2e/.artifacts' / uuid4().hex
     command = [node, str(ROOT / 'e2e/node_modules/e2e/dist/cli/bin.js'), 'run',
-               '--output', str(output / 'browser'), '--no-cache', '--retries', '0']
-    with (output / 'browser.log').open('w', encoding='utf-8') as log:
-        result = subprocess.run(command, cwd=ROOT / 'e2e', env={**env,
-            'KB_E2E_TESTS': 'console-state.e2e.js', 'E2E_TELEMETRY_DISABLED': '1'},
-            stdout=log, stderr=subprocess.STDOUT, timeout=180, check=False)
-    if result.returncode:
-        raise RuntimeError(f'Console browser regression failed with exit {result.returncode}; see {output / "browser.log"}')
-    report = browser_verdict(output / 'browser/junit.xml', expected=CASES, classname='console-state.e2e.js')
-    run = json.loads((output / 'browser/report.json').read_text('utf-8'))['run']
-    if (run['status'] != 'passed' or run['errors'] or run['usage']['modelTokens'] != 0
-            or run['usage']['maxModelCallsInStep'] != 0):
-        raise RuntimeError('Console browser checks require every deterministic case and zero model calls')
-    return {**report, 'browser_usage': run['usage'], 'source_sha256': {
-        name: sha256((ROOT / 'kb_platform' / name).read_bytes()).hexdigest()
-        for name in ('console.html', 'console.mjs')}}
+               '--output', str(browser_output), '--no-cache', '--retries', '0']
+    try:
+        with (output / 'browser.log').open('w', encoding='utf-8') as log:
+            result = subprocess.run(command, cwd=ROOT / 'e2e', env={**env,
+                'KB_E2E_TESTS': 'console-state.e2e.js', 'E2E_TELEMETRY_DISABLED': '1'},
+                stdout=log, stderr=subprocess.STDOUT, timeout=180, check=False)
+        if result.returncode:
+            raise RuntimeError(f'Console browser regression failed with exit {result.returncode}; see {output / "browser.log"}')
+        report = browser_verdict(browser_output / 'junit.xml', expected=CASES, classname='console-state.e2e.js')
+        run = json.loads((browser_output / 'report.json').read_text('utf-8'))['run']
+        if (run['status'] != 'passed' or run['errors'] or run['usage']['modelTokens'] != 0
+                or run['usage']['maxModelCallsInStep'] != 0):
+            raise RuntimeError('Console browser checks require every deterministic case and zero model calls')
+        return {**report, 'browser_usage': run['usage'], 'source_sha256': {
+            name: sha256((ROOT / 'kb_platform' / name).read_bytes()).hexdigest()
+            for name in ('console.html', 'console.mjs')}}
+    finally:
+        if browser_output.exists():
+            shutil.copytree(browser_output, output / 'browser')
+
 
 
 class StaticConsole(BaseHTTPRequestHandler):
