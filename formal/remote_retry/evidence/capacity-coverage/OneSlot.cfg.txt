@@ -1,0 +1,15 @@
+SPECIFICATION Spec
+CHECK_DEADLOCK FALSE
+CONSTANTS
+    BypassCapacity = FALSE
+    EarlyRelease = FALSE
+    BypassFifo = FALSE
+    IgnoreCooldown = FALSE
+INVARIANTS
+    TypeOK
+    QueueOwnership
+    SlotCapacity
+    NoEarlyCleanup
+    FifoClaims
+    ReservationAdmission
+    ActualSendRequiresReservation

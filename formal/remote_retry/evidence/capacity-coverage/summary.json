@@ -1,0 +1,15 @@
+{
+  "scope": "Read-only standalone supplemental prototype before final parameterized profile; final frozen formal gate must recheck exact registered input.",
+  "prior_frozen_commit": "4e9354a4c31f657db846f5903fe0cc18c00c7b50",
+  "prior_gap": "Two unique callers / two slots cannot demonstrate over-admission detection.",
+  "positive_exit": 0,
+  "positive_distinct_states": 12008,
+  "seeded_capacity_bypass_exit": 12,
+  "expected_invariant": "SlotCapacity",
+  "active_owner_queue_witness_exit": 12,
+  "expected_witness_assertion": "OneSlotWaitUnreachable",
+  "source_mutants_after_revision": 22,
+  "refreshed_hash_mutants_after_revision": 8,
+  "production_changes": false,
+  "new_paid_calls": 0
+}

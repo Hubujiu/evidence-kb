@@ -2030,7 +2030,7 @@
       "assumptions": [
         "Pinned OpenAI 2.54.0 SDK max_retries=0; runtime owns model retry. Pinned google-auth 2.62.0 token request callback retry loop is separate from model dispatch and can invoke up to three callbacks per modeled refresh; callbacks do not prove a count of network wire transmissions.",
         "Three separate finite safety abstractions, not their full product composition. Initial Google credential is valid. Current-token adoption is an environment action representing a concurrent successful refresh; the real auth lock is tested with Events, not fully refined in TLA.",
-        "Transport model time/waits are abstract units; shared policy models two requests, two slots and ticks 0..2. Atomic lock sections and stable caller-owned context lifetimes are abstractions; cancellation need not interrupt a blocked OS/SDK wait immediately."
+        "Transport model time/waits are abstract units; shared policy models two requests with explicit one-slot and two-slot profiles and ticks 0..2. Atomic lock sections and stable caller-owned context lifetimes are abstractions; cancellation need not interrupt a blocked OS/SDK wait immediately."
       ],
       "exclusions": [
         "ProviderCircuit generation, durable receipt implementation and post-receipt admission are separate existing owners; their production fixes are not overwritten.",
@@ -2204,6 +2204,33 @@
           },
           "timeout_seconds": 60,
           "heap_mb": 384
+        },
+        {
+          "id": "shared_google_one_slot",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/OneSlot.cfg",
+          "invariants": [
+            "TypeOK",
+            "QueueOwnership",
+            "SlotCapacity",
+            "NoEarlyCleanup",
+            "FifoClaims",
+            "ReservationAdmission",
+            "ActualSendRequiresReservation"
+          ],
+          "properties": [],
+          "bounds": {
+            "requests": 2,
+            "slots": 1,
+            "clock_ticks": 2,
+            "wait_cap_units": 2,
+            "cooldown_hints": [
+              1,
+              3
+            ]
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 384
         }
       ],
       "negative_controls": [
@@ -2316,6 +2343,22 @@
           "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
           "config": "formal/remote_retry/SameWireTimeReachable.cfg",
           "expected_invariant": "SameWireTimeUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_capacity_bypass",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/SeededCapacityBypass.cfg",
+          "expected_invariant": "SlotCapacity",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "remote_one_slot_wait_reachable",
+          "module": "formal/remote_retry/SharedGoogleWaitSlots.tla",
+          "config": "formal/remote_retry/OneSlotWaitReachable.cfg",
+          "expected_invariant": "OneSlotWaitUnreachable",
           "timeout_seconds": 60,
           "heap_mb": 256
         }

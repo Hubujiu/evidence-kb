@@ -65,20 +65,20 @@ abstractions, and each model/config is bound by the mandatory registry.
   action representing another caller's completed refresh; auth-lock concurrency
   is exercised in the real Event regression, not proved as a combined TLA
   interleaving. Failed refresh does not promote a completed stage.
-- **SharedGoogleWaitSlots:** two requests, two slots, ticks 0..2, wait cap 2,
+- **SharedGoogleWaitSlots:** two requests with separate one-slot and two-slot profiles, ticks 0..2, wait cap 2,
   cooldown hints 1/3. FIFO claims, interrupted waiters, rate reservation and
   actual active work are distinct. A release cannot precede actual settlement.
   A reservation must satisfy the cooldown observed at reservation time. This
   intentionally does not assert spacing of later actual wire sends.
 
-Ten deliberately **seeded** policy mutations must reach their named invariant
+Eleven deliberately **seeded** policy mutations must reach their named invariant
 failures: unknown replay, duplicate physical identity, third format stage,
 hint clamping, reset of auth's retry budget, repeated auth continuation,
 counting OAuth callbacks as model sends, premature slot release, FIFO bypass
-and ignored cooldown. None is labelled a discovered current production bug.
-Four additional negative assertions are **reachability witnesses, not bugs**:
+ignored cooldown and over-capacity admission. None is labelled a discovered current production bug.
+Five additional negative assertions are **reachability witnesses, not bugs**:
 composed retry/format success, composed Google auth/retry success, complete
-slot drain, and distinct rate reservations with equal abstract send times.
+slot drain, a real active one-slot owner blocking its queued competitor, and distinct rate reservations with equal abstract send times.
 The last witness prevents an unjustified strict-wire-spacing claim.
 
 The first Google model imposed an invalid invariant equating an unfinished or
@@ -115,8 +115,8 @@ real-time deadline defect.
 `remote_retry_lint.py` is called by `registry_violations`, so it runs in the
 ordinary mandatory formal-lint and formal-only gates. It checks concrete AST
 structure at retry/counter, correction, credential, cooldown, FIFO and SDK
-boundaries; hashes alone cannot satisfy it. Contracts reject 21 seeded source
-mutations and seven whole-registry hash-refresh mutants. Existing PR42
+boundaries; hashes alone cannot satisfy it. Contracts reject 22 seeded source
+mutations and eight whole-registry hash-refresh mutants. Existing PR42
 mandatory post-receipt admission checks remain unchanged and active.
 
 Initial probe KeyError (format fields looked up in the wrong receipt record)
@@ -124,3 +124,16 @@ is retained as a probe error, not a product defect. There are zero new external
 model, embedding, judge or OAuth calls. Remaining obligations include arbitrary
 provider duration/usage, unbounded concurrency/time, SDK transport internals,
 crashes and full cross-owner composition.
+
+## One-slot coverage correction
+
+The first frozen WIP `4e9354a` / published `509dd6c` modeled two callers and
+two slots. Its SlotCapacity invariant could not challenge over-admission:
+two unique owners cannot exceed a capacity of two. That earlier profile is
+retained, not retrospectively presented as an over-admission mutation check.
+The follow-up adds a two-caller/one-slot positive profile, a named capacity-
+bypass seeded counterexample, and an active-owner/queued-competitor reachability
+witness. The existing real Event-based one-slot protocol test already exercises
+blocking and true release; a new source mutant removes the zero-available guard
+and remains rejected even after all source hashes are refreshed. This corrects
+a finite-model coverage weakness, not a production bug.

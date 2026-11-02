@@ -33,6 +33,7 @@ MUTANTS = [
     (OWNER, '_FifoSlots.__enter__', 'self._waiters.remove(token)', 'pass'),
     (OWNER, '_FifoSlots.__enter__', 'self._available -= 1', 'self._available += 1'),
     (SDK, 'chat_response', 'max_retries=0', 'max_retries=2'),
+    (OWNER, '_FifoSlots.__enter__', 'or self._available == 0', 'or False'),
 ]
 
 
@@ -72,7 +73,7 @@ class RemoteRetryFormalContracts(unittest.TestCase):
                 (root / path).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / path, root / path)
             originals = {path: (root / path).read_text() for path in (OWNER, SDK)}
-            for path, symbol, before, after in (MUTANTS[index] for index in (0, 4, 7, 10, 11, 15, 20)):
+            for path, symbol, before, after in (MUTANTS[index] for index in (0, 4, 7, 10, 11, 15, 20, 21)):
                 with self.subTest(owner=symbol):
                     for name, source in originals.items():
                         (root / name).write_text(source)

@@ -1,10 +1,10 @@
 ----------------------- MODULE SharedGoogleWaitSlots -----------------------
 EXTENDS Naturals, Sequences, FiniteSets, TLC
-CONSTANTS EarlyRelease, BypassFifo, IgnoreCooldown
+CONSTANTS EarlyRelease, BypassFifo, IgnoreCooldown, CapacityLimit, BypassCapacity
 VARIABLES pc, queue, owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled
 vars == <<pc, queue, owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
 Clients == {"a", "b"}
-Capacity == 2
+Capacity == CapacityLimit
 WaitCap == 2
 Max(a, b) == IF a > b THEN a ELSE b
 Required == Max(nextSlot, cooldown)
@@ -22,7 +22,7 @@ Queue(r) ==
     /\ queue' = Append(queue, r)
     /\ UNCHANGED <<owners, active, claimLog, now, nextSlot, cooldown, started, waited, wakeAt, reservedAt, requiredAt, sentAt, deferred, cancelled>>
 Claim(r) ==
-    /\ pc[r] = "queued" /\ Cardinality(owners) < Capacity /\ (BypassFifo \/ Head(queue) = r)
+    /\ pc[r] = "queued" /\ (BypassCapacity \/ Cardinality(owners) < Capacity) /\ (BypassFifo \/ Head(queue) = r)
     /\ pc' = [pc EXCEPT ![r] = "rate"]
     /\ queue' = Remove(queue, r)
     /\ owners' = owners \cup {r}
@@ -107,4 +107,5 @@ ReservationAdmission == \A r \in Clients: reservedAt[r] < 3 => reservedAt[r] >= 
 ActualSendRequiresReservation == \A r \in Clients: sentAt[r] < 3 => reservedAt[r] <= sentAt[r]
 SuccessUnreachable == ~(pc = [r \in Clients |-> "done"] /\ sentAt["a"] < 3 /\ sentAt["b"] < 3 /\ owners = {} /\ active = {})
 SameWireTimeUnreachable == ~(sentAt["a"] < 3 /\ sentAt["a"] = sentAt["b"] /\ reservedAt["a"] # reservedAt["b"])
+OneSlotWaitUnreachable == ~(Cardinality(owners) = 1 /\ active = owners /\ Len(queue) = 1)
 =============================================================================
