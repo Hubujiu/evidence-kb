@@ -1639,13 +1639,13 @@
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "ProviderCircuit.acquire",
-          "sha256": "a2640dbb48811efa2b4c3d1d4273c450bf00fc549990384cf82833efa9929e8d"
+          "sha256": "d59dd8facd53c91f4a440e116d7e98c4d77593a06b41a024c8ac3b68050490c0"
         },
         {
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "ProviderCircuit.finish",
-          "sha256": "bc814b2d80248206ee7ab20031c8db9821cfdff484d042adf04ea59663c14ff6"
+          "sha256": "5dbb44ca3719b82e5ef55da6277017eb47a990d2cd6b69bf068500cf76ab539a"
         },
         {
           "path": "kb_platform/provider_runtime.py",
@@ -1657,7 +1657,7 @@
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "ProviderCircuit.snapshot",
-          "sha256": "543ac6e070a0aa73d445a19a2af34b76a44a5c86907e7f8ea5d10c8d88557e6c"
+          "sha256": "7b5e4ea47fd305fbbdb7bef87768522598cb3563764c565e8c6366491fac5b49"
         },
         {
           "path": "kb_platform/provider_runtime.py",
@@ -1882,6 +1882,154 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "provider_circuit",
+      "status": "partial",
+      "owners": [
+        "kb_platform/provider_runtime.py",
+        "kb_platform/remote.py"
+      ],
+      "states": [
+        "CLOSED",
+        "OPEN",
+        "HALF_OPEN"
+      ],
+      "transitions": [
+        "Acquire normal permit",
+        "Tick cooldown ready",
+        "Acquire exclusive probe with new generation",
+        "Finish current permit once: success/failure/neutral",
+        "Ignore stale/duplicate completion"
+      ],
+      "invariants": [
+        "TypeOK",
+        "ProbeRequiresOpen",
+        "ProbeHasCurrentOwner",
+        "ProbeExcludesAdmission",
+        "NoStaleMutation",
+        "NoDuplicateMutation"
+      ],
+      "assumptions": [
+        "Method bodies are atomic under the circuit lock.",
+        "Monotonic clock does not fail; time is abstracted as cooldown crossing.",
+        "Per-request weak fairness of completion is required only by liveness models.",
+        "Immutable permit ownership is internal; no forged direct API calls."
+      ],
+      "exclusions": [
+        "ToolDispatcher retry state machine and provider execution.",
+        "Persistence, process restart, distributed circuit sharing.",
+        "Unbounded request histories and exact counts above threshold.",
+        "Guaranteed provider completion, timeout enforcement, or eventual successful recovery."
+      ],
+      "remaining_obligations": [
+        "Prove an unbounded invariant/refinement relation, not established by finite TLC.",
+        "Model ToolDispatcher retry independently; circuit_tool_retry inventory is not completed by this entry.",
+        "Validate provider/scheduler/clock progress separately; fair completion is an explicit assumption.",
+        "Validate whole-project integration and remote CI on the combined branch."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ProviderCircuit",
+          "sha256": "d752a86a652b90b89751a9939db6c5c33800c6a4ff8a12704928a35973255ed9"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "_CircuitPermit",
+          "sha256": "69d84c46db7c764388f0e07175ca1d20182ad52fb3e02f0caa339d264d31bdc2"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_provider_guard",
+          "sha256": "5f7adc324979d5ccc034135fdea36536461567e6b9262210dbf7b5dce5abbf75"
+        }
+      ],
+      "models": [
+        {
+          "id": "provider_circuit_safety",
+          "module": "formal/provider_circuit/ProviderCircuit.tla",
+          "config": "formal/provider_circuit/safety.cfg",
+          "invariants": [
+            "TypeOK",
+            "ProbeRequiresOpen",
+            "ProbeHasCurrentOwner",
+            "ProbeExcludesAdmission",
+            "NoStaleMutation",
+            "NoDuplicateMutation"
+          ],
+          "properties": [],
+          "bounds": {
+            "Requests": "3 distinct admissions, each ID used once",
+            "Threshold": 1,
+            "Legacy": false,
+            "DuplicateFinishes": true
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 512
+        },
+        {
+          "id": "provider_circuit_liveness",
+          "module": "formal/provider_circuit/ProviderCircuit.tla",
+          "config": "formal/provider_circuit/liveness.cfg",
+          "invariants": [
+            "TypeOK",
+            "ProbeRequiresOpen",
+            "ProbeHasCurrentOwner",
+            "ProbeExcludesAdmission",
+            "NoStaleMutation",
+            "NoDuplicateMutation"
+          ],
+          "properties": [
+            "ProbeEventuallyReleased"
+          ],
+          "bounds": {
+            "Requests": "3 distinct admissions, each ID used once",
+            "Threshold": 1,
+            "Legacy": false,
+            "DuplicateFinishes": true
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 512
+        },
+        {
+          "id": "provider_circuit_threshold_two",
+          "module": "formal/provider_circuit/ProviderCircuit.tla",
+          "config": "formal/provider_circuit/threshold_two.cfg",
+          "invariants": [
+            "TypeOK",
+            "ProbeRequiresOpen",
+            "ProbeHasCurrentOwner",
+            "ProbeExcludesAdmission",
+            "NoStaleMutation",
+            "NoDuplicateMutation"
+          ],
+          "properties": [
+            "ProbeEventuallyReleased"
+          ],
+          "bounds": {
+            "Requests": "5 distinct admissions, each ID used once",
+            "Threshold": 2,
+            "Legacy": false,
+            "DuplicateFinishes": true
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 512
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "provider_circuit_legacy_stale_success",
+          "module": "formal/provider_circuit/ProviderCircuit.tla",
+          "config": "formal/provider_circuit/legacy.cfg",
+          "expected_invariant": "ProbeRequiresOpen",
+          "timeout_seconds": 120,
+          "heap_mb": 512
+        }
+      ]
     }
   ]
 }

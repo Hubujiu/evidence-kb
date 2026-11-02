@@ -35,6 +35,24 @@ class FormalRegistryContracts(unittest.TestCase):
                 'assumptions': ['Synthetic lint fixture'], 'exclusions': ['Not a model or product proof'],
                 'source_bindings': [binding], 'models': [], 'negative_controls': []}]}
 
+    def test_provider_circuit_constraint_survives_refreshed_source_hash(self):
+        current = (Path(__file__).resolve().parents[1] / 'provider_runtime.py').read_text('utf-8')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = self.fixture(root)
+            source = root / 'kb_platform/provider_runtime.py'
+            source.write_text(current, encoding='utf-8')
+            binding = {'path': 'kb_platform/provider_runtime.py', 'language': 'python', 'symbol': '<module>'}
+            binding['sha256'] = source_digest(root, binding)
+            registry['machines'][0]['source_bindings'].append(binding)
+            self.assertEqual([], registry_violations(root, registry))
+            source.write_text(current.replace('permit not in self._active or permit.generation != self._generation',
+                                              'permit not in self._active', 1), encoding='utf-8')
+            binding['sha256'] = source_digest(root, binding)
+            violations = registry_violations(root, registry)
+            self.assertTrue(any('provider-circuit:' in error for error in violations))
+            self.assertFalse(any('source review drift' in error for error in violations))
+
     def test_reviewed_symbol_is_accepted_without_claiming_model_coverage(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
