@@ -12,7 +12,7 @@ from .pdf_layout import pdf_layout_features
 from .rag_testing.cache import StageCache, StageKey
 from .rag_testing.contracts import digest
 
-VERSION = "page-layout-local/3"
+VERSION = "page-layout-local/4"
 
 
 def page_routes(data, policy, native):
@@ -150,6 +150,17 @@ def _supplement_records(parsed, native_elements, native_anchors, height):
     return {**parsed, "records": records}
 
 
+def _accept_page_result(row, parsed, identity, cache_hit):
+    if parsed.get("error"):
+        raise ValueError(parsed["error"])
+    if parsed.get("original_sha256") != row["page_binary_sha256"]:
+        raise ValueError("external page source hash mismatch")
+    row.update(status="COMPLETE", cache_hit=cache_hit, model_revision=digest(identity))
+    conversion = parsed.get("details", {}).get("conversion_status", "")
+    if conversion and conversion.split(".")[-1] != "SUCCESS":
+        row["partial_conversion"] = conversion
+
+
 def assemble_pdf_pages(data, filename, policy, native):
     import pypdfium2
     from .documents import _Bundle
@@ -190,10 +201,8 @@ def assemble_pdf_pages(data, filename, policy, native):
                     policy.get("_parse_authorization", {}).get("principal")), mode=policy.get("_parse_stage_mode", "live"),
                     under_test=policy.get("_parse_under_test", False)) if cache and identity["fixed_model_dependencies"] else None
                 if cached is not None:
-                    if cached.get("original_sha256") != page_sha:
-                        raise ValueError("cached page source integrity mismatch")
+                    _accept_page_result(row, cached, identity, True)
                     parsed_pages[row["page_index"]] = cached
-                    row.update(cache_hit=True, status="COMPLETE")
                 else:
                     jobs.append((row, page_data, key))
             batch_size = max(1, int(os.environ.get("EVIDENCE_KB_PAGE_PARSE_BATCH_SIZE", "16")))
@@ -210,14 +219,9 @@ def assemble_pdf_pages(data, filename, policy, native):
                     if parsed.get("error"):
                         row.update(status="FAILED", diagnostic=parsed["error"])
                         continue
-                    if parsed.get("original_sha256") != row["page_binary_sha256"]:
-                        raise ValueError("external page source hash mismatch")
+                    _accept_page_result(row, parsed, actual_identity, False)
                     if cache and actual_identity["fixed_model_dependencies"]:
                         cache.put(_cache_key(row["page_binary_sha256"], backend, policy, actual_identity), parsed)
-                    row.update(status="COMPLETE", model_revision=digest(actual_identity))
-                    conversion = parsed.get("details", {}).get("conversion_status", "")
-                    if conversion and conversion.split(".")[-1] != "SUCCESS":
-                        row["partial_conversion"] = conversion
                     parsed_pages[row["page_index"]] = parsed
         except Exception as exc:
             for row in rows:
@@ -232,7 +236,12 @@ def assemble_pdf_pages(data, filename, policy, native):
         try:
             identity = external_worker({"mode": "identity", "backend": fallback}, fallback)
             identities[fallback] = identity
+        except Exception as exc:
             for row in empty_pages:
+                row.update(status="FAILED", diagnostic="direct_ocr_fallback_failed:" + type(exc).__name__ + ": " + str(exc))
+            empty_pages = []
+        for row in empty_pages:
+            try:
                 row["attempts"] = [{"backend": row["backend"], "status": "FAILED", "diagnostic": row["diagnostic"]}]
                 page_data = page_binary(pdf, row["page_index"], data)
                 key = _cache_key(row["page_binary_sha256"], fallback, policy, identity) if cache else None
@@ -253,16 +262,17 @@ def assemble_pdf_pages(data, filename, policy, native):
                     raise ValueError("direct OCR fallback source mismatch or empty output")
                 if not cache_hit and cache and identity["fixed_model_dependencies"]:
                     cache.put(_cache_key(row["page_binary_sha256"], fallback, policy, identity), parsed)
+                _accept_page_result(row, parsed, identity, cache_hit)
                 parsed_pages[row["page_index"]] = parsed
-                row.update(primary_backend="docling_ocr", backend=fallback, status="COMPLETE", cache_hit=cache_hit,
-                           model_revision=digest(identity), fallback_reason="docling_empty_layout_export")
+                row.update(primary_backend="docling_ocr", backend=fallback,
+                           fallback_reason="docling_empty_layout_export")
                 row["attempts"].append({"backend": fallback, "status": "COMPLETE"})
                 row["backends"] = ["native", fallback] if row["assembly"] == "native_with_ocr_supplement" else [fallback]
                 row.pop("diagnostic", None)
-        except Exception as exc:
-            for row in empty_pages:
-                if row["page_index"] not in parsed_pages:
-                    row.update(status="FAILED", diagnostic="direct_ocr_fallback_failed:" + type(exc).__name__ + ": " + str(exc))
+            except Exception as exc:
+                diagnostic = "direct_ocr_fallback_failed:" + type(exc).__name__ + ": " + str(exc)
+                row.update(status="FAILED", diagnostic=diagnostic)
+                row["attempts"].append({"backend": fallback, "status": "FAILED", "diagnostic": diagnostic})
     pdf.close()
     replaced = {row["page_index"] for row in external_pages}
     hybrid = {row["page_index"] for row in external_pages if row["assembly"] == "native_with_ocr_supplement"}
@@ -317,9 +327,8 @@ def assemble_pdf_pages(data, filename, policy, native):
                    source_coordinates_verified_by_human=False)
     result["status"] = ("PARTIAL" if result["elements"] else "FAILED") if failures else (
         "PARTIAL" if quality["missing_capabilities"] else "READY")
-    if not failures:
-        for index in completed:
-            quality["ocr_decisions"].append({"page_index": index, "decision": "LOCAL_PAGE_PARSE_COMPLETED"})
+    for index in completed:
+        quality["ocr_decisions"].append({"page_index": index, "decision": "LOCAL_PAGE_PARSE_COMPLETED"})
     snapshot_plan = [{k: v for k, v in row.items() if k not in {"cache_hit", "diagnostic", "status"}} for row in plan]
     snapshot = digest({"native_snapshot": native["parse_snapshot_id"], "protocol": VERSION,
                        "pages": snapshot_plan, "outputs": {str(i): digest(parsed) for i, parsed in parsed_pages.items()}})

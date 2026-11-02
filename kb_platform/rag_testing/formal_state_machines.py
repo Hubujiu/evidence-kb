@@ -201,6 +201,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
         if 'ingestion_migration' in ids:
             from .ingestion_migration_rules import ingestion_migration_violations
             errors.extend(ingestion_migration_violations(root))
+        if 'page_recovery' in ids:
+            from .page_recovery_rules import page_recovery_violations
+            errors.extend(page_recovery_violations(root))
         exclusions = registry['discovery']['exclusions']
         excluded = {(row['path'], row['symbol']) for row in exclusions if row.get('reason', '').strip()}
         if len(excluded) != len(exclusions):
