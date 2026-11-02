@@ -402,7 +402,8 @@
         "Coordinator::allocate",
         "Coordinator::instance_exited",
         "Coordinator::diagnostic",
-        "Coordinator::retry"
+        "Coordinator::retry",
+        "Coordinator::resolve"
       ],
       "invariants": [
         "No unrelated fresh admission on a draining owner; an already-admitted live chain may acquire nested leases. Cancellation is notification, not completion or resource release.",
@@ -415,7 +416,8 @@
         "Collect waits for actual termination and traverses stored parent links even after logical child detachment; call-host and owner-instance records, affected references and diagnostics are removed only for the collected subtree.",
         "Exit notices match scoped plugin, immutable instance identity and current generation and are accepted only while enabled and starting/active; old notices cannot disable a readded incarnation with the same generation number.",
         "Diagnostics validate payload and runtime-owned identities before bounded global FIFO mutation; runtime-filtered inspection and concrete-host collection do not expose or retain another owner accidentally. A valid foreign-runtime event may evict the globally oldest event.",
-        "A current initialization failure remains terminal after cleanup until explicit retry; retry resets only the selected failure state, advances generation and allocates a fresh init identity without rewriting historical completion or reopening a closed scope."
+        "A current initialization failure remains terminal after cleanup until explicit retry; retry resets only the selected failure state, advances generation and allocates a fresh init identity without rewriting historical completion or reopening a closed scope.",
+        "Initialization leases require the current claimed operation identity; cancellation does not close inherited admitted work but actual initialization completion does. Cleanup dependency lookup requires the current operation and declared current-generation consumer, including after cleanup failure/retry."
       ],
       "assumptions": [
         "Inventory originated at main 8160c051e63952278c5f8a80d1b024ebbe3cea17; this batch uses dependency base 27c4180 and only its explicitly registered finite slices, not all coordinator states.",
@@ -587,13 +589,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "cancelled_serial_chain_in_child_retains_both_providers_until_real_completion",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "inherited_deadline_and_foreign_runtime_rejections_do_not_allocate_leases",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -617,13 +619,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "all_dependencies_gate_unclaimed_disable_and_reenable_dispatch",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "claimed_disabled_epoch_cannot_publish_after_reenable_or_overwrite_successor",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -671,13 +673,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "acknowledgement_validates_entire_batch_before_forgetting_any_completion",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "listener_order_lifo_failure_retry_and_retirement_preserve_resource_identity",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -695,7 +697,7 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "overlapping_updates_keep_earlier_descendant_work_in_revision_fence",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -725,13 +727,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "retained_registration_keeps_definition_identity_after_dynamic_shadowing",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "retained_registration_during_pending_shadow_does_not_strand_an_operation",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -743,25 +745,43 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "subtree_collection_follows_detached_parent_links_and_call_scope_ownership",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "exited_notice_uses_full_incarnation_identity_after_remove_and_readd",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "diagnostic_global_capacity_rejects_foreign_identity_without_eviction_and_collects_by_host",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "failed_init_retry_selects_owner_advances_generation_and_respects_closed_scope",
-          "sha256": "7159515a07ee7c8e72fa7ce92984501f9a5215d1ceb3465e14b9107f1cc96516"
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::resolve",
+          "sha256": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "initialization_authority_requires_claim_and_closes_inherited_leases_only_on_completion",
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "cleanup_resolution_tracks_current_operation_and_declared_consumer_generation",
+          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
         }
       ],
       "models": [
@@ -1038,6 +1058,30 @@
             "cleanup_failure": 1,
             "operator_retry": 1,
             "scope_closure": 1
+          }
+        },
+        {
+          "id": "plugin-authority-handles",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityHandles.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "invariants": [
+            "TypeOK",
+            "ExactInitAuthority",
+            "CompletedInitClosesBorrow",
+            "ExactResolveAuthority",
+            "NoCleanupWhilePinned"
+          ],
+          "properties": [],
+          "bounds": {
+            "consumer": 1,
+            "stable_provider": 1,
+            "init_operations": 1,
+            "cleanup_operation_identities": 2,
+            "leases": 2,
+            "generations": 2,
+            "cleanup_retry": 1
           }
         }
       ],
@@ -1561,10 +1605,106 @@
           "timeout_seconds": 60,
           "heap_mb": 128,
           "expected_invariant": "FailureHeldUnreachable"
+        },
+        {
+          "id": "plugin-authority-init-identity",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityInitIdentity.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ExactInitAuthority"
+        },
+        {
+          "id": "plugin-authority-init-claim",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityInitClaim.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ExactInitAuthority"
+        },
+        {
+          "id": "plugin-authority-init-phase",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityInitPhase.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ExactInitAuthority"
+        },
+        {
+          "id": "plugin-authority-inherited-closure",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityInheritedClosure.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "CompletedInitClosesBorrow"
+        },
+        {
+          "id": "plugin-authority-lease-pin",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityLeasePin.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "NoCleanupWhilePinned"
+        },
+        {
+          "id": "plugin-authority-resolve-generation",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityResolveGeneration.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ExactResolveAuthority"
+        },
+        {
+          "id": "plugin-authority-resolve-owner",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityResolveOwner.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ExactResolveAuthority"
+        },
+        {
+          "id": "plugin-authority-cleanup-current",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityCleanupCurrent.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ExactResolveAuthority"
+        },
+        {
+          "id": "plugin-authority-resolve-phase",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityResolvePhase.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ExactResolveAuthority"
+        },
+        {
+          "id": "plugin-authority-cancelled-success",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityCancelledSuccess.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "CancelledAuthoritySuccessUnreachable"
+        },
+        {
+          "id": "plugin-authority-active-success",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityActiveSuccess.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ActiveAuthoritySuccessUnreachable"
+        },
+        {
+          "id": "plugin-authority-claimed-success",
+          "module": "formal/plugin_ownership/AuthorityHandles.tla",
+          "config": "formal/plugin_ownership/AuthorityClaimedSuccess.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ClaimedAuthoritySuccessUnreachable"
         }
       ],
       "remaining_obligations": [
-        "Current WIP next owner: initialization-bound lease lifetime and current cleanup/consumer resolve authority. Failed-init retry now has its own finite recovery slice; arbitrary nested object overlays, full manifest validation and arbitrary scope topology remain beyond the finite bound.",
+        "Current WIP concrete owner: RuntimePoll multi-scope bounded queue dispatch and rest preservation. Initialization-bound leases and current cleanup/consumer resolve authority now have a separate finite slice. Arbitrary graphs/configuration values/topology and cross-slice unbounded composition remain outside the finite bounds.",
         "Arbitrary plugin graphs and repeated reconfiguration, all resource/callback payloads, process transport and cross-slice composed execution remain outside the currently registered bounds.",
         "Allocation exhaustion, operating-system/backend guarantees, compiler-level refinement and unbounded progress remain assumptions, not established by hashes or finite safety runs."
       ]

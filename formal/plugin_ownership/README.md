@@ -339,15 +339,54 @@ retry tests remain unchanged. All 59 native contracts, 20 targeted methods /
 61 refreshed-hash mutants and 81 unified formal runs plus two evidence contracts
 pass. This stage is model-only, not a newly reproduced bug.
 
+## Stage 10: initialization and cleanup handle authority (model-only)
+
+The pinned Cordis committed implementation and captured epoch checks were re-read
+before this Rust-specific authority slice. `AuthorityHandles` distinguishes queued
+from claimed initialization, a directly acquired initialization lease and inherited
+lease, cancellation from actual completion, and two distinct cleanup attempts.
+`AcquireInit`, `Borrow`/`ProbeClosed`, `CompleteInit`, lease release and cleanup
+map to `acquire`, inherited initialization closure, `complete`, release and
+`reconcile`. `Resolve` checks scoped declared consumer, generation, current cleanup
+operation or live consumer phase. The provider remains a fixed retained identity.
+
+Cancellation can still admit nested work on the already-admitted chain before
+actual initialization completion. Completion closes that inherited authority,
+but does not release its real leases or let cleanup overtake them. A failed
+cleanup's old operation cannot authorize dependency lookup during its retry;
+only the current cleanup identity can. Cleanup lookup is not modeled as requiring
+claim because the actual guard checks current operation identity, not that flag.
+`ProbeClosed` tests another authorization request after the two bounded lease IDs
+are allocated; it does not allocate or reuse a third identity. Resource registration
+is composed with stage 3 and guarded by live claimed current-generation operation.
+
+Nine named negatives target initialization identity/claim/phase, inherited closure,
+live lease pins, and consumer generation/owner/current-cleanup/live-phase checks.
+Three reached witnesses combine cancelled-but-still-admitted nested work followed
+by completion closure, active consumer replacement with stale cleanup rejection,
+and initial unclaimed rejection followed by genuine claimed authority. The positive
+graph has 1,320 states. The real queued-init contract probes a finite synthetic ID
+range, then asserts the subsequently polled actual operation was within that range;
+therefore it genuinely exercised unclaimed rejection without a production hook.
+The companion contract verifies cleanup retry identities and final replacement
+binding, with invalid resolution requests leaving state unchanged.
+
+All 61 native tests, 20 targeted methods / 69 refreshed-hash mutants, and 94 unified
+formal runs plus two evidence contracts pass. An initial lint authoring FAIL found
+that `!record.claimed` still contained the short `record.claimed` fragment. The
+mandatory guard was strengthened to include its enclosing predicate prefix; the
+mutant now fails after hash refresh. The original FAIL is retained and no production
+source changed. Ordinary full remains NOT_RUN.
+
 ## Explicit remaining work and boundaries
 
 This feature is still WIP. Concrete next owners, not merely external assumptions:
 
-- initialization-bound lease lifetime and current cleanup/consumer resolve authority.
+- multi-scope bounded RuntimePoll dispatch, queue ordering and rest preservation.
 
 Their source bindings are inventory/review anchors only until separate registered
 models and actual contracts cover their transitions. Remaining work is not
-silently declared covered by the nine existing slices.
+silently declared covered by the ten existing slices.
 
 Unbounded scopes/plugins/calls and arbitrary recursive intercept payloads,
 arbitrary callback effects, process transport, allocation exhaustion, OS failure,

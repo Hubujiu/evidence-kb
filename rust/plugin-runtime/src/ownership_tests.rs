@@ -1138,3 +1138,197 @@ fn failed_init_retry_selects_owner_advances_generation_and_respects_closed_scope
         }
     }
 }
+
+#[test]
+fn initialization_authority_requires_claim_and_closes_inherited_leases_only_on_completion() {
+    let mut runtime = Coordinator::default();
+    let created = call(
+        &mut runtime,
+        "create",
+        json!({"plugins":[plugin("consumer", &["ready"], &[])]}),
+    )
+    .unwrap();
+    let host = created["host"].as_u64().unwrap();
+    let instance = created["instances"][0]["instance"].clone();
+    for operation in 1..64 {
+        assert_eq!(
+            call(
+                &mut runtime,
+                "acquire",
+                json!({"host":host,"instance":instance,"generation":1,"initialization":operation})
+            )
+            .unwrap_err()
+            .code,
+            "invalid_initialization"
+        );
+    }
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":host})).unwrap()["leases"],
+        0
+    );
+    let init = poll(&mut runtime, host).remove(0);
+    assert!(init["operation"].as_u64().unwrap() < 64);
+    let lease = call(
+        &mut runtime,
+        "acquire",
+        json!({"host":host,"instance":instance,"generation":1,"initialization":init["operation"]}),
+    )
+    .unwrap()["lease"]
+        .clone();
+    call(
+        &mut runtime,
+        "cancel",
+        json!({"host":host,"operation":init["operation"]}),
+    )
+    .unwrap();
+    let nested = call(
+        &mut runtime,
+        "acquire",
+        json!({"host":host,"instance":instance,"generation":1,"parent_lease":lease}),
+    )
+    .unwrap()["lease"]
+        .clone();
+    complete(&mut runtime, &init, "error", &[]);
+    let before = call(&mut runtime, "inspect", json!({"host":host})).unwrap();
+    assert_eq!(
+        call(
+            &mut runtime,
+            "acquire",
+            json!({"host":host,"instance":instance,"generation":1,"parent_lease":nested})
+        )
+        .unwrap_err()
+        .code,
+        "initialization_closed"
+    );
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":host})).unwrap(),
+        before
+    );
+    assert!(
+        poll(&mut runtime, host)
+            .iter()
+            .all(|action| action["kind"] == "cancel")
+    );
+    call(&mut runtime, "release", json!({"host":host,"lease":lease})).unwrap();
+    assert!(poll(&mut runtime, host).is_empty());
+    call(&mut runtime, "release", json!({"host":host,"lease":nested})).unwrap();
+    let cleanup = poll(&mut runtime, host).remove(0);
+    assert_eq!(cleanup["kind"], "cleanup");
+    complete(&mut runtime, &cleanup, "ok", &[]);
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":host})).unwrap()["state"],
+        "failed"
+    );
+}
+
+#[test]
+fn cleanup_resolution_tracks_current_operation_and_declared_consumer_generation() {
+    let mut runtime = Coordinator::default();
+    let host = create(
+        &mut runtime,
+        vec![
+            plugin("provider", &["service", "private"], &[]),
+            plugin("consumer", &["ready"], &["service"]),
+        ],
+        None,
+    );
+    let provider = poll(&mut runtime, host).remove(0);
+    complete(&mut runtime, &provider, "ok", &["service", "private"]);
+    let consumer = poll(&mut runtime, host).remove(0);
+    complete(&mut runtime, &consumer, "ok", &["ready"]);
+    let foreign = create(&mut runtime, vec![], None);
+    let binding = call(
+        &mut runtime,
+        "resolve",
+        json!({"host":host,"service":"service"}),
+    )
+    .unwrap();
+    call(
+        &mut runtime,
+        "update",
+        json!({"host":host,"plugin":"provider","config":{"revision":2}}),
+    )
+    .unwrap();
+    let cleanup = poll(&mut runtime, host).remove(0);
+    assert_eq!(cleanup["plugin"], "consumer");
+    let resolution = json!({"host":host,"service":"service","consumer":consumer["instance"],"consumer_generation":consumer["generation"],"cleanup":cleanup["operation"]});
+    assert_eq!(
+        call(&mut runtime, "resolve", resolution.clone()).unwrap(),
+        binding
+    );
+    let before = call(&mut runtime, "inspect", json!({"host":host})).unwrap();
+    for (key, value, code) in [
+        ("host", json!(foreign), "undeclared_dependency"),
+        ("service", json!("private"), "undeclared_dependency"),
+        ("consumer_generation", json!(99), "stale_generation"),
+        (
+            "cleanup",
+            provider["operation"].clone(),
+            "invalid_cleanup_access",
+        ),
+        ("cleanup", json!(u64::MAX), "unknown_operation"),
+    ] {
+        let mut invalid = resolution.clone();
+        invalid[key] = value;
+        assert_eq!(
+            call(&mut runtime, "resolve", invalid).unwrap_err().code,
+            code
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":host})).unwrap(),
+            before
+        );
+    }
+    complete(&mut runtime, &cleanup, "error", &[]);
+    assert_eq!(
+        call(&mut runtime, "resolve", resolution.clone())
+            .unwrap_err()
+            .code,
+        "invalid_cleanup_access"
+    );
+    call(
+        &mut runtime,
+        "retry",
+        json!({"host":host,"plugin":"consumer"}),
+    )
+    .unwrap();
+    let retry = poll(&mut runtime, host).remove(0);
+    assert_ne!(retry["operation"], cleanup["operation"]);
+    assert_eq!(
+        call(&mut runtime, "resolve", resolution.clone())
+            .unwrap_err()
+            .code,
+        "invalid_cleanup_access"
+    );
+    let mut current = resolution.clone();
+    current["cleanup"] = retry["operation"].clone();
+    assert_eq!(call(&mut runtime, "resolve", current).unwrap(), binding);
+    complete(&mut runtime, &retry, "ok", &[]);
+    assert_eq!(
+        call(&mut runtime, "resolve", resolution).unwrap_err().code,
+        "stale_generation"
+    );
+    loop {
+        let actions = poll(&mut runtime, host);
+        if actions.is_empty() {
+            break;
+        }
+        for action in actions {
+            match action["kind"].as_str().unwrap() {
+                "cleanup" => complete(&mut runtime, &action, "ok", &[]),
+                "init" if action["plugin"] == "provider" => {
+                    complete(&mut runtime, &action, "ok", &["service", "private"])
+                }
+                "init" => complete(&mut runtime, &action, "ok", &["ready"]),
+                "cancel" => (),
+                kind => panic!("unexpected action {kind}"),
+            }
+        }
+    }
+    let new_binding = call(&mut runtime, "resolve", json!({"host":host,"service":"service","consumer":consumer["instance"],"consumer_generation":2})).unwrap();
+    assert_ne!(new_binding["registration"], binding["registration"]);
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":host})).unwrap()["state"],
+        "ready"
+    );
+}
