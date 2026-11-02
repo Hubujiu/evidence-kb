@@ -174,11 +174,12 @@
     },
     {
       "id": "provider_receipts",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/provider_runtime.py",
         "kb_platform/provider_receipt_database.py",
-        "kb_platform/remote.py"
+        "kb_platform/remote.py",
+        "kb_platform/database_providers/sqlite_guard.py"
       ],
       "states": [
         "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
@@ -187,37 +188,40 @@
         "RequestReceipts.begin",
         "RequestReceipts.finish",
         "RequestReceipts.reconcile",
-        "ReceiptDatabase.transition"
+        "ReceiptDatabase.transition",
+        "sqlite_guard"
       ],
       "invariants": [
         "Single pending logical request; new retry gets new physical ID; file `.pending`, physical JSON, `.terminal`, unlink are separate crash windows; DB version has row-locked transaction."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "The file receipt model bounds one logical ID, two concurrent actors and three allocated physical IDs; file replacement operations are atomic and process death releases the SQLite lock.",
+        "All file receipt writers cooperate through the same stable SQLite guard; HTTP execution is outside the guard. Begin allocation precedes admission; valid retry links are abstracted.",
+        "ReceiptDatabase row transactions and remote provider send/retry behavior remain inventoried but are not modeled by FileReceipts."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No Rust/Python-to-TLA+ refinement proof, liveness or eventual recovery claim.",
+        "Torn writes, power loss, directory durability, UUID collisions, invalid retry inputs, mixed old writers and broken filesystem/SQLite locking are excluded.",
+        "The database-backed receipt implementation and remote transport remain unmodeled; external provider/DB/filesystem/OS correctness and unbounded data domains are not established."
       ],
       "source_bindings": [
         {
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "RequestReceipts.begin",
-          "sha256": "72784a2a41c0418ed583e16af0566d04cb9138736fb042ba719020b8c63ab4b1"
+          "sha256": "4f6bbbed75281b5f75ab86c7d054686e97f1080d468598a92d17d9d54467b76a"
         },
         {
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "RequestReceipts.finish",
-          "sha256": "2a5262fd35e3396b520059ef6579b6810e277349bee40aabf379f6dd487ede0a"
+          "sha256": "17cade226b0be4710f504c28630e43efb8e98e3f695689f47a01c73717e576b7"
         },
         {
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "RequestReceipts.reconcile",
-          "sha256": "1be9a3e0348dc6d1267f6c39914bc7b281f564977e9088862e4584366d192ac9"
+          "sha256": "c552600764b4e8c05d7ab3408a0b3bca4cf3bd0c31878b4e1b087cec8324360b"
         },
         {
           "path": "kb_platform/provider_receipt_database.py",
@@ -230,10 +234,58 @@
           "language": "python",
           "symbol": "_Transport._send_attempt",
           "sha256": "c4354fd45b218db3d783ae0716eab5f93ce8328fe6384b49c627cd59e6f18ddc"
+        },
+        {
+          "path": "kb_platform/database_providers/sqlite_guard.py",
+          "language": "python",
+          "symbol": "sqlite_guard",
+          "sha256": "bb125a768790d51560ad6bedcbb5e998904cf1461a1bd9fcc899ee6e2dcd9b9b"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/file_receipts/FileReceipts.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "file-receipts",
+          "config": "formal/file_receipts/FileReceipts.cfg",
+          "invariants": [
+            "TypeOK",
+            "SingleUnresolved",
+            "PendingCoversUnresolved",
+            "TerminalImmutable"
+          ],
+          "properties": [],
+          "bounds": {
+            "logical_ids": 1,
+            "actors": 2,
+            "physical_ids": 3
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/file_receipts/FileReceipts.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "file-receipts-legacy-terminal",
+          "config": "formal/file_receipts/FileReceiptsLegacy.cfg",
+          "expected_invariant": "TerminalImmutable"
+        },
+        {
+          "module": "formal/file_receipts/FileReceipts.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "file-receipts-legacy-overlap",
+          "config": "formal/file_receipts/FileReceiptsOverlap.cfg",
+          "expected_invariant": "SingleUnresolved"
+        }
+      ],
+      "remaining_obligations": [
+        "Model database-backed receipt transitions, retry metadata validation and remote transport coordination without losing current inventory.",
+        "Establish implementation refinement and crash durability beyond completed atomic file replacements; assess unbounded IDs and additional actors.",
+        "Persistent UNKNOWN and interrupted publication can remain blocked indefinitely; no liveness claim is made."
+      ]
     },
     {
       "id": "turn_budget",
