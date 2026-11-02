@@ -198,6 +198,10 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                         errors.append(f'{identity}: liveness negative control must isolate its named property')
                 elif model['expected_invariant'] not in configured:
                     errors.append(f'{identity}: negative control must target a configured invariant')
+        if 'provider_admission' in ids:
+            from .provider_admission_rules import provider_admission_violations
+
+            errors.extend(provider_admission_violations(root))
         exclusions = registry['discovery']['exclusions']
         excluded = {(row['path'], row['symbol']) for row in exclusions if row.get('reason', '').strip()}
         if len(excluded) != len(exclusions):

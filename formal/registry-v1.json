@@ -100,7 +100,7 @@
           "path": "kb_platform/rag_testing/provider_capture.py",
           "language": "python",
           "symbol": "MeteredTransport._handle_admitted",
-          "sha256": "3903308da069fc59c1a1144977a356077be2a6bc47161740ff01c9e588d398d0"
+          "sha256": "92ae8197031b951c91e0298be3fe05c703d8401952216b4effba79caadbb778a"
         },
         {
           "path": "kb_platform/embeddings.py",
@@ -118,7 +118,7 @@
           "path": "kb_platform/model_http.py",
           "language": "python",
           "symbol": "OpenAICompatibleAdapter.invoke",
-          "sha256": "7aca4fb4a257f49625d294b1542a3cb8a9832b33aa277ad2628ea71ff3fb7dde"
+          "sha256": "ea0e48c0a355f6a01810c6f4793b7ea2d573c6c8f30ff77bf0de7ead866ed937"
         }
       ],
       "models": [],
@@ -160,13 +160,19 @@
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "LinkedBudgetLedger.cumulative_summary",
-          "sha256": "1aaa845b5c3d4df5012676155053ed25df0f0713ba5aed1f7e0f328759578054"
+          "sha256": "8bc9ce672c0c1b1b9ea7bf3cd6ddbf15e5f0c232a3859d22697dbbd10b56ae6d"
         },
         {
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "ReviewedPredecessorLedger.cumulative_summary",
-          "sha256": "a9010aceb4d2a3a25b78dbea5c09e0627169c1c4697e9dec1f040d704b1d8ad6"
+          "sha256": "ebd3cf86acc17f17991ec25e5723c08f6e14cb8b58ccbf98f238fde46d786410"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "ReviewedPredecessorLedger._review_summary",
+          "sha256": "ffa7746235cec3d7556a89ee943dbd77be7b9cd3620b27b648dd9fdc0e5c2282"
         }
       ],
       "models": [],
@@ -266,7 +272,7 @@
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "BudgetLedger.reserve",
-          "sha256": "2357ea31650462f417b1d4022ce52bf589bfae062d46d5740b9d389881b712f1"
+          "sha256": "fa3509f0aff7395119d5f37623b1d9373fa6e369698d4f34d9e001c67f81cd05"
         },
         {
           "path": "kb_platform/agent_model.py",
@@ -278,7 +284,7 @@
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "AgentModel.complete",
-          "sha256": "aa2a137fa0d11394b9aa21aa7868896298a280b77ec83943621a5862587c8c69"
+          "sha256": "f1f33d434ac14332452b2a1393f5dfc62bf203827a292120e4def670abe4d85d"
         },
         {
           "path": "kb_platform/agent_model.py",
@@ -1242,7 +1248,7 @@
           "path": "kb_platform/contract_transfer.py",
           "language": "python",
           "symbol": "JsonEndpoint.execute",
-          "sha256": "eeef3078396601c772b98a8c5f245d171af19604f78c5b1bcf9bf9835f569c34"
+          "sha256": "1ef6cbfc1375770cd12b34ad516d92550f0759112990700852fcf37f1d395d3d"
         },
         {
           "path": "kb_platform/contract_transfer.py",
@@ -1254,7 +1260,7 @@
           "path": "kb_platform/contract_transfer.py",
           "language": "python",
           "symbol": "JsonClient._call",
-          "sha256": "acbc112e1da50988c06943f1e3c9ff440729ddc9165133f89f008f7b51bfcf96"
+          "sha256": "1592a38c7eed38286c22b331f20b9bdea75d35fa4ce21129ac167172edb30727"
         },
         {
           "path": "kb_platform/storage_object_wire.py",
@@ -1535,32 +1541,44 @@
     },
     {
       "id": "provider_admission",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/provider_admission.py",
         "kb_platform/delivery.py",
         "kb_platform/provider_runtime.py",
-        "kb_platform/remote.py"
+        "kb_platform/remote.py",
+        "kb_platform/model_http.py",
+        "kb_platform/rag_testing/provider_capture.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "admission: AVAILABLE / BLOCKED / unreadable or orphan history; events: ephemeral / durable / acknowledged",
+        "operator: idle → inspected → prepared → done / error / rejected; one restart clears only ephemeral observations",
+        "returned HTTP 403 → durable block → settlement committed / acknowledgement lost / rollback; failed block leaves STARTED"
       ],
       "transitions": [
         "ProviderAdmission.block",
-        "ProviderAdmission.require_available",
         "ProviderAdmission.snapshot",
-        "ProviderAdmission.acknowledge"
+        "ProviderAdmission.require_available",
+        "ProviderAdmission.acknowledge",
+        "ProviderAdmission.from_directory",
+        "ProviderAdmission.seed_from_capture",
+        "OpenAICompatibleAdapter.invoke returned-403 block-before-settlement slice",
+        "MeteredTransport._handle_admitted early-403 source order guard (whole transport not modeled)"
       ],
       "invariants": [
-        "Restart/new session/new provider wrapper cannot evade unacknowledged denial; immutable journal event; failed persistence still locally blocked; changed checkpoint invalidates acknowledgment."
+        "Changed observed denial set changes checkpoint even if a receipt write failed; newly written acknowledgements refer only to durable, operator-observed event IDs.",
+        "A concurrent new denial is not cleared by an old acknowledgement; unknown/unreadable or orphan history fails closed.",
+        "Returned 403 is blocked before physical settlement; a settlement acknowledgement failure never permits a fresh sequential resend; failed block keeps STARTED.",
+        "Operator acknowledgement appends a receipt, does not probe a provider or rewrite budget/original-error rows."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Two immutable event IDs, one operator ack attempt per process lifetime, one restart, at most two admission probes; finite storage availability and commit-outcome choices.",
+        "File/SQLite journal identity, content integrity and atomic append are external assumptions; cryptographic collision resistance and filesystem/SQL correctness are not proved.",
+        "PermissionLatch models sequential fresh invocations after a returned Response, not atomic permission-check/socket dispatch or revocation of pre-admitted work."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No unbounded proof, power-loss durability, arbitrary multiwriter storage corruption or full source-to-model refinement claim.",
+        "Raw unwrapped Google/remote senders do not automatically own ProviderAdmission; only bound owner slices are covered."
       ],
       "source_bindings": [
         {
@@ -1573,19 +1591,19 @@
           "path": "kb_platform/provider_admission.py",
           "language": "python",
           "symbol": "ProviderAdmission.require_available",
-          "sha256": "34e5d3ecd6d9075c1b0b97fc77e0ba7e595b0c853da088fb01d1beddd24a0469"
+          "sha256": "84ec750df0b82f73a4284f7d42babf4c16829ac8a73125d418bdd29a8f8c3ea4"
         },
         {
           "path": "kb_platform/provider_admission.py",
           "language": "python",
           "symbol": "ProviderAdmission.snapshot",
-          "sha256": "09d2a9df51c78e2726e7dcc7f63e677edbd185e4100709fe421c69b9a9dd63f8"
+          "sha256": "0de44d8993d44d169e2e280f205a11e4986b9a149c8b399c67a786be03055df4"
         },
         {
           "path": "kb_platform/provider_admission.py",
           "language": "python",
           "symbol": "ProviderAdmission.acknowledge",
-          "sha256": "7a7ed444077a6a97f46b221152ed5b54ae40439f0f996cb1fc847e078ca3c0a5"
+          "sha256": "1796431e30c8798237e45345d0173dc7fdc5f99c593f48b57113d69dc60488ff"
         },
         {
           "path": "kb_platform/delivery.py",
@@ -1597,17 +1615,195 @@
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "classify_failure",
-          "sha256": "3c2f067657f416d0625091df29d3ebf9858af75c4aab2f189fb4ddbeb0195273"
+          "sha256": "4adc66c521182b504c421700567b44159cf359595ba8f96ec5156830a58632ef"
         },
         {
           "path": "kb_platform/remote.py",
           "language": "python",
           "symbol": "GoogleEmbeddingProvider._post",
           "sha256": "4f6eb4f2e5cbd0068852763c994817a17c9caaaa7f11189bef6141aa37476bc7"
+        },
+        {
+          "path": "kb_platform/model_http.py",
+          "symbol": "OpenAICompatibleAdapter.invoke",
+          "language": "python",
+          "sha256": "ea0e48c0a355f6a01810c6f4793b7ea2d573c6c8f30ff77bf0de7ead866ed937"
+        },
+        {
+          "path": "kb_platform/rag_testing/provider_capture.py",
+          "symbol": "MeteredTransport._handle_admitted",
+          "language": "python",
+          "sha256": "92ae8197031b951c91e0298be3fe05c703d8401952216b4effba79caadbb778a"
+        },
+        {
+          "path": "kb_platform/provider_admission.py",
+          "symbol": "ProviderAdmission.seed_from_capture",
+          "language": "python",
+          "sha256": "a9aa1a26d8d84b6fc818d8c209e47b13003e003dd6a86ff55cb7c61e5f82e0ea"
+        },
+        {
+          "path": "kb_platform/provider_admission.py",
+          "symbol": "ProviderAdmission.__init__",
+          "language": "python",
+          "sha256": "618e7fab7669426ceae668e72a259458b3c81738631142f7db2a06ae45bc014e"
+        },
+        {
+          "path": "kb_platform/provider_admission.py",
+          "symbol": "ProviderAdmission.from_directory",
+          "language": "python",
+          "sha256": "677875a091b849fd448b432e80dd116f5a51f6ca8c20b221aa6a9d67ce36e317"
+        },
+        {
+          "path": "kb_platform/provider_admission.py",
+          "symbol": "_immutable",
+          "language": "python",
+          "sha256": "17521dd31b5dbf2ca6cef03d9b971767436dd666e063641d1d9606e6d3ce33b4"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "provider-admission",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmission.cfg",
+          "invariants": [
+            "CheckpointTracksKnownEvents",
+            "NoAcknowledgementOfUnobservedError",
+            "NoNewOrphanAcknowledgement",
+            "NoProbeOrLedgerMutation",
+            "NoUnsafeAdmission",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "events": 2,
+            "operator_attempts_per_lifetime": 1,
+            "restarts": 1,
+            "admission_probes": 2
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-admission-legacy-history",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmissionLegacyHistory.cfg",
+          "invariants": [
+            "CheckpointTracksKnownEvents",
+            "NoAcknowledgementOfUnobservedError",
+            "NoNewOrphanAcknowledgement",
+            "NoProbeOrLedgerMutation",
+            "NoUnsafeAdmission",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "events": 2,
+            "legacy_orphan": 1,
+            "restarts": 1,
+            "admission_probes": 2
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-permission-latch",
+          "module": "formal/provider_admission/PermissionLatch.tla",
+          "config": "formal/provider_admission/PermissionLatch.cfg",
+          "invariants": [
+            "NoUnacknowledgedResend",
+            "Settled403RetainsBlock",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "physical_sends": 2,
+            "restarts": 1,
+            "settlement_outcomes": 3
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "provider-stale-checkpoint",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmissionStaleCheckpoint.cfg",
+          "expected_invariant": "CheckpointTracksKnownEvents",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-undurable-ack",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmissionUndurableAck.cfg",
+          "expected_invariant": "NoNewOrphanAcknowledgement",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-legacy-stale-ack",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmissionLegacyStaleAck.cfg",
+          "expected_invariant": "NoStaleAckWithDurableSeed",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-global-clear",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmissionGlobalClear.cfg",
+          "expected_invariant": "NoAcknowledgementOfUnobservedError",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-unavailable-open",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmissionUnavailable.cfg",
+          "expected_invariant": "NoUnsafeAdmission",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-orphan-history",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmissionOrphanHistory.cfg",
+          "expected_invariant": "NoUnsafeAdmission",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-late-permission-block",
+          "module": "formal/provider_admission/PermissionLatch.tla",
+          "config": "formal/provider_admission/PermissionLatchLateBlock.cfg",
+          "expected_invariant": "NoUnacknowledgedResend",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-admission-success",
+          "module": "formal/provider_admission/ProviderAdmission.tla",
+          "config": "formal/provider_admission/ProviderAdmissionSuccess.cfg",
+          "expected_invariant": "SuccessUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        },
+        {
+          "id": "provider-latch-success",
+          "module": "formal/provider_admission/PermissionLatch.tla",
+          "config": "formal/provider_admission/PermissionLatchSuccess.cfg",
+          "expected_invariant": "BlockAndSettlementUnreachable",
+          "timeout_seconds": 60,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "Pre-admitted queued work and whole transport/receipt/budget composition remain explicit; reserve-only OpenAI guard is not a whole-send permission lock.",
+        "Body read before httpx returns a Response, independent raw transport retry/rate/auth/format state machines, tool retry, and physical multi-resource accounting are not modeled here.",
+        "Standalone admission cannot retain a failed ephemeral-only event across restart; the caller STARTED budget record or durable matching capture is the conservative recovery backstop.",
+        "Operator evidence truth, arbitrary IDs/content/providers, OS/power-loss and backend atomic append guarantees remain assumptions."
+      ]
     },
     {
       "id": "circuit_tool_retry",
@@ -1727,7 +1923,7 @@
           "path": "kb_platform/knowledge_contracts.py",
           "language": "python",
           "symbol": "ModelEndpoint.complete",
-          "sha256": "5abf9663da57dfcbff2d5d0672a37fca867f2e2b251e17b1b2d859cab1469753"
+          "sha256": "4d88494cb04af4727e3a66d503926b33c8109e93db2c39de3873686c3d7a6894"
         },
         {
           "path": "kb_platform/knowledge_contracts.py",
