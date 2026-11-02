@@ -68,12 +68,14 @@
         "kb_platform/rag_testing/reader_diagnostic.py",
         "kb_platform/rag_testing/pageindex_probe.py",
         "kb_platform/rag_testing/pageindex_full_query.py",
-        "kb_platform/model_errors.py"
+        "kb_platform/model_errors.py",
+        "kb_platform/rag_testing/local_rerank.py"
       ],
       "states": [
         "absent → STARTED → COMPLETE / ERROR / UNKNOWN",
         "Durable budget NONE/STARTED/COMPLETE/ERROR/UNKNOWN separate from provider receipt and settlement acknowledgement.",
-        "Transient reserve/send/observe/settle/failure/crash/restart phases."
+        "Transient reserve/send/observe/settle/failure/crash/restart phases.",
+        "PhysicalLedgerCore: two-dimensional rows, observed/missing per-coordinate usage, atomic reserve and STARTED-only finish CAS; overrun is legal retained state."
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -81,14 +83,16 @@
         "MeteredTransport._handle_admitted",
         "GoogleSemanticProvider._observed",
         "RequestReceipts.begin",
-        "RequestReceipts.finish"
+        "RequestReceipts.finish",
+        "LocalRanker.rank: inference and score persistence precede a success finish outside the inference exception handler; no second finish on settlement failure."
       ],
       "invariants": [
-        "Never send without durable reservation; UNKNOWN or STARTED retains reservation; finish exactly once; a failed reserve acknowledgment does not prove physical send; no blind replay. DB write/guard serialization and external HTTP are distinct atomicity domains.",
+        "Never send without durable reservation; unreported usage retains per-coordinate reservation independently of terminal status; finish exactly once; a failed reserve acknowledgment does not prove physical send; no blind replay. DB write/guard serialization and external HTTP are distinct atomicity domains.",
         "Send requires acknowledged durable reservation; never replay the same physical identity.",
         "Call settlement at most once even after lost commit acknowledgement; preserve original commit failure identity.",
         "Unknown or STARTED charges retain modeled reservation; acknowledged settlement matches durable state.",
-        "ObservedSettlementFacts keeps raw partial/known provider usage in reported failure facts; post-send errors cannot become known-unsent, independently of durable commit knowledge."
+        "ObservedSettlementFacts keeps raw partial/known provider usage in reported failure facts; post-send errors cannot become known-unsent, independently of durable commit knowledge.",
+        "Per-dimension fallback retains missing reservations without replacing known zero; actual overrun remains recorded but cannot admit another row; terminal CAS never rewrites; require_settled is explicit policy."
       ],
       "assumptions": [
         "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model.",
@@ -97,11 +101,12 @@
         "Acknowledged commit is durable; unknown commit has both committed and rolled-back branches. Active or late commits are not modeled.",
         "Only the registered finite physical-budget and capture-observer abstractions are checked; uncovered owners and transitions remain explicit.",
         "PR31 pre-dispatch failures can establish zero sends while reservation commit remains unknown; response/capture observation and durable settlement are separate facts.",
-        "ObservedSettlementFacts abstracts one physical invocation and four raw-usage classes. It models exception fact publication separately from durable budget and capture results; seeded controls are not claims of byte-identical historical source execution."
+        "ObservedSettlementFacts abstracts one physical invocation and four raw-usage classes. It models exception fact publication separately from durable budget and capture results; seeded controls are not claims of byte-identical historical source execution.",
+        "PhysicalLedgerCore models two rows/two resource dimensions, reservation1/cap2 per dimension, actual missing/0/1/3 and two atomic finish invocations; backend transaction serialization is assumed, not proven."
       ],
       "exclusions": [
         "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory.",
-        "No liveness or unbounded proof; actual usage above reservation and multidimensional accounting are outside this finite model.",
+        "No liveness or unbounded proof; actual usage above reservation and multidimensional accounting remain outside the original PhysicalBudget instance; PhysicalLedgerCore covers only its separately stated finite bounds.",
         "No filesystem fsync/power-loss proof or backend isolation proof; HTTP calls are synthetic in the regression contracts.",
         "No machine-checked source-to-TLA+ refinement proof is provided."
       ],
@@ -237,6 +242,108 @@
           "language": "python",
           "symbol": "MeteredTransport._handle_admitted.preserve_observed",
           "sha256": "2bf0bd2fb0fa492d7e289fe5813813b96bd903b8b3127a49ca6e6282eb9d660b"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "validate_caps",
+          "sha256": "d9a7ccad4b9c1f4098e3323187ab5301f2fdb00a713c5d6919219b7e23d8c578"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "validate_resources",
+          "sha256": "89fee77d475adb8ea3d27cfb4ea677b942166718e7c4f79aeaf4ddef5b5bf8ba"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger.__init__",
+          "sha256": "2a37a6384199f9e47a6a8290fbea2806136128abbef2093b259e7a6681d59931"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger._db",
+          "sha256": "ce2daef7616c75904ad81fdd6780defc09f7a24f0b2fb96ac5590b2c9089f5df"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger.admission",
+          "sha256": "61e62fe32bdef9c9eb57ed76e82d8c30bfe6eca7bfecab4cc8602cae14c8e109"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger._remote_guard",
+          "sha256": "2d6aa6781adb5e75f294f34b4fc2f1a10c38724df7f473eda12d571d34a41335"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger._valid",
+          "sha256": "59c2eb1fcaae752aed53816830d95a3b919ab39522a61e3b6e7a062b5c574b08"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger._totals",
+          "sha256": "7779b3faf5513b346d311c430020b770c2168c2d3f35c73d8eae4bf99914c1d3"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger._sum_rows",
+          "sha256": "0227c5abe6d4366a7716768100b67b1d16dc87d070c444c75ceb860b6fe22db1"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger.reserve",
+          "sha256": "9ae8aa0d16fb92d784846d2661c3a4a04d7cde9be436a79875f1e2afce49f8f1"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger.summary",
+          "sha256": "e86a56273683d919c0cda2361741add269c1b68f784628ab2f30110fd1d21f0c"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget.py",
+          "language": "python",
+          "symbol": "BudgetLedger._records",
+          "sha256": "12186d47de323195c30e5740adcca66ffe8dbb7c48f9ec6599f9cb9934cbff31"
+        },
+        {
+          "path": "kb_platform/rag_testing/local_rerank.py",
+          "language": "python",
+          "symbol": "LocalRanker.rank",
+          "sha256": "82d9ba122d2c64d006c4952bf94c03ff3bbe392654c33c3c26ac7b13b0ce8239"
+        },
+        {
+          "path": "kb_platform/rag_testing/physical_ledger_core_contracts.py",
+          "language": "python",
+          "symbol": "PhysicalLedgerCoreContracts",
+          "sha256": "bd5aa253108da0f02438db532e587533b0ec501f70740c0e62f474c4bd3ffd13"
+        },
+        {
+          "path": "kb_platform/rag_testing/physical_ledger_core_contracts.py",
+          "language": "python",
+          "symbol": "PhysicalLedgerSourceContracts",
+          "sha256": "7ed957eb6a7ef19ec1becbc2e139636be79d9c8edba42f6b9add3eeeba041bcc"
+        },
+        {
+          "path": "kb_platform/rag_testing/local_rerank_contracts.py",
+          "language": "python",
+          "symbol": "LocalRerankContracts.test_successful_inference_settlement_failure_is_not_retried_or_masked",
+          "sha256": "82745800541e8e36a37ba0c0b6102a6ae7244ec433c900941bb5fd5b2722cb6d"
+        },
+        {
+          "path": "kb_platform/rag_testing/local_rerank_contracts.py",
+          "language": "python",
+          "symbol": "LocalRerankContracts.test_inference_error_remains_cause_of_first_settlement_failure",
+          "sha256": "84dc46616cb54a1a97bd512507312c88a219db9bc3ca2bbb3b62582fd9624907"
         }
       ],
       "models": [
@@ -343,6 +450,37 @@
           },
           "timeout_seconds": 60,
           "heap_mb": 256
+        },
+        {
+          "id": "physical_ledger_core",
+          "module": "formal/physical_budget/PhysicalLedgerCore.tla",
+          "config": "formal/physical_budget/PhysicalLedgerCore.cfg",
+          "invariants": [
+            "TypeOK",
+            "DimensionFallbackExact",
+            "TerminalImmutable",
+            "AdmissionBudgetSafe",
+            "SettledPolicyRespected",
+            "AdmissionDecisionExact",
+            "NoUsageClipping"
+          ],
+          "properties": [],
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "bounds": {
+            "physical_request_ids": 2,
+            "resource_dimensions": 2,
+            "capacity_per_dimension": 2,
+            "reservation_per_dimension": 1,
+            "usage_classes": [
+              -1,
+              0,
+              1,
+              3
+            ],
+            "finish_invocations": 2,
+            "require_settled_policies": 2
+          }
         }
       ],
       "negative_controls": [
@@ -377,6 +515,38 @@
           "expected_invariant": "PostSendNeverReportedUnsent",
           "timeout_seconds": 60,
           "heap_mb": 256
+        },
+        {
+          "id": "physical_ledger_core_fallback",
+          "module": "formal/physical_budget/PhysicalLedgerCore.tla",
+          "config": "formal/physical_budget/PhysicalLedgerCoreFallback.cfg",
+          "expected_invariant": "DimensionFallbackExact",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "physical_ledger_core_overrun",
+          "module": "formal/physical_budget/PhysicalLedgerCore.tla",
+          "config": "formal/physical_budget/PhysicalLedgerCoreOverrun.cfg",
+          "expected_invariant": "AdmissionBudgetSafe",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "physical_ledger_core_cas",
+          "module": "formal/physical_budget/PhysicalLedgerCore.tla",
+          "config": "formal/physical_budget/PhysicalLedgerCoreCAS.cfg",
+          "expected_invariant": "TerminalImmutable",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "physical_ledger_core_pending",
+          "module": "formal/physical_budget/PhysicalLedgerCore.tla",
+          "config": "formal/physical_budget/PhysicalLedgerCorePending.cfg",
+          "expected_invariant": "SettledPolicyRespected",
+          "timeout_seconds": 120,
+          "heap_mb": 256
         }
       ],
       "remaining_obligations": [
@@ -388,7 +558,8 @@
         "Model file receipt concurrency, stale finish/reconcile, full cross-store identity recovery, provider admission and cancellation.",
         "Model active/late commits, partial/multidimensional usage and actual usage exceeding reservations.",
         "Raw provider-usage propagation through the public failure boundary is covered by deterministic contracts, not by the scalar finite accounting model; unknown/partial provider usage and cross-store identity reconciliation remain distinct obligations.",
-        "ObservedSettlementFacts does not prove arbitrary token values, all provider usage schemas, multi-attempt aggregation, process crash before exception publication, cross-store identity alignment, or actual network/SQLite durability. Existing no-second-settlement and capture-consumer models remain separate."
+        "ObservedSettlementFacts does not prove arbitrary token values, all provider usage schemas, multi-attempt aggregation, process crash before exception publication, cross-store identity alignment, or actual network/SQLite durability. Existing no-second-settlement and capture-consumer models remain separate.",
+        "PhysicalLedgerCore covers bounded vector accounting and terminal CAS, not arbitrary vector induction, live backend replacement or distributed locking. LocalRanker reuses the existing at-most-once-settlement abstraction; its SQLite fault contracts supply source evidence."
       ]
     },
     {

@@ -171,3 +171,13 @@ state and two separately named negative controls, while preserving all six old T
 files byte-for-byte. Current actual formal verification is 14 runs, not the earlier
 stage's 11. This bounded extension does not turn seeded variants into historical-source
 counterexamples or expand the old models' claims retroactively.
+
+## Physical owner accounting companion and remaining local consumer
+
+[PhysicalLedgerCore](PhysicalLedgerCore.md) adds bounded two-coordinate partial
+usage, legitimate actual overruns followed by admission refusal, explicit strict
+admission policy and competing terminal CAS. The original scalar model's stated
+bounds/properties remain unchanged. The same follow-on repairs LocalRanker's
+double-settlement path using a separate success `try/else` suite and
+SQLite regression contracts; it reuses the original settlement model
+rather than adding a duplicate one.

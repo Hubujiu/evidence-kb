@@ -15,6 +15,7 @@ import time
 import unittest
 
 from scripts.physical_settlement_lint import settlement_violations
+from scripts.physical_ledger_checks import ledger_core_violations, local_ranker_settlement_violations
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'formal/registry-v1.json'
@@ -135,6 +136,10 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
         if any((root / path).exists() for path in ('kb_platform/rag_testing/provider_capture.py',
                                                    'kb_platform/google_semantic_provider.py')):
             errors.extend(settlement_violations(root))
+        for path, check in (('kb_platform/rag_testing/budget.py', ledger_core_violations),
+                            ('kb_platform/rag_testing/local_rerank.py', local_ranker_settlement_violations)):
+            if (root / path).exists():
+                errors.extend(check((root / path).read_text('utf-8')))
         registry = registry if registry is not None else json.loads(local_file(root, REGISTRY).read_text('utf-8'))
         if registry.get('schema_version') != 1 or not registry.get('machines'):
             raise ValueError('Registry v1 requires a nonempty machine inventory')
