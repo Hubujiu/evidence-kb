@@ -1,0 +1,290 @@
+{
+  "schema_version": 1,
+  "machines": [
+    {
+      "id": "session_commit",
+      "status": "partial",
+      "owners": [
+        "kb_platform/session_store.py"
+      ],
+      "states": [
+        "Request absent/running/interrupted/complete",
+        "Live or expired lease predicate",
+        "Session revision and completion-event sequence",
+        "Optional assistant event and durable response/state",
+        "Client observation none/pending/unknown/known",
+        "Finish transaction row lock"
+      ],
+      "transitions": [
+        "Begin fresh request with revision; supersede expired predecessor",
+        "Expire; append under admitted lease",
+        "Prepare success or failure; atomic commit or precommit rollback",
+        "Receive or lose committed reply; same-fingerprint completed replay"
+      ],
+      "invariants": [
+        "TypeOK",
+        "SingleWriter",
+        "NoSupersededCompletion",
+        "AtomicCompletion",
+        "RevisionOrder",
+        "SuccessfulAdmission",
+        "FailureAdmission",
+        "KnownMeansComplete",
+        "ReplayIdentity",
+        "AppendAdmission"
+      ],
+      "assumptions": [
+        "One immutable session owner already authenticated; distinct request identities represent unique generated lease tokens",
+        "Session-row writer exclusion and atomic commit/rollback are provided by the structured database adapter",
+        "The lease predicate is sampled under the session row lock; subsequent expiration does not undo admission",
+        "Two request identities and two fingerprints; stuttering models rejected calls; no fairness or liveness guarantee"
+      ],
+      "exclusions": [
+        "Multiple-session scheduling, UUID collision and wall-clock rollback",
+        "SQL/provider isolation implementation and physical power-loss recovery",
+        "Artifacts, arbitrary event payloads, export/import validation and domain failure-shape validation",
+        "No claim of native runtime, model billing or RAG quality verification"
+      ],
+      "remaining_obligations": [
+        "Model session owner/tenant identity decisions, artifact lifecycle and transfer/export/import state",
+        "Validate provider-specific concurrency and commit ambiguity for PostgreSQL/MySQL independently",
+        "Unbounded identifiers and progress/fairness are not established by bounded TLC"
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore._owner",
+          "sha256": "2c0f506f9e57a8f9177554b5b2b0f3c2cd9f5788dda2eb1cd5362a0d459a9108"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.begin",
+          "sha256": "22af22ad0552c0239895b9cd55949bc1d71360f4f6682449d8a080df9f03e0d6"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore._lease",
+          "sha256": "8b76a78b8062b7e349344a7c2b2e7e291593fd317a6cdffc138072d2b88ef3b1"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.append",
+          "sha256": "9044a9bcdd0a947410b3e8aaf84e93e6e894eed4883caa866d738a5e49c7a075"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.finish",
+          "sha256": "1cd367c44cd3fb952f0d60ac79b86e6fc4a2c37f1767b5654b478c52fd961ed6"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.fail",
+          "sha256": "24213dfdddb0893728c422c74ebb43030ab8f05b499a2f3792baa04071defa9f"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore._finish",
+          "sha256": "e82d52ea5fd0b714bdd64cfbc7f43d386c3ee1f5acea954c60ed5e4be4befa8b"
+        }
+      ],
+      "models": [
+        {
+          "id": "session_writer_lease",
+          "module": "formal/session_authority/SessionWriterLease.tla",
+          "config": "formal/session_authority/SessionWriterLease.cfg",
+          "invariants": [
+            "TypeOK",
+            "SingleWriter",
+            "NoSupersededCompletion",
+            "AtomicCompletion",
+            "RevisionOrder",
+            "SuccessfulAdmission",
+            "FailureAdmission",
+            "KnownMeansComplete",
+            "ReplayIdentity",
+            "AppendAdmission"
+          ],
+          "properties": [],
+          "bounds": {
+            "Requests": [
+              "r1",
+              "r2"
+            ],
+            "Fingerprints": [
+              "f1",
+              "f2"
+            ],
+            "Nil": "nil",
+            "FenceWriters": true,
+            "AtomicCommit": true
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "session_stale_writer",
+          "module": "formal/session_authority/SessionWriterLease.tla",
+          "config": "formal/session_authority/SessionWriterLeaseStaleWriter.cfg",
+          "expected_invariant": "NoSupersededCompletion",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "kind": "mutation",
+          "purpose": "Disable terminal writer-token fencing; expired predecessor may commit failure after successor begin",
+          "known_limitation": false
+        },
+        {
+          "id": "session_partial_commit",
+          "module": "formal/session_authority/SessionWriterLease.tla",
+          "config": "formal/session_authority/SessionWriterLeasePartialCommit.cfg",
+          "expected_invariant": "AtomicCompletion",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "kind": "mutation",
+          "purpose": "Expose an assistant event before the rest of the transaction is durable",
+          "known_limitation": false
+        }
+      ]
+    },
+    {
+      "id": "knowledge_turn_postflight",
+      "status": "partial",
+      "owners": [
+        "kb_platform/knowledge_turn.py",
+        "kb_platform/agent_tools.py"
+      ],
+      "states": [
+        "Fresh or cached response mode",
+        "Native completion then authorization/evidence/cancellation check phases",
+        "Authority revision zero/one; scope/evidence permission and cancellation booleans",
+        "Complete/error and remembered authorization-at-commit witness"
+      ],
+      "transitions": [
+        "Preflight authorization; native completion",
+        "Post-native execution guard; original authority revision comparison; evidence revalidation",
+        "State construction; final execution guard; separate session commit",
+        "Current evidence revalidation on completed-request replay",
+        "One concurrent authority mutation and cancellation"
+      ],
+      "invariants": [
+        "TypeOK",
+        "FreshResponseWasChecked",
+        "ReplayResponseWasRevalidated"
+      ],
+      "assumptions": [
+        "Successful gateway validation is abstracted at its check point; internal read/revision correctness is separate",
+        "The session commit contract is modeled separately, not a proved composition or shared transaction",
+        "Finite authorization/cancellation environment; runtime/provider effects and failure payloads omitted"
+      ],
+      "exclusions": [
+        "Knowledge authority publication/build/membership state machine and storage implementation",
+        "Cross-store serializability, revocation-at-commit guarantee or cancellation after the final check",
+        "Citation content, policy selection, failure-response redaction, provider budgets and native workflow internals"
+      ],
+      "remaining_obligations": [
+        "Model authority publication/build states separately; this entry must not mark authority_publication as covered",
+        "Establish internal gateway validation consistency and shared authority revision protocol",
+        "Define and implement any stronger cross-store authorization-at-commit requirement before claiming it"
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/knowledge_turn.py",
+          "language": "python",
+          "symbol": "KnowledgeTurn.run",
+          "sha256": "e8a194d7ca5e7ccb93c0994de82cb60a3755cc99a4b38afd751a345f60fb4a3d"
+        },
+        {
+          "path": "kb_platform/agent_tools.py",
+          "language": "python",
+          "symbol": "EvidenceGateway._state",
+          "sha256": "d76ff50767916a98d1f90d18c1577c47adbd2c48a0ff7f09c2cc976cf0e6344b"
+        },
+        {
+          "path": "kb_platform/agent_tools.py",
+          "language": "python",
+          "symbol": "EvidenceGateway.authorize",
+          "sha256": "5993ded69788bd116b215f43afa96f8c75b81816cc8303759d3691bd70ac9b34"
+        },
+        {
+          "path": "kb_platform/agent_tools.py",
+          "language": "python",
+          "symbol": "EvidenceGateway._unchanged",
+          "sha256": "3819c0b1ba0e5efc4e640dfd8752befb2c1c4d757786c26e34e8f920d2ccf890"
+        },
+        {
+          "path": "kb_platform/agent_tools.py",
+          "language": "python",
+          "symbol": "EvidenceGateway.read",
+          "sha256": "2adebf2e845ecc646b16d93283f72791903e6617d9561c7b54a350ad41907c3b"
+        },
+        {
+          "path": "kb_platform/agent_tools.py",
+          "language": "python",
+          "symbol": "EvidenceGateway.revalidate",
+          "sha256": "ef48889f5f0f92e6b00c89bf4647e7e8566028fb29d597025ddc5b4e5f2a3c9b"
+        }
+      ],
+      "models": [
+        {
+          "id": "knowledge_postflight_authority",
+          "module": "formal/session_authority/PostflightAuthority.tla",
+          "config": "formal/session_authority/PostflightAuthority.cfg",
+          "invariants": [
+            "TypeOK",
+            "FreshResponseWasChecked",
+            "ReplayResponseWasRevalidated"
+          ],
+          "properties": [],
+          "bounds": {
+            "ValidateReplay": true,
+            "mode": [
+              "fresh",
+              "replay"
+            ],
+            "authorityRevision": [
+              0,
+              1
+            ],
+            "scopeAllowed": "boolean",
+            "evidenceAllowed": "boolean",
+            "cancelled": "boolean"
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "knowledge_unchecked_replay",
+          "module": "formal/session_authority/PostflightAuthority.tla",
+          "config": "formal/session_authority/PostflightAuthorityUncheckedReplay.cfg",
+          "expected_invariant": "ReplayResponseWasRevalidated",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "kind": "mutation",
+          "purpose": "Bypass current evidence validation on the completed-request replay path",
+          "known_limitation": false
+        },
+        {
+          "id": "knowledge_authority_commit_limitation",
+          "module": "formal/session_authority/PostflightAuthority.tla",
+          "config": "formal/session_authority/PostflightAuthorityCommitLimit.cfg",
+          "expected_invariant": "CurrentAuthorityAtCommit",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "kind": "limitation",
+          "purpose": "Known implementation-contract limitation: authority can change after revalidation and before a separate session transaction commits; not a fixed bug",
+          "known_limitation": true
+        }
+      ]
+    }
+  ]
+}
