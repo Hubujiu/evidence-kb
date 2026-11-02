@@ -56,32 +56,50 @@
   "machines": [
     {
       "id": "physical_budget",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/rag_testing/budget.py",
         "kb_platform/rag_testing/provider_capture.py",
         "kb_platform/embeddings.py",
         "kb_platform/google_semantic_provider.py",
-        "kb_platform/model_http.py"
+        "kb_platform/model_http.py",
+        "kb_platform/rag_testing/delivery_http.py",
+        "kb_platform/rag_testing/sdk_gateway.py",
+        "kb_platform/rag_testing/reader_diagnostic.py",
+        "kb_platform/rag_testing/pageindex_probe.py",
+        "kb_platform/rag_testing/pageindex_full_query.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent → STARTED → COMPLETE / ERROR / UNKNOWN",
+        "Durable budget NONE/STARTED/COMPLETE/ERROR/UNKNOWN separate from provider receipt and settlement acknowledgement.",
+        "Transient reserve/send/observe/settle/failure/crash/restart phases."
       ],
       "transitions": [
         "BudgetLedger._reserve",
         "BudgetLedger.finish",
-        "MeteredTransport._handle_admitted"
+        "MeteredTransport._handle_admitted",
+        "GoogleSemanticProvider._observed",
+        "RequestReceipts.begin",
+        "RequestReceipts.finish"
       ],
       "invariants": [
-        "Never send without durable reservation; UNKNOWN or STARTED retains reservation; finish exactly once; a failed reserve acknowledgment does not prove physical send; no blind replay. DB write/guard serialization and external HTTP are distinct atomicity domains."
+        "Never send without durable reservation; UNKNOWN or STARTED retains reservation; finish exactly once; a failed reserve acknowledgment does not prove physical send; no blind replay. DB write/guard serialization and external HTTP are distinct atomicity domains.",
+        "Send requires acknowledged durable reservation; never replay the same physical identity.",
+        "Call settlement at most once even after lost commit acknowledgement; preserve original commit failure identity.",
+        "Unknown or STARTED charges retain modeled reservation; acknowledged settlement matches durable state."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model.",
+        "Producer admission is serialized; receipt and budget identities are paired, not equal strings.",
+        "Two physical requests for one logical request, one crash, one resource: reservation 2, known usage 1, cap 4.",
+        "Acknowledged commit is durable; unknown commit has both committed and rolled-back branches. Active or late commits are not modeled.",
+        "Only the registered finite physical-budget and capture-observer abstractions are checked; uncovered owners and transitions remain explicit."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory.",
+        "No liveness or unbounded proof; actual usage above reservation and multidimensional accounting are outside this finite model.",
+        "No filesystem fsync/power-loss proof or backend isolation proof; HTTP calls are synthetic in the regression contracts.",
+        "No machine-checked source-to-TLA+ refinement proof is provided."
       ],
       "source_bindings": [
         {
@@ -100,7 +118,7 @@
           "path": "kb_platform/rag_testing/provider_capture.py",
           "language": "python",
           "symbol": "MeteredTransport._handle_admitted",
-          "sha256": "3903308da069fc59c1a1144977a356077be2a6bc47161740ff01c9e588d398d0"
+          "sha256": "37e8741f2ad0848f5d216afcc6797986f05516391301afddc57b98236bad0308"
         },
         {
           "path": "kb_platform/embeddings.py",
@@ -112,17 +130,172 @@
           "path": "kb_platform/google_semantic_provider.py",
           "language": "python",
           "symbol": "GoogleSemanticProvider._observed",
-          "sha256": "5acfe0636090612a42a3153c37a0c1c771732438374cfbbff3ad21592245819a"
+          "sha256": "6e685484c7e5bd15a69b0e0b2707744b569f5b6105f0364aef50086dd569f5c7"
         },
         {
           "path": "kb_platform/model_http.py",
           "language": "python",
           "symbol": "OpenAICompatibleAdapter.invoke",
           "sha256": "7aca4fb4a257f49625d294b1542a3cb8a9832b33aa277ad2628ea71ff3fb7dde"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "RequestReceipts.begin",
+          "sha256": "72784a2a41c0418ed583e16af0566d04cb9138736fb042ba719020b8c63ab4b1"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "RequestReceipts.finish",
+          "sha256": "2a5262fd35e3396b520059ef6579b6810e277349bee40aabf379f6dd487ede0a"
+        },
+        {
+          "path": "kb_platform/provider_receipt_database.py",
+          "language": "python",
+          "symbol": "ReceiptDatabase._locked",
+          "sha256": "4ba4b8edbd8ac9b632b012b9d28072ef1b297277c05ccbafdfa2027175f4c463"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredClient.transaction",
+          "sha256": "c7f0c04cbd1029c9a13758e5c6679736ad6ca810b01069516c457a528da95f61"
+        },
+        {
+          "path": "kb_platform/rag_testing/provider_capture.py",
+          "language": "python",
+          "symbol": "capture_unresolved",
+          "sha256": "a3e338729e173c8f061f7a06fdc1d8a20404722912640c600df11166b3d9d1ee"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "require_no_pending",
+          "sha256": "2333f5ae0ce19a20f73097d6874cb66313a46725389f47f429f459a6a35a44f6"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_physical_summary",
+          "sha256": "ff261954afab99260b90a3259cf52f4fbc3d8d5f7d40df7908db3c38ed570e2d"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "capture_final",
+          "sha256": "7768beeed3c5fdfc70cac528279a57ff4e3020b0c27ab6237a9cc59a3505fb63"
+        },
+        {
+          "path": "kb_platform/rag_testing/sdk_gateway.py",
+          "language": "python",
+          "symbol": "SDKGateway.__init__",
+          "sha256": "061cab55e0567eae922984676805438651ad1bff982ec0ce55b7cfc84d5b84db"
+        },
+        {
+          "path": "kb_platform/rag_testing/reader_diagnostic.py",
+          "language": "python",
+          "symbol": "FullCorpusReader.run",
+          "sha256": "85249938a5de05784b034a1535f7c3762b19ddf00d0add4d3a15ac99a471c300"
+        },
+        {
+          "path": "kb_platform/rag_testing/pageindex_probe.py",
+          "language": "python",
+          "symbol": "PageIndexAdapter.run",
+          "sha256": "0f3400bcb94f70162a59e08a0c84c710f76babb57f4c023720afa2c1c38c8ada"
+        },
+        {
+          "path": "kb_platform/rag_testing/pageindex_full_query.py",
+          "language": "python",
+          "symbol": "PDFAdapter.run",
+          "sha256": "3af258c140cd6197b4919919c43c1476bb64dcc0cefb8d0f073268c8bd0b4926"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "physical_budget_settlement",
+          "module": "formal/physical_budget/PhysicalBudget.tla",
+          "config": "formal/physical_budget/PhysicalBudget.cfg",
+          "invariants": [
+            "TypeOK",
+            "SendRequiresAcknowledgedReservation",
+            "NoPhysicalReplay",
+            "SettlementAtMostOnce",
+            "UnknownChargeProtected",
+            "AdmissionBounded",
+            "ConfirmedSettlementIsDurable",
+            "OriginalCommitFailurePreserved"
+          ],
+          "properties": [],
+          "bounds": {
+            "RequestCount": 2,
+            "Reservation": 2,
+            "Cap": 4,
+            "RetrySettlement": false,
+            "SettlementOutcomes": [
+              "ACK",
+              "ROLLBACK",
+              "LOST_COMMITTED",
+              "LOST_ROLLED_BACK"
+            ],
+            "crashes": "at most 1; no fairness/liveness claim"
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 256
+        },
+        {
+          "id": "capture_settlement_gate",
+          "module": "formal/physical_budget/CaptureSettlement.tla",
+          "config": "formal/physical_budget/CaptureSettlement.cfg",
+          "invariants": [
+            "TypeOK",
+            "KnownProviderFactsRetained",
+            "NoWorkflowReleaseWithoutConfirmedSettlement",
+            "NoWorkflowReleaseBeforeResponse"
+          ],
+          "properties": [],
+          "bounds": {
+            "physical_request": "one acknowledged reservation and send",
+            "TrustProviderStatus": false,
+            "SettlementResults": [
+              "ACK",
+              "ROLLBACK",
+              "LOST_COMMITTED",
+              "LOST_ROLLED_BACK"
+            ],
+            "crash": "before capture publication only"
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "legacy_duplicate_settlement",
+          "module": "formal/physical_budget/PhysicalBudget.tla",
+          "config": "formal/physical_budget/PhysicalBudgetLegacy.cfg",
+          "expected_invariant": "SettlementAtMostOnce",
+          "timeout_seconds": 30,
+          "heap_mb": 256
+        },
+        {
+          "id": "legacy_capture_status_gate",
+          "module": "formal/physical_budget/CaptureSettlement.tla",
+          "config": "formal/physical_budget/CaptureSettlementLegacy.cfg",
+          "expected_invariant": "NoWorkflowReleaseWithoutConfirmedSettlement",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "No liveness or unbounded proof; actual usage above reservation and multidimensional accounting are outside this finite model.",
+        "No filesystem fsync/power-loss proof or backend isolation proof; HTTP calls are synthetic in the regression contracts.",
+        "File-backed logical receipt transition serialization has a separately reproduced race; this model assumes serialized receipt actions and does not verify that implementation.",
+        "Cross-layer unsent admission persistence failures and PR31 outcome projection require separate validation.",
+        "Model batch rollover and reviewed unknowns, lease expiry and concurrent producers.",
+        "Model file receipt concurrency, stale finish/reconcile, full cross-store identity recovery, provider admission and cancellation.",
+        "Model active/late commits, partial/multidimensional usage and actual usage exceeding reservations."
+      ]
     },
     {
       "id": "budget_batches",
