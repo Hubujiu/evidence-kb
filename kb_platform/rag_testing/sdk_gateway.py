@@ -7,7 +7,7 @@ import httpx
 from kb_platform.remote import LunaClient
 from kb_platform.provider_admission import ProviderAdmission
 from .contracts import digest
-from .provider_capture import MeteredTransport, request_context
+from .provider_capture import MeteredTransport, capture_unresolved, request_context
 from .cache import StageCache, StageKey
 
 
@@ -37,14 +37,14 @@ class SDKGateway:
                 key = self.stage_key(old["context"], old["payload"])
                 if old["payload_sha256"] != digest(old["payload"]):
                     raise ValueError("CORRUPT_RECOVERY_PAYLOAD")
+                if capture_unresolved(old):
+                    raise ValueError("UNRESOLVED_RECOVERY_REQUEST")
                 if old["status"] == "COMPLETE":
                     self.recovery_cache.put(
                         key, dict(response=old["response"], physical_id=old["physical_request_id"])
                     )
-                elif old["status"] == "ERROR":
-                    self.retry_of[digest(key)] = old["physical_request_id"]
                 else:
-                    raise ValueError("UNRESOLVED_RECOVERY_REQUEST")
+                    self.retry_of[digest(key)] = old["physical_request_id"]
         admission = ProviderAdmission(self.provider, self.provider.cache_dir / "provider-admission")
         self.client = httpx.Client(
             transport=MeteredTransport(
