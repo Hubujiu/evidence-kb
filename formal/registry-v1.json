@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -181,7 +181,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -242,7 +242,7 @@
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation → consumed/released"
+        "pending reservation \u2192 consumed/released"
       ],
       "transitions": [
         "BudgetLedger.reserve",
@@ -603,7 +603,7 @@
         "rust/llm-service/src/registry.rs"
       ],
       "states": [
-        "route Active→Draining→Cleaning→removed/CleanupFailed"
+        "route Active\u2192Draining\u2192Cleaning\u2192removed/CleanupFailed"
       ],
       "transitions": [
         "RoutePhase",
@@ -750,7 +750,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY↔WAITING"
+        "READY\u2194WAITING"
       ],
       "transitions": [
         "transition",
@@ -887,7 +887,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1080,7 +1080,7 @@
         "rust/storage-service/src/transaction.rs"
       ],
       "states": [
-        "begin→held→executing→commit/rollback"
+        "begin\u2192held\u2192executing\u2192commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1151,7 +1151,7 @@
         "kb_platform/storage_adapters/values.py"
       ],
       "states": [
-        "Input→Executing→Result→Values / Failed"
+        "Input\u2192Executing\u2192Result\u2192Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1217,7 +1217,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1279,7 +1279,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent→issued→expired/revoked"
+        "absent\u2192issued\u2192expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1404,7 +1404,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1494,7 +1494,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1543,7 +1543,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1616,7 +1616,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",
@@ -1746,9 +1746,6 @@
         "kb_platform/documents.py",
         "kb_platform/core.py",
         "kb_platform/knowledge_transfer.py",
-        "kb_platform/ocr.py",
-        "kb_platform/page_parsing.py",
-        "kb_platform/parsing_backends.py",
         "kb_platform/storage_reset.py",
         "kb_platform/storage_adapters/structured_transfer.py",
         "kb_platform/database_migrations.py"
@@ -1815,24 +1812,6 @@
           "language": "python",
           "symbol": "import_knowledge",
           "sha256": "204fd6895a9e68d680055048fa845d7eabe590b020a4c1aed079975a9257a452"
-        },
-        {
-          "path": "kb_platform/ocr.py",
-          "language": "python",
-          "symbol": "augment_ocr",
-          "sha256": "3ee9e9e1b338a68480e59faea32259dcebd444981ebb2a3adac7dc2aaf5a8fce"
-        },
-        {
-          "path": "kb_platform/page_parsing.py",
-          "language": "python",
-          "symbol": "assemble_pdf_pages",
-          "sha256": "77fdf494be373ca02271b40230887d37bf7dc41972dafd061b96b02ba5087b62"
-        },
-        {
-          "path": "kb_platform/parsing_backends.py",
-          "language": "python",
-          "symbol": "routed_document",
-          "sha256": "3b8310c8ed9dcf27688e58ea292ab19802b2e5cc7afcff00bf6909b3030345da"
         },
         {
           "path": "kb_platform/core.py",
@@ -2064,7 +2043,7 @@
       ],
       "purpose": "Three independently bounded commit boundaries: parse admission, structured knowledge import, and reset configuration publication. No new production defect is asserted.",
       "remaining_obligations": [
-        "Parser-page ensemble and OCR partial-recovery states remain source-bound inventory rather than full page-level models.",
+        "Parser-page ensemble and explicit OCR partial recovery are separately bounded by page_recovery; extraction quality and cross-model refinement remain unproved.",
         "Object transfer and distributed online migration orchestration remain separate; import_ledger sealing/recovery belongs to the budget worker.",
         "Cross-model composition with authority/search generation (PR43), independent storage providers and arbitrary numbers of rows/writers is unproved.",
         "KnowledgeTransfer models one unchanged package/target content; detection of later target edits is exercised by SQL contracts and lint, not a modeled external-edit transition."
@@ -2129,6 +2108,245 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "page_recovery",
+      "status": "partial",
+      "purpose": "Preserve page-level partial outcomes across exact cache reuse, isolate direct fallback failures, and resume OCR without repeating completed pages. Four confirmed implementation regressions, not a parser quality theorem.",
+      "owners": [
+        "kb_platform/ocr.py",
+        "kb_platform/page_parsing.py",
+        "kb_platform/parsing_backends.py",
+        "kb_platform/documents.py"
+      ],
+      "states": [
+        "Native READY/PARTIAL/BLOCKED/FAILED; external live or cache page SUCCESS/PARTIAL_SUCCESS/failed",
+        "Primary empty export; independent fallback success/failure and preserved attempt history",
+        "OCR pending/completed/failed; explicit resume; ordered snapshot assembly"
+      ],
+      "transitions": [
+        "page_routes",
+        "assemble_pdf_pages",
+        "_accept_page_result",
+        "routed_document",
+        "_frames",
+        "augment_ocr",
+        "_replace_ids"
+      ],
+      "invariants": [
+        "Cached partial conversion must not become READY; page source hash binds every accepted payload.",
+        "One fallback page failure must not prevent a later eligible page attempt.",
+        "Explicit OCR recovery does not call completed pages or append duplicate successful evidence; source/snapshot links and reading order are preserved.",
+        "Policy-blocked and failed inputs do not start eligible external work; unrelated missing capabilities remain visible.",
+        "Each successful ensemble page publishes its completion even when siblings fail; vision handoff cannot call already-completed local pages."
+      ],
+      "assumptions": [
+        "Finite models bound one cache entry, two pages and two explicit OCR invocations; no unbounded liveness claim.",
+        "Exact StageCache authorization and integrity semantics and native PDF/TIFF decoding are assumed and separately exercised by real local contracts.",
+        "External adapters are synthetic deterministic responses; paid providers and local third-party models are not invoked."
+      ],
+      "exclusions": [
+        "No claim about OCR accuracy, arbitrary PDF geometry, human-verified coordinates, remote model settlement or provider retry.",
+        "Selected replacement-backend failure remains fail-closed: unusable selected pages are not silently replaced by native output.",
+        "No global all-state-machines/no-bugs or code refinement proof."
+      ],
+      "remaining_obligations": [
+        "Unbounded pages, arbitrary document malformedness, memory/resource cleanup and third-party parser correctness require separate analysis.",
+        "Cache authority changes, worker process lifecycles and cross-model ingestion/publication composition are not proved here.",
+        "Reading order is abstracted as page order; real local regression additionally checks geometry/ordinal order and exact source links."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/page_parsing.py",
+          "language": "python",
+          "symbol": "page_routes",
+          "sha256": "2af815ecd2e878c6892dbb70fd59407bb220ec1d6a6514cc8d06248304fa0ee8"
+        },
+        {
+          "path": "kb_platform/page_parsing.py",
+          "language": "python",
+          "symbol": "_accept_page_result",
+          "sha256": "b53535b9a14cbcd0191d7d1bab8c4ec7dffa77e0689cd000ab8dea27b634f1a1"
+        },
+        {
+          "path": "kb_platform/page_parsing.py",
+          "language": "python",
+          "symbol": "assemble_pdf_pages",
+          "sha256": "bb51d41ebf56b3251781d4816f433dc46b550910832281b4fc8738277866d629"
+        },
+        {
+          "path": "kb_platform/ocr.py",
+          "language": "python",
+          "symbol": "_frames",
+          "sha256": "37abc45a9447407069eb7561544f72be06a8849f9f2abbdce05bd439478f4124"
+        },
+        {
+          "path": "kb_platform/ocr.py",
+          "language": "python",
+          "symbol": "augment_ocr",
+          "sha256": "f5d0c47a5dbeb8b2631e49d75ee46f449e9bbcb34a5dbe9608a66fd58230c94f"
+        },
+        {
+          "path": "kb_platform/ocr.py",
+          "language": "python",
+          "symbol": "_replace_ids",
+          "sha256": "f761231df550a0b28f7f1707671dfe00c3550c291ff0ad703786021e94e8f6f5"
+        },
+        {
+          "path": "kb_platform/parsing_backends.py",
+          "language": "python",
+          "symbol": "routed_document",
+          "sha256": "3b8310c8ed9dcf27688e58ea292ab19802b2e5cc7afcff00bf6909b3030345da"
+        },
+        {
+          "path": "kb_platform/documents.py",
+          "language": "python",
+          "symbol": "_Bundle",
+          "sha256": "9562b1afdf0551a8619231615810e799bb4e2222cdd81af029d91ad14b8a2396"
+        },
+        {
+          "path": "kb_platform/documents.py",
+          "language": "python",
+          "symbol": "parse_native_document",
+          "sha256": "32bbdec522999bd33dbac374b065d46464491e5d7dcf4356323be821069a8dcf"
+        }
+      ],
+      "models": [
+        {
+          "module": "formal/page_recovery/PageCache.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "page-cache",
+          "config": "formal/page_recovery/PageCache.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoFalseReady",
+            "IdentityBound"
+          ],
+          "properties": [],
+          "bounds": {
+            "entries": 1,
+            "identities": 2,
+            "outcomes": 2,
+            "cache_reads": 1
+          }
+        },
+        {
+          "module": "formal/page_recovery/PageFallback.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "page-fallback",
+          "config": "formal/page_recovery/PageFallback.cfg",
+          "invariants": [
+            "TypeOK",
+            "IndependentPages",
+            "PrimaryHistoryRetained",
+            "PolicyBound"
+          ],
+          "properties": [],
+          "bounds": {
+            "pages": 2,
+            "fallbacks_per_page": 1,
+            "policy": 2
+          }
+        },
+        {
+          "module": "formal/page_recovery/OCRRecovery.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "ocr-recovery",
+          "config": "formal/page_recovery/OCRRecovery.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoDuplicateSuccess",
+            "CanonicalOrder",
+            "PolicyBound",
+            "NoCompletedPageCall",
+            "LocalCompletionRetained"
+          ],
+          "properties": [],
+          "bounds": {
+            "pages": 2,
+            "explicit_invocations": 2,
+            "success_values": 2,
+            "initial_local_success_subsets": 4
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/page_recovery/PageCache.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "page-cache-legacy",
+          "config": "formal/page_recovery/PageCacheLegacy.cfg",
+          "expected_invariant": "NoFalseReady"
+        },
+        {
+          "module": "formal/page_recovery/PageCache.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "page-cache-wrongidentity",
+          "config": "formal/page_recovery/PageCacheWrongIdentity.cfg",
+          "expected_invariant": "IdentityBound"
+        },
+        {
+          "module": "formal/page_recovery/PageCache.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "page-cache-success",
+          "config": "formal/page_recovery/PageCacheSuccess.cfg",
+          "expected_invariant": "WarmPartialUnreachable"
+        },
+        {
+          "module": "formal/page_recovery/PageFallback.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "page-fallback-legacy",
+          "config": "formal/page_recovery/PageFallbackLegacy.cfg",
+          "expected_invariant": "IndependentPages"
+        },
+        {
+          "module": "formal/page_recovery/PageFallback.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "page-fallback-success",
+          "config": "formal/page_recovery/PageFallbackSuccess.cfg",
+          "expected_invariant": "PartialRecoveryUnreachable"
+        },
+        {
+          "module": "formal/page_recovery/OCRRecovery.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "ocr-recovery-legacy",
+          "config": "formal/page_recovery/OCRRecoveryLegacy.cfg",
+          "expected_invariant": "NoDuplicateSuccess"
+        },
+        {
+          "module": "formal/page_recovery/OCRRecovery.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "ocr-recovery-success",
+          "config": "formal/page_recovery/OCRRecoverySuccess.cfg",
+          "expected_invariant": "RecoveryUnreachable"
+        },
+        {
+          "module": "formal/page_recovery/OCRRecovery.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "ocr-recovery-losthandoff",
+          "config": "formal/page_recovery/OCRRecoveryLostHandoff.cfg",
+          "expected_invariant": "NoCompletedPageCall"
+        },
+        {
+          "module": "formal/page_recovery/OCRRecovery.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "ocr-recovery-repeatcall",
+          "config": "formal/page_recovery/OCRRecoveryRepeatCall.cfg",
+          "expected_invariant": "NoCompletedPageCall"
+        }
+      ]
     }
   ]
 }
