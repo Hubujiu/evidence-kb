@@ -1,0 +1,124 @@
+@!@!@STARTMSG 2262:0 @!@!@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+@!@!@ENDMSG 2262 @!@!@
+@!@!@STARTMSG 2187:0 @!@!@
+Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 123MB heap and 64MB offheap memory [pid: 241] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+@!@!@ENDMSG 2187 @!@!@
+@!@!@STARTMSG 2220:0 @!@!@
+Starting SANY...
+@!@!@ENDMSG 2220 @!@!@
+Parsing file /tmp/storage-protocol-formal-1/storage-value-call-ownership-negative/inputs/StorageValueCall.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module StorageValueCall
+@!@!@STARTMSG 2219:0 @!@!@
+SANY finished.
+@!@!@ENDMSG 2219 @!@!@
+@!@!@STARTMSG 2185:0 @!@!@
+Starting... (2026-11-02 09:36:34)
+@!@!@ENDMSG 2185 @!@!@
+@!@!@STARTMSG 2189:0 @!@!@
+Computing initial states...
+@!@!@ENDMSG 2189 @!@!@
+@!@!@STARTMSG 2190:0 @!@!@
+Finished computing initial states: 2 distinct states generated at 2026-11-02 09:36:35.
+@!@!@ENDMSG 2190 @!@!@
+@!@!@STARTMSG 2110:1 @!@!@
+Invariant NoErasedWriteCompletion is violated.
+@!@!@ENDMSG 2110 @!@!@
+@!@!@STARTMSG 2121:1 @!@!@
+The behavior up to this point is:
+@!@!@ENDMSG 2121 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+1: <Initial predicate>
+/\ actualWrites = 0
+/\ completionAttempted = FALSE
+/\ phase = "Input"
+/\ calls = 0
+/\ effect = "Write"
+/\ driver = "NotStarted"
+/\ admitted = FALSE
+/\ report = "None"
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+2: <Admit line 15, col 5 to line 19, col 77 of module StorageValueCall>
+/\ actualWrites = 0
+/\ completionAttempted = FALSE
+/\ phase = "Executing"
+/\ calls = 0
+/\ effect = "Write"
+/\ driver = "NotStarted"
+/\ admitted = TRUE
+/\ report = "None"
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+3: <Invoke line 21, col 5 to line 23, col 87 of module StorageValueCall>
+/\ actualWrites = 0
+/\ completionAttempted = FALSE
+/\ phase = "Executing"
+/\ calls = 1
+/\ effect = "Write"
+/\ driver = "Running"
+/\ admitted = TRUE
+/\ report = "None"
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+4: <CloseValidator line 45, col 5 to line 47, col 95 of module StorageValueCall>
+/\ actualWrites = 0
+/\ completionAttempted = FALSE
+/\ phase = "Closed"
+/\ calls = 1
+/\ effect = "Write"
+/\ driver = "Running"
+/\ admitted = TRUE
+/\ report = "None"
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+5: <DriverReturns line 25, col 5 to line 31, col 72 of module StorageValueCall>
+/\ actualWrites = 1
+/\ completionAttempted = FALSE
+/\ phase = "Closed"
+/\ calls = 1
+/\ effect = "Write"
+/\ driver = "Succeeded"
+/\ admitted = TRUE
+/\ report = "None"
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+6: <BeginResult line 33, col 5 to line 37, col 66 of module StorageValueCall>
+/\ actualWrites = 1
+/\ completionAttempted = TRUE
+/\ phase = "Failed"
+/\ calls = 1
+/\ effect = "Write"
+/\ driver = "Succeeded"
+/\ admitted = TRUE
+/\ report = "ValidationError"
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2200:0 @!@!@
+Progress(6) at 2026-11-02 09:36:35: 36 states generated (1,974 s/min), 29 distinct states found (1,590 ds/min), 4 states left on queue.
+@!@!@ENDMSG 2200 @!@!@
+@!@!@STARTMSG 2199:0 @!@!@
+36 states generated, 29 distinct states found, 4 states left on queue.
+@!@!@ENDMSG 2199 @!@!@
+@!@!@STARTMSG 2194:0 @!@!@
+The depth of the complete state graph search is 6.
+@!@!@ENDMSG 2194 @!@!@
+@!@!@STARTMSG 2268:0 @!@!@
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 3).
+@!@!@ENDMSG 2268 @!@!@
+@!@!@STARTMSG 2186:0 @!@!@
+Finished in 1100ms at (2026-11-02 09:36:35)
+@!@!@ENDMSG 2186 @!@!@

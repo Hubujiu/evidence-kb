@@ -1,0 +1,158 @@
+{
+  "id": "transfer-protocol-ownership-negative",
+  "kind": "negative",
+  "decision": "PASS",
+  "returncode": 12,
+  "timeout": false,
+  "seconds": 4.231638897996163,
+  "command": [
+    "java",
+    "-Xmx128m",
+    "-XX:MaxMetaspaceSize=128m",
+    "-XX:+UseParallelGC",
+    "-XX:+ExitOnOutOfMemoryError",
+    "-cp",
+    "/tmp/evidence-tla-tools/tla2tools-1.7.4.jar",
+    "tlc2.TLC",
+    "-tool",
+    "-workers",
+    "1",
+    "-seed",
+    "1",
+    "-fp",
+    "0",
+    "-fpmem",
+    "0.25",
+    "-metadir",
+    "/tmp/storage-protocol-formal-1/transfer-protocol-ownership-negative/states",
+    "-config",
+    "TransferOwnershipNegative.cfg",
+    "TransferOwnership"
+  ],
+  "input_sha256": {
+    "formal/controls/GateControl.tla": "3873ad49c156a90bb9bef20a7483f99717ebc23d8bab0b8482d7c178a4b0bd1f",
+    "formal/controls/LivenessControl.tla": "6c2afdfbde9fd3cc29515a4a444e803a1b64f0e20145a1b8f1c4d66f9ee488a2",
+    "formal/plugin_lifecycle/PluginLifecycle.tla": "9dd487802012380511687a2588a0105a53fa44e9e18215f3840f86fe4acefeef",
+    "formal/storage_value_call/StorageValueCall.tla": "a46de98c351e9be8d76fd1600b40a0c1eb441fc7ee51584a2c12776e764f58ba",
+    "formal/transfer_protocol/TransferOwnership.tla": "1e2ff488674d49575688f26f19b0f6178f1d2dd096acb899724a2796d47eed64",
+    "formal/transfer_protocol/TransferOwnershipNegative.cfg": "c4faf2c5f642d35ca04fa7af7f5d6d5eec92c1fd8c113631b24358138bba7d78"
+  },
+  "expected_invariant": "DispatchOwnsStream",
+  "expected_property": null,
+  "parsed": {
+    "frames": [
+      {
+        "code": 2262,
+        "severity": 0,
+        "body": "TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)"
+      },
+      {
+        "code": 2187,
+        "severity": 0,
+        "body": "Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 123MB heap and 64MB offheap memory [pid: 298] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue)."
+      },
+      {
+        "code": 2220,
+        "severity": 0,
+        "body": "Starting SANY..."
+      },
+      {
+        "code": 2219,
+        "severity": 0,
+        "body": "SANY finished."
+      },
+      {
+        "code": 2185,
+        "severity": 0,
+        "body": "Starting... (2026-11-02 09:36:43)"
+      },
+      {
+        "code": 2189,
+        "severity": 0,
+        "body": "Computing initial states..."
+      },
+      {
+        "code": 2269,
+        "severity": 0,
+        "body": "Computed 2 initial states..."
+      },
+      {
+        "code": 2190,
+        "severity": 0,
+        "body": "Finished computing initial states: 4 distinct states generated at 2026-11-02 09:36:44."
+      },
+      {
+        "code": 2110,
+        "severity": 1,
+        "body": "Invariant DispatchOwnsStream is violated."
+      },
+      {
+        "code": 2121,
+        "severity": 1,
+        "body": "The behavior up to this point is:"
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "1: <Initial predicate>\n/\\ actualEffects = 0\n/\\ validated = FALSE\n/\\ submitted = FALSE\n/\\ streamAlive = TRUE\n/\\ mode = \"upload\"\n/\\ closed = FALSE\n/\\ calls = 0\n/\\ largeResult = FALSE\n/\\ downloadAlive = FALSE\n/\\ readOffset = 0\n/\\ client = \"None\"\n/\\ offset = 0\n/\\ job = \"idle\"\n/\\ handler = \"NotStarted\"\n/\\ hashValid = FALSE"
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "2: <WriteChunk line 15, col 5 to line 18, col 99 of module TransferOwnership>\n/\\ actualEffects = 0\n/\\ validated = FALSE\n/\\ submitted = FALSE\n/\\ streamAlive = TRUE\n/\\ mode = \"upload\"\n/\\ closed = FALSE\n/\\ calls = 0\n/\\ largeResult = FALSE\n/\\ downloadAlive = FALSE\n/\\ readOffset = 0\n/\\ client = \"None\"\n/\\ offset = 1\n/\\ job = \"idle\"\n/\\ handler = \"NotStarted\"\n/\\ hashValid = FALSE"
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "3: <WriteChunk line 15, col 5 to line 18, col 99 of module TransferOwnership>\n/\\ actualEffects = 0\n/\\ validated = FALSE\n/\\ submitted = FALSE\n/\\ streamAlive = TRUE\n/\\ mode = \"upload\"\n/\\ closed = FALSE\n/\\ calls = 0\n/\\ largeResult = FALSE\n/\\ downloadAlive = FALSE\n/\\ readOffset = 0\n/\\ client = \"None\"\n/\\ offset = 2\n/\\ job = \"idle\"\n/\\ handler = \"NotStarted\"\n/\\ hashValid = FALSE"
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "4: <Submit line 20, col 5 to line 23, col 99 of module TransferOwnership>\n/\\ actualEffects = 0\n/\\ validated = FALSE\n/\\ submitted = TRUE\n/\\ streamAlive = TRUE\n/\\ mode = \"upload\"\n/\\ closed = FALSE\n/\\ calls = 0\n/\\ largeResult = FALSE\n/\\ downloadAlive = FALSE\n/\\ readOffset = 0\n/\\ client = \"None\"\n/\\ offset = 2\n/\\ job = \"idle\"\n/\\ handler = \"NotStarted\"\n/\\ hashValid = FALSE"
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "5: <ClaimDispatch line 30, col 5 to line 33, col 99 of module TransferOwnership>\n/\\ actualEffects = 0\n/\\ validated = FALSE\n/\\ submitted = TRUE\n/\\ streamAlive = TRUE\n/\\ mode = \"dispatch\"\n/\\ closed = FALSE\n/\\ calls = 0\n/\\ largeResult = FALSE\n/\\ downloadAlive = FALSE\n/\\ readOffset = 0\n/\\ client = \"None\"\n/\\ offset = 2\n/\\ job = \"verifying\"\n/\\ handler = \"NotStarted\"\n/\\ hashValid = FALSE"
+      },
+      {
+        "code": 2217,
+        "severity": 4,
+        "body": "6: <Close line 83, col 5 to line 88, col 68 of module TransferOwnership>\n/\\ actualEffects = 0\n/\\ validated = FALSE\n/\\ submitted = TRUE\n/\\ streamAlive = FALSE\n/\\ mode = \"dispatch\"\n/\\ closed = TRUE\n/\\ calls = 0\n/\\ largeResult = FALSE\n/\\ downloadAlive = FALSE\n/\\ readOffset = 0\n/\\ client = \"None\"\n/\\ offset = 2\n/\\ job = \"verifying\"\n/\\ handler = \"NotStarted\"\n/\\ hashValid = FALSE"
+      },
+      {
+        "code": 2200,
+        "severity": 0,
+        "body": "Progress(6) at 2026-11-02 09:36:44: 72 states generated (1,178 s/min), 71 distinct states found (1,162 ds/min), 20 states left on queue."
+      },
+      {
+        "code": 2199,
+        "severity": 0,
+        "body": "72 states generated, 71 distinct states found, 20 states left on queue."
+      },
+      {
+        "code": 2194,
+        "severity": 0,
+        "body": "The depth of the complete state graph search is 6."
+      },
+      {
+        "code": 2268,
+        "severity": 0,
+        "body": "The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 4)."
+      },
+      {
+        "code": 2186,
+        "severity": 0,
+        "body": "Finished in 3674ms at (2026-11-02 09:36:44)"
+      }
+    ],
+    "truncated": false,
+    "states": {
+      "generated": 72,
+      "distinct": 71,
+      "remaining": 20
+    }
+  },
+  "log": "transfer-protocol-ownership-negative/tlc.log"
+}
