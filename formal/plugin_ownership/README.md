@@ -463,3 +463,29 @@ an earlier shell redirection failed before Java started, and is not a model run.
 Raw authoring evidence is retained in `.local/plugin-*stage1.log` and
 `.local/formal-stage1/`. Final-tree verification follows after the concrete remaining owners;
 no ordinary full gate or remote CI is claimed yet.
+
+## Gate cost and latest remote failure evidence
+
+Stage-8 CI run 41544819130 failed only Windows/Python 3.12 contracts; the other
+three quality jobs, integration, formal and secrets succeeded. The failed shard
+left no final report, and its log ended mid-faulthandler stack. The 150-second
+faulthandler timer is for the entire worker, not for the final named bootstrap
+test: 142.921 seconds had already elapsed when that test began. Therefore this
+is not evidence that that test deadlocked for 150 seconds, and the truncated
+stack does not establish a production cause. No CI retry, timeout change, skip
+or relaxed gate is used. The original ZIP and timing/log evidence are retained
+under `.local/ci-stage8-failure`; its local SHA-256 matches the upload log. Direct
+artifact-metadata fetch was rejected as an unsupported connector endpoint, so an
+API digest is not claimed for this diagnostic extraction.
+
+The shard's mutation contract consumed 60.453 wall / 57.563 CPU seconds. The lint
+was repeatedly tokenizing the same Rust snapshot once per rule. It now tokenizes
+once and extracts each required method once **within that invocation only**;
+there is no cache across roots, calls, file paths or edits. All 76 original
+hash-refresh mutations remain, and two new tests enforce one source tokenization
+and same-path edit/restore visibility. Twenty-two targeted tests pass. Four actual
+paired source variants (valid, negated claim, inverted collect, early eviction)
+produce byte-identical violation lists before/after: observed per-call wall times
+were 0.610–0.679 seconds before and 0.036–0.039 seconds after. This is a local
+component measurement, not a claimed whole-gate speedup or proof of the Windows
+failure's cause. No model, production guard or test threshold was weakened.

@@ -4,7 +4,9 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
+from . import formal_plugin_ownership as ownership
 from .formal_plugin_ownership import ORDER_RULES, RULES, SOURCE, ownership_violations
 from .formal_state_machines import ROOT, registry_violations, source_digest
 
@@ -12,6 +14,26 @@ from .formal_state_machines import ROOT, registry_violations, source_digest
 class PluginOwnershipLintContracts(unittest.TestCase):
     def test_current_guard_shapes_are_reviewed(self):
         self.assertEqual([], ownership_violations(ROOT))
+
+    def test_source_snapshot_is_tokenized_once_without_cross_call_cache(self):
+        source = (ROOT / SOURCE).read_text('utf-8')
+        with patch.object(ownership, 'tokens', wraps=ownership.tokens) as tokenize:
+            self.assertEqual([], ownership_violations(ROOT))
+        self.assertEqual(1, sum(call.args == (source,) for call in tokenize.call_args_list))
+
+    def test_successive_same_path_edits_cannot_reuse_a_previous_source_snapshot(self):
+        source = (ROOT / SOURCE).read_text('utf-8')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / SOURCE
+            target.parent.mkdir(parents=True)
+            target.write_text(source, encoding='utf-8')
+            self.assertEqual([], ownership_violations(root))
+            target.write_text(source.replace('if self.state(host)? != "disposed"',
+                                             'if self.state(host)? == "disposed"'), encoding='utf-8')
+            self.assertTrue(any('collect disposed entry' in error for error in ownership_violations(root)))
+            target.write_text(source, encoding='utf-8')
+            self.assertEqual([], ownership_violations(root))
 
     def test_hash_refresh_cannot_hide_each_scope_guard_mutation(self):
         replacements = {

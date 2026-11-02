@@ -92,8 +92,7 @@ def tokens(source: str) -> list[str]:
             if not m.group().startswith(('//', '/*'))]
 
 
-def method(source: str, name: str) -> list[str]:
-    items = tokens(source)
+def method(items: list[str], name: str) -> list[str]:
     for i in range(len(items) - 2):
         if items[i:i + 3] == ['fn', name, '(']:
             start = items.index('{', i)
@@ -108,13 +107,16 @@ def method(source: str, name: str) -> list[str]:
 
 def ownership_violations(root: Path) -> list[str]:
     source = (root / SOURCE).read_text('utf-8')
+    items = tokens(source)
+    names = {rule[0] for rule in RULES.values()} | {rule[0] for rule in ORDER_RULES.values()}
+    methods = {name: method(items, name) for name in names}
     errors = []
     for label, (name, fragment) in RULES.items():
-        body, expected = method(source, name), tokens(fragment)
+        body, expected = methods[name], tokens(fragment)
         if not any(body[i:i + len(expected)] == expected for i in range(len(body) - len(expected) + 1)):
             errors.append(f'plugin ownership: {label} guard requires reviewed shape in {name}')
     for label, (name, first, second) in ORDER_RULES.items():
-        body, left, right = method(source, name), tokens(first), tokens(second)
+        body, left, right = methods[name], tokens(first), tokens(second)
         before = next((i for i in range(len(body)) if body[i:i + len(left)] == left), -1)
         after = next((i for i in range(len(body)) if body[i:i + len(right)] == right), -1)
         if before < 0 or after <= before:
