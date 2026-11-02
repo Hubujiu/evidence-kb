@@ -9,7 +9,6 @@ from uuid import uuid4
 import httpx
 
 from .agent_engine import current_execution
-from .model_completion import CompletionPort
 from .model_errors import ModelPreflightError, RemoteModelError
 from .model_sdk import Capability, Media, ModelInfo, ModelResult
 from .provider_admission import ProviderAdmission
@@ -82,9 +81,6 @@ class OpenAICompatibleAdapter:
         if self._owned:
             self.client.close()
 
-    def completion_port(self):
-        return CompletionPort(self)
-
     def _headers(self):
         return {'Authorization': 'Bearer ' + self._key}
 
@@ -132,30 +128,34 @@ class OpenAICompatibleAdapter:
     def invoke(self, request):
         from .model_sdk import validate_request
 
-        request = validate_request(request)
-        if request.capability not in self.info.capabilities:
-            raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
-        path, wire = self._wire(request)
-        execution = current_execution()
-        deadline = request.call_context.get('deadline_monotonic', math.inf)
-        remaining = request.call_context.get('remaining_seconds')
-        if remaining is not None:
-            deadline = min(deadline, time.monotonic() + remaining)
+        try:
+            request = validate_request(request)
+            if request.capability not in self.info.capabilities:
+                raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
+            path, wire = self._wire(request)
+            execution = current_execution()
+            deadline = request.call_context.get('deadline_monotonic', math.inf)
+            remaining = request.call_context.get('remaining_seconds')
+            if remaining is not None:
+                deadline = min(deadline, time.monotonic() + remaining)
 
-        def remaining_timeout():
-            timeout = min(self.timeout, deadline - time.monotonic())
-            if execution is not None:
-                execution.check()
-                timeout = min(timeout, execution.remaining_seconds)
-            if timeout <= 0:
-                raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
-            return timeout
+            def remaining_timeout():
+                timeout = min(self.timeout, deadline - time.monotonic())
+                if execution is not None:
+                    execution.check()
+                    timeout = min(timeout, execution.remaining_seconds)
+                if timeout <= 0:
+                    raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
+                return timeout
 
-        timeout = remaining_timeout()
-        self.admission.require_available()
-        outbound = self.client.build_request('POST', self.endpoint + path, headers=self._headers(),
-                                             timeout=timeout, **wire)
-        payload_hash = hashlib.sha256(outbound.read()).hexdigest()
+            timeout = remaining_timeout()
+            self.admission.require_available()
+            outbound = self.client.build_request('POST', self.endpoint + path, headers=self._headers(),
+                                                 timeout=timeout, **wire)
+            payload_hash = hashlib.sha256(outbound.read()).hexdigest()
+        except Exception as error:
+            error.model_sent = False
+            raise
         identity = uuid4().hex
         category = f'model:{self.info.provider}:{self.info.model}:{request.capability}'
         record = {'protocol': 'model-call/1', 'physical_request_id': identity, 'category': category,
@@ -210,6 +210,7 @@ class OpenAICompatibleAdapter:
                 exc, code = recording_error, 'PROVIDER_LEDGER_ERROR'
             else:
                 if not sending:
+                    exc.model_sent = False
                     raise
             error = RemoteModelError(code)
             error.model_sent = not known_unsent

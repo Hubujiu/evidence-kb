@@ -1,17 +1,11 @@
-import asyncio
 import json
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
-
-import httpx
 
 from kb_platform.authentication import SessionAuthentication, StaticAuthentication
 from kb_platform.plugin_host import PluginSpec
 from kb_platform.session_identity import Actor
-from kb_platform.storage_sdk import KV_EXPIRING_V1, StorageError, StorageExport, StorageIdentity, StorageProvider
+from kb_platform.storage_sdk import StorageError
 
 
 class MemorySessions:
@@ -76,62 +70,6 @@ class AuthenticationContracts(unittest.TestCase):
         self.assertIsNone(auth.authenticate('x' * 40))
         self.assertIsNone(auth.authenticate('非ASCII' * 40))
 
-    def test_http_uses_replaceable_ttl_store_without_reading_identity_file(self):
-        store = MemorySessions()
-        closed = []
-
-        class Provider:
-            def exports(self):
-                return (StorageExport('sessions', (KV_EXPIRING_V1,), self.open_space),)
-
-            def open_space(self, space, target):
-                store.identity = StorageIdentity(space, target.cache_id)
-                return store
-
-            def close(self):
-                closed.append(True)
-
-        configuration = {'version': 2, 'application_id': 'auth-tests',
-            'instances': {'sessions': {'provider': 'synthetic-ttl', 'config': {}}},
-            'services': {'sessions': {'instance': 'sessions', 'export': 'sessions'}},
-            'bindings': {'authentication': {'sessions': {'service': 'sessions', 'owner': 'auth',
-                'space': 'sessions', 'cache_id': 'test-sessions'}}}}
-        profile = {'version': 1, 'plugins': [
-            {'id': 'platform', 'use': 'platform.borrowed'},
-            {'id': 'authentication', 'use': 'authentication.sessions'}]}
-        with TemporaryDirectory() as directory, patch.dict('os.environ', {'KB_DEFER_DEFAULT_APP': '1'}):
-            from kb_platform.api import create_app
-
-            def forbidden():
-                raise AssertionError('session authentication must not read file identities')
-
-            settings = SimpleNamespace(storage_root=Path(directory), identities=forbidden)
-            app = create_app(settings, platform=SimpleNamespace(embedding_provider=None, ocr_client=None),
-                profile=profile, storage_configuration=configuration,
-                provider_catalog={'synthetic-ttl': StorageProvider(lambda config: Provider(),
-                    {'sessions': (KV_EXPIRING_V1,)})})
-            host = app.state.root_plugins
-            try:
-                session = host.call('authentication', 'issue', Actor('tenant', 'alice'))
-
-                async def requests():
-                    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://fixture') as client:
-                        headers = {'Authorization': 'Bearer ' + session.token}
-                        response = await client.get('/identity', headers=headers)
-                        self.assertEqual(response.status_code, 200)
-                        self.assertEqual(response.json(), {'tenant_id': 'tenant', 'principal_id': 'alice'})
-                        store.available = False
-                        self.assertEqual((await client.get('/identity', headers=headers)).status_code, 503)
-                        store.available = True
-                        host.call('authentication', 'revoke', session.token)
-                        self.assertEqual((await client.get('/identity', headers=headers)).status_code, 401)
-                        self.assertEqual((await client.get('/identity')).status_code, 401)
-
-                asyncio.run(requests())
-            finally:
-                host.close()
-        self.assertEqual(closed, [True])
-
     def test_invalid_authentication_provider_is_rejected_and_cleaned_up(self):
         from kb_platform.application_composition import create_root_application
 
@@ -147,3 +85,73 @@ class AuthenticationContracts(unittest.TestCase):
                 {'id': 'auth', 'use': 'broken-auth'}]}, environment={}, extra_plugins=(spec,),
                 authentication=True)
         self.assertEqual(closed, [True])
+
+
+def live_suite():
+    import asyncio
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+
+    import httpx
+
+    from kb_platform.storage_sdk import KV_EXPIRING_V1, StorageExport, StorageIdentity, StorageProvider
+
+    class AuthenticationIntegration(unittest.TestCase):
+        def test_http_uses_replaceable_ttl_store_without_reading_identity_file(self):
+            store = MemorySessions()
+            closed = []
+
+            class Provider:
+                def exports(self):
+                    return (StorageExport('sessions', (KV_EXPIRING_V1,), self.open_space),)
+
+                def open_space(self, space, target):
+                    store.identity = StorageIdentity(space, target.cache_id)
+                    return store
+
+                def close(self):
+                    closed.append(True)
+
+            configuration = {'version': 2, 'application_id': 'auth-tests',
+                'instances': {'sessions': {'provider': 'synthetic-ttl', 'config': {}}},
+                'services': {'sessions': {'instance': 'sessions', 'export': 'sessions'}},
+                'bindings': {'authentication': {'sessions': {'service': 'sessions', 'owner': 'auth',
+                    'space': 'sessions', 'cache_id': 'test-sessions'}}}}
+            profile = {'version': 1, 'plugins': [
+                {'id': 'platform', 'use': 'platform.borrowed'},
+                {'id': 'authentication', 'use': 'authentication.sessions'}]}
+            with TemporaryDirectory() as directory, patch.dict('os.environ', {'KB_DEFER_DEFAULT_APP': '1'}):
+                from kb_platform.api import create_app
+
+                def forbidden():
+                    raise AssertionError('session authentication must not read file identities')
+
+                settings = SimpleNamespace(storage_root=Path(directory), identities=forbidden)
+                app = create_app(settings, platform=SimpleNamespace(embedding_provider=None, ocr_client=None),
+                    profile=profile, storage_configuration=configuration,
+                    provider_catalog={'synthetic-ttl': StorageProvider(lambda config: Provider(),
+                        {'sessions': (KV_EXPIRING_V1,)})})
+                host = app.state.root_plugins
+                try:
+                    session = host.call('authentication', 'issue', Actor('tenant', 'alice'))
+
+                    async def requests():
+                        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://fixture') as client:
+                            headers = {'Authorization': 'Bearer ' + session.token}
+                            response = await client.get('/identity', headers=headers)
+                            self.assertEqual(response.status_code, 200)
+                            self.assertEqual(response.json(), {'tenant_id': 'tenant', 'principal_id': 'alice'})
+                            store.available = False
+                            self.assertEqual((await client.get('/identity', headers=headers)).status_code, 503)
+                            store.available = True
+                            host.call('authentication', 'revoke', session.token)
+                            self.assertEqual((await client.get('/identity', headers=headers)).status_code, 401)
+                            self.assertEqual((await client.get('/identity')).status_code, 401)
+
+                    asyncio.run(requests())
+                finally:
+                    host.close()
+            self.assertEqual(closed, [True])
+
+    return unittest.defaultTestLoader.loadTestsFromTestCase(AuthenticationIntegration)

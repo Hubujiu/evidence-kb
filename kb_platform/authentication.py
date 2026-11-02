@@ -8,10 +8,16 @@ from typing import Protocol
 
 from .session_identity import Actor
 from .storage_sdk import StorageError
+from .protocol_validation import callable_accepts
 
 
 class Authentication(Protocol):
     def authenticate(self, token: str) -> Actor | None: ...
+
+
+def validate_authentication(implementation):
+    if not callable_accepts(getattr(implementation, 'authenticate', None), Authentication.authenticate):
+        raise ValueError('AUTHENTICATION_PROTOCOL_INVALID')
 
 
 def _valid_token(token):

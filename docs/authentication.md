@@ -2,7 +2,7 @@
 
 HTTP 业务通过 `authentication.authenticate(token) -> Actor | None` 获取身份，认证服务由插件宿主管理，每次请求取得调用租约。接口返回空值时响应 401；公共存储异常响应 503。认证会话与对话历史是两个不同领域：对话历史继续由 `SessionStore` 管理 revision、请求幂等和单写者事务。
 
-API 默认装配 `authentication.file`，保留 `KB_IDENTITIES_FILE` 的部署方式。显式配置认证插件时，不再加载该文件，也不在认证失败后回退到文件 token。自定义认证服务必须实现同步的 `authenticate(token)`，不符合接口会阻止应用启动并清理已装配资源。
+API 默认装配 `authentication.file`，保留 `KB_IDENTITIES_FILE` 的部署方式。显式配置认证插件时，不再加载该文件，也不在认证失败后回退到文件 token。自定义认证服务必须实现同步的 `authenticate(token)`；宿主在每代服务发布前校验，覆盖首次启动、更新、profile 替换及子作用域。不符合接口时拒绝发布，并按既有生命周期清理资源。
 
 ## Redis 或其他 TTL KV 提供商
 
@@ -44,3 +44,5 @@ API 默认装配 `authentication.file`，保留 `KB_IDENTITIES_FILE` 的部署�
 `rag_testing/authentication_contracts.py` 使用合成 TTL 存储与真实 ASGI 请求，覆盖过期、撤销、错误数据、不可用返回 503、缺失返回 401、无身份文件启动、插件关闭与错误协议清理。统一入口为 `uv run --no-sync python scripts/check_project.py`。
 
 真实 Redis 验证接入已有 `storage_contract_integration` 套件的 `test_authentication_sessions_on_real_redis`，检查服务端 TTL 删除、重新创建认证对象后读取会话、撤销以及资源清理。它需要专用 loopback Redis，不属于默认离线门禁，也不代表外部身份提供商的集成验收。
+
+`storage_integration` 的 SQLite 知识库组合使用 Redis 认证，删除身份文件后启动实际 Rust 宿主，执行浏览器上传与检索、HTTP 租户权限检查、宿主重启、TTL 过期、损坏记录返回 503、撤销后原件下载返回 401。ASGI 故障注入放在受控宿主集成阶段；默认离线合同仍禁止 socket 操作。

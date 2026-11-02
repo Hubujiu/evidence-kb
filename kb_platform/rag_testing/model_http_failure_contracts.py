@@ -3,6 +3,7 @@ from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +16,28 @@ from kb_platform.rag_testing.budget import BudgetLedger
 
 
 class ModelHttpFailureContracts(unittest.TestCase):
+    def test_provider_admission_failure_does_not_consume_call_budget(self):
+        with TemporaryDirectory() as directory:
+            with closing(BudgetLedger(Path(directory) / 'physical.sqlite3', {'requests': 1})) as physical:
+                with httpx.Client(transport=httpx.MockTransport(lambda request: self.fail('unexpected send'))) as client:
+                    adapter = OpenAICompatibleAdapter(provider='fixture', model='fixed',
+                        endpoint='https://fixture.invalid/v1', api_key='synthetic',
+                        capabilities=[Capability.CHAT], ledger=physical, reservation={'requests': 1}, client=client)
+                    with closing(ModelService()) as models:
+                        models.register('chat', adapter)
+                        budget = AgentBudget(max_calls=1)
+                        structured = models.structured('chat', ledger=budget)
+                        with patch.object(adapter.admission, 'require_available',
+                                          side_effect=RuntimeError('fixture admission refusal')):
+                            for _ in range(2):
+                                with self.assertRaisesRegex(RuntimeError, 'fixture admission refusal') as caught:
+                                    structured.complete([{'role': 'user', 'content': 'question'}], role='answer',
+                                        schema={'type': 'object'}, call_context={})
+                                self.assertIs(caught.exception.model_sent, False)
+                                self.assertEqual(budget.snapshot()['calls'], 0)
+                                self.assertEqual(budget.snapshot()['unknown_usage_calls'], 0)
+                        self.assertEqual(physical.summary()['physical_requests'], 0)
+
     def test_recording_failure_preserves_sent_attempt_and_upper_budget(self):
         self.check_recording_failures(httpx.ReadTimeout, True)
 

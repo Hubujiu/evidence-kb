@@ -144,15 +144,11 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
     selected, catalog = compile_model_plugins(selected, catalog)
     selected, catalog = _storage(selected, catalog, settings, selected_environment,
         storage_configuration=storage_configuration, provider_catalog=provider_catalog)
-    host = PluginHost(selected, catalog)
-    try:
-        if authentication:
-            from .authentication import Authentication
-            from .protocol_validation import callable_accepts
+    from .authentication import validate_authentication
 
-            if not callable_accepts(getattr(host.service('authentication'), 'authenticate', None),
-                                    Authentication.authenticate):
-                raise ValueError('AUTHENTICATION_PROTOCOL_INVALID')
+    host = PluginHost(selected, catalog,
+                      service_validators={'authentication': validate_authentication} if authentication else None)
+    try:
         specs = {spec.key: spec for spec in catalog}
         provided = {name for row in selected['plugins'] if not row.get('disabled')
                     for name in specs[row['use']].provides}

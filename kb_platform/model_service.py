@@ -50,7 +50,7 @@ class ModelService:
     def register(self, name, adapter, *, owned=False, registration_id=None,
                  owner_identity=None, owner_lease=None):
         info = validate_adapter(adapter, owned=owned)
-        if not isinstance(name, str) or not name or not isinstance(info, ModelInfo):
+        if not isinstance(name, str) or not name:
             raise ValueError('INVALID_MODEL_REGISTRATION')
         raw_identity = registration_id if registration_id is not None else uuid4().hex
         if not (isinstance(raw_identity, str) and raw_identity or
@@ -187,9 +187,8 @@ class ModelService:
             from .model_completion import CompletionPort, validate_completion_port
 
             factory = getattr(adapter, 'completion_port', None)
-            port = factory() if factory is not None else CompletionPort(self.bind(name, Capability.CHAT))
-            if isinstance(port, CompletionPort):
-                port = CompletionPort(adapter, invoke=self.bind(name, Capability.CHAT).invoke)
+            port = (factory() if factory is not None else
+                    CompletionPort(adapter, invoke=self.bind(name, Capability.CHAT).invoke))
             model = AgentModel(validate_completion_port(port), policy=policy, ledger=ledger)
             return StructuredModel(self, name, entry, model)
 

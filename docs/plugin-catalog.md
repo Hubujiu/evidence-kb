@@ -2,9 +2,11 @@
 
 本文件由 `uv run --no-sync python -m scripts.generate_plugin_catalog --output docs/plugin-catalog.md` 生成。
 
-当前共有 61 个静态内置实现键。统计只构造 PluginSpec，不挂载宿主、不连接后端、不调用模型。
+当前共有 63 个静态内置实现键。统计只构造 PluginSpec，不挂载宿主、不连接后端、不调用模型。
 
 模型提供商实例、存储实例、授权绑定和消费方包装按配置动态生成；外部安装的进程插件另计。公共服务可选，第三方可以自建服务和适配器。
+
+公共模型合同见 [model_sdk.py](../kb_platform/model_sdk.py)，公共存储合同见 [storage_sdk](../kb_platform/storage_sdk/__init__.py)。SDK 是协议定义，不计入挂载插件数量。
 
 | 类别 | 数量 | 源码 |
 | --- | ---: | --- |
@@ -14,6 +16,7 @@
 | 知识库问答 | 18 | [knowledge_profile.py](../kb_platform/knowledge_profile.py) |
 | 公共存储服务 | 1 | [storage_plugins.py](../kb_platform/storage_plugins.py) |
 | 易失阶段缓存 | 1 | [storage_cache_plugins.py](../kb_platform/storage_cache_plugins.py) |
+| 身份认证 | 2 | [authentication_plugins.py](../kb_platform/authentication_plugins.py) |
 
 提供商声明的服务合同如下。它们是适配器类型，不额外增加静态 PluginSpec 计数。
 
@@ -92,6 +95,8 @@
 | 知识库问答 | `knowledge.workflow.graph` | knowledge.workflow | 无 | 无 |
 | 公共存储服务 | `storage.service` | storage.registry | 无 | 无 |
 | 易失阶段缓存 | `storage.cache.volatile` | stage.cache | 无 | index: storage.relational.structured/v1, payload: storage.kv.expiring/v1 |
+| 身份认证 | `authentication.file` | authentication | 无 | 无 |
+| 身份认证 | `authentication.sessions` | authentication | 无 | sessions: storage.kv.expiring/v1 |
 
 消费者声明存储合同与可选预算槽位，生成的真实依赖由 Rust 宿主检查；装配层不补厂商约束。
 合同 SDK 与注册器不强制第三方业务使用公共服务；模型和存储各自检查领域语义。

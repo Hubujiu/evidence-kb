@@ -187,7 +187,7 @@ def knowledge_plugins(platform, research, *, service_factory=None, tool_plugins=
     }
     checks = {'knowledge.context.policy': lambda config: ContextPolicy(**config),
               'knowledge.service': lambda config: PipelineConfig.parse(config['retrieval_config']),
-              'knowledge.semantic': lambda config: semantic_inputs(config)}
+              'knowledge.semantic': semantic_inputs}
     return configured_plugins((
         PluginSpec('knowledge.resources', ('knowledge.platform', 'knowledge.research'), ('platform', 'research'), resources),
         PluginSpec('knowledge.context.policy', ('knowledge.context.policy',), (), policy),

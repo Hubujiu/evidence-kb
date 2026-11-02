@@ -1,9 +1,12 @@
 from dataclasses import replace
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock, patch
 
 from kb_platform.agent_model import BudgetLedger
 from kb_platform.model_adapters import LunaAdapter
+from kb_platform.model_completion import CompletionPort
+from kb_platform.model_configuration import from_config
 from kb_platform.model_errors import ModelPreflightError
 from kb_platform.model_sdk import Capability, Media, ModelAdapter, ModelInfo, ModelRequest, ModelResult
 from kb_platform.model_service import ModelService
@@ -96,6 +99,78 @@ class ModelProtocolContracts(unittest.TestCase):
             self.service.structured('generation')
         self.assertEqual(adapter.requests, [])
         self.assertEqual(self.service.inspect()['generation']['active_calls'], 0)
+
+    def test_explicit_completion_extension_preserves_cache_and_budget_contract(self):
+        class CachedPort(CompletionPort):
+            max_attempts = 2
+
+            def cache_get(self, key):
+                return {'value': {'answer': 'cached'}, 'finish_reason': 'stop', 'usage': None}
+
+        adapter = EchoAdapter()
+        port = CachedPort(adapter)
+        adapter.completion_port = lambda: port
+        self.service.register('generation', adapter)
+        model = self.service.structured('generation')
+        result = model.complete(self.request().payload['messages'], role='answer',
+                                schema={'type': 'object'}, call_context={})
+        self.assertIs(model.provider, port)
+        self.assertEqual(model.max_attempts, 2)
+        self.assertEqual(result.value, {'answer': 'cached'})
+        self.assertEqual(result.attempts, 0)
+        self.assertEqual(adapter.requests, [])
+
+    def test_configured_models_release_budget_after_owned_adapters(self):
+        closed = []
+        adapter = EchoAdapter()
+        adapter.close = lambda: closed.append('adapter')
+        ledger = SimpleNamespace(close=lambda: closed.append('ledger'))
+        with patch('kb_platform.model_configuration.read_model_config', return_value={'models': {'one': {}}}), \
+                patch('kb_platform.model_configuration.configured_budget', return_value=ledger), \
+                patch('kb_platform.model_configuration.configured_adapter', return_value=adapter):
+            models = from_config('synthetic')
+        models.close()
+        models.close()
+        self.assertEqual(closed, ['adapter', 'ledger'])
+
+    def test_configured_models_close_budget_when_construction_fails(self):
+        adapter = EchoAdapter()
+        adapter.close = Mock(return_value=None)
+        ledger = SimpleNamespace(close=Mock(return_value=None))
+        with patch('kb_platform.model_configuration.read_model_config',
+                   return_value={'models': {'one': {}, 'two': {}}}), \
+                patch('kb_platform.model_configuration.configured_budget', return_value=ledger), \
+                patch('kb_platform.model_configuration.configured_adapter',
+                      side_effect=[adapter, ValueError('fixture construction failure')]):
+            with self.assertRaisesRegex(ValueError, 'fixture construction failure'):
+                from_config('synthetic')
+        adapter.close.assert_called_once_with()
+        ledger.close.assert_called_once_with()
+
+    def test_configured_models_keep_budget_until_provider_cleanup_succeeds(self):
+        adapter = EchoAdapter()
+        adapter.close = Mock(side_effect=[RuntimeError('fixture close failure'), None])
+        ledger = SimpleNamespace(close=Mock(return_value=None))
+        with patch('kb_platform.model_configuration.read_model_config', return_value={'models': {'one': {}}}), \
+                patch('kb_platform.model_configuration.configured_budget', return_value=ledger), \
+                patch('kb_platform.model_configuration.configured_adapter', return_value=adapter):
+            models = from_config('synthetic')
+        with self.assertRaisesRegex(RuntimeError, 'fixture close failure'):
+            models.close()
+        ledger.close.assert_not_called()
+        models.close()
+        ledger.close.assert_called_once_with()
+
+    def test_nested_unsupported_message_options_never_reach_provider(self):
+        adapter = EchoAdapter()
+        self.service.register('generation', adapter)
+        for field in ('tool_calls', 'function_call', 'name', 'images'):
+            with self.subTest(field=field):
+                request = ModelRequest(Capability.CHAT, {'messages': [
+                    {'role': 'assistant', 'content': 'text', field: []}]})
+                with self.assertRaisesRegex(ValueError, 'UNSUPPORTED_MODEL_OPTION'):
+                    self.service.invoke('generation', request)
+        self.assertEqual(adapter.requests, [])
 
     def test_duplicate_route_keeps_existing_binding_and_never_calls_new_adapter(self):
         adapter, replacement = EchoAdapter(), EchoAdapter()

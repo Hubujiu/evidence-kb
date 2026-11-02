@@ -105,10 +105,22 @@ def configured_adapter(config, name, ledger, *, client=None, audit_root=None, ad
         audit_root=audit_root, admission_factory=admission_factory, client=client)
 
 
+class _ConfiguredModels(ModelService):
+    def __init__(self, ledger):
+        super().__init__()
+        self._ledger = ledger
+
+    def close(self):
+        super().close()
+        if self._ledger is not None:
+            self._ledger.close()
+            self._ledger = None
+
+
 def from_config(path, *, database=None, audit_root=None, admission_factory=None):
     config = read_model_config(path)
     ledger = configured_budget(config, database=database)
-    service = ModelService()
+    service = _ConfiguredModels(ledger)
     try:
         for name in config['models']:
             adapter = configured_adapter(config, name, ledger, audit_root=audit_root,
@@ -121,7 +133,6 @@ def from_config(path, *, database=None, audit_root=None, admission_factory=None)
         return service
     except BaseException:
         service.close()
-        ledger.close()
         raise
 
 

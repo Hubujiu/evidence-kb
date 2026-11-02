@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import httpx
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 
 from .runner import write_json
 
@@ -44,7 +45,10 @@ def wait_for(check, label):
 
 
 def sql_ready(url):
-    engine = create_engine(url, connect_args={'connect_timeout': 2})
+    selected = make_url(url)
+    if selected.get_backend_name() == 'postgresql':
+        selected = selected.set(drivername='postgresql+psycopg')
+    engine = create_engine(selected, connect_args={'connect_timeout': 2})
     try:
         with engine.connect() as connection:
             return connection.execute(text('SELECT 1')).scalar() == 1

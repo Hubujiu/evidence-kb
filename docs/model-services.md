@@ -11,7 +11,7 @@
 
 `compile_model_plugins` 在启动前把模型配置展开为普通 Rust 插件节点。`models.service` 只提供中立注册表，`models.budget` 拥有唯一共享物理账本，每个配置的提供商 endpoint 对应一个实例插件，拥有自己的 HTTP 客户端和多个模型路由。消费方通过路由标记声明真实依赖，提供商替换会重建受影响的消费方，其他提供商和预算资源保持原代次。提供商的路由注册使用自身 Rust 身份与租约；卸载先排空调用，再移除路由和关闭客户端。
 
-原配置中的服务实例 ID 留给预算节点，因此现有 `KB_STORAGE_CONFIG` 的预算消费绑定不变；注册表使用派生 ID。独立使用 `PluginHost` 时，先调用 `compile_model_plugins(profile, catalog)` 再构造宿主。直接注入借用服务或客户端仍受支持。`from_config` 和 `from_clients` 是显式独立构造入口，不再由已托管的公共服务内部调用。
+原配置中的服务实例 ID 留给预算节点，因此现有 `KB_STORAGE_CONFIG` 的预算消费绑定不变；注册表使用派生 ID。独立使用 `PluginHost` 时，先调用 `compile_model_plugins(profile, catalog)` 再构造宿主。直接注入借用服务或客户端仍受支持。`from_config` 和 `from_clients` 是显式独立构造入口，不再由已托管的公共服务内部调用。`from_config` 返回的服务拥有内部创建的预算账本，先关闭全部模型适配器再关闭账本；适配器清理失败时保留账本，沿用现有关闭重试。
 
 保持依赖图形状的凭据、端点和模型配置变更可替换相应实例。增删提供商或路由、更改 Embedding 维度需要重新编译组合并启动，原图会明确返回 `MODEL_PROVIDER_GRAPH_RECOMPILE_REQUIRED`。
 
@@ -34,7 +34,7 @@
 | `image` | `prompt`，可选 `count`、`size` | `images`，含媒体或 HTTPS URL |
 
 聊天目前支持 system/user/assistant 文本；原生 tool-call、流式、图像编辑、实时音频和异步
-生成作业未实现。`streaming=False`，未支持的请求选项明确拒绝。工具决策继续通过结构化
+生成作业未实现。`streaming=False`，未支持的请求选项明确拒绝；chat 消息对象只接受 `role` 和文本 `content`，不透传未准入的嵌套工具或媒体字段。工具决策继续通过结构化
 文本合同完成，不能把这些能力宣传为提供商原生工具协议。
 
 注册时验证协议版本、`invoke(request)` 的同步调用签名，以及自有资源的 `close()`。
@@ -196,8 +196,7 @@ def mount_provider(ctx, config):
 同一注册的租约、结果身份、内容合同和重注册失效规则仍有效。标准 chat 结果须返回
 `finish_reason='stop'` 才能完成结构化回答。
 
-`completion_port()` 是可选扩展，供 Luna 等保留已有缓存、重试和物理计量；公共 HTTP 适配器的
-结构化桥接也经过 `ModelService` 结果校验。通用桥接不实现供应商缓存或自动重试。
+`completion_port()` 是可选扩展，供 Luna 等保留已有缓存、重试和物理计量；显式扩展端口经验证后原样保留，不按具体类型重新包装或丢失其缓存、预算声明。公共 HTTP 适配器直接使用标准结构化桥接，经过 `ModelService` 结果校验。通用桥接不实现供应商缓存或自动重试。
 第三方调用抛出异常但没有明确发送状态时，逻辑预算保守记为已调用、usage 未知；确定未发送
 应抛出 `ModelPreflightError` 或保留既有 `model_sent=False` 分类。不能把未观测状态当作零费用。
 Luna OCR 无法按单次请求设置 `max_tokens`，因此明确拒绝该选项，不再静默忽略。

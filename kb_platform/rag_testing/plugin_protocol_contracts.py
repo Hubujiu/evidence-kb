@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from kb_platform.plugin_host import PLUGIN_PROTOCOL, PluginHost, PluginSpec
+from kb_platform.plugin_configuration import config_schema
 from kb_platform.plugin_native import PluginError
 
 
@@ -16,16 +17,95 @@ def empty_mount(context, config):
 
 
 class PluginProtocolContracts(unittest.TestCase):
+    def service_fixture(self, released, *, valid=True):
+        def mount(context, config):
+            implementation = SimpleNamespace(valid=config.get('valid', valid))
+            context.defer(lambda: released.append(implementation.valid))
+            context.provide('protected', implementation)
+        return PluginSpec('fixture', ('protected',), (), mount,
+                          config_schema=config_schema({'valid': {'type': 'boolean'}}))
+
+    def test_service_validation_runs_before_consumers_and_cleans_failed_initialization(self):
+        released, consumers = [], []
+        def validate(implementation):
+            if not implementation.valid:
+                raise ValueError('INVALID_FIXTURE_SERVICE')
+        consumer = PluginSpec('consumer', (), ('protected',), lambda ctx, config: consumers.append('mounted'))
+        settings = profile({'valid': False})
+        settings['plugins'].append({'id': 'consumer', 'use': 'consumer'})
+        with self.assertRaisesRegex(ValueError, 'INVALID_FIXTURE_SERVICE'):
+            PluginHost(settings, [self.service_fixture(released), consumer],
+                       service_validators={'protected': validate})
+        self.assertEqual(consumers, [])
+        self.assertEqual(released, [False])
+
+    def test_service_validation_applies_to_every_updated_generation(self):
+        for operation in ('update', 'apply'):
+            released, checked = [], []
+            def validate(implementation):
+                checked.append(implementation.valid)
+                if not implementation.valid:
+                    raise ValueError('INVALID_FIXTURE_SERVICE')
+            with self.subTest(operation=operation), PluginHost(profile(), [self.service_fixture(released)],
+                    service_validators={'protected': validate}) as host:
+                with self.assertRaises(ExceptionGroup):
+                    if operation == 'update':
+                        host.update('fixture', config={'valid': False})
+                    else:
+                        host.apply(profile({'valid': False}))
+                with self.assertRaises(PluginError):
+                    host.service('protected')
+                self.assertEqual(checked, [True, False])
+                self.assertEqual(released, [True, False])
+
+    def test_children_inherit_service_validation_and_cannot_replace_it(self):
+        released = []
+        def validate(implementation):
+            if not implementation.valid:
+                raise ValueError('INVALID_FIXTURE_SERVICE')
+        with PluginHost(profile(), [self.service_fixture(released)],
+                        service_validators={'protected': validate}) as root:
+            with self.assertRaisesRegex(PluginError, 'INVALID_SERVICE_VALIDATORS'):
+                root.scope({'version': 1, 'plugins': []}, service_validators={'protected': lambda value: None})
+            settings = profile({'valid': False})
+            settings['plugins'][0]['overrides'] = ['protected']
+            with self.assertRaisesRegex(ValueError, 'INVALID_FIXTURE_SERVICE'):
+                root.scope(settings)
+            self.assertTrue(root.service('protected').valid)
+            self.assertEqual(released, [False])
+        self.assertEqual(released, [False, True])
+
+    def test_service_validator_signatures_and_results_follow_synchronous_protocol(self):
+        async def pending(value):
+            return None
+        spec = self.service_fixture([])
+        for validators in ([], {'protected': pending}, {'protected': lambda: None}):
+            with self.subTest(validators=validators), patch('kb_platform.plugin_host.native_call') as native:
+                with self.assertRaisesRegex(PluginError, 'INVALID_SERVICE_VALIDATORS'):
+                    PluginHost(profile(), [spec], service_validators=validators)
+                native.assert_not_called()
+        released = []
+        with self.assertRaisesRegex(PluginError, 'INVALID_SERVICE_VALIDATOR_RESULT'):
+            PluginHost(profile(), [self.service_fixture(released)],
+                       service_validators={'protected': lambda value: pending(value)})
+        self.assertEqual(released, [True])
+
     def test_protocol_version_and_declarations_are_checked_before_mount(self):
         spec = PluginSpec('fixture', (), (), empty_mount)
         self.assertEqual(spec.protocol, PLUGIN_PROTOCOL)
         for change, code in (
             ({'protocol': 'evidence-plugin/2'}, 'UNSUPPORTED_PLUGIN_PROTOCOL'),
             ({'key': ''}, 'INVALID_PLUGIN_SPEC'),
+            ({'key': 'invalid key'}, 'INVALID_PLUGIN_SPEC'),
+            ({'key': 'x' * 129}, 'INVALID_PLUGIN_SPEC'),
             ({'version': ''}, 'INVALID_PLUGIN_SPEC'),
+            ({'version': '版本'}, 'INVALID_PLUGIN_SPEC'),
             ({'provides': 'service'}, 'INVALID_PLUGIN_SERVICES'),
+            ({'provides': ('invalid service',)}, 'INVALID_PLUGIN_SERVICES'),
+            ({'provides': tuple(f'service.{index}' for index in range(257))}, 'INVALID_PLUGIN_SERVICES'),
             ({'requires': ('service', 'service')}, 'INVALID_PLUGIN_SERVICES'),
             ({'concurrency': 'unbounded'}, 'INVALID_PLUGIN_SPEC'),
+            ({'concurrency': []}, 'INVALID_PLUGIN_SPEC'),
         ):
             with self.subTest(change=change), self.assertRaises(PluginError) as failure:
                 replace(spec, **change)

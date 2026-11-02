@@ -422,7 +422,10 @@ def main():
         raise RuntimeError('CURRENT_HOST_BINARY_REQUIRED')
     HostIntegration.output = args.output.resolve()
     HostIntegration.captures = []
+    from .authentication_contracts import live_suite as authentication_suite
+
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(HostIntegration)
+    suite.addTests(authentication_suite())
     stream = io.StringIO()
     result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
     print(stream.getvalue())
@@ -430,7 +433,7 @@ def main():
         'total': result.testsRun, 'failures': len(result.failures), 'errors': len(result.errors),
         'skipped': len(result.skipped), 'captures': HostIntegration.captures,
         'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0,
-        'scope': 'Rust main host with trusted Python worker and controlled localhost HTTP smoke; '
+        'scope': 'Rust main host with trusted Python worker, controlled localhost HTTP and ASGI authentication; '
                  'synthetic component fixtures and unified evidence scoring; '
                  'no live provider or production RAG quality claim; per-run Agent value kernel uses current DLL'}
     (args.output / 'summary.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), 'utf-8')

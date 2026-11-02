@@ -121,6 +121,8 @@ def validate_request(request):
             if (not isinstance(message, dict) or message.get('role') not in {'system', 'user', 'assistant'}
                     or not isinstance(message.get('content'), str)):
                 raise ValueError('INVALID_MODEL_MESSAGES')
+            if set(message) - {'role', 'content'}:
+                raise ValueError('UNSUPPORTED_MODEL_OPTION')
     elif kind == Capability.EMBEDDING:
         if (not isinstance(body.get('texts'), list) or not body['texts']
                 or any(not isinstance(x, str) or not x for x in body['texts'])

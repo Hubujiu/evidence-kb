@@ -10,7 +10,7 @@ from time import monotonic
 import unittest
 from unittest.mock import Mock, patch
 
-from kb_platform.plugin_host import PluginHost, PluginSpec
+from kb_platform.plugin_host import PLUGIN_PROTOCOL, PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
 from kb_platform.plugin_process import PROTOCOL, ProcessPackages, ProcessTransport, _Write
 
@@ -27,7 +27,8 @@ class ProcessPackageContracts(unittest.TestCase):
         return manager, manager.install(source)
 
     def test_dependency_manifest_rejects_invalid_or_duplicate_service_names(self):
-        for requires in ('shared.model', [None], [''], ['shared.model', 'shared.model']):
+        for requires in ('shared.model', [None], [''], ['shared.model', 'shared.model'],
+                         ['invalid service'], ['模型'], [f'service.{index}' for index in range(257)]):
             with self.subTest(requires=requires), tempfile.TemporaryDirectory() as root:
                 source = Path(root) / 'source'
                 source.mkdir()
@@ -38,6 +39,37 @@ class ProcessPackageContracts(unittest.TestCase):
                 with self.assertRaises(PluginError) as failure:
                     manager.install(source)
                 self.assertEqual(failure.exception.code, 'INVALID_PROCESS_DEPENDENCY')
+
+    def test_invalid_service_and_method_declarations_are_rejected_before_installation(self):
+        for services in ({'invalid service': ['invoke']}, {'模型': ['invoke']}, {'echo': ['调用']},
+                         {'echo': ['invoke', 'invoke']}, {'echo': ['_private']},
+                         {'echo': ['x' * 129]}, {f'service.{index}': ['invoke'] for index in range(257)}):
+            with self.subTest(services=services), tempfile.TemporaryDirectory() as root:
+                source = Path(root) / 'source'
+                source.mkdir()
+                (source / 'plugin.json').write_text(json.dumps({'protocol': PROTOCOL, 'name': 'fixture',
+                    'version': '1', 'command': ['worker'], 'services': services}), 'utf-8')
+                manager = ProcessPackages(Path(root) / 'installed')
+                with self.assertRaises(PluginError):
+                    manager.install(source)
+                self.assertEqual(list(manager.root.iterdir()), [])
+
+    def test_process_examples_use_the_same_spec_and_configuration_contract(self):
+        examples = Path(__file__).resolve().parents[2] / 'examples'
+        manifests = sorted(examples.glob('*/plugin.json'))
+        self.assertTrue(manifests)
+        with tempfile.TemporaryDirectory() as root:
+            manager = ProcessPackages(Path(root) / 'installed')
+            for manifest in manifests:
+                with self.subTest(plugin=manifest.parent.name):
+                    installed = manager.install(manifest.parent)
+                    spec = manager.catalog(installed['package'], journal=Path(root) / 'journal')
+                    self.assertEqual(spec.protocol, PLUGIN_PROTOCOL)
+                    self.assertEqual(spec.config_schema['type'], 'object')
+                    self.assertFalse(spec.config_schema['additionalProperties'])
+                    PluginHost._validate_config(spec, {'timeout': 5})
+                    with self.assertRaises(PluginError):
+                        PluginHost._validate_config(spec, {'timeuot': 5})
 
     def test_callbacks_queue_without_execution_and_reject_duplicate_unknown_or_completed_parent(self):
         with tempfile.TemporaryDirectory() as root:
