@@ -985,7 +985,7 @@
     },
     {
       "id": "storage_registry",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/storage_service.py",
         "kb_platform/database_service.py",
@@ -1006,12 +1006,13 @@
         "Full space/dataset/registration identity; no ABA grant; close/unregister cannot release active calls; schema prepare only before seal."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "DatabaseService RLock protects admission, route phase and snapshot transitions; adapter.close executes outside that lock.",
+        "Two route identities, two competing cleaners, one active lease per route, one cleanup failure per route, one service close snapshot; helper calls may stutter.",
+        "Existing BlobService lifecycle is the reference: block duplicate cleanup and close admission before snapshot; retain cleanup_failed owner for explicit retry."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "This model covers DatabaseService disposal and close only, not all storage registry operations.",
+        "No backend disposal correctness, Python-to-TLA refinement, OS resource proof or liveness under an indefinitely blocked adapter."
       ],
       "source_bindings": [
         {
@@ -1036,13 +1037,13 @@
           "path": "kb_platform/database_service.py",
           "language": "python",
           "symbol": "DatabaseService._dispose",
-          "sha256": "9997a173f85b456a47d88348a97f1ca20676a529459cc8505ca0bf91744f0620"
+          "sha256": "5f2f1662ae336dd6773e7d4b91be9474b64f9988da535dc6e951d9a03855d609"
         },
         {
           "path": "kb_platform/database_service.py",
           "language": "python",
           "symbol": "DatabaseService.close",
-          "sha256": "82e66a29a3a03d35d325ffcd6b3b0b2c3a74db549eb2ca2ff6cfffd87b67ac0b"
+          "sha256": "3e73234c89d4a19fc464385a8631c005ca18420516d693ec1ac5256dd5086d70"
         },
         {
           "path": "kb_platform/database_service.py",
@@ -1067,10 +1068,73 @@
           "language": "python",
           "symbol": "_Route",
           "sha256": "211dcbb76274228ced07bbfdfc02199062ad88623a2dbeb17c3ca72e22dc630c"
+        },
+        {
+          "path": "kb_platform/blob_service.py",
+          "language": "python",
+          "symbol": "BlobService.close",
+          "sha256": "887cc86b02331ae9110670886ee39e8a8a92016e5bc302dc83c5a28addb4b18b"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "DatabaseService.register",
+          "sha256": "73a79cb5fbb87129d5a2018c2d2e48af8a60b13e508ed461f28a1f9c7a2501a5"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "DatabaseService.lease",
+          "sha256": "fa9f4297118cdb865d89b352bd6f8cdccff5402b27824629766714a4b03e3a95"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/storage_registry/DatabaseRegistryClose.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "database-registry-close",
+          "config": "formal/storage_registry/DatabaseRegistryClose.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoConcurrentCleanup",
+            "NoCleanupOfLeased",
+            "ClosedOwnsNothing",
+            "ClosingBlocksAdmission",
+            "FailedCleanupRetained"
+          ],
+          "properties": [],
+          "bounds": {
+            "routes": 2,
+            "cleaners_per_route": 2,
+            "leases_per_route": 1,
+            "cleanup_failures_per_route": 1,
+            "service_close_snapshots": 1
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/storage_registry/DatabaseRegistryClose.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "database-registry-duplicate-cleanup",
+          "config": "formal/storage_registry/DatabaseRegistryDuplicateNegative.cfg",
+          "expected_invariant": "NoConcurrentCleanup"
+        },
+        {
+          "module": "formal/storage_registry/DatabaseRegistryClose.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "database-registry-late-registration",
+          "config": "formal/storage_registry/DatabaseRegistryAdmissionNegative.cfg",
+          "expected_invariant": "ClosedOwnsNothing"
+        }
+      ],
+      "remaining_obligations": [
+        "StorageService grant/dataset/generation/ABA binding and BoundDatabase prepare/seal are not modeled here.",
+        "BlobService is a reviewed implementation reference, not fully modeled; arbitrary route counts, owner-lease callbacks and whole plugin lifecycle composition remain outside this bounded check."
+      ]
     },
     {
       "id": "storage_transaction",
