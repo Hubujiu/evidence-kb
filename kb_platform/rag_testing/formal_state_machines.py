@@ -156,6 +156,12 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
             models = machine['models']
             controls = machine['negative_controls']
+            if identity == 'llm_registry' and models:
+                from kb_platform.rag_testing.llm_registry_lint import registry_source_violations
+                errors.extend(f'llm_registry: {error}' for error in registry_source_violations(
+                    local_file(root, 'rust/llm-service/src/registry.rs').read_text('utf-8'),
+                    local_file(root, 'rust/llm-service/src/executor.rs').read_text('utf-8'),
+                    local_file(root, 'kb_platform/model_service.py').read_text('utf-8')))
             if (machine['status'] == 'partial') != bool(models):
                 errors.append(f'{identity}: partial requires actual models; unmodeled cannot claim models')
             if models and (not isinstance(machine.get('remaining_obligations'), list) or

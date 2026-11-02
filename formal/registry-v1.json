@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -181,7 +181,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -242,7 +242,7 @@
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation → consumed/released"
+        "pending reservation \u2192 consumed/released"
       ],
       "transitions": [
         "BudgetLedger.reserve",
@@ -598,33 +598,44 @@
     },
     {
       "id": "llm_registry",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
-        "rust/llm-service/src/registry.rs"
+        "rust/llm-service/src/registry.rs",
+        "rust/llm-service/src/executor.rs",
+        "kb_platform/model_service.py"
       ],
       "states": [
-        "route Active→Draining→Cleaning→removed/CleanupFailed"
+        "native active/detached/absent entry with registration distinct from adoption generation",
+        "prepared/admitted/completed/released/rejected tickets and retained payload snapshots",
+        "managed active/draining/cleaning/cleanup_failed/absent route; active/draining/closed service"
       ],
       "transitions": [
-        "RoutePhase",
-        "ServicePhase",
+        "Registry::register",
         "Registry::prepare",
         "Registry::detach",
-        "Registry::begin_cleanup",
-        "Registry::begin_close",
+        "Registry::adopt",
         "Prepared::admit",
-        "Admission::drop"
+        "Admission::drop",
+        "Registry::begin_cleanup",
+        "Registry::finish_cleanup",
+        "Registry::begin_close",
+        "Registry::finish_close",
+        "external prepare/begin/complete/release",
+        "ModelService._dispose"
       ],
       "invariants": [
-        "Prepared identity pins route generation; admission single-use; terminal event != actual task cleanup; old unregister cannot affect new generation."
+        "Preparation pins registration and generation; adoption invalidates stale admission but keeps snapshot payload references alive.",
+        "A completed result does not release Admission; releasing a detached old admission cannot remove its replacement.",
+        "Managed cleanup is exclusive, excludes live Admissions, retains failed entries for explicit retry, and removes only acknowledged cleanup."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Native model: one route, two registrations, three generations, two tickets, one adoption and one replacement. Correct Arc lifetime and nonpoisoned mutex are assumed.",
+        "Managed model: one fixed registration, one call, two cleanup claimants, two cleanup attempts and at most one cleanup error.",
+        "Native detach and managed external cleanup are distinct frontend protocols; the models do not cover arbitrary interleavings of every public Registry method."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No provider requests, billing, usage, host/OS cleanup or live external I/O proof.",
+        "No proof for u64 exhaustion, mutex poisoning, multiroute adoption, arbitrary external Arc owners or idempotent physical cleanup."
       ],
       "source_bindings": [
         {
@@ -642,6 +653,12 @@
         {
           "path": "rust/llm-service/src/registry.rs",
           "language": "rust",
+          "symbol": "Registry::register",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
           "symbol": "Registry::prepare",
           "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
         },
@@ -654,13 +671,31 @@
         {
           "path": "rust/llm-service/src/registry.rs",
           "language": "rust",
+          "symbol": "Registry::adopt",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
           "symbol": "Registry::begin_cleanup",
           "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
         },
         {
           "path": "rust/llm-service/src/registry.rs",
           "language": "rust",
+          "symbol": "Registry::finish_cleanup",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
           "symbol": "Registry::begin_close",
+          "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/registry.rs",
+          "language": "rust",
+          "symbol": "Registry::finish_close",
           "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
         },
         {
@@ -674,10 +709,116 @@
           "language": "rust",
           "symbol": "Admission::drop",
           "sha256": "6f50de2636e19ffb3bdd816ff5e885d2f5e0e1ce8913139ca6d087343af40347"
+        },
+        {
+          "path": "rust/llm-service/src/executor.rs",
+          "language": "rust",
+          "symbol": "ExternalService",
+          "sha256": "111423b7b1375b656f332553a3f42f9725daac412ce81997fd97746a01e893f3"
+        },
+        {
+          "path": "rust/llm-service/src/executor.rs",
+          "language": "rust",
+          "symbol": "ExternalCall",
+          "sha256": "111423b7b1375b656f332553a3f42f9725daac412ce81997fd97746a01e893f3"
+        },
+        {
+          "path": "rust/llm-service/src/executor.rs",
+          "language": "rust",
+          "symbol": "dispatch",
+          "sha256": "111423b7b1375b656f332553a3f42f9725daac412ce81997fd97746a01e893f3"
+        },
+        {
+          "path": "kb_platform/model_service.py",
+          "language": "python",
+          "symbol": "ModelService._dispose",
+          "sha256": "bbaf94f0d38bc909d93b54e6bb1e331faae4e06238a6ad602fdbbc2cf0f52697"
+        },
+        {
+          "path": "kb_platform/model_service.py",
+          "language": "python",
+          "symbol": "ModelService.close",
+          "sha256": "b40beacb7a8c4742834fc9ecf1b0b81e10eefa26dc696ec44ce7e184dcc63736"
+        },
+        {
+          "path": "kb_platform/model_service.py",
+          "language": "python",
+          "symbol": "ModelService._admit",
+          "sha256": "7f51f9b74d11c231df17dcb3e016b58351eb6dc675a6639145e0903f7f76370d"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/llm_registry/LlmRegistryGenerations.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "llm-registry-generations",
+          "config": "formal/llm_registry/LlmRegistryGenerations.cfg",
+          "bounds": {
+            "routes": 1,
+            "registrations": 2,
+            "generations": 3,
+            "tickets": 2,
+            "adoptions": 1,
+            "replacements": 1
+          },
+          "invariants": [
+            "TypeOK",
+            "PinnedAdmission",
+            "NoMixedGeneration",
+            "RouteOwnsEntry",
+            "SnapshotOwnsPayload",
+            "DetachedHasAdmission"
+          ],
+          "properties": []
+        },
+        {
+          "module": "formal/llm_registry/LlmRegistryCleanup.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "llm-registry-cleanup",
+          "config": "formal/llm_registry/LlmRegistryCleanup.cfg",
+          "bounds": {
+            "registrations": 1,
+            "calls": 1,
+            "cleanup_claimants": 2,
+            "cleanup_attempts": 2,
+            "cleanup_errors": 1
+          },
+          "invariants": [
+            "TypeOK",
+            "ExclusiveCleanup",
+            "NoCleanupWithAdmission",
+            "ClosedOwnsNothing",
+            "NoUnacknowledgedRemoval",
+            "FailureRetainsEntry"
+          ],
+          "properties": []
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/llm_registry/LlmRegistryGenerations.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "llm-registry-generations-seeded",
+          "config": "formal/llm_registry/LlmRegistryGenerationsSeeded.cfg",
+          "expected_invariant": "NoMixedGeneration"
+        },
+        {
+          "module": "formal/llm_registry/LlmRegistryCleanup.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "llm-registry-cleanup-seeded",
+          "config": "formal/llm_registry/LlmRegistryCleanupSeeded.cfg",
+          "expected_invariant": "ExclusiveCleanup"
+        }
+      ],
+      "remaining_obligations": [
+        "Managed model omits registration reuse and multiroute close; actual late registration refusal is separately tested and structurally guarded.",
+        "Registry entry removal is not physical payload destruction while snapshots or external Arc owners remain.",
+        "An explicit retry may execute adapter cleanup again after failure; exclusivity is concurrent ownership, not exactly-once physical cleanup."
+      ]
     },
     {
       "id": "llm_stream",
@@ -750,7 +891,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY↔WAITING"
+        "READY\u2194WAITING"
       ],
       "transitions": [
         "transition",
@@ -887,7 +1028,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1080,7 +1221,7 @@
         "rust/storage-service/src/transaction.rs"
       ],
       "states": [
-        "begin→held→executing→commit/rollback"
+        "begin\u2192held\u2192executing\u2192commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1151,7 +1292,7 @@
         "kb_platform/storage_adapters/values.py"
       ],
       "states": [
-        "Input→Executing→Result→Values / Failed"
+        "Input\u2192Executing\u2192Result\u2192Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1217,7 +1358,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1279,7 +1420,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent→issued→expired/revoked"
+        "absent\u2192issued\u2192expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1404,7 +1545,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1494,7 +1635,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1543,7 +1684,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1616,7 +1757,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",

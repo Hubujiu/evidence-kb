@@ -1,0 +1,12 @@
+   Compiling llm-service v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-llm-registry-formal/rust/llm-service)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.78s
+     Running tests/registry.rs (target/registry-owned/debug/deps/registry-476063ced7bc16c9)
+
+running 5 tests
+test cleanup_waits_for_the_admission_and_drain_invalidates_earlier_preparations ... ok
+test adoption_changes_generation_not_registration_and_stale_prepared_snapshots_remain_owned ... ok
+test adapter_destruction_can_reenter_registry_for_detach_cleanup_and_final_admission_release ... ok
+test releasing_detached_old_admission_cannot_remove_the_replacement_route ... ok
+test cleanup_claim_is_exclusive_and_failed_cleanup_remains_owned_for_explicit_retry ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

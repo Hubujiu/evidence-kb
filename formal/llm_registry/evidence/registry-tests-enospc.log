@@ -1,0 +1,18 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.23
+   Compiling serde_json v1.0.150
+   Compiling serde v1.0.228
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling pin-project-lite v0.2.17
+   Compiling syn v2.0.119
+   Compiling tokio-macros v2.6.1
+   Compiling serde_derive v1.0.228
+   Compiling tokio v1.48.0
+   Compiling llm-service v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-llm-registry-formal/rust/llm-service)
+error: failed to build archive at `/tmp/evidence-llm-registry-target/debug/deps/libllm_service-2dbbc53a68d6095b.rlib`: No space left on device (os error 28)
+
+error: could not compile `llm-service` (lib) due to 1 previous error

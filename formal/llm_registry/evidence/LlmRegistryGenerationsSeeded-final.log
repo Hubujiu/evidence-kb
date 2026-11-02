@@ -1,0 +1,67 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 13 and seed 3869724643764091251 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 47] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-llm-registry-formal/formal/llm_registry/LlmRegistryGenerations.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LlmRegistryGenerations
+Starting... (2026-11-02 12:06:17)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 12:06:17.
+Error: Invariant NoMixedGeneration is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ ticketGeneration = <<0, 0>>
+/\ adopted = FALSE
+/\ generation = <<1, 0>>
+/\ nextGeneration = 1
+/\ replacement = FALSE
+/\ ticket = <<"idle", "idle">>
+/\ route = 1
+/\ phase = <<"active", "absent">>
+/\ destroyed = <<FALSE, FALSE>>
+/\ ticketRoute = <<0, 0>>
+
+State 2: <Prepare line 17, col 15 to line 21, col 104 of module LlmRegistryGenerations>
+/\ ticketGeneration = <<1, 0>>
+/\ adopted = FALSE
+/\ generation = <<1, 0>>
+/\ nextGeneration = 1
+/\ replacement = FALSE
+/\ ticket = <<"prepared", "idle">>
+/\ route = 1
+/\ phase = <<"active", "absent">>
+/\ destroyed = <<FALSE, FALSE>>
+/\ ticketRoute = <<1, 0>>
+
+State 3: <Adopt line 46, col 10 to line 50, col 101 of module LlmRegistryGenerations>
+/\ ticketGeneration = <<1, 0>>
+/\ adopted = TRUE
+/\ generation = <<2, 0>>
+/\ nextGeneration = 2
+/\ replacement = FALSE
+/\ ticket = <<"prepared", "idle">>
+/\ route = 1
+/\ phase = <<"active", "absent">>
+/\ destroyed = <<FALSE, FALSE>>
+/\ ticketRoute = <<1, 0>>
+
+State 4: <Admit line 22, col 13 to line 27, col 68 of module LlmRegistryGenerations>
+/\ ticketGeneration = <<1, 0>>
+/\ adopted = TRUE
+/\ generation = <<2, 0>>
+/\ nextGeneration = 2
+/\ replacement = FALSE
+/\ ticket = <<"admitted", "idle">>
+/\ route = 1
+/\ phase = <<"active", "absent">>
+/\ destroyed = <<FALSE, FALSE>>
+/\ ticketRoute = <<1, 0>>
+
+37 states generated, 33 distinct states found, 22 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 3 (minimum is 2, the maximum 5 and the 95th percentile is 5).
+Finished in 01s at (2026-11-02 12:06:17)

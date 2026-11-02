@@ -1,0 +1,46 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 37 and seed 3886512835650346342 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 103] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-llm-registry-formal/formal/llm_registry/LlmRegistryCleanup.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LlmRegistryCleanup
+Starting... (2026-11-02 12:06:20)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 12:06:21.
+Error: Invariant ExclusiveCleanup is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ cleaners = {}
+/\ service = "active"
+/\ cleanupAttempt = 0
+/\ call = "idle"
+/\ route = "active"
+/\ acknowledged = FALSE
+/\ failed = FALSE
+
+State 2: <BeginCleanup line 19, col 20 to line 24, col 71 of module LlmRegistryCleanup>
+/\ cleaners = {1}
+/\ service = "active"
+/\ cleanupAttempt = 1
+/\ call = "idle"
+/\ route = "cleaning"
+/\ acknowledged = FALSE
+/\ failed = FALSE
+
+State 3: <BeginCleanup line 19, col 20 to line 24, col 71 of module LlmRegistryCleanup>
+/\ cleaners = {1, 2}
+/\ service = "active"
+/\ cleanupAttempt = 2
+/\ call = "idle"
+/\ route = "cleaning"
+/\ acknowledged = FALSE
+/\ failed = FALSE
+
+18 states generated, 13 distinct states found, 8 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 3 (minimum is 2, the maximum 4 and the 95th percentile is 4).
+Finished in 01s at (2026-11-02 12:06:21)
