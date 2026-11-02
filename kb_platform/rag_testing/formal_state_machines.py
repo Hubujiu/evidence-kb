@@ -214,6 +214,10 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
             if path.suffix in {'.tla', '.cfg'}:
                 if path.relative_to(root).as_posix() not in model_files:
                     errors.append(f'Unregistered model input: {path.relative_to(root)}')
+        if any(model['module'].startswith('formal/plugin_ownership/') for machine in registry.get('machines', [])
+               for model in machine.get('models', [])):
+            from .formal_plugin_ownership import ownership_violations
+            errors.extend(ownership_violations(root))
     except (KeyError, TypeError, ValueError, OSError, SyntaxError) as exc:
         errors.append(f'Invalid formal registry: {exc}')
     return sorted(set(errors))
