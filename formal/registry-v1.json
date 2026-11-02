@@ -361,7 +361,7 @@
     },
     {
       "id": "plugin_lifecycle",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "rust/plugin-runtime/src/protocol.rs",
         "rust/plugin-runtime/src/coordinator.rs"
@@ -383,11 +383,18 @@
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model.",
+        "First provider is active and first consumer init already claimed.",
+        "Successor initialization succeeds; first consumer initialization may fail.",
+        "Weak fairness for completion, reconciliation, cleanup and cleanup retry."
       ],
       "exclusions": [
         "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory.",
+        "Nested scopes and multiple dependencies.",
+        "Serial-call ancestry, disabled/re-enabled scope, unclaimed init.",
+        "Operation acknowledgment, listener ordering, process transport.",
+        "Resource identity/LIFO order, compiler-level refinement proof."
       ],
       "source_bindings": [
         {
@@ -406,35 +413,147 @@
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::reconcile",
-          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::complete",
-          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::acquire",
-          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::drain",
-          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
           "language": "rust",
           "symbol": "Coordinator::update",
-          "sha256": "2083286238526a37dc5478c641d681190c749fb986e8a6446546f25fb9886e93"
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Instance",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "complete",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "reconcile",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "drain_instance",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "update",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "cancel",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "retry",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "invoke",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "drain",
+          "sha256": "a39e409b41849fa8c9fc57a69ee6039e66bca6fcef24296b87ff97d1550d4816"
+        },
+        {
+          "path": "rust/plugin-runtime/src/tests.rs",
+          "language": "rust",
+          "symbol": "superseded_dependency_init_failure_does_not_poison_replacement",
+          "sha256": "e8a6cf2372cbb1684034dbb55ef8bc90506ff5b1c20060ebe64a59df9e9c0880"
+        },
+        {
+          "path": "rust/plugin-runtime/src/tests.rs",
+          "language": "rust",
+          "symbol": "current_init_failure_and_explicit_cancellation_remain_terminal",
+          "sha256": "e8a6cf2372cbb1684034dbb55ef8bc90506ff5b1c20060ebe64a59df9e9c0880"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "plugin_lifecycle",
+          "module": "formal/plugin_lifecycle/PluginLifecycle.tla",
+          "config": "formal/plugin_lifecycle/PluginLifecycle.cfg",
+          "invariants": [
+            "TypeOK",
+            "ActiveDependencies",
+            "CleanupWaitsForRealCompletion",
+            "ProviderRetainedForConsumer",
+            "DisposedOwnsNothing",
+            "NoSupersededFailure",
+            "CurrentFailureRemainsTerminal"
+          ],
+          "properties": [
+            "SupersededInitEventuallyRecovers",
+            "RemovedScopeEventuallyDisposes"
+          ],
+          "bounds": {
+            "scopes": 1,
+            "plugins": 2,
+            "dependency_edges": 1,
+            "generations_per_plugin": 2,
+            "resources_per_plugin": 2,
+            "invocations_per_plugin": 1,
+            "provider_replacements": 1,
+            "cleanup_errors_per_plugin": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "plugin_lifecycle_legacy_superseded_failure",
+          "module": "formal/plugin_lifecycle/PluginLifecycle.tla",
+          "config": "formal/plugin_lifecycle/PluginLifecycleNegative.cfg",
+          "expected_invariant": "NoSupersededFailure",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Nested scopes and multiple dependencies.",
+        "Serial-call ancestry, disabled/re-enabled scope, unclaimed init.",
+        "Operation acknowledgment, listener ordering, process transport.",
+        "Resource identity/LIFO order, compiler-level refinement proof."
+      ]
     },
     {
       "id": "host_process",

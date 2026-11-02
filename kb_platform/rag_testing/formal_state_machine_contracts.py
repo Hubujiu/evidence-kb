@@ -99,6 +99,15 @@ class FormalRegistryContracts(unittest.TestCase):
         self.assertEqual({'TypeOK', 'Safe'}, configured_operators(text, {'INVARIANT', 'INVARIANTS'}))
         self.assertEqual({'EventuallyDone'}, configured_operators(text, {'PROPERTY', 'PROPERTIES'}))
 
+    def test_negative_control_cannot_be_relabelled_as_a_positive_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = self.fixture(root)
+            machine = registry['machines'][0]
+            machine['negative_controls'] = [{'kind': 'positive'}]
+            self.assertTrue(any('cannot change their expected failure kind' in error
+                                for error in registry_violations(root, registry)))
+
 
 class FormalVerdictContracts(unittest.TestCase):
     def test_positive_requires_complete_success_and_exhausted_reachable_states(self):

@@ -154,6 +154,8 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                 errors.append(f'{identity}: partial coverage requires explicit remaining obligations')
             if models and not controls:
                 errors.append(f'{identity}: modeled machines require a seeded negative control')
+            if any(control.get('kind', 'negative') not in {'negative', 'liveness-negative'} for control in controls):
+                errors.append(f'{identity}: negative controls cannot change their expected failure kind')
             for model in models + controls:
                 if not re.fullmatch(r'[a-z][a-z0-9_-]+', model['id']):
                     raise ValueError(f'{identity}: invalid model run id')
@@ -313,6 +315,8 @@ def run_formal(root: Path, output: Path, jar: Path | None = None) -> int:
         report.update(registry_sha256=digest((root / REGISTRY).read_bytes()),
             toolchain_sha256=digest((root / LOCK).read_bytes()), toolchain=lock,
             coverage={machine['id']: machine['status'] for machine in registry['machines']})
+        shutil.copy2(root / REGISTRY, output / 'registry-v1.json')
+        shutil.copy2(root / LOCK, output / 'toolchain-v1.json')
         jar = (jar or Path(os.environ.get('TLA_TOOLS_JAR', root / lock['default_jar']))).resolve()
         if not jar.is_file() or digest(jar.read_bytes()) != lock['sha256'] or jar.stat().st_size != lock['size_bytes']:
             raise ValueError('Pinned TLC jar missing or mismatched; explicitly run scripts/install_formal_tools.py')

@@ -1,0 +1,37 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling pin-project-lite v0.2.17
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling tokio v1.48.0
+   Compiling syn v2.0.119
+   Compiling serde_derive v1.0.228
+   Compiling plugin-runtime v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-plugin-formal/rust/plugin-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.39s
+     Running unittests src/lib.rs (target/debug/deps/plugin_runtime-e9d1061b614bf8b9)
+
+running 1 test
+test tests::superseded_dependency_init_failure_does_not_poison_replacement ... FAILED
+
+failures:
+
+---- tests::superseded_dependency_init_failure_does_not_poison_replacement stdout ----
+
+thread 'tests::superseded_dependency_init_failure_does_not_poison_replacement' (537) panicked at rust/plugin-runtime/src/tests.rs:1796:5:
+assertion `left == right` failed: superseded consumer must restart without an explicit retry
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::superseded_dependency_init_failure_does_not_poison_replacement
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 45 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p plugin-runtime --lib`

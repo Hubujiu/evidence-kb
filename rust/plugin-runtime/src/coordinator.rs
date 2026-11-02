@@ -653,8 +653,9 @@ impl Coordinator {
         self.operations.get_mut(&operation).unwrap().completion = Some(completion.clone());
         match action.kind.as_str() {
             "init" => {
+                let current = self.instances[&id].phase == Phase::Starting;
                 let publish = success
-                    && self.instances[&id].phase == Phase::Starting
+                    && current
                     && self.instances[&id].desired == Desired::Enabled
                     && self.open_ancestors(Some(host)).is_ok()
                     && self.instances[&id].bindings.values().all(|binding| {
@@ -678,7 +679,11 @@ impl Coordinator {
                     instance.phase = Phase::Active;
                 } else {
                     instance.phase = Phase::Draining;
-                    if !success {
+                    // A dependency change can supersede initialization without
+                    // replacing this instance's own manifest. Its late failure
+                    // still needs cleanup, but must not poison the next target.
+                    // Explicit cancellation already records its terminal cause.
+                    if !success && current {
                         instance.failed_init = true;
                         instance.failure = completion
                             .error
