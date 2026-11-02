@@ -1,0 +1,1 @@
+Initial helper failed before launching TLC: run_model requires an existing output parent. FileNotFoundError for results/legacy-coded-unreachable. Inputs retained unchanged; corrected setup uses a new results-v2 directory.

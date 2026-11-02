@@ -2011,6 +2011,18 @@
           "language": "python",
           "symbol": "KnowledgeModelCalls._call_once",
           "sha256": "22e1a722197e34a4cb80ab61f97fd3748bfbe27df562221639b00673deab9ce7"
+        },
+        {
+          "path": "scripts/error_projection_model_checks.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "787b5094a9116e915486ec9da7f28a993870df12c8d92a0fa3503058c44253a8"
+        },
+        {
+          "path": "kb_platform/rag_testing/error_projection_model_contracts.py",
+          "language": "python",
+          "symbol": "ErrorProjectionModelContracts",
+          "sha256": "873fd65584b0af00fd2306ea16fe14a427f6243effdc66f1753a2ef14bf39bf8"
         }
       ],
       "models": [
@@ -2203,6 +2215,69 @@
           "expected_invariant": "UnknownStaysUnknown",
           "timeout_seconds": 30,
           "heap_mb": 128
+        },
+        {
+          "id": "model_error_projection_witness_coded",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionCodedWitness.cfg",
+          "expected_invariant": "NoCodedWitness",
+          "purpose": "Positive terminal reachability witness; not a seeded product defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "model_error_projection_witness_genericabsent",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionGenericAbsentWitness.cfg",
+          "expected_invariant": "NoGenericAbsentWitness",
+          "purpose": "Positive terminal reachability witness; not a seeded product defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "model_error_projection_witness_genericunsent",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionGenericUnsentWitness.cfg",
+          "expected_invariant": "NoGenericUnsentWitness",
+          "purpose": "Positive terminal reachability witness; not a seeded product defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "model_error_projection_witness_genericunknown",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionGenericUnknownWitness.cfg",
+          "expected_invariant": "NoGenericUnknownWitness",
+          "purpose": "Positive terminal reachability witness; not a seeded product defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "model_error_projection_witness_genericzero",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionGenericZeroWitness.cfg",
+          "expected_invariant": "NoGenericZeroWitness",
+          "purpose": "Positive terminal reachability witness; not a seeded product defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "model_error_projection_witness_genericpositive",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionGenericPositiveWitness.cfg",
+          "expected_invariant": "NoGenericPositiveWitness",
+          "purpose": "Positive terminal reachability witness; not a seeded product defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "model_error_projection_witness_cancelunknown",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionCancelUnknownWitness.cfg",
+          "expected_invariant": "NoCancelUnknownWitness",
+          "purpose": "Positive terminal reachability witness; not a seeded product defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
         }
       ],
       "remaining_obligations": [

@@ -28,7 +28,7 @@ Project == /\ phase = "failed" /\ kind # "cancel" /\ phase' = "projected"
            /\ publicCode' = IF kind = "generic" THEN "CONTRACT_IMPLEMENTATION_FAILED" ELSE "domain-code"
            /\ publicMessage' = IF kind = "generic" THEN
                   (IF LeakGenericText THEN "private-error-text" ELSE "Service implementation failed") ELSE "domain-message"
-           /\ privateVisible' = LeakGenericText /\ kind = "generic"
+           /\ privateVisible' = (LeakGenericText /\ kind = "generic")
            /\ UNCHANGED <<kind, source, pending, ledger, event, originalRaised>>
 Observe == /\ phase = "projected" /\ phase' = "observed" /\ event' = wire
            /\ UNCHANGED <<kind, source, pending, ledger, wire, publicCode, publicMessage, privateVisible, originalRaised>>
@@ -52,4 +52,11 @@ UnknownStaysUnknown == phase \in {"projected", "observed"} /\ source.sent = "unk
 LedgerCostRetained == phase \in {"failed", "projected", "observed", "cancelled"} => ledger = Cost(source)
 FailedSlotReleased == phase \in {"failed", "projected", "observed", "cancelled"} => ~pending
 CancellationIdentity == phase = "cancelled" => originalRaised /\ publicCode = "none" /\ wire = Missing
+NoCodedWitness == ~(kind = "coded" /\ phase = "observed" /\ publicCode = "domain-code" /\ event = source)
+NoGenericAbsentWitness == ~(kind = "generic" /\ phase = "observed" /\ source = Missing /\ event = source)
+NoGenericUnsentWitness == ~(kind = "generic" /\ phase = "observed" /\ source.attempts = "zero" /\ source.sent = "no" /\ event = source)
+NoGenericUnknownWitness == ~(kind = "generic" /\ phase = "observed" /\ source.attempts = "one" /\ source.usage = "unknown" /\ source.sent = "unknown" /\ event = source)
+NoGenericZeroWitness == ~(kind = "generic" /\ phase = "observed" /\ source.usage = "zero" /\ source.sent = "yes" /\ event = source)
+NoGenericPositiveWitness == ~(kind = "generic" /\ phase = "observed" /\ source.usage = "one" /\ source.sent = "yes" /\ event = source)
+NoCancelUnknownWitness == ~(kind = "cancel" /\ phase = "cancelled" /\ source.attempts = "one" /\ source.usage = "unknown" /\ originalRaised /\ ~pending /\ ledger = 1)
 =============================================================================

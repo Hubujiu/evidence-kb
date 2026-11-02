@@ -1,0 +1,7 @@
+test_actual_positive_models_and_negative_controls_have_verified_outcomes (kb_platform.rag_testing.formal_state_machine_contracts.live_suite.<locals>.ActualFormalEvidenceContracts.test_actual_positive_models_and_negative_controls_have_verified_outcomes) ... ok
+test_every_registered_run_executed_exactly_once (kb_platform.rag_testing.formal_state_machine_contracts.live_suite.<locals>.ActualFormalEvidenceContracts.test_every_registered_run_executed_exactly_once) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.001s
+
+OK

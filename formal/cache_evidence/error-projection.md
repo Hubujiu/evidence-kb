@@ -69,3 +69,23 @@ Unbounded invocations, arbitrary usage values, malformed structured facts,
 distributed response loss, storage/event failures, cleanup interruption and
 Python-to-TLA refinement remain outside this bounded proof. This model does not
 establish delivery liveness, nor replace ordinary full-project acceptance.
+
+## Reachability correction and historical limitation
+
+The original 24-run PASS recorded in `evidence/error-projection/verified-*`
+belongs to a defective model: `privateVisible' = LeakGenericText /\ kind =
+"generic"` was two action conjuncts, silently disabling coded `Project`.
+It therefore did **not** establish coded-path coverage, despite its positive
+safety result. Its logs and summary are retained unchanged. Actual coded Python
+contracts were separate and passed; no production implementation changes in this
+correction.
+
+The current assignment parenthesizes its complete Boolean RHS. Seven registered
+terminal witnesses now require coded observation, generic observation for each
+of the five fact classes, and cancellation with retained unknown-attempt cost.
+None can pass merely by selecting an initial error kind. Each witness uses all
+fault flags FALSE, negates its target terminal state, and must produce that named
+invariant counterexample under official TLC. A targeted mandatory review-shape
+check rejects the old assignment and omitted/weakened witness registration; it
+is not a general TLA parser or refinement prover. See the detailed
+[correction and assignment review](error-projection-reachability.md).
