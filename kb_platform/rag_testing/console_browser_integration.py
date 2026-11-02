@@ -25,9 +25,43 @@ CASES = frozenset(name + ' [chromium]' for name in (
     'current search failure remains visible after its intentional view reset',
     'queued citation failure rechecks ownership at the final status write',
 ))
+DRAFT_CASES = frozenset(name + ' [chromium]' for name in (
+    'new draft typed during a pending turn survives its successful completion',
+    'identical text retyped after submission is a new draft, not the submitted owner',
+    'new draft typed during the session refresh survives the older turn',
+    'new draft typed during implicit session creation is not owned by the first turn',
+    'unchanged submitted draft clears while unavailable budget stays explicitly unknown',
+))
+SCOPE_CASES = frozenset(name + ' [chromium]' for name in (
+    'concurrent create cannot publish an old upload result under the newly selected scope',
+    'current upload still publishes its actual DOM result in the owning scope',
+    'concurrent create retains its later clear after an older search completion',
+))
 
 
-def run_cases(output, env):
+def observed_usage(path, expected, returncode):
+    unknown = {'usage_observed': False, 'usage_observation': 'UNKNOWN', 'browser_usage': None,
+               'zero_model_usage_verified': False, 'new_model_calls': None}
+    try:
+        run = json.loads(path.read_text('utf-8'))['run']
+        usage = run['usage']
+        if (not isinstance(usage, dict) or returncode not in {0, 1}
+                or type(run.get('exitCode')) is not int or run['exitCode'] != returncode
+                or run.get('status') != ('passed' if returncode == 0 else 'failed')
+                or run.get('errors') != []
+                or any(type(usage.get(key)) is not int or usage[key] < 0 for key in
+                       ('discoveredResults', 'modelTokens', 'maxModelCallsInStep'))
+                or usage['discoveredResults'] != len(expected)):
+            return unknown
+        zero = usage['modelTokens'] == 0 and usage['maxModelCallsInStep'] == 0
+        return {'usage_observed': True, 'usage_observation': 'OBSERVED', 'browser_usage': usage,
+                'zero_model_usage_verified': zero, 'new_model_calls': 0 if zero else None}
+    except (OSError, ValueError, KeyError, TypeError):
+        return unknown
+
+
+def run_cases(output, env, *, tests='console-state.e2e.js', expected=CASES,
+              sources=('console.html', 'console.mjs')):
     output.mkdir(parents=True, exist_ok=False)
     node = shutil.which('node')
     if node is None:
@@ -35,24 +69,75 @@ def run_cases(output, env):
     browser_output = ROOT / 'e2e/.artifacts' / uuid4().hex
     command = [node, str(ROOT / 'e2e/node_modules/e2e/dist/cli/bin.js'), 'run',
                '--output', str(browser_output), '--no-cache', '--retries', '0']
+    report = {'status': 'RUNNING', 'usage_observed': False, 'usage_observation': 'UNKNOWN',
+              'browser_usage': None, 'new_model_calls': None, 'zero_model_usage_verified': False,
+              'policy': {'modelTokens': 0, 'maxModelCallsInStep': 0, 'retries': 0}}
     try:
         with (output / 'browser.log').open('w', encoding='utf-8') as log:
             result = subprocess.run(command, cwd=ROOT / 'e2e', env={**env,
-                'KB_E2E_TESTS': 'console-state.e2e.js', 'E2E_TELEMETRY_DISABLED': '1'},
+                'KB_E2E_TESTS': tests, 'E2E_TELEMETRY_DISABLED': '1'},
                 stdout=log, stderr=subprocess.STDOUT, timeout=180, check=False)
+        report.update(browser_exit_code=result.returncode,
+                      **observed_usage(browser_output / 'report.json', expected, result.returncode))
         if result.returncode:
             raise RuntimeError(f'Console browser regression failed with exit {result.returncode}; see {output / "browser.log"}')
-        report = browser_verdict(browser_output / 'junit.xml', expected=CASES, classname='console-state.e2e.js')
-        run = json.loads((browser_output / 'report.json').read_text('utf-8'))['run']
-        if (run['status'] != 'passed' or run['errors'] or run['usage']['modelTokens'] != 0
-                or run['usage']['maxModelCallsInStep'] != 0):
-            raise RuntimeError('Console browser checks require every deterministic case and zero model calls')
-        return {**report, 'browser_usage': run['usage'], 'source_sha256': {
+        if not report['zero_model_usage_verified']:
+            raise RuntimeError('Console browser checks require observed complete zero-model usage')
+        report.update(browser_verdict(browser_output / 'junit.xml', expected=expected, classname=tests))
+        report.update(status='PASS', source_sha256={
             name: sha256((ROOT / 'kb_platform' / name).read_bytes()).hexdigest()
-            for name in ('console.html', 'console.mjs')}}
+            for name in sources})
+        return report
+    except Exception as error:
+        report.update(status='FAIL', error=str(error))
+        raise
     finally:
-        if browser_output.exists():
-            shutil.copytree(browser_output, output / 'browser')
+        if report['status'] == 'RUNNING':
+            report['status'] = 'INTERRUPTED'
+        try:
+            if browser_output.exists():
+                shutil.copytree(browser_output, output / 'browser')
+        except Exception as error:
+            report.update(status='FAIL', artifact_error=str(error))
+            raise
+        finally:
+            write_json(output / 'report.json', report)
+
+
+def run_additional_cases(output, env):
+    output.mkdir(parents=True, exist_ok=False)
+    suites = (
+        ('agent-draft', 'agent-draft-state.e2e.js', DRAFT_CASES, ('agent_console.html',)),
+        ('console-scope', 'console-scope-state.e2e.js', SCOPE_CASES, ('console.html', 'console.mjs')),
+    )
+    report = {'status': 'PASS', 'suites': {}, 'new_model_calls': None, 'usage_observed': False,
+              'zero_model_usage_verified': False}
+    for name, tests, expected, sources in suites:
+        try:
+            detail = run_cases(output / name, env, tests=tests, expected=expected, sources=sources)
+            report['suites'][name] = {'status': 'PASS', **detail}
+        except Exception as error:
+            report['status'] = 'FAIL'
+            detail = {'usage_observed': False, 'usage_observation': 'NOT_RUN',
+                      'browser_usage': None, 'new_model_calls': None, 'zero_model_usage_verified': False}
+            path = output / name / 'report.json'
+            if path.exists():
+                try:
+                    detail = json.loads(path.read_text('utf-8'))
+                    if not isinstance(detail, dict):
+                        raise ValueError('Invalid browser suite observation')
+                except (OSError, ValueError):
+                    detail = {'usage_observed': False, 'usage_observation': 'UNKNOWN',
+                              'browser_usage': None, 'new_model_calls': None, 'zero_model_usage_verified': False}
+            report['suites'][name] = {**detail, 'status': 'FAIL', 'error': str(error)}
+    report['usage_observed'] = all(row.get('usage_observed') is True for row in report['suites'].values())
+    report['zero_model_usage_verified'] = report['usage_observed'] and all(
+        row.get('zero_model_usage_verified') is True for row in report['suites'].values())
+    report['new_model_calls'] = 0 if report['zero_model_usage_verified'] else None
+    write_json(output / 'report.json', report)
+    if report['status'] != 'PASS':
+        raise RuntimeError(f'Additional browser state regressions failed; see {output / "report.json"}')
+    return report
 
 
 

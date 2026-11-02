@@ -52,7 +52,8 @@ def browser_verdict(path, *, expected=CASES, classname='knowledge.e2e.js'):
 def checked_browser_assets(client, url):
     observed = {}
     for path, name, media_type in (('/', 'console.html', 'text/html'),
-                                   ('/console.mjs', 'console.mjs', 'text/javascript')):
+                                   ('/console.mjs', 'console.mjs', 'text/javascript'),
+                                   ('/agent', 'agent_console.html', 'text/html')):
         response = client.get(url + path)
         expected = (ROOT / 'kb_platform' / name).read_bytes()
         if (response.status_code != 200 or response.content != expected
@@ -102,7 +103,7 @@ def run(summary, output, dsn, migration_dsn=None):
         'KB_AGENT_KERNEL_LIBRARY': str(library), 'PYTHONUTF8': '1',
         'E2E_TELEMETRY_DISABLED': '1', 'KB_E2E_TESTS': 'knowledge.e2e.js', 'KB_E2E_URL': url,
         'KB_E2E_TOKEN': token, 'KB_E2E_OTHER_TOKEN': other_token}
-    report = {'status': 'FAIL', 'database': database, 'new_model_calls': 0,
+    report = {'status': 'FAIL', 'database': database, 'new_model_calls': None,
         'new_embedding_calls': 0, 'new_judge_calls': 0,
         'scope': 'synthetic browser component acceptance through Rust host, HTTP, parser and PostgreSQL',
         'checker_summary_sha256': sha256(summary.read_bytes()).hexdigest(),
@@ -142,9 +143,10 @@ def run(summary, output, dsn, migration_dsn=None):
                         or browser_run['usage']['modelTokens'] != 0
                         or browser_run['usage']['maxModelCallsInStep'] != 0):
                     raise RuntimeError('Browser acceptance requires deterministic steps without model calls')
-                from .console_browser_integration import run_cases
+                from .console_browser_integration import run_additional_cases, run_cases
 
                 report['console_state'] = run_cases(output / 'console-state', env)
+                report['additional_state'] = run_additional_cases(output / 'additional-state', env)
             finally:
                 stop.touch()
                 try:
@@ -161,6 +163,20 @@ def run(summary, output, dsn, migration_dsn=None):
     except Exception as error:
         report['error'] = str(error)
     finally:
+        additional = output / 'additional-state/report.json'
+        if additional.is_file():
+            try:
+                report['additional_state'] = json.loads(additional.read_text('utf-8'))
+            except (OSError, ValueError) as error:
+                report['usage_error'] = str(error)
+        knowledge_usage = report.get('browser_usage') or {}
+        report['zero_model_usage_verified'] = (
+            all(type(knowledge_usage.get(key)) is int and knowledge_usage[key] == 0
+                for key in ('modelTokens', 'maxModelCallsInStep'))
+            and report.get('console_state', {}).get('zero_model_usage_verified') is True
+            and isinstance(report.get('additional_state'), dict)
+            and report['additional_state'].get('zero_model_usage_verified') is True)
+        report['new_model_calls'] = 0 if report['zero_model_usage_verified'] else None
         if browser_output.exists():
             shutil.copytree(browser_output, output / 'browser')
         try:

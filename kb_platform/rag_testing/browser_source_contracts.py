@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 
 from .browser_integration import browser_verdict, checked_browser_assets
 from .browser_sources import ENTRIES, main, markup_violations, placement_violations
-from .console_browser_integration import CASES, run_cases
+from .console_browser_integration import CASES, DRAFT_CASES, SCOPE_CASES, run_additional_cases, run_cases
 from .formal_state_machines import digest, source_digest, state_candidates
 
 
@@ -111,7 +111,8 @@ class BrowserSourceContracts(unittest.TestCase):
 
             def get(url):
                 calls.append(url)
-                name = 'console.mjs' if url.endswith('.mjs') else 'console.html'
+                name = 'agent_console.html' if url.endswith('/agent') else (
+                    'console.mjs' if url.endswith('.mjs') else 'console.html')
                 module = name.endswith('.mjs')
                 content = (ROOT / 'kb_platform' / name).read_bytes()
                 headers = {'content-type': 'text/javascript; charset=utf-8' if module else 'text/html; charset=utf-8',
@@ -130,7 +131,8 @@ class BrowserSourceContracts(unittest.TestCase):
                 else:
                     with self.assertRaisesRegex(ValueError, 'Browser asset /console.mjs'):
                         checked_browser_assets(client, 'http://fixture')
-                self.assertEqual(['http://fixture/', 'http://fixture/console.mjs'], calls)
+                self.assertEqual(['http://fixture/', 'http://fixture/console.mjs'] + (
+                    ['http://fixture/agent'] if broken == 'none' else []), calls)
 
 
     def test_console_runner_uses_project_output_and_preserves_failed_run_artifacts(self):
@@ -154,8 +156,9 @@ class BrowserSourceContracts(unittest.TestCase):
                     for name in CASES:
                         ET.SubElement(document, 'testcase', name=name, classname='console-state.e2e.js')
                     ET.ElementTree(document).write(target / 'junit.xml')
-                    (target / 'report.json').write_text(json.dumps({'run': {'status': 'passed', 'errors': [],
-                        'usage': {'modelTokens': 0, 'maxModelCallsInStep': 0}}}), encoding='utf-8')
+                    (target / 'report.json').write_text(json.dumps({'run': {'status': 'passed', 'exitCode': 0,
+                        'errors': [], 'usage': {'discoveredResults': len(CASES),
+                                              'modelTokens': 0, 'maxModelCallsInStep': 0}}}), encoding='utf-8')
                     return CompletedProcess(command, returncode)
 
                 with patch('kb_platform.rag_testing.console_browser_integration.ROOT', root), patch(
@@ -167,3 +170,108 @@ class BrowserSourceContracts(unittest.TestCase):
                     else:
                         self.assertEqual(len(CASES), run_cases(output, {})['tests'])
                 self.assertEqual('preserve even on failure', (output / 'browser/partial.txt').read_text('utf-8'))
+                observed = json.loads((output / 'report.json').read_text('utf-8'))
+                self.assertEqual(not returncode, observed['usage_observed'])
+                self.assertEqual(None if returncode else 0, observed['new_model_calls'])
+
+    def test_case_usage_is_observed_on_assertion_failure_but_never_invented(self):
+        for mode in ('assertion', 'missing', 'partial', 'nonzero', 'infrastructure'):
+            with self.subTest(mode=mode), TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'e2e').mkdir()
+                output = root / 'reports/suite'
+
+                def run(command, **kwargs):
+                    target = Path(command[command.index('--output') + 1])
+                    target.mkdir(parents=True)
+                    code = 1 if mode in {'assertion', 'missing'} else 0
+                    usage = {'discoveredResults': len(DRAFT_CASES), 'modelTokens': 0, 'maxModelCallsInStep': 0}
+                    if mode == 'partial':
+                        usage.pop('maxModelCallsInStep')
+                    if mode == 'nonzero':
+                        usage['modelTokens'] = 3
+                    if mode != 'missing':
+                        (target / 'report.json').write_text(json.dumps({'run': {
+                            'status': 'failed' if code else 'passed', 'exitCode': code,
+                            'errors': ['synthetic infrastructure error'] if mode == 'infrastructure' else [],
+                            'usage': usage}}), 'utf-8')
+                    return CompletedProcess(command, code)
+
+                with patch('kb_platform.rag_testing.console_browser_integration.ROOT', root), patch(
+                        'kb_platform.rag_testing.console_browser_integration.shutil.which', return_value='/synthetic/node'), patch(
+                        'kb_platform.rag_testing.console_browser_integration.subprocess.run', side_effect=run):
+                    with self.assertRaises(RuntimeError):
+                        run_cases(output, {}, tests='agent-draft-state.e2e.js', expected=DRAFT_CASES,
+                                  sources=('agent_console.html',))
+                report = json.loads((output / 'report.json').read_text('utf-8'))
+                self.assertEqual('FAIL', report['status'])
+                self.assertEqual(mode in {'assertion', 'nonzero'}, report['usage_observed'])
+                self.assertEqual(mode == 'assertion', report['zero_model_usage_verified'])
+                self.assertEqual(0 if mode == 'assertion' else None, report['new_model_calls'])
+                if mode not in {'assertion', 'nonzero'}:
+                    self.assertIsNone(report['browser_usage'])
+
+    def test_agent_asset_preflight_requires_exact_current_public_page(self):
+        for broken in ('status', 'content', 'content-type'):
+            def get(url):
+                name = 'agent_console.html' if url.endswith('/agent') else (
+                    'console.mjs' if url.endswith('.mjs') else 'console.html')
+                agent = name == 'agent_console.html'
+                content = (ROOT / 'kb_platform' / name).read_bytes()
+                media_type = 'text/javascript' if name.endswith('.mjs') else 'text/html'
+                return SimpleNamespace(status_code=404 if agent and broken == 'status' else 200,
+                    content=b'stale agent page' if agent and broken == 'content' else content,
+                    headers={'content-type': 'incorrect' if agent and broken == 'content-type' else media_type,
+                             'cache-control': 'no-store', 'x-content-type-options': 'nosniff'})
+
+            with self.subTest(broken=broken), self.assertRaisesRegex(ValueError, 'Browser asset /agent'):
+                checked_browser_assets(SimpleNamespace(get=get), 'http://fixture')
+
+    def test_every_new_state_case_is_required_without_skips_or_retries(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'junit.xml'
+            for classname, expected in (('agent-draft-state.e2e.js', DRAFT_CASES),
+                                        ('console-scope-state.e2e.js', SCOPE_CASES)):
+                cases = [f'<testcase name="{name}" classname="{classname}">{{}}</testcase>'
+                         for name in sorted(expected)]
+                valid = ''.join(case.format('') for case in cases)
+                path.write_text('<testsuite>' + valid + '</testsuite>', 'utf-8')
+                self.assertEqual(len(expected), browser_verdict(path, expected=expected, classname=classname)['tests'])
+                for altered in (valid.replace(cases[0].format(''), ''), valid + cases[0].format(''),
+                                *(valid.replace(cases[0].format(''), cases[0].format(tag)) for tag in
+                                  ('<failure/>', '<error/>', '<skipped/>', '<system-out>flaky: 1 attempt</system-out>'))):
+                    path.write_text('<testsuite>' + altered + '</testsuite>', 'utf-8')
+                    with self.subTest(classname=classname, altered=altered), self.assertRaises(ValueError):
+                        browser_verdict(path, expected=expected, classname=classname)
+
+    def test_additional_runner_observes_both_suites_even_when_first_fails(self):
+        for fail in ('none', 'observed', 'missing'):
+            with self.subTest(fail=fail), TemporaryDirectory() as directory:
+                output = Path(directory) / 'additional'
+                calls = []
+
+                def run(path, env, **kwargs):
+                    calls.append((path.name, kwargs))
+                    detail = {'tests': len(kwargs['expected']), 'usage_observed': True,
+                              'zero_model_usage_verified': True, 'new_model_calls': 0}
+                    if fail != 'none' and path.name == 'agent-draft':
+                        if fail == 'observed':
+                            path.mkdir()
+                            (path / 'report.json').write_text(json.dumps(detail), 'utf-8')
+                        raise RuntimeError('synthetic browser assertion failure')
+                    return detail
+
+                with patch('kb_platform.rag_testing.console_browser_integration.run_cases', side_effect=run):
+                    if fail != 'none':
+                        with self.assertRaisesRegex(RuntimeError, 'Additional browser state regressions failed'):
+                            run_additional_cases(output, {})
+                    else:
+                        self.assertEqual('PASS', run_additional_cases(output, {})['status'])
+                self.assertEqual(['agent-draft', 'console-scope'], [name for name, _ in calls])
+                report = json.loads((output / 'report.json').read_text('utf-8'))
+                self.assertEqual('PASS' if fail == 'none' else 'FAIL', report['status'])
+                self.assertEqual('PASS', report['suites']['console-scope']['status'])
+                self.assertEqual(fail != 'missing', report['usage_observed'])
+                self.assertEqual(0 if fail != 'missing' else None, report['new_model_calls'])
+                self.assertEqual(DRAFT_CASES, calls[0][1]['expected'])
+                self.assertEqual(SCOPE_CASES, calls[1][1]['expected'])
