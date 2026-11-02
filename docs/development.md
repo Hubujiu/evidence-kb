@@ -26,6 +26,8 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 检查过程将运行目录指向临时目录，禁用默认 API 初始化、远程模型和 Embedding。合同和控制回放在独立 Python 工作进程中执行，导入前安装审计钩子，阻断 socket 连接、DNS 查询、UDP 发送和子进程启动。依赖安装需要联网，但检查不调用提供者。这个约束防止误执行，不是恶意代码沙箱。
 
+离线 worker 的顺序是 `BOOTSTRAP → SEALED → DISCOVER`：仅先读取真实 stdlib `platform.machine()` 元数据，再安装原有审计钩子，之后才导入项目/合同。这样 Windows 的标准 OS 版本回退探测不会在 SQLAlchemy 导入时误触发子进程禁令；封闭后仍拒绝所有子进程，不预先导入 SQLAlchemy 或项目代码。实际元数据与顺序写入 `worker-bootstrap.json`。原因、固定上游来源和顺序变异合同见[离线 worker 启动边界](offline-worker-bootstrap.md)。
+
 合同协调进程按排序后的测试用例列表分配四个隔离工作进程，各自使用独立临时运行目录、日志及审计钩子。协调进程不加载产品模块；统一入口仍限制整个合同阶段为 180 秒，子进程限制为 170 秒以留出收尾时间。每个工作进程在安装离线审计钩子后独立发现完整用例集合；聚合器要求各进程发现集合相同、每个模块非零、全部用例恰好执行一次且与报告总数一致。缺失分片、重复模块、子进程非零退出以及失败、错误、跳过、预期失败均不能通过；不通过放宽时间门槛消除 Windows 落盘等待导致的超时。
 
 ## 修改或新增插件

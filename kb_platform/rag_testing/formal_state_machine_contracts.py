@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from .formal_state_machines import configured_operators, parse_tlc, registry_violations, source_digest, tlc_verdict
+from .formal_state_machines import configured_operators, digest, parse_tlc, registry_violations, source_digest, tlc_verdict
 
 
 def frame(code, severity, body):
@@ -35,6 +35,20 @@ class FormalRegistryContracts(unittest.TestCase):
                 'assumptions': ['Synthetic lint fixture'], 'exclusions': ['Not a model or product proof'],
                 'source_bindings': [binding], 'models': [], 'negative_controls': []}]}
 
+    def modeled_fixture(self, root):
+        registry = self.fixture(root)
+        (root / 'formal/Model.tla').write_text('---- MODULE Model ----\nVARIABLE state\nInit == state = 0\n'
+            'Next == UNCHANGED state\nSpec == Init /\\ [][Next]_state\nTypeOK == state = 0\n====\n', encoding='utf-8')
+        (root / 'formal/Model.cfg').write_text('SPECIFICATION Spec\nINVARIANT TypeOK\n', encoding='utf-8')
+        (root / 'formal/ModelBug.cfg').write_text('SPECIFICATION Spec\nINVARIANT TypeOK\n', encoding='utf-8')
+        machine = registry['machines'][0]
+        machine.update(status='partial', remaining_obligations=['Synthetic lint fixture, not a proof'])
+        machine['models'] = [{'id': 'sample-model', 'module': 'formal/Model.tla', 'config': 'formal/Model.cfg',
+            'invariants': ['TypeOK'], 'properties': [], 'bounds': {'states': 2}, 'timeout_seconds': 30, 'heap_mb': 128}]
+        machine['negative_controls'] = [{'id': 'sample-bug', 'module': 'formal/Model.tla', 'config': 'formal/ModelBug.cfg',
+            'expected_invariant': 'TypeOK', 'timeout_seconds': 30, 'heap_mb': 128}]
+        return registry
+
     def test_reviewed_symbol_is_accepted_without_claiming_model_coverage(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -58,6 +72,54 @@ class FormalRegistryContracts(unittest.TestCase):
             source = root / 'kb_platform/lifecycle.py'
             source.write_text(source.read_text().replace('if allowed:', 'if ( allowed ):'), encoding='utf-8')
             self.assertEqual([], registry_violations(root, registry))
+
+    def test_python_fingerprint_is_identical_across_supported_ast_dump_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'portable.py'
+            source.write_text('def consume(flag):\n    if flag:\n        return 1\n    return 0\n', encoding='utf-8')
+            expected = ("FunctionDef(name='consume', args=arguments(posonlyargs=[], args=[arg(arg='flag')], "
+                        "kwonlyargs=[], kw_defaults=[], defaults=[]), body=[If(test=Name(id='flag', ctx=Load()), "
+                        "body=[Return(value=Constant(value=1))], orelse=[]), Return(value=Constant(value=0))], "
+                        "decorator_list=[], type_params=[])")
+            binding = {'path': 'portable.py', 'language': 'python', 'symbol': 'consume'}
+            self.assertEqual(digest(expected.encode()), source_digest(root, binding))
+
+    def test_rust_fingerprint_normalizes_checkout_crlf_but_retains_source_mutations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'portable.rs'
+            text = b'pub fn step(allowed: bool) -> bool {\n    allowed\n}\n'
+            binding = {'path': 'portable.rs', 'language': 'rust', 'symbol': 'step'}
+            source.write_bytes(text)
+            expected = source_digest(root, binding)
+            self.assertEqual(digest(text), expected)
+            source.write_bytes(text.replace(b'\n', b'\r\n'))
+            self.assertEqual(expected, source_digest(root, binding))
+            source.write_bytes(text.replace(b'    allowed', b'    !allowed'))
+            self.assertNotEqual(expected, source_digest(root, binding))
+            source.write_bytes(text.replace(b'\n', b'\r'))
+            self.assertNotEqual(expected, source_digest(root, binding))
+
+    def test_positive_model_cannot_drop_every_check_and_refresh_the_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = self.modeled_fixture(root)
+            self.assertEqual([], registry_violations(root, registry))
+            registry['machines'][0]['models'][0]['invariants'] = []
+            (root / 'formal/Model.cfg').write_text('SPECIFICATION Spec\n', encoding='utf-8')
+            self.assertTrue(any('positive models require a nonempty' in error
+                                for error in registry_violations(root, registry)))
+
+    def test_model_operator_lists_bounds_and_limits_require_explicit_types(self):
+        mutations = [('invariants', 'TypeOK'), ('invariants', ['TypeOK', 'TypeOK']), ('invariants', [1]),
+                     ('properties', ''), ('properties', [None]), ('bounds', [2]), ('timeout_seconds', True)]
+        for key, value in mutations:
+            with self.subTest(key=key, value=value), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                registry = self.modeled_fixture(root)
+                registry['machines'][0]['models'][0][key] = value
+                self.assertTrue(registry_violations(root, registry))
 
     def test_new_transition_owner_requires_registration(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -76,8 +76,10 @@ policy intentionally differs from upstream's log-and-continue cleanup.
 ## Checks and retained evidence
 
 `PluginLifecycle.cfg` checks seven invariants and two temporal properties.
-`PluginLifecycleNegative.cfg` changes only `PreserveSupersededFailure` to `TRUE` and
-must exit 12 with `NoSupersededFailure` violated, not a parse/runtime failure.
+`PluginLifecycleNegative.cfg` uses the same module and `Spec`, sets
+`PreserveSupersededFailure` to `TRUE`, and checks `TypeOK` plus
+`NoSupersededFailure` without the positive profile's other assertions or temporal
+properties. It must exit 12 with `NoSupersededFailure` violated, not a parse/runtime failure.
 Its three-state trace is: active provider / starting consumer → provider update →
 consumer's superseded error. The same old implementation failed the Rust regression
 because no consumer restart action was produced after provider recovery.

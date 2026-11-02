@@ -11,6 +11,7 @@ import io
 import tokenize
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import subprocess
@@ -275,6 +276,8 @@ def source_quality_violations(root: Path) -> list[str]:
             source = path.read_text('utf-8-sig')
             tree = ast.parse(source, filename=relative)
             module = relative.removesuffix('.py').replace('/', '.')
+            if relative == 'scripts/check_project.py':
+                errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -288,6 +291,61 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
+    errors = []
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    expected_seal = ast.parse('machine = platform.machine()\nsys.addaudithook(deny_external_io)\nreturn machine').body
+    expected_prefix = ast.parse("if kind == 'contracts' and shard is None:\n    return run_contract_workers(output)\n"
+        'sys.path.insert(0, str(ROOT))\nmachine = seal_offline_worker()').body
+    def dump(nodes):
+        return [ast.dump(node, include_attributes=False) for node in nodes]
+    seal = functions.get('seal_offline_worker')
+    worker = functions.get('run_worker')
+    no_args = ast.parse('def seal_offline_worker(): pass').body[0].args
+    if seal is None or dump([seal.args]) != dump([no_args]) or seal.decorator_list or dump(seal.body) != dump(expected_seal):
+        errors.append('offline bootstrap must read only real stdlib metadata then install the unchanged audit hook')
+    if worker is None or worker.decorator_list or dump(worker.body[:len(expected_prefix)]) != dump(expected_prefix):
+        errors.append('offline workers must finish bootstrap and seal before any project/test discovery')
+    startup = []
+
+    def collect_startup(node):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in node.decorator_list + node.args.defaults + [value for value in node.args.kw_defaults if value is not None]:
+                collect_startup(child)
+            return
+        startup.append(node)
+        for child in ast.iter_child_nodes(node):
+            collect_startup(child)
+
+    for node in tree.body:
+        collect_startup(node)
+    for node in startup:
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            modules = [node.module or '']
+        else:
+            modules = []
+        if any(module.split('.')[0] not in sys.stdlib_module_names for module in modules):
+            errors.append('checker startup cannot import project or third-party modules before the audit seal')
+        if isinstance(node, ast.Call) and (
+                isinstance(node.func, ast.Name) and node.func.id == '__import__' or
+                isinstance(node.func, ast.Attribute) and node.func.attr in
+                {'import_module', 'loadTestsFromName', 'loadTestsFromModule', 'discover'}):
+            errors.append('checker startup cannot dynamically import or discover modules before the audit seal')
+    coordinator = functions.get('run_contract_workers')
+    if coordinator is not None:
+        for node in ast.walk(coordinator):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                errors.append('the unsealed contract coordinator cannot import project/test modules')
+            if isinstance(node, ast.Call) and (
+                    isinstance(node.func, ast.Attribute) and node.func.attr in
+                    {'loadTestsFromName', 'loadTestsFromModule', 'discover', 'import_module'} or
+                    isinstance(node.func, ast.Name) and node.func.id == '__import__'):
+                errors.append('contract discovery belongs only in the sealed worker')
+    return sorted(set(errors))
 
 
 def workflow_violations(workflow):
@@ -450,6 +508,12 @@ def deny_external_io(event, args):
         raise RuntimeError(f"OFFLINE_CHECK_FORBIDS_{event}")
 
 
+def seal_offline_worker():
+    machine = platform.machine()
+    sys.addaudithook(deny_external_io)
+    return machine
+
+
 def write_json(path: Path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -537,7 +601,10 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
     if kind == 'contracts' and shard is None:
         return run_contract_workers(output)
     sys.path.insert(0, str(ROOT))
-    sys.addaudithook(deny_external_io)
+    machine = seal_offline_worker()
+    write_json(output / 'worker-bootstrap.json', {'platform_machine': machine,
+        'states': ['BOOTSTRAP', 'SEALED', 'DISCOVER'], 'audit_policy': 'deny_external_io',
+        'scope': 'Only real stdlib platform.machine metadata is read before sealing; project/test imports follow the seal.'})
     if kind == "contracts":
         faulthandler.dump_traceback_later(150)
         try:
