@@ -1,0 +1,4 @@
+{
+  "violations": [],
+  "invocation_note": "Prior diagnostic invocation omitted required root argument and raised TypeError before checking; corrected explicit root supplied."
+}

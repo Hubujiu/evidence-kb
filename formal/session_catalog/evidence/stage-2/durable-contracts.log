@@ -1,0 +1,12 @@
+test_direct_final_buffer_and_messages_are_copied_and_close_only_after_commit (kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_direct_final_buffer_and_messages_are_copied_and_close_only_after_commit) ... ok
+test_direct_finish_ack_loss_leaves_durable_result_and_cleanup_cannot_rewrite_it (kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_direct_finish_ack_loss_leaves_durable_result_and_cleanup_cannot_rewrite_it) ... ok
+test_initialization_baseexception_is_preserved_after_real_failure_cleanup (kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_initialization_baseexception_is_preserved_after_real_failure_cleanup) ... ok
+test_public_finish_ack_loss_preserves_completed_turn_and_cached_replay_runs_no_tool (kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_public_finish_ack_loss_preserves_completed_turn_and_cached_replay_runs_no_tool) ... ok
+test_public_tool_record_ack_loss_is_unknown_even_with_zero_actual_tool_effects (kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_public_tool_record_ack_loss_is_unknown_even_with_zero_actual_tool_effects) ... ok
+test_public_unknown_tool_effect_is_neither_replayed_nor_reclassified_as_zero (kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_public_unknown_tool_effect_is_neither_replayed_nor_reclassified_as_zero) ... ok
+test_public_user_record_ack_loss_settles_failure_without_any_model_call (kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_public_user_record_ack_loss_settles_failure_without_any_model_call) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 1.626s
+
+OK

@@ -1,0 +1,9 @@
+test_actual_adapter_source_and_terminal_witnesses_are_accepted (kb_platform.rag_testing.durable_session_lint_contracts.DurableSessionLintContracts.test_actual_adapter_source_and_terminal_witnesses_are_accepted) ... ok
+test_hash_refreshed_adapter_and_witness_regressions_are_rejected (kb_platform.rag_testing.durable_session_lint_contracts.DurableSessionLintContracts.test_hash_refreshed_adapter_and_witness_regressions_are_rejected) ... ok
+test_actual_catalog_source_model_and_required_witnesses_are_accepted (kb_platform.rag_testing.session_catalog_lint_contracts.SessionCatalogLintContracts.test_actual_catalog_source_model_and_required_witnesses_are_accepted) ... ok
+test_hash_refreshed_owner_content_commit_and_reachability_mutants_are_rejected (kb_platform.rag_testing.session_catalog_lint_contracts.SessionCatalogLintContracts.test_hash_refreshed_owner_content_commit_and_reachability_mutants_are_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 1.256s
+
+OK

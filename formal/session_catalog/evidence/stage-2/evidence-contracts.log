@@ -1,0 +1,8 @@
+test_actual_positive_models_and_negative_controls_have_verified_outcomes (kb_platform.rag_testing.formal_state_machine_contracts.live_suite.<locals>.ActualFormalEvidenceContracts.test_actual_positive_models_and_negative_controls_have_verified_outcomes) ... ok
+test_every_registered_run_executed_exactly_once (kb_platform.rag_testing.formal_state_machine_contracts.live_suite.<locals>.ActualFormalEvidenceContracts.test_every_registered_run_executed_exactly_once) ... ok
+test_known_limitations_are_separate_observations_not_model_passes (kb_platform.rag_testing.formal_state_machine_contracts.live_suite.<locals>.ActualFormalEvidenceContracts.test_known_limitations_are_separate_observations_not_model_passes) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
+
+OK

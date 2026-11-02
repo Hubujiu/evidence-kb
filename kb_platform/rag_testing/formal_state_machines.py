@@ -235,6 +235,12 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
         from scripts.postflight_model_checks import postflight_model_violations
 
         errors.extend(postflight_model_violations(root, registry))
+        from scripts.session_catalog_checks import session_catalog_violations
+
+        errors.extend(session_catalog_violations(root, registry))
+        from scripts.durable_session_checks import durable_session_violations
+
+        errors.extend(durable_session_violations(root, registry))
         exclusions = registry['discovery']['exclusions']
         excluded = {(row['path'], row['symbol']) for row in exclusions if row.get('reason', '').strip()}
         if len(excluded) != len(exclusions):

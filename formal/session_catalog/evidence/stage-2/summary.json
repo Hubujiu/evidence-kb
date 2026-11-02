@@ -1,0 +1,628 @@
+{
+  "decision": "PASS",
+  "scope": "Finite TLC abstractions plus source review-drift lint; not implementation refinement or all-state-machine proof.",
+  "base_commit": "d6378fd4365e4bf640fe09e989d8c304a3daa9df",
+  "new_provider_calls": 0,
+  "results": [
+    {
+      "id": "gate-control-positive",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.3321260439988691,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 3,
+        "distinct": 2,
+        "remaining": 0
+      },
+      "raw_log": "gate-control-positive.log"
+    },
+    {
+      "id": "gate-control-seeded-bug",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.232411900011357,
+      "expected_invariant": "NoPrematureRelease",
+      "expected_property": null,
+      "states": {
+        "generated": 2,
+        "distinct": 2,
+        "remaining": 0
+      },
+      "raw_log": "gate-control-seeded-bug.log"
+    },
+    {
+      "id": "gate-control-invalid-spec",
+      "kind": "invalid",
+      "decision": "PASS",
+      "returncode": 151,
+      "timeout": false,
+      "seconds": 0.7200731069897301,
+      "expected_invariant": "NoPrematureRelease",
+      "expected_property": null,
+      "states": null,
+      "raw_log": "gate-control-invalid-spec.log"
+    },
+    {
+      "id": "gate-control-liveness-positive",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.3348358429793734,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 3,
+        "distinct": 2,
+        "remaining": 0
+      },
+      "raw_log": "gate-control-liveness-positive.log"
+    },
+    {
+      "id": "gate-control-liveness-bug",
+      "kind": "liveness-negative",
+      "decision": "PASS",
+      "returncode": 13,
+      "timeout": false,
+      "seconds": 1.176922171987826,
+      "expected_invariant": null,
+      "expected_property": "EventuallyActive",
+      "states": {
+        "generated": 2,
+        "distinct": 1,
+        "remaining": 0
+      },
+      "raw_log": "gate-control-liveness-bug.log"
+    },
+    {
+      "id": "session_writer_lease",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 3.7182421120232902,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 152181,
+        "distinct": 44129,
+        "remaining": 0
+      },
+      "raw_log": "session_writer_lease.log"
+    },
+    {
+      "id": "session_stale_writer",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.5303931099770125,
+      "expected_invariant": "NoSupersededCompletion",
+      "expected_property": null,
+      "states": {
+        "generated": 409,
+        "distinct": 285,
+        "remaining": 192
+      },
+      "raw_log": "session_stale_writer.log"
+    },
+    {
+      "id": "session_partial_commit",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.273019035026664,
+      "expected_invariant": "AtomicCompletion",
+      "expected_property": null,
+      "states": {
+        "generated": 53,
+        "distinct": 42,
+        "remaining": 31
+      },
+      "raw_log": "session_partial_commit.log"
+    },
+    {
+      "id": "plugin_lifecycle",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 2.5916955769935157,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 10307,
+        "distinct": 4821,
+        "remaining": 0
+      },
+      "raw_log": "plugin_lifecycle.log"
+    },
+    {
+      "id": "plugin_lifecycle_legacy_superseded_failure",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.320487785997102,
+      "expected_invariant": "NoSupersededFailure",
+      "expected_property": null,
+      "states": {
+        "generated": 11,
+        "distinct": 10,
+        "remaining": 7
+      },
+      "raw_log": "plugin_lifecycle_legacy_superseded_failure.log"
+    },
+    {
+      "id": "knowledge_postflight_authority",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.3233484299853444,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 367,
+        "distinct": 228,
+        "remaining": 0
+      },
+      "raw_log": "knowledge_postflight_authority.log"
+    },
+    {
+      "id": "knowledge_unchecked_replay",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2737187440216076,
+      "expected_invariant": "ReplayResponseWasRevalidated",
+      "expected_property": null,
+      "states": {
+        "generated": 34,
+        "distinct": 29,
+        "remaining": 19
+      },
+      "raw_log": "knowledge_unchecked_replay.log"
+    },
+    {
+      "id": "knowledge_postflight_witness_deniedreplay",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.1791507489979267,
+      "expected_invariant": "NoDeniedReplayWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 94,
+        "distinct": 69,
+        "remaining": 36
+      },
+      "raw_log": "knowledge_postflight_witness_deniedreplay.log"
+    },
+    {
+      "id": "session-catalog",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 3.700889361993177,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 416381,
+        "distinct": 18554,
+        "remaining": 0
+      },
+      "raw_log": "session-catalog.log"
+    },
+    {
+      "id": "session-catalog-tenant",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.3320689419924747,
+      "expected_invariant": "OwnerIsolation",
+      "expected_property": null,
+      "states": {
+        "generated": 126,
+        "distinct": 20,
+        "remaining": 12
+      },
+      "raw_log": "session-catalog-tenant.log"
+    },
+    {
+      "id": "session-catalog-principal",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2364457950170618,
+      "expected_invariant": "OwnerIsolation",
+      "expected_property": null,
+      "states": {
+        "generated": 125,
+        "distinct": 19,
+        "remaining": 11
+      },
+      "raw_log": "session-catalog-principal.log"
+    },
+    {
+      "id": "session-catalog-content",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.4293693130020984,
+      "expected_invariant": "ArtifactContentChecked",
+      "expected_property": null,
+      "states": {
+        "generated": 1344,
+        "distinct": 173,
+        "remaining": 113
+      },
+      "raw_log": "session-catalog-content.log"
+    },
+    {
+      "id": "session-catalog-key",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.4837678800104186,
+      "expected_invariant": "ArtifactSessionBound",
+      "expected_property": null,
+      "states": {
+        "generated": 12430,
+        "distinct": 901,
+        "remaining": 535
+      },
+      "raw_log": "session-catalog-key.log"
+    },
+    {
+      "id": "session-catalog-lease",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2757627719838638,
+      "expected_invariant": "ArtifactWriterLease",
+      "expected_property": null,
+      "states": {
+        "generated": 130,
+        "distinct": 20,
+        "remaining": 12
+      },
+      "raw_log": "session-catalog-lease.log"
+    },
+    {
+      "id": "session-catalog-witness-create",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.0694504150014836,
+      "expected_invariant": "NoCreateUnknownWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 123,
+        "distinct": 17,
+        "remaining": 9
+      },
+      "raw_log": "session-catalog-witness-create.log"
+    },
+    {
+      "id": "session-catalog-witness-dedup",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.178227648983011,
+      "expected_invariant": "NoArtifactDedupWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 400,
+        "distinct": 53,
+        "remaining": 32
+      },
+      "raw_log": "session-catalog-witness-dedup.log"
+    },
+    {
+      "id": "session-catalog-witness-read",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2702580059994943,
+      "expected_invariant": "NoAuthorizedReadWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 402,
+        "distinct": 55,
+        "remaining": 34
+      },
+      "raw_log": "session-catalog-witness-read.log"
+    },
+    {
+      "id": "session-durable",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.473566260014195,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 96,
+        "distinct": 96,
+        "remaining": 0
+      },
+      "raw_log": "session-durable.log"
+    },
+    {
+      "id": "session-durable-namespace",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.373298437014455,
+      "expected_invariant": "NamespaceAdmission",
+      "expected_property": null,
+      "states": {
+        "generated": 3,
+        "distinct": 3,
+        "remaining": 1
+      },
+      "raw_log": "session-durable-namespace.log"
+    },
+    {
+      "id": "session-durable-close",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.24864708899986,
+      "expected_invariant": "ClosedRequiresDurable",
+      "expected_property": null,
+      "states": {
+        "generated": 15,
+        "distinct": 15,
+        "remaining": 5
+      },
+      "raw_log": "session-durable-close.log"
+    },
+    {
+      "id": "session-durable-rewrite",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.4250924059888348,
+      "expected_invariant": "CommittedSuccessStable",
+      "expected_property": null,
+      "states": {
+        "generated": 48,
+        "distinct": 48,
+        "remaining": 12
+      },
+      "raw_log": "session-durable-rewrite.log"
+    },
+    {
+      "id": "session-durable-replay",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.5285626749973744,
+      "expected_invariant": "ReplayHasNoEffects",
+      "expected_property": null,
+      "states": {
+        "generated": 25,
+        "distinct": 25,
+        "remaining": 8
+      },
+      "raw_log": "session-durable-replay.log"
+    },
+    {
+      "id": "session-durable-unknown",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.8944788099906873,
+      "expected_invariant": "UnknownBlocksNew",
+      "expected_property": null,
+      "states": {
+        "generated": 28,
+        "distinct": 28,
+        "remaining": 9
+      },
+      "raw_log": "session-durable-unknown.log"
+    },
+    {
+      "id": "session-durable-witness-success",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2235624589957297,
+      "expected_invariant": "NoSuccessWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 34,
+        "distinct": 34,
+        "remaining": 10
+      },
+      "raw_log": "session-durable-witness-success.log"
+    },
+    {
+      "id": "session-durable-witness-commitunknown",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.4224811739986762,
+      "expected_invariant": "NoCommitUnknownWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 48,
+        "distinct": 48,
+        "remaining": 12
+      },
+      "raw_log": "session-durable-witness-commitunknown.log"
+    },
+    {
+      "id": "session-durable-witness-replay",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.172551454976201,
+      "expected_invariant": "NoReplayWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 62,
+        "distinct": 62,
+        "remaining": 14
+      },
+      "raw_log": "session-durable-witness-replay.log"
+    },
+    {
+      "id": "session-durable-witness-unknowntoolblocked",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2199837529915385,
+      "expected_invariant": "NoUnknownToolBlockedWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 42,
+        "distinct": 42,
+        "remaining": 11
+      },
+      "raw_log": "session-durable-witness-unknowntoolblocked.log"
+    },
+    {
+      "id": "session-durable-witness-toolrecordunknown",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2714073109964374,
+      "expected_invariant": "NoToolRecordUnknownWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 18,
+        "distinct": 18,
+        "remaining": 5
+      },
+      "raw_log": "session-durable-witness-toolrecordunknown.log"
+    },
+    {
+      "id": "session-durable-witness-cancellationrejected",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.5176211670041084,
+      "expected_invariant": "NoCancellationRejectedWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 31,
+        "distinct": 31,
+        "remaining": 9
+      },
+      "raw_log": "session-durable-witness-cancellationrejected.log"
+    },
+    {
+      "id": "session-durable-witness-recoveredcommit",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.3246342779893894,
+      "expected_invariant": "NoRecoveredCommitWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 76,
+        "distinct": 76,
+        "remaining": 12
+      },
+      "raw_log": "session-durable-witness-recoveredcommit.log"
+    },
+    {
+      "id": "session-durable-witness-unknowntoolreplay",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.6414763929788023,
+      "expected_invariant": "NoUnknownToolReplayWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 56,
+        "distinct": 56,
+        "remaining": 14
+      },
+      "raw_log": "session-durable-witness-unknowntoolreplay.log"
+    }
+  ],
+  "known_limitations": [
+    {
+      "id": "knowledge_authority_commit_limitation",
+      "kind": "limitation",
+      "decision": "OBSERVED_LIMITATION",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.170454303995939,
+      "expected_invariant": "CurrentAuthorityAtCommit",
+      "expected_property": null,
+      "states": {
+        "generated": 330,
+        "distinct": 211,
+        "remaining": 20
+      },
+      "raw_log": "knowledge_authority_commit_limitation.log"
+    },
+    {
+      "id": "knowledge_postflight_witness_evidencerevokedcommit",
+      "kind": "limitation",
+      "decision": "OBSERVED_LIMITATION",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2362980589969084,
+      "expected_invariant": "NoEvidenceRevokedCommitWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 332,
+        "distinct": 212,
+        "remaining": 20
+      },
+      "raw_log": "knowledge_postflight_witness_evidencerevokedcommit.log"
+    }
+  ],
+  "evidence_contracts": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "violations": [],
+  "source_hashes": "SHA256SUMS",
+  "historical_inputs": "Exact original final-stage input hashes; live runner JSON remains unchanged in .local/session-final-formal-20261102-2256/formal.",
+  "targeted_tests": 38,
+  "post_composition_lint_tests": 4,
+  "catalog_hash_refreshed_mutants": 15,
+  "adapter_hash_refreshed_mutants": 17,
+  "ordinary_full": "NOT_RUN at source freeze; required run awaits other owner full terminal to avoid resource interference."
+}

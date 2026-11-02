@@ -336,10 +336,10 @@
         "No claim of native runtime, model billing or RAG quality verification"
       ],
       "remaining_obligations": [
-        "Model session owner/tenant identity decisions, artifact lifecycle and transfer/export/import state",
+        "Bounded owner/content decisions are now modeled separately by session_catalog; artifact retention and transfer/export/import remain outside this lease model",
         "Validate provider-specific concurrency and commit ambiguity for PostgreSQL/MySQL independently",
         "Unbounded identifiers and progress/fairness are not established by bounded TLC",
-        "SessionStore.create and DurableSession.finish remain inventoried source bindings, not modeled protocols"
+        "SessionStore.create and DurableSession.finish are modeled by separate session_catalog and session_durable_adapter entries, not by SessionWriterLease"
       ],
       "source_bindings": [
         {
@@ -2145,6 +2145,454 @@
           "model_id": "knowledge_postflight_authority"
         }
       ]
+    },
+    {
+      "id": "session_catalog",
+      "status": "partial",
+      "owners": [
+        "kb_platform/session_store.py",
+        "kb_platform/session_storage/schema.py"
+      ],
+      "states": [
+        "absent -> staged create -> committed -> acknowledged or unknown",
+        "artifact absent -> immutable content -> verified read or rejected corruption"
+      ],
+      "transitions": [
+        "SessionStore.create",
+        "SessionStore._owner",
+        "SessionStore.load",
+        "SessionStore.list_sessions",
+        "SessionStore.events",
+        "SessionStore.artifact",
+        "SessionStore.read_artifact"
+      ],
+      "invariants": [
+        "Creation acknowledgement implies committed catalog entry; tenant and principal both gate observations/writes; artifact reads are session scoped and content checked; writes require a valid lease."
+      ],
+      "assumptions": [
+        "Real transaction commit is atomic; SQLite BEGIN IMMEDIATE serializes writers; PostgreSQL FOR UPDATE is a mapping assumption, not new PostgreSQL execution evidence.",
+        "UUID allocation is abstracted to two fresh identities and digest collision resistance to two distinct bodies; corruption is an explicit external fault, never a supported writer mutation.",
+        "Read authorization and integrity linearize at the database read, not at arbitrary later response delivery. Lease validity is supplied by the already modeled SessionWriterLease boundary."
+      ],
+      "exclusions": [
+        "No ownership transfer, storage-grant generation, file-system correctness, hash collision proof, actual authorization service expiry, or artifact retention/GC claim.",
+        "Creation has no client idempotency key: a lost acknowledgement may leave a durable session; a repeated create is not promised to deduplicate."
+      ],
+      "remaining_obligations": [
+        "Unbounded identities/content/event histories and pagination ordering are not proven; arbitrary post-check corruption is outside snapshot observation.",
+        "DurableSessions adapter and commit-acknowledgement/replay composition are the next independent slice; SessionWriterLease and PostflightAuthority models remain unchanged."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "canonical",
+          "sha256": "efa76beb78864d2abb22905be8ecdd1ba086fb34bca6f238de2083efe4e19ebf"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "digest",
+          "sha256": "369c0fba894afef48ddd789f89ec1d1587691c5237631d7f2191e36b31df1c43"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore._owner",
+          "sha256": "2c0f506f9e57a8f9177554b5b2b0f3c2cd9f5788dda2eb1cd5362a0d459a9108"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.create",
+          "sha256": "21a100e4c47e926ea04838b8677f9d1929b7e7497305aa530f6d19d9c2deb1f4"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.load",
+          "sha256": "97eb5f0be2edd8f34464b16ff37f4307cc1e8d2eaba3ac5a9ff0d4ca249f8af7"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.list_sessions",
+          "sha256": "6f0a17182e1c54294b1839b259dca1b199fb5d0957f93822571a01d3304bc0c1"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.events",
+          "sha256": "66c9bc707bba31900541bb7bdaa516d477c5ca9c4c121b979836c5a459c4c2df"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.artifact",
+          "sha256": "55fb2a9126a7ea3d18e7ce24aaf9b71493d8e7fa926cc839f85318fe7bf14159"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.read_artifact",
+          "sha256": "d1b91dd122d47134b18db48170d96692fc832f203ad9deb4090326ea5b4e800c"
+        },
+        {
+          "path": "kb_platform/session_storage/schema.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "ddb319b5e6cdeb457928d3a93ea7e5603bb4c887883f8a03633ba6c63a346c4e"
+        }
+      ],
+      "models": [
+        {
+          "id": "session-catalog",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalog.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "invariants": [
+            "TypeOK",
+            "CreateAcknowledgedDurable",
+            "ArtifactHasSession",
+            "OwnerIsolation",
+            "ArtifactContentChecked",
+            "ArtifactSessionBound",
+            "ArtifactWriterLease"
+          ],
+          "properties": [],
+          "bounds": {
+            "actors": 3,
+            "tenants": 2,
+            "principals": 2,
+            "sessions": 2,
+            "bodies": 2,
+            "artifact_keys": 4
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "session-catalog-tenant",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogTenantBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "OwnerIsolation",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-principal",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogPrincipalBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "OwnerIsolation",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-content",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogContentBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "ArtifactContentChecked",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-key",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogSessionKeyBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "ArtifactSessionBound",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-lease",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogLeaseBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "ArtifactWriterLease",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-witness-create",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogCreateUnknownWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoCreateUnknownWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior reachability witness, not a seeded runtime defect."
+        },
+        {
+          "id": "session-catalog-witness-dedup",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogArtifactDedupWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoArtifactDedupWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior reachability witness, not a seeded runtime defect."
+        },
+        {
+          "id": "session-catalog-witness-read",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogAuthorizedReadWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoAuthorizedReadWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior reachability witness, not a seeded runtime defect."
+        }
+      ],
+      "known_limitations": []
+    },
+    {
+      "id": "session_durable_adapter",
+      "status": "partial",
+      "owners": [
+        "kb_platform/harness_sessions.py",
+        "kb_platform/session_store.py"
+      ],
+      "states": [
+        "new -> starting -> running -> final staged -> commit -> acknowledged closed or unknown",
+        "tool call recorded -> effect -> result recorded or unknown -> same-request replay/new-request refusal"
+      ],
+      "transitions": [
+        "DurableSessions.create",
+        "DurableSessions.load",
+        "DurableSessions.history",
+        "DurableSessions.begin",
+        "DurableSession.start",
+        "DurableSession.append",
+        "DurableSession.finish",
+        "DurableSession.fail"
+      ],
+      "invariants": [
+        "Namespace precedes admission; final assistant/state/terminal record share the existing atomic transaction; local close and success require durable settlement; ambiguous commit cleanup cannot overwrite a committed result; cached replay has no tool effect; pending tool history conservatively blocks new effects."
+      ],
+      "assumptions": [
+        "SessionStore atomic transaction and writer fencing are the already modeled PR35 boundary; this model separates database commit, acknowledgement, caller publication and cached replay.",
+        "The modeled cancellation linearizes at _check_execution immediately before finish; cancellation after that check is allowed and is not claimed to revoke a committed result.",
+        "A recorded tool call without a recorded result is unknown even when this invocation can prove no effect was sent; no automatic retry or budget refund is inferred."
+      ],
+      "exclusions": [
+        "No production changes. NativeLoop composition is exercised by actual synthetic contracts, not a replacement full kernel or lifecycle model.",
+        "No progress/liveness claim, unbounded histories, arbitrary parallel use of one in-memory DurableSession, retention/GC, arbitrary adapter implementations, or cross-store authority-at-commit proof."
+      ],
+      "remaining_obligations": [
+        "Bounded one original turn plus one same-request replay and one pending-tool new-turn attempt; unbounded successful sequential turns and arbitrary tool graphs remain outside this slice.",
+        "Full thread/process crash, storage-engine durability and provider-side exactly-once effects are not established. Parent PR35 cross-store known limitations remain separate."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "_persist",
+          "sha256": "e5d5ccb9e7da1dac4b05d7ee1fa5977def28ed63583b0bc2be7b52b2bda7f798"
+        },
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "_check_execution",
+          "sha256": "be50e94d87f7e1f7442cb5770ab63c4aeca5a313f24ebf9667bddcb7bf3a47fa"
+        },
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "_pending_tools",
+          "sha256": "174c5d84d1e582406d6ded67516214531c4c56211bacf91053bf5c399d72e757"
+        },
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "_unknown_outcome",
+          "sha256": "9688048cc9b626085daf8bab6991e2d06183c9706829dc27ea48e4e2dd1ecc37"
+        },
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "DurableSessions",
+          "sha256": "f4aa884750c0ef232acf15dde5dc6c2f04f9d9520dbd541821a878fe59856f4f"
+        },
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "DurableSession",
+          "sha256": "17b7f9da73ba3e185b9c3a244aff11897824ee2b1928905862cda29dd073ab43"
+        }
+      ],
+      "models": [
+        {
+          "id": "session-durable",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapter.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "invariants": [
+            "TypeOK",
+            "NamespaceAdmission",
+            "ClosedRequiresDurable",
+            "FinalSharesCommit",
+            "SuccessRequiresCommit",
+            "CommittedSuccessStable",
+            "FreshFinishChecked",
+            "ReplayHasNoEffects",
+            "UnknownBlocksNew"
+          ],
+          "properties": [],
+          "bounds": {
+            "session": 1,
+            "original_request": 1,
+            "cached_replay": 1,
+            "new_attempt_with_pending_tool": 1,
+            "tool_effects": 1,
+            "namespace_kinds": 2,
+            "cancellation_checkpoint": 1
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "session-durable-namespace",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterNamespaceBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NamespaceAdmission",
+          "kind": "negative",
+          "purpose": "Seed one adapter contract regression while preserving the other positive boundaries."
+        },
+        {
+          "id": "session-durable-close",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterEarlyClose.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "ClosedRequiresDurable",
+          "kind": "negative",
+          "purpose": "Seed one adapter contract regression while preserving the other positive boundaries."
+        },
+        {
+          "id": "session-durable-rewrite",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterRewriteCommit.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "CommittedSuccessStable",
+          "kind": "negative",
+          "purpose": "Seed one adapter contract regression while preserving the other positive boundaries."
+        },
+        {
+          "id": "session-durable-replay",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterReplayEffects.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "ReplayHasNoEffects",
+          "kind": "negative",
+          "purpose": "Seed one adapter contract regression while preserving the other positive boundaries."
+        },
+        {
+          "id": "session-durable-unknown",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterUnknownBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "UnknownBlocksNew",
+          "kind": "negative",
+          "purpose": "Seed one adapter contract regression while preserving the other positive boundaries."
+        },
+        {
+          "id": "session-durable-witness-success",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterSuccessWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoSuccessWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior terminal reachability witness, not a runtime defect."
+        },
+        {
+          "id": "session-durable-witness-commitunknown",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterCommitUnknownWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoCommitUnknownWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior terminal reachability witness, not a runtime defect."
+        },
+        {
+          "id": "session-durable-witness-replay",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterReplayWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoReplayWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior terminal reachability witness, not a runtime defect."
+        },
+        {
+          "id": "session-durable-witness-unknowntoolblocked",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterUnknownToolBlockedWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoUnknownToolBlockedWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior terminal reachability witness, not a runtime defect."
+        },
+        {
+          "id": "session-durable-witness-toolrecordunknown",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterToolRecordUnknownWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoToolRecordUnknownWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior terminal reachability witness, not a runtime defect."
+        },
+        {
+          "id": "session-durable-witness-cancellationrejected",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterCancellationRejectedWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoCancellationRejectedWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior terminal reachability witness, not a runtime defect."
+        },
+        {
+          "id": "session-durable-witness-recoveredcommit",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterRecoveredCommitWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoRecoveredCommitWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior composed terminal witness: explicit ambiguous-commit recovery or settled unknown-tool replay, not a runtime defect."
+        },
+        {
+          "id": "session-durable-witness-unknowntoolreplay",
+          "module": "formal/session_catalog/DurableAdapter.tla",
+          "config": "formal/session_catalog/DurableAdapterUnknownToolReplayWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoUnknownToolReplayWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior composed terminal witness: explicit ambiguous-commit recovery or settled unknown-tool replay, not a runtime defect."
+        }
+      ],
+      "known_limitations": []
     }
   ]
 }

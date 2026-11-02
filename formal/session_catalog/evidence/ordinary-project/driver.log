@@ -1,0 +1,13 @@
+architecture: PASS
+formal-lint: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/formal-lint.log)
+rust-format: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/rust-format.log)
+rust-clippy: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/rust-clippy.log)
+rust-build: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/rust-build.log)
+rust-tests: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/rust-tests.log)
+plugin-process-integration: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/plugin-process-integration.log)
+foundation-integration: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/foundation-integration.log)
+host-integration: FAIL (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/host-integration.log)
+lint: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/lint.log)
+contracts: FAIL (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/contracts.log)
+scorer: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/scorer.log)
+FAIL: /workspace/scratch/75c2273f6a80/evidence-kb-session-catalog-durable/.local/session-ordinary-full-20261102-2258/summary.json
