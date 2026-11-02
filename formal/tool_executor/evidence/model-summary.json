@@ -1,0 +1,70 @@
+{
+  "scope": "Actual bounded TLC executions, not implementation refinement; zero paid/external provider calls.",
+  "results": [
+    {
+      "id": "tool_executor_ownership",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "expected_invariant": null,
+      "seconds": 1.8351299409987405,
+      "states": {
+        "generated": 31100,
+        "distinct": 16308,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "tool_legacy_explicit_mutation",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "expected_invariant": "NoMutatingReplay",
+      "seconds": 1.3203409969864879,
+      "states": {
+        "generated": 2928,
+        "distinct": 1808,
+        "remaining": 977
+      }
+    },
+    {
+      "id": "tool_legacy_explicit_unknown",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "expected_invariant": "NoUnknownReplay",
+      "seconds": 1.2278410480066668,
+      "states": {
+        "generated": 2928,
+        "distinct": 1808,
+        "remaining": 977
+      }
+    },
+    {
+      "id": "tool_legacy_public_hint",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "expected_invariant": "RetryAfterRespected",
+      "seconds": 1.3196778609999456,
+      "states": {
+        "generated": 906,
+        "distinct": 615,
+        "remaining": 438
+      }
+    },
+    {
+      "id": "tool_seeded_terminal_replay",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "expected_invariant": "TerminalDoesNotExecute",
+      "seconds": 1.2692056050000247,
+      "states": {
+        "generated": 425,
+        "distinct": 321,
+        "remaining": 246
+      }
+    }
+  ]
+}

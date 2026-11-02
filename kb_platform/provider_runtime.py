@@ -279,13 +279,21 @@ class ToolExecutor:
         def wait(retry_state):
             delay = backoff(retry_state)
             exc = retry_state.outcome.exception()
+            hint = getattr(exc, 'retry_after_seconds', None)
+            try:
+                hint = float(hint) if type(hint) in (int, float) else None
+            except OverflowError:
+                hint = None
+            if hint is not None and math.isfinite(hint) and hint >= 0:
+                delay = max(delay, hint)
             cause = exc if isinstance(exc, httpx.HTTPStatusError) else getattr(exc, '__cause__', None)
             if isinstance(cause, httpx.HTTPStatusError):
                 delay = max(delay, retry_after_seconds(cause.response.headers.get('Retry-After')) or 0)
             return delay
 
         def stop(retry_state):
-            return (stop_after_attempt(self.max_attempts)(retry_state)
+            return (not read_only or not classify_failure(retry_state.outcome.exception()).retryable
+                    or stop_after_attempt(self.max_attempts)(retry_state)
                     or retry_state.idle_for + retry_state.upcoming_sleep > self.max_wait_seconds
                     or (deadline_seconds is not None and
                         time.monotonic() - started + retry_state.upcoming_sleep >= deadline_seconds))

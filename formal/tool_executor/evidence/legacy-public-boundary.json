@@ -1,0 +1,32 @@
+{
+  "source": "8160c051e63952278c5f8a80d1b024ebbe3cea17; ToolExecutor and public platform boundary identical to c8ef758",
+  "actual_public_boundary": "PlatformEndpoint -> ServiceEndpoint -> RecordingDependency JSON roundtrip -> PlatformClient.search -> domain_call conversion -> ToolExecutor",
+  "actual_platform_calls": 2,
+  "observed_public_errors": [
+    {
+      "type": "RemoteModelError",
+      "status": 429,
+      "retry_after_seconds": 100,
+      "cause": "ContractError"
+    },
+    {
+      "type": "RemoteModelError",
+      "status": 429,
+      "retry_after_seconds": 100,
+      "cause": "ContractError"
+    }
+  ],
+  "requested_waits": [
+    0.25
+  ],
+  "outcome": {
+    "status": "ERROR",
+    "value": null,
+    "attempts": 2,
+    "category": "rate_limit",
+    "error_code": "PROVIDER_RATE_LIMITED",
+    "reused": false,
+    "elapsed_seconds": 0.0
+  },
+  "new_provider_calls": 0
+}
