@@ -85,6 +85,6 @@ cargo build --locked --offline -p agent-kernel
 uv run --no-sync python -m unittest kb_platform.rag_testing.foundation_knowledge_integration kb_platform.rag_testing.foundation_transport_integration kb_platform.rag_testing.foundation_consumer_integration
 ```
 
-这组测试作为统一 checker 的受控集成步骤执行，和禁止网络的离线合同 worker 分开。它需要允许本机回环地址上的临时监听端口；端口由操作系统分配，不连接外部模型服务。不得因为沙箱禁止本地套接字就跳过测试或把测试改成只验证静态配置。
+这组测试作为统一 checker 的强制 `foundation-integration` 步骤执行，和宿主生命周期验收、禁止网络的离线合同 worker 分开。宿主与基础层应用验收分别保留 180 秒时限；两组都必须成功，不跳过或减少用例。它需要允许本机回环地址上的临时监听端口；端口由操作系统分配，不连接外部模型服务。不得因为沙箱禁止本地套接字就跳过测试或把测试改成只验证静态配置。逐项测试结果写入各自日志，基础层应用结果另存为 `foundation-integration/summary.json`。
 
 报告应分别列出基础层独立消费、知识库应用组合、实际后端矩阵和离线协议合同的结果。未执行的部分保持未执行状态；本地协议夹具成功不等于已验证远端供应商的全部能力。

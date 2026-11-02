@@ -485,22 +485,15 @@ def main():
     HostIntegration.output = args.output.resolve()
     HostIntegration.captures = []
     from .authentication_contracts import live_suite as authentication_suite
-    from . import foundation_consumer_integration, foundation_knowledge_integration, foundation_transport_integration
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(HostIntegration)
     suite.addTests(authentication_suite())
-    for module in (foundation_consumer_integration, foundation_knowledge_integration,
-                   foundation_transport_integration):
-        suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
-    stream = io.StringIO()
-    result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
-    print(stream.getvalue())
+    result = unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(suite)
     report = {'decision': 'PASS' if result.wasSuccessful() and not result.skipped else 'FAIL',
         'total': result.testsRun, 'failures': len(result.failures), 'errors': len(result.errors),
         'skipped': len(result.skipped), 'captures': HostIntegration.captures,
         'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0,
-        'scope': 'Rust main host with trusted Python worker, standalone foundation consumer, '
-                 'controlled localhost OpenAI/Anthropic/S3 SDK wire, knowledge application and ASGI authentication; '
+        'scope': 'Rust main host with trusted Python worker, controlled localhost HTTP and ASGI authentication; '
                  'synthetic component fixtures and unified evidence scoring; '
                  'no live provider or production RAG quality claim; per-run Agent value kernel uses current DLL'}
     (args.output / 'summary.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), 'utf-8')

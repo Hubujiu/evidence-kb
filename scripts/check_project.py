@@ -748,6 +748,12 @@ def main() -> int:
             results.append(run_check('plugin-process-integration',
                 [sys.executable, '-B', '-m', 'kb_platform.rag_testing.plugin_process_integration',
                  '--output', str(output / 'plugin-process-integration')], output, env))
+            results.append(run_check('foundation-integration',
+                [sys.executable, '-B', '-m', 'kb_platform.rag_testing.foundation_integration',
+                 '--output', str(output / 'foundation-integration')], output, env))
+        else:
+            (output / 'foundation-integration.log').write_text(f'BLOCKED: {block_reason}\n', encoding='utf-8')
+            results.append(CheckResult('foundation-integration', 2, 'foundation-integration.log'))
         if host_binary is not None and native_worker is not None and native_library is not None:
             env['KB_PLUGIN_HOST_BINARY'] = str(host_binary)
             env['KB_PLUGIN_HOST_NATIVE_WORKER'] = str(native_worker)
@@ -788,9 +794,9 @@ def main() -> int:
         "native_worker": str(native_worker) if native_worker is not None else None,
         "controlled_local_integration": args.local_integration,
         "controlled_storage_integration": args.storage_integration,
-        "scope": ("offline gates plus controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
+        "scope": ("offline gates plus foundation application and controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
                   if args.local_integration else
-                  "offline contracts plus controlled localhost host smoke; component checks and scorer controls reported separately")})
+                  "offline contracts plus controlled localhost host and foundation application integration; component checks and scorer controls reported separately")})
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1
 

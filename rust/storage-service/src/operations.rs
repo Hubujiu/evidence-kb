@@ -34,7 +34,7 @@ pub enum Rule {
     ObjectReference,
     Revision,
     PositiveInteger,
-    PositiveNumber,
+    TtlSeconds,
     QueryLimit,
     Strings,
     Records,
@@ -43,6 +43,14 @@ pub enum Rule {
 }
 
 impl Rule {
+    fn invalid_code(self) -> &'static str {
+        match self {
+            Self::TtlSeconds => "STORAGE_INVALID_TTL",
+            Self::QueryLimit => "STORAGE_PROCESS_LIMIT",
+            _ => "STORAGE_INVALID_PROCESS_REQUEST",
+        }
+    }
+
     pub fn accepts(self, value: &ValueInfo) -> bool {
         match self {
             Self::Any => true,
@@ -55,9 +63,9 @@ impl Rule {
             Self::ObjectReference => value.kind == Kind::ObjectReference,
             Self::Revision => value.integer().is_some_and(|number| number >= 0),
             Self::PositiveInteger => value.integer().is_some_and(|number| number > 0),
-            Self::PositiveNumber => value
-                .number()
-                .is_some_and(|number| number.is_finite() && number > 0.0),
+            Self::TtlSeconds => value.number().is_some_and(|number| {
+                number.is_finite() && number > 0.0 && number <= 365.0 * 24.0 * 60.0 * 60.0
+            }),
             Self::QueryLimit => value
                 .integer()
                 .is_some_and(|number| (1..=1000).contains(&number)),
@@ -187,7 +195,7 @@ pub fn catalogue(contract: &Contract) -> BTreeMap<String, Operation> {
                 parameter("value", Bytes),
                 Parameter {
                     keyword_only: true,
-                    ..parameter("ttl_seconds", PositiveNumber)
+                    ..parameter("ttl_seconds", TtlSeconds)
                 },
             ],
             Null,
@@ -431,12 +439,7 @@ impl Operation {
         for (index, value) in bound.iter().zip(values) {
             let parameter = &self.parameters[*index];
             if !(parameter.rule.accepts(value) || parameter.nullable && value.kind == Kind::Null) {
-                let code = if matches!(parameter.rule, Rule::QueryLimit) {
-                    "STORAGE_PROCESS_LIMIT"
-                } else {
-                    "STORAGE_INVALID_PROCESS_REQUEST"
-                };
-                return Err(StorageError::new(code));
+                return Err(StorageError::new(parameter.rule.invalid_code()));
             }
         }
         if self.document_receipt {

@@ -234,3 +234,37 @@ class RustStorageServiceContracts(unittest.TestCase):
             self.assertEqual(len(commits), 1)
             with client.transaction(write=False) as transaction:
                 self.assertEqual(transaction.execute(select(table.c.payload)).scalar(), {'committed': True})
+
+    def test_bound_expiring_kv_preserves_ttl_errors_before_local_or_wire_writes(self):
+        from kb_platform.storage_sdk import EphemeralCacheSpace, KV_EXPIRING_V1
+        from kb_platform.storage_service import StorageService
+        from . import storage_values_contracts
+
+        fixture = storage_values_contracts.RedisCacheBoundaryContracts()
+        fixture.setUp()
+        registry = StorageService()
+        try:
+            registry.register('cache', fixture.provider.exports()[0])
+            bound = registry.bind(registry.grant('cache', KV_EXPIRING_V1, fixture.space, 'consumer',
+                target=EphemeralCacheSpace('cache-identity')))
+            with patch.object(bound._implementation, 'put_expiring', wraps=bound._implementation.put_expiring) as adapter:
+                for ttl in (0, -1, True, None, 'invalid', 366 * 24 * 60 * 60):
+                    for mode in ('local', 'wire'):
+                        with self.subTest(ttl=ttl, mode=mode), self.assertRaisesRegex(StorageError, 'STORAGE_INVALID_TTL'):
+                            if mode == 'local':
+                                bound.put_expiring('probe', b'must-not-write', ttl_seconds=ttl)
+                            else:
+                                bound.call_json({'method': 'put_expiring',
+                                    'args': [encode_value('probe'), encode_value(b'must-not-write')],
+                                    'kwargs': {'ttl_seconds': encode_value(ttl)}})
+                adapter.assert_not_called()
+                fixture.client.set.assert_not_called()
+                bound.put_expiring('local', b'accepted', ttl_seconds=0.0011)
+                bound.call_json({'method': 'put_expiring', 'args': [encode_value('wire'), encode_value(b'accepted')],
+                                 'kwargs': {'ttl_seconds': encode_value(0.0011)}})
+                self.assertEqual(adapter.call_count, 2)
+                self.assertEqual(fixture.client.set.call_count, 2)
+                self.assertEqual([call.kwargs for call in fixture.client.set.call_args_list], [{'px': 2}, {'px': 2}])
+        finally:
+            registry.close()
+            fixture.doCleanups()
