@@ -110,6 +110,19 @@ class HostIntegration(unittest.TestCase):
         self.assertLess(disposed.index('dependent'), disposed.index('base'))
         self.assertLess(disposed.index('child-dependent'), disposed.index('override'))
 
+    def test_contract_application_http_uses_access_plugin_and_delivers_full_turn(self):
+        from .contract_http_integration import ContractHTTPIntegration
+
+        case = ContractHTTPIntegration(
+            'test_http_uses_access_plugin_and_delivers_full_turn_without_private_identity_loader')
+        stream = io.StringIO()
+        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(unittest.TestSuite([case]))
+        self.capture(0 if result.wasSuccessful() else 1, stream.getvalue(), '')
+        self.assertEqual(result.testsRun, 1)
+        self.assertFalse(result.skipped)
+        self.assertFalse(result.expectedFailures)
+        self.assertTrue(result.wasSuccessful(), stream.getvalue())
+
     def test_non_python_worker_uses_same_parent_runtime_protocol(self):
         profile = self.profile('generic')
         document = json.loads(profile.read_text('utf-8'))
