@@ -1,3 +1,4 @@
 [workspace]
-members = ["rust/agent-kernel", "rust/agent-harness", "rust/plugin-runtime", "rust/plugin-host"]
+members = ["rust/agent-kernel", "rust/agent-harness", "rust/plugin-runtime", "rust/plugin-host",
+           "rust/agent-services", "rust/llm-service", "rust/storage-service"]
 resolver = "3"

@@ -106,8 +106,7 @@ def builtin_plugins(*, runtime=None, decide=None, model=None, tools=()):
     checks = {'harness.context.policy': check_context}
     return configured_plugins((
         PluginSpec('harness.store.sqlite', ('session.store',), (), store_plugin),
-        PluginSpec('harness.store.database', ('session.store',), (), database_store,
-                   storage_slots=(StorageSlot('primary', STRUCTURED_RELATIONAL_V1),)),
+        PluginSpec('harness.store.database', ('session.store',), (StorageSlot('primary', STRUCTURED_RELATIONAL_V1),), database_store),
         PluginSpec('harness.sessions.durable', ('sessions',), ('session.store',), durable_sessions),
         PluginSpec('harness.context.policy', ('context.policy',), (), context_policy),
         PluginSpec('harness.compaction.recent', ('compaction',), (), compaction_plugin),

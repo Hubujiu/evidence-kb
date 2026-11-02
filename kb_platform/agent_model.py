@@ -143,7 +143,8 @@ class AgentModel:
                              "tokenizer_verified": False, "native_tools_verified": False,
                              "structured_output": "prompt_and_local_validation"}
 
-    def complete(self, messages, *, role, schema, call_context, output_limit=1500, validator=None):
+    def complete(self, messages, *, role, schema, call_context, output_limit=1500, validator=None,
+                 cache_result=True):
         if self.policy.strict_tokens:
             raise RemoteModelError("TOKEN_CAPABILITY_UNVERIFIED")
         if not _integer(output_limit, 1) or output_limit > self.policy.output_reserve:
@@ -281,11 +282,12 @@ class AgentModel:
                 validate(value)
             except ValueError as exc:
                 raise reject_output(result, str(exc), issue=getattr(exc, 'issue', None)) from None
-            self.provider.cache_put(key, {"value": value, "usage": usage, "finish_reason": finish})
+            if cache_result:
+                self.provider.cache_put(key, {"value": value, "usage": usage, "finish_reason": finish})
             return CompletionEnvelope(value, request_id, usage, trace["attempt"], finish, "none", key)
         except Exception as exc:
-
-
+            if usage is None and isinstance(getattr(exc, 'observed_usage', None), dict):
+                usage = _usage(exc.observed_usage)
             exc.call_record = {"request_id": request_id, "usage": usage or _usage(None),
                                "attempts": trace["attempt"], "finish_reason": finish,
                                "cache_kind": "none", "request_hash": key,
@@ -301,3 +303,8 @@ class AgentModel:
 
     def turn_budget_snapshot(self, session_id, turn_id):
         return self.ledger.turn_budget_snapshot(session_id, turn_id)
+
+    def accept_completion(self, envelope):
+        if envelope.cache_kind == 'none':
+            self.provider.cache_put(envelope.request_hash, {'value': envelope.value,
+                'usage': envelope.usage, 'finish_reason': envelope.finish_reason})

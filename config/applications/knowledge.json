@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "plugins": {
+    "storage": {
+      "implementation": "foundation.storage",
+      "version": "1",
+      "config": {
+        "path": ".local/storage-knowledge.json"
+      }
+    },
+    "model": {
+      "implementation": "knowledge.model",
+      "version": "1",
+      "config": {
+        "policy": {
+          "input_budget": 24000,
+          "output_reserve": 1500,
+          "model_window": 32768,
+          "safety_reserve": 1024
+        },
+        "budget": {
+          "max_calls": 10000,
+          "max_tokens": 100000000
+        }
+      }
+    },
+    "sessions": {
+      "implementation": "knowledge.sessions",
+      "version": "1",
+      "config": {
+        "binding": "store.primary"
+      }
+    },
+    "data": {
+      "implementation": "knowledge.data",
+      "version": "1",
+      "config": {
+        "research_root": ".local/research-v4",
+        "rerank": true
+      }
+    },
+    "access": {
+      "implementation": "knowledge.access",
+      "version": "1",
+      "config": {
+        "identities_file": ".local/identities.json"
+      }
+    },
+    "context": {
+      "implementation": "knowledge.context",
+      "version": "1",
+      "config": {
+        "input_budget": 24000,
+        "output_reserve": 1500,
+        "model_window": 32768,
+        "safety_reserve": 1024,
+        "evidence_strategy": "query_blocks"
+      }
+    },
+    "workflow": {
+      "implementation": "knowledge.workflow",
+      "version": "1",
+      "config": {
+        "max_tool_attempts": 2,
+        "retrieval_config": {
+          "channels": [
+            "bm25",
+            "dense"
+          ],
+          "rerank": true,
+          "parent": "paragraph",
+          "top_k": 5
+        }
+      }
+    },
+    "entry": {
+      "implementation": "knowledge.entry",
+      "version": "1",
+      "config": {}
+    },
+    "llm": {
+      "implementation": "foundation.llm",
+      "version": "1",
+      "config": {
+        "providers_config": ".local/providers.json"
+      }
+    },
+    "authority": {
+      "implementation": "knowledge.authority",
+      "version": "1",
+      "config": {
+        "binding": "repository.primary"
+      }
+    },
+    "model_policy": {
+      "implementation": "knowledge.model_policy",
+      "version": "1",
+      "config": {}
+    }
+  },
+  "bindings": {
+    "model": {
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      },
+      "llm": {
+        "plugin": "llm",
+        "export": "llm"
+      }
+    },
+    "sessions": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      }
+    },
+    "data": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      },
+      "model": {
+        "plugin": "model",
+        "export": "model"
+      },
+      "models": {
+        "plugin": "model",
+        "export": "capabilities"
+      },
+      "authority": {
+        "plugin": "authority",
+        "export": "authority"
+      }
+    },
+    "access": {
+      "authority": {
+        "plugin": "authority",
+        "export": "authority"
+      }
+    },
+    "context": {
+      "sessions": {
+        "plugin": "sessions",
+        "export": "sessions"
+      },
+      "data": {
+        "plugin": "data",
+        "export": "evidence"
+      },
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      }
+    },
+    "workflow": {
+      "sessions": {
+        "plugin": "sessions",
+        "export": "sessions"
+      },
+      "data": {
+        "plugin": "data",
+        "export": "evidence"
+      },
+      "model": {
+        "plugin": "model",
+        "export": "model"
+      },
+      "context": {
+        "plugin": "context",
+        "export": "context"
+      },
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      },
+      "semantic": {
+        "plugin": "data",
+        "export": "semantic"
+      }
+    },
+    "entry": {
+      "workflow": {
+        "plugin": "workflow",
+        "export": "workflow"
+      },
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      },
+      "platform": {
+        "plugin": "data",
+        "export": "platform"
+      }
+    },
+    "llm": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      },
+      "policy": {
+        "plugin": "model_policy",
+        "export": "policy"
+      }
+    },
+    "authority": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      }
+    },
+    "model_policy": {
+      "access": {
+        "plugin": "access",
+        "export": "access"
+      }
+    }
+  },
+  "entrypoint": {
+    "plugin": "entry",
+    "export": "application"
+  }
+}

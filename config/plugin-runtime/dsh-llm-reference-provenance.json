@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "default_branch": "master",
+  "commit": "ce7073d51254c26cd63b22a60835b8f948deb447",
+  "observed_on": "2026-11-02",
+  "package": "@deepseek-ai/dsh-llm",
+  "package_version": "0.2.2-alpha.2",
+  "fixture": "config/plugin-runtime/dsh-llm-reference.json",
+  "derivation": "Manually derived synthetic semantic cases from the pinned upstream types, assembler and adapter obligations; the TypeScript runtime was not executed to generate this fixture.",
+  "upstream_sources": [
+    {
+      "path": "packages/llm/llm/src/types.ts",
+      "git_blob_sha": "8a48b89895db0ddb8908ec6359eb67af60fe0f54",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/packages/llm/llm/src/types.ts"
+    },
+    {
+      "path": "packages/llm/llm/src/index.ts",
+      "git_blob_sha": "14be9c87f84925959cc3bda9004a35bc7604007f",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/packages/llm/llm/src/index.ts"
+    },
+    {
+      "path": "packages/llm/llm/src/assembler.ts",
+      "git_blob_sha": "917dd11e2cfc13646ef17f037f30b5c95bd00d19",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/packages/llm/llm/src/assembler.ts"
+    },
+    {
+      "path": "docs/cookbook/adding-an-llm-adapter.md",
+      "git_blob_sha": "bbe4428155f2b2ed5279c5a159e9446f28068a5c",
+      "url": "https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/docs/cookbook/adding-an-llm-adapter.md"
+    }
+  ],
+  "verified_by": "The discovered Python contract loads the actual built Rust bridge and dispatches llm_stream_apply for every event; it does not mock native_call.",
+  "differences": [
+    {
+      "case": "usage_after_finish_is_rejected",
+      "upstream": "Adapters must emit nothing after finish; BlockAssembler does not itself reject a later usage push.",
+      "project": "The Rust public stream boundary rejects every event after terminal finish."
+    },
+    {
+      "case": "duplicate_finish_is_rejected",
+      "upstream": "The documented stream has one terminal finish; BlockAssembler.push can replace its stored finish.",
+      "project": "The Rust public boundary refuses a second finish."
+    },
+    {
+      "case": "eof_without_finish_retains_observations",
+      "upstream": "BlockAssembler.finish defaults to stop and the runtime returns on clean iterator EOF without fabricating a finish.",
+      "project": "EOF without finish produces LLM_STREAM_MISSING_FINISH, keeps observed usage and text, and removes unexecuted tool calls."
+    }
+  ],
+  "validation_scope": "Offline component semantics and architectural dependency boundaries. No live provider, model, embedding, judge, token saving or RAG quality claim.",
+  "fixture_text_sha256": "577fc3450f8f79c4cb7197d14ea26837fa623a5959a69f7a11a350bcfd651191"
+}

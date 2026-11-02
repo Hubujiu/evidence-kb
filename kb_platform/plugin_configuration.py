@@ -1,7 +1,13 @@
+from collections.abc import Mapping
 from dataclasses import replace
 from hashlib import sha256
 import os
 from pathlib import Path
+
+
+def valid_plugin_name(value):
+    return (isinstance(value, str) and 0 < len(value) <= 128 and value.isascii()
+            and all(character.isalnum() or character in '._:/-' for character in value))
 
 
 def config_schema(properties=None, *, required=(), **constraints):
@@ -10,11 +16,14 @@ def config_schema(properties=None, *, required=(), **constraints):
 
 
 def configured_plugins(specs, schemas=None, checks=None, inputs=None):
-    schemas = {} if schemas is None else schemas
-    checks = {} if checks is None else checks
-    inputs = {} if inputs is None else inputs
-    return tuple(replace(spec, config_schema=schemas.get(spec.key, config_schema()),
-                         config_check=checks.get(spec.key), config_inputs=inputs.get(spec.key)) for spec in specs)
+    specs = tuple(specs)
+    keys = {spec.key for spec in specs}
+    overrides = {'config_schema': schemas, 'config_check': checks, 'config_inputs': inputs}
+    for field, values in overrides.items():
+        if values is not None and (not isinstance(values, Mapping) or set(values) - keys):
+            raise ValueError(f'INVALID_PLUGIN_CONFIGURATION: {field}')
+    return tuple(replace(spec, **{field: values[spec.key] for field, values in overrides.items()
+                                if values is not None and spec.key in values}) for spec in specs)
 
 
 def file_inputs(paths):

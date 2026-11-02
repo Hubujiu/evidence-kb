@@ -245,6 +245,93 @@ fn initialization_lease_requires_current_owner_and_cannot_admit_calls_after_comp
 }
 
 #[test]
+fn initializing_consumer_invokes_declared_dependency_only_with_current_initialization_authority() {
+    let mut runtime = Coordinator::default();
+    let host = create(
+        &mut runtime,
+        vec![
+            plugin("provider", &["database", "private"], &[]),
+            plugin("consumer", &["ready"], &["database"]),
+        ],
+        None,
+    );
+    let provider = poll(&mut runtime, host).remove(0);
+    complete(&mut runtime, &provider, "ok", &["database", "private"]);
+    let consumer = poll(&mut runtime, host).remove(0);
+    assert_eq!(consumer["plugin"], "consumer");
+    assert_eq!(inspect(&mut runtime, host)["state"], "starting");
+
+    let resolution = json!({"host":host,"service":"database","consumer":consumer["instance"],
+        "consumer_generation":consumer["generation"]});
+    let binding = request(&mut runtime, "resolve", resolution.clone()).unwrap();
+    let mut undeclared = resolution.clone();
+    undeclared["service"] = json!("private");
+    assert_eq!(
+        request(&mut runtime, "resolve", undeclared)
+            .unwrap_err()
+            .code,
+        "undeclared_dependency"
+    );
+    let mut stale = resolution;
+    stale["consumer_generation"] = json!(consumer["generation"].as_u64().unwrap() + 1);
+    assert_eq!(
+        request(&mut runtime, "resolve", stale).unwrap_err().code,
+        "stale_generation"
+    );
+
+    let invocation = json!({"host":host,"registration":binding["registration"],"method":"read"});
+    assert_eq!(
+        request(&mut runtime, "invoke", invocation.clone())
+            .unwrap_err()
+            .code,
+        "scope_unavailable"
+    );
+    assert_eq!(inspect(&mut runtime, host)["leases"], 0);
+    let initialization = json!({"host":host,"instance":consumer["instance"],
+        "generation":consumer["generation"],"initialization":consumer["operation"]});
+    let mut wrong = initialization.clone();
+    wrong["initialization"] = provider["operation"].clone();
+    assert_eq!(
+        request(&mut runtime, "acquire", wrong).unwrap_err().code,
+        "invalid_initialization"
+    );
+
+    let parent = request(&mut runtime, "acquire", initialization.clone()).unwrap()["lease"].clone();
+    let mut admitted = invocation.clone();
+    admitted["parent_lease"] = parent.clone();
+    let call = request(&mut runtime, "invoke", admitted.clone()).unwrap();
+    assert_eq!(call["instance"], provider["instance"]);
+    assert_eq!(call["generation"], provider["generation"]);
+    assert_eq!(call["method"], "read");
+    assert_eq!(inspect(&mut runtime, host)["leases"], 2);
+    complete(&mut runtime, &call, "ok", &[]);
+    assert_eq!(inspect(&mut runtime, host)["leases"], 1);
+
+    complete(&mut runtime, &consumer, "ok", &["ready"]);
+    assert_eq!(inspect(&mut runtime, host)["state"], "ready");
+    assert_eq!(
+        request(&mut runtime, "invoke", admitted).unwrap_err().code,
+        "initialization_closed"
+    );
+    assert_eq!(
+        request(&mut runtime, "acquire", initialization)
+            .unwrap_err()
+            .code,
+        "invalid_initialization"
+    );
+    request(&mut runtime, "release", json!({"host":host,"lease":parent})).unwrap();
+    assert_eq!(inspect(&mut runtime, host)["leases"], 0);
+
+    let call = request(&mut runtime, "invoke", invocation).unwrap();
+    complete(&mut runtime, &call, "ok", &[]);
+    assert_eq!(inspect(&mut runtime, host)["leases"], 0);
+    request(&mut runtime, "drain", json!({"host":host})).unwrap();
+    finish_cleanup(&mut runtime, host);
+    assert_eq!(inspect(&mut runtime, host)["state"], "disposed");
+    assert_eq!(inspect(&mut runtime, host)["leases"], 0);
+}
+
+#[test]
 fn partial_initialization_failure_owns_resources_and_retry_never_repeats_successful_cleanup() {
     let mut runtime = Coordinator::default();
     let host = create(&mut runtime, vec![plugin("p", &["service"], &[])], None);

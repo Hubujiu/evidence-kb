@@ -271,13 +271,7 @@ fn a_loop_plugin_can_replace_the_policy_without_changing_the_host() {
 }
 
 #[test]
-fn bridge_rejects_unknown_fields_and_handles_null_answers() {
-    let request = json!({"version": 1, "command": "loop_create", "mode": "model-tools",
-        "message": "x", "tools": [], "history": []});
-    assert_eq!(
-        crate::call(request.to_string().as_bytes())["error"]["code"],
-        "INVALID_REQUEST"
-    );
+fn answer_decision_preserves_a_null_value() {
     let decision: Decision =
         serde_json::from_value(json!({"kind": "answer", "value": null})).unwrap();
     assert!(matches!(decision, Decision::Answer { value: Value::Null }));

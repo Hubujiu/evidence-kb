@@ -1,337 +1,228 @@
 from contextlib import contextmanager, nullcontext
-from copy import deepcopy
-from dataclasses import dataclass, field
-from enum import StrEnum
-import math
+from dataclasses import asdict, dataclass, replace
+from functools import partial
+from inspect import iscoroutine
 from threading import RLock
-from typing import Protocol
-from uuid import uuid4
 
 from .agent_engine import current_execution, execution_scope
 from .agent_model import AgentModel
-from .model_errors import RemoteModelError
+from .llm_protocol import CompletionBridge, NativeModelRegistry, chat_metadata
+from .model_sdk import (
+    MODEL_PROTOCOL, Capability as Capability, Media as Media, ModelInfo as ModelInfo,
+    ModelRequest as ModelRequest, ModelResult as ModelResult, ModelAdapter as ModelAdapter,
+    preserve_result_failure, validate_adapter, validate_request as validate_request, validate_result as validate_result,
+)
 
 
-class Capability(StrEnum):
-    CHAT = 'chat'
-    EMBEDDING = 'embedding'
-    OCR = 'ocr'
-    TRANSCRIPTION = 'transcription'
-    SPEECH = 'speech'
-    IMAGE = 'image'
-
-
-@dataclass(frozen=True)
-class Media:
-    data: bytes
-    mime_type: str
-
-    def __post_init__(self):
-        if (not isinstance(self.data, bytes) or not self.data or len(self.data) > 32 * 1024 * 1024
-                or not isinstance(self.mime_type, str) or '/' not in self.mime_type):
-            raise ValueError('INVALID_MODEL_MEDIA')
-
-
-@dataclass(frozen=True)
-class ModelInfo:
-    provider: str
-    model: str
-    capabilities: frozenset[Capability]
-    input_modalities: frozenset[str] = frozenset({'text'})
-    streaming: bool = False
-    revision: str = '1'
-    preferred_batch_size: int = 1
-
-    def __post_init__(self):
-        if (not isinstance(self.provider, str) or not self.provider or not isinstance(self.model, str)
-                or not self.model or not self.capabilities
-                or type(self.preferred_batch_size) is not int or self.preferred_batch_size < 1):
-            raise ValueError('INVALID_MODEL_INFO')
-        object.__setattr__(self, 'capabilities', frozenset(Capability(x) for x in self.capabilities))
-        object.__setattr__(self, 'input_modalities', frozenset(self.input_modalities))
-
-
-@dataclass(frozen=True)
-class ModelRequest:
-    capability: Capability
-    payload: dict
-    call_context: dict = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ModelResult:
-
-    provider: str
-    model: str
-    capability: Capability
-    data: object
-    usage: dict | None = None
-    request_id: str | None = None
-
-
-class ModelAdapter(Protocol):
-    info: ModelInfo
-    def invoke(self, request: ModelRequest) -> ModelResult: ...
-
-
-def validate_request(request):
-    if not isinstance(request, ModelRequest) or not isinstance(request.payload, dict):
-        raise ValueError('INVALID_MODEL_REQUEST')
-    kind, body = Capability(request.capability), request.payload
-    if not isinstance(request.call_context, dict):
-        raise ValueError('INVALID_MODEL_CALL_CONTEXT')
-    remaining = request.call_context.get('remaining_seconds')
-    if remaining is not None and (type(remaining) not in (int, float) or not math.isfinite(remaining)
-                                  or remaining <= 0):
-        raise ValueError('INVALID_MODEL_DEADLINE')
-    if kind == Capability.CHAT:
-        if not isinstance(body.get('messages'), list) or not body['messages']:
-            raise ValueError('INVALID_MODEL_MESSAGES')
-        for message in body['messages']:
-            if (not isinstance(message, dict) or message.get('role') not in {'system', 'user', 'assistant'}
-                    or not isinstance(message.get('content'), str)):
-                raise ValueError('INVALID_MODEL_MESSAGES')
-    elif kind == Capability.EMBEDDING:
-        if (not isinstance(body.get('texts'), list) or not body['texts']
-                or any(not isinstance(x, str) or not x for x in body['texts'])
-                or body.get('task', 'document') not in {'document', 'query'}):
-            raise ValueError('INVALID_EMBEDDING_INPUT')
-    elif kind in {Capability.OCR, Capability.TRANSCRIPTION}:
-        media = body.get('media')
-        prefix = 'image/' if kind == Capability.OCR else 'audio/'
-        if not isinstance(media, Media) or not media.mime_type.startswith(prefix):
-            raise ValueError('INVALID_MODEL_MEDIA_TYPE')
-    elif kind in {Capability.SPEECH, Capability.IMAGE}:
-        key = 'text' if kind == Capability.SPEECH else 'prompt'
-        if not isinstance(body.get(key), str) or not body[key].strip():
-            raise ValueError('INVALID_MODEL_TEXT')
-    allowed = {
-        Capability.CHAT: {'messages', 'max_tokens'},
-        Capability.EMBEDDING: {'texts', 'task', 'dimensions'},
-        Capability.OCR: {'media', 'system', 'instruction', 'validator', 'contract_version', 'max_tokens'},
-        Capability.TRANSCRIPTION: {'media', 'language'},
-        Capability.SPEECH: {'text', 'voice'},
-        Capability.IMAGE: {'prompt', 'count', 'size'},
-    }
-    if set(body) - allowed[kind]:
-        raise ValueError('UNSUPPORTED_MODEL_OPTION')
-    for key in ('max_tokens', 'dimensions', 'count'):
-        if key in body and (type(body[key]) is not int or body[key] < 1):
-            raise ValueError('INVALID_MODEL_LIMIT')
-    if 'validator' in body and body['validator'] is not None and not callable(body['validator']):
-        raise ValueError('INVALID_MODEL_VALIDATOR')
-    authorize = request.call_context.get('authorize')
-    if authorize is not None and not callable(authorize):
-        raise ValueError('INVALID_MODEL_AUTHORIZER')
-    references = {id(value): value for value in (body.get('validator'), authorize) if callable(value)}
-    return ModelRequest(kind, deepcopy(body, references), deepcopy(request.call_context, references))
-
-
-def validate_result(request, result):
-    data, kind = result.data, request.capability
-    if not isinstance(data, dict) or result.usage is not None and not isinstance(result.usage, dict):
-        raise RemoteModelError('INVALID_MODEL_RESULT')
-    valid = True
-    if kind in {Capability.CHAT, Capability.TRANSCRIPTION}:
-        valid = isinstance(data.get('text'), str)
-    elif kind == Capability.EMBEDDING:
-        vectors = data.get('vectors')
-        valid = (isinstance(vectors, list) and len(vectors) == len(request.payload['texts']) and
-                 all(isinstance(vector, list) and vector and
-                     all(type(x) in (int, float) and math.isfinite(x) for x in vector) for vector in vectors))
-        if valid:
-            dimension = request.payload.get('dimensions', len(vectors[0]))
-            valid = all(len(v) == dimension for v in vectors)
-    elif kind == Capability.SPEECH:
-        valid = isinstance(data.get('media'), Media) and data['media'].mime_type.startswith('audio/')
-    elif kind == Capability.IMAGE:
-        images = data.get('images')
-        valid = isinstance(images, list) and len(images) == request.payload.get('count', 1)
-        if valid:
-            valid = all(isinstance(item, dict) and (
-                isinstance(item.get('media'), Media) and item['media'].mime_type.startswith('image/') or
-                isinstance(item.get('url'), str) and item['url'].startswith('https://')) for item in images)
-    if not valid:
-        raise RemoteModelError('INVALID_MODEL_RESULT')
-    if kind == Capability.OCR and request.payload.get('validator') is not None:
-        request.payload['validator'](data)
-
-
-class RoutePhase(StrEnum):
-    ACTIVE = 'active'
-    DRAINING = 'draining'
-    CLEANING = 'cleaning'
-    CLEANUP_FAILED = 'cleanup_failed'
-
-
-@dataclass(eq=False)
-class _Route:
-    registration_id: object
-    owner_identity: object
+@dataclass
+class _AdapterHandle:
     adapter: ModelAdapter
-    info: ModelInfo
     owned: bool
     owner_lease: object
-    phase: RoutePhase = RoutePhase.ACTIVE
-    active: int = 0
-    cleanup_error: str | None = None
 
 
 class ModelService:
     def __init__(self, *, owner_identity=None):
         self.owner_identity = self._freeze_owner(owner_identity)
-        self._entries = {}
-        self._issued_ids = set()
-        self._lock, self._state = RLock(), 'active'
+        self._registry = NativeModelRegistry()
+        self._adapters = {}
+        self._lock = RLock()
 
     @staticmethod
     def _freeze_owner(identity):
         return tuple(sorted(dict(identity).items())) if identity is not None else None
 
+    @classmethod
+    def _identity(cls, route):
+        identity = route['identity']
+        owner = cls._freeze_owner(identity['owner'])
+        return (owner, identity['registrationId']) if owner is not None else identity['registrationId']
+
+    @staticmethod
+    def _expected(identity):
+        if identity is None:
+            return None
+        if isinstance(identity, tuple) and len(identity) == 2:
+            owner, registration = identity
+            return {'owner': dict(owner), 'registrationId': registration}
+        return {'owner': None, 'registrationId': identity}
+
+    @staticmethod
+    def _info(route):
+        return ModelInfo(**route['info'])
+
     def register(self, name, adapter, *, owned=False, registration_id=None,
                  owner_identity=None, owner_lease=None):
-        info = adapter.info
-        if not isinstance(name, str) or not name or not isinstance(info, ModelInfo):
+        info = validate_adapter(adapter, owned=owned)
+        if not isinstance(name, str) or not name:
             raise ValueError('INVALID_MODEL_REGISTRATION')
-        raw_identity = registration_id if registration_id is not None else uuid4().hex
-        if not (isinstance(raw_identity, str) and raw_identity or
-                type(raw_identity) is int and raw_identity > 0):
-            raise ValueError('INVALID_MODEL_REGISTRATION_ID')
-        owner = self._freeze_owner(owner_identity)
-        identity = (owner, raw_identity) if owner is not None else raw_identity
-        entry = _Route(identity, owner, adapter, info, owned, owner_lease)
+        descriptor = asdict(info)
+        descriptor['capabilities'] = sorted(info.capabilities)
+        descriptor['input_modalities'] = sorted(info.input_modalities)
+        identity = (None if registration_id is None and owner_identity is None else
+                    {'registrationId': registration_id, 'owner': dict(owner_identity) if owner_identity is not None else None})
+        handle = _AdapterHandle(adapter, owned, owner_lease)
         with self._lock:
-            if self._state != 'active' or name in self._entries:
-                raise ValueError('MODEL_REGISTRATION_UNAVAILABLE')
-            if identity in self._issued_ids:
-                raise ValueError('MODEL_REGISTRATION_ID_REUSED')
-            self._entries[name] = entry
-            self._issued_ids.add(identity)
-        return lambda: self._dispose(name, entry)
+            result = self._registry.call('route_register', name=name, info=descriptor, identity=identity)
+            binding = result['binding']
+            self._adapters[binding['registration']] = handle
+        return lambda: self._dispose(name, binding)
 
     def adopt(self, owner):
         with self._lock:
-            if self._state != 'active' or any(row.active for row in self._entries.values()):
-                raise ValueError('MODEL_BUSY')
-            rows = list(self._entries.values())
-        identity = self._freeze_owner(owner.identity)
-        identities = [(identity, owner.registration_id(kind='model_route')) for _ in rows]
+            routes = self._registry.call('service_inspect')['routes']
+        identity = dict(owner.identity)
+        identities = [{'registration': row['binding']['registration'],
+                       'identity': {'owner': identity, 'registrationId': owner.registration_id(kind='model_route')}}
+                      for row in routes]
         with self._lock:
-            if list(self._entries.values()) != rows or any(row.active for row in rows):
-                raise ValueError('MODEL_REGISTRATION_CHANGED')
-            if len(set(identities)) != len(identities) or self._issued_ids.intersection(identities):
-                raise ValueError('MODEL_REGISTRATION_ID_REUSED')
-            self.owner_identity = identity
-            for row, registration in zip(rows, identities):
-                row.registration_id, row.owner_identity, row.owner_lease = registration, identity, owner.lease
-            self._issued_ids.update(identities)
+            adopted = self._registry.call('route_adopt', identities=identities)['routes']
+            for row in adopted:
+                self._adapters[row['binding']['registration']].owner_lease = owner.lease
+            self.owner_identity = self._freeze_owner(identity)
 
-    def _dispose(self, name, entry):
+    def _dispose(self, name, binding):
         with self._lock:
-            if self._entries.get(name) is not entry:
+            if self._registry.handle is None:
                 return
-            if entry.phase == RoutePhase.CLEANING:
-                raise ValueError('MODEL_CLEANUP_BUSY')
-            entry.phase = RoutePhase.DRAINING
-            if entry.active:
-                raise ValueError('MODEL_BUSY')
-            entry.phase = RoutePhase.CLEANING
+            route = self._registry.call('route_begin_cleanup', name=name, binding=binding)['route']
+            if route is None:
+                return
+            handle = self._adapters[binding['registration']]
         try:
-            if entry.owned:
-                entry.adapter.close()
+            if handle.owned:
+                result = handle.adapter.close()
+                if result is not None:
+                    if iscoroutine(result):
+                        result.close()
+                    raise ValueError('INVALID_MODEL_CLEANUP_RESULT')
         except BaseException as error:
-            with self._lock:
-                entry.phase, entry.cleanup_error = RoutePhase.CLEANUP_FAILED, type(error).__name__
+            self._registry.call('route_finish_cleanup', binding=binding, error=type(error).__name__)
             raise
         with self._lock:
-            del self._entries[name]
+            self._registry.call('route_finish_cleanup', binding=binding, error=None)
+            del self._adapters[binding['registration']]
 
     def catalog(self):
-        with self._lock:
-            return {key: entry.info for key, entry in self._entries.items()
-                    if entry.phase == RoutePhase.ACTIVE}
+        return {row['name']: self._info(row) for row in self._registry.call('service_inspect')['routes']
+                if row['phase'] == 'active'}
 
     def inspect(self):
-        with self._lock:
-            return {name: {'registration_id': row.registration_id,
-                           'owner_identity': deepcopy(row.owner_identity), 'phase': row.phase,
-                           'active_calls': row.active, 'cleanup_error': row.cleanup_error}
-                    for name, row in self._entries.items()}
+        return {row['name']: {'registration_id': self._identity(row),
+                'owner_identity': self._freeze_owner(row['identity']['owner']), 'phase': row['phase'],
+                'active_calls': row['activeCalls'], 'cleanup_error': row['cleanupError']}
+                for row in self._registry.call('service_inspect')['routes']}
 
-    def _entry(self, name, capability, expected=None):
-        entry = self._entries.get(name)
-        if self._state != 'active' or entry is None or entry.phase != RoutePhase.ACTIVE:
-            raise RemoteModelError('MODEL_ROUTE_UNAVAILABLE')
-        if expected is not None and entry.registration_id != expected:
-            raise RemoteModelError('MODEL_BINDING_CHANGED')
-        if capability not in entry.info.capabilities:
-            raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
-        return entry
+    def _bound(self, name, capability, expected=None):
+        return self._registry.call('route_bind', lookup=True, name=name, capability=str(capability),
+                                   expected=self._expected(expected))
 
     @contextmanager
-    def lease(self, name, capability, *, expected=None):
+    def _admit(self, name, capability, *, expected=None, request=None):
         with self._lock:
-            entry = self._entry(name, capability, expected)
-            identity, owner_lease = entry.registration_id, entry.owner_lease
-        ownership = owner_lease() if owner_lease is not None else nullcontext()
+            route = self._bound(name, capability, expected)
+            handle = self._adapters[route['binding']['registration']]
+        ownership = handle.owner_lease() if handle.owner_lease is not None else nullcontext()
         with ownership:
-            with self._lock:
-                entry = self._entry(name, capability, expected=identity)
-                entry.active += 1
+            info = self._info(route)
+            metadata = (chat_metadata(info.provider, info.model, request.payload['messages'],
+                        max_tokens=request.payload.get('max_tokens'), options=request.payload)
+                        if request is not None and capability == Capability.CHAT else None)
+            prepared = self._registry.call('call_prepare', lookup=True, name=name, capability=str(capability),
+                expected=route['identity'], kind='invoke' if request is not None else 'ownership', request=metadata)
+            call = self._registry.call('call_begin', lookup=True, prepared=prepared['prepared'])['call']
             try:
                 execution = current_execution()
                 if execution is not None:
                     execution.check()
-                yield entry.adapter
+                yield handle.adapter, info, call
                 if execution is not None:
                     execution.check()
             finally:
-                with self._lock:
-                    entry.active -= 1
+                self._registry.call('call_release', call=call)
+
+    @contextmanager
+    def lease(self, name, capability, *, expected=None):
+        with self._admit(name, Capability(capability), expected=expected) as (adapter, _, _):
+            yield adapter
 
     def invoke(self, name, request):
         return self._invoke(name, request)
 
     def bind(self, name, capability):
         capability = Capability(capability)
-        with self._lock:
-            entry = self._entry(name, capability)
-            return BoundModel(self, name, capability, entry.registration_id, entry.info)
+        route = self._bound(name, capability)
+        return BoundModel(self, name, capability, self._identity(route), self._info(route))
 
     def _invoke(self, name, request, *, expected=None):
         request = validate_request(request)
-        with self._lock:
-            entry = self._entry(name, request.capability, expected)
-            identity, info = entry.registration_id, entry.info
         remaining = request.call_context.get('remaining_seconds')
         scope = execution_scope(deadline_seconds=remaining) if remaining is not None else nullcontext()
-        with scope, self.lease(name, request.capability, expected=identity) as adapter:
-            result = adapter.invoke(request)
-            if (not isinstance(result, ModelResult) or result.provider != info.provider
-                    or result.model != info.model or result.capability != request.capability):
-                raise RemoteModelError('INVALID_MODEL_RESULT_IDENTITY')
-            validate_result(request, result)
-            return result
+        received, result = False, None
+        try:
+            with scope, self._admit(name, request.capability, expected=expected, request=request) as (adapter, info, call):
+                result = adapter.invoke(request)
+                received = True
+                validate_result(request, result, info=info)
+                chat = request.capability == Capability.CHAT
+                normalized = self._registry.call('call_complete', sent=True, call=call, result={
+                    'provider': result.provider, 'model': result.model, 'capability': str(result.capability),
+                    'textIsText': isinstance(result.data['text'], str) if chat else None,
+                    'finishReason': result.data.get('finish_reason') if chat else None, 'usage': result.usage})
+                if chat:
+                    result = replace(result, normalized_usage=normalized['usage'],
+                                     normalized_finish=normalized['finish'])
+                return result
+        except Exception as error:
+            if received:
+                preserve_result_failure(error, getattr(result, 'usage', None), result=result)
+            raise
+
+    def completion_port(self, name, *, expected=None):
+        from .model_completion import CompletionPort, validate_completion_port
+
+        bound = self._bound(name, Capability.CHAT, expected)
+        identity = self._identity(bound)
+        with self.lease(name, Capability.CHAT, expected=identity) as adapter:
+            factory = getattr(adapter, 'completion_port', None)
+            port = validate_completion_port(factory() if factory is not None else
+                                            CompletionPort(adapter, info=self._info(bound)))
+        return CompletionBridge(port, partial(self._complete_port, name, identity),
+                                partial(self.lease, name, Capability.CHAT, expected=identity))
+
+    def _complete_port(self, name, expected, port, messages, output_limit, *, purpose, key, trace):
+        request = validate_request(ModelRequest(Capability.CHAT,
+                                   {'messages': messages, 'max_tokens': output_limit}, trace))
+        received, result = False, None
+        try:
+            with self._admit(name, Capability.CHAT, expected=expected, request=request) as (_, info, call):
+                result = port.complete(request.payload['messages'], output_limit, purpose=purpose, key=key, trace=trace)
+                received = True
+                if isinstance(result.content, str):
+                    self._registry.call('call_complete', sent=True, call=call, result={
+                        'provider': info.provider, 'model': info.model, 'capability': 'chat',
+                        'textIsText': True, 'finishReason': result.finish_reason, 'usage': result.usage})
+                return result
+        except Exception as error:
+            if received:
+                preserve_result_failure(error, getattr(result, 'usage', None), result=result,
+                                        physical_request_id=trace.get('last_physical_request_id'))
+            raise
 
     def structured(self, name, *, policy=None, ledger=None):
-        with self._lock:
-            entry = self._entry(name, Capability.CHAT)
-        with self.lease(name, Capability.CHAT, expected=entry.registration_id) as adapter:
-            if not callable(getattr(adapter, 'completion_port', None)):
-                raise RemoteModelError('STRUCTURED_MODEL_UNAVAILABLE')
-            model = AgentModel(adapter.completion_port(), policy=policy, ledger=ledger)
-            return StructuredModel(self, name, self._entries[name], model)
+        bound = self.bind(name, Capability.CHAT)
+        port = self.completion_port(name, expected=bound.registration_id)
+        return StructuredModel(self, name, bound, AgentModel(port, policy=policy, ledger=ledger))
 
     def close(self):
         with self._lock:
-            if any(entry.active for entry in self._entries.values()):
-                raise ValueError('MODEL_BUSY')
-            self._state = 'draining'
-            pending = list(reversed(list(self._entries.items())))
-        for name, entry in pending:
-            self._dispose(name, entry)
+            if self._registry.handle is None:
+                return
+            pending = self._registry.call('service_begin_close')['routes']
+        for route in pending:
+            self._dispose(route['name'], route['binding'])
         with self._lock:
-            self._state = 'closed'
+            self._registry.call('service_finish_close')
 
 
 class BoundModel:
@@ -356,11 +247,11 @@ class StructuredModel:
         self.policy, self.ledger, self.capabilities = model.policy, model.ledger, model.capabilities
         self.provider_id = entry.info.provider
         self.manifest = {'provider': entry.info.provider, 'model': entry.info.model,
-                         'revision': entry.info.revision, 'protocol': 'model-service/1'}
+                         'revision': entry.info.revision, 'protocol': MODEL_PROTOCOL}
 
     @property
     def provider(self):
-        return self._model.provider
+        return self._model.provider.unwrap()
 
     @property
     def registration_id(self):
@@ -376,3 +267,11 @@ class StructuredModel:
 
     def complete_json(self, messages, **options):
         return self.complete(messages, **options).to_dict()
+
+    def turn_budget_snapshot(self, session_id, turn_id):
+        with self._service.lease(self._name, Capability.CHAT, expected=self._entry):
+            return self._model.turn_budget_snapshot(session_id, turn_id)
+
+    def accept_completion(self, envelope):
+        with self._service.lease(self._name, Capability.CHAT, expected=self._entry):
+            self._model.accept_completion(envelope)

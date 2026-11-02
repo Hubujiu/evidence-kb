@@ -84,8 +84,8 @@ class SearchDependencyContracts(unittest.TestCase):
             return SimpleNamespace(exports=lambda: (StorageExport('vector', (VECTOR_V1,), open_space),),
                                    close=lambda: None)
 
-        consumer = PluginSpec('independent.consumer', ('consumer',), (),
-            lambda context, config: context.provide('consumer', require_storage(context, slot)), storage_slots=(slot,))
+        consumer = PluginSpec('independent.consumer', ('consumer',), (slot,),
+            lambda context, config: context.provide('consumer', require_storage(context, slot)))
         profile = {'version': 1, 'plugins': [{'id': 'consumer', 'use': consumer.key}]}
         configuration = {'version': 2, 'application_id': 'independent',
             'instances': {'foreign': {'provider': 'unlisted-provider', 'config': {'credential_env': 'DEPENDENCY_SECRET'}}},

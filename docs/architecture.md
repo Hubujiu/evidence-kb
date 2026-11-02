@@ -1,12 +1,22 @@
 # 产品模块与评测边界
 
+Rust 核心及公共服务的当前分层见 [DSH / Cordis 架构基础](dsh-rust-foundation.md)。`plugin-runtime` 是生命周期内核，`plugin-host` 是进程监督，`agent-harness` 是装配与协议入口；默认 loop/graph、LLM、存储分别位于独立的 `agent-services`、`llm-service`、`storage-service`。各公共服务不依赖生命周期内核，内核也不依赖公共服务或知识库。
+
+当前知识库应用的 11 个显式节点、公共 JSON 合同及配置见 [插件架构](plugin-architecture-v4.md)。[低层组件目录](plugin-catalog.md) 列出可独立复用和测试的内部适配器，不代表知识库用户需要装配这些细粒度节点。公共存储提供 relational、document、kv、vector、lexical、object 合同；内置 PostgreSQL、MySQL、SQLite 实现相同的领域持久化语义。
+
+整体装配与调用关系见 [当前插件架构图](plugin-architecture.md)。
+
+插件在进入 Rust 生命周期之前必须满足 `evidence-plugin/1` 的声明和同步调用约定；配置仍由 JSON Schema 验证。共享 `protocol_validation` 只使用标准库检查调用签名，不执行插件探测请求。公共模型类型与适配器合同位于独立 `model_sdk`；公共存储合同仍位于 `storage_sdk`，两者不依赖知识库或宿主。实际响应、授权、存储身份和调用租约仍在运行时边界核验，启用前结构检查不替代这些行为合同。
+
+HTTP 身份解析已通过 `authentication` 服务访问。[认证会话](authentication.md) 可绑定公共 TTL KV 合同，由现有 Redis 适配器或第三方提供商承载；API 不直接读取 token 文件或导入 Redis。文件认证保留为默认插件，对话历史仍通过独立关系合同管理。
+
 当前内置实现、服务依赖和公开 profile 见 [插件目录](plugin-catalog.md)。公共存储按 relational、document、kv、vector、lexical、object 六类合同连接消费插件与提供商，结构见 [存储插件设计](storage-plugins-design.md)，执行、验收和搬迁步骤见 [执行方案](storage-plugins-execution-plan.md)。知识库领域仓储、会话、预算、缓存索引和请求回执均消费 structured 关系合同；内置 PostgreSQL、MySQL、SQLite 实现同一业务协议。第三轮边界见 [改造方案](plugin-boundaries-v3-plan.md)。
 
-共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由由 Rust 生命周期管理。
+共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由、prepared call 和活跃调用由 Rust LLM 注册表管理，插件实例及依赖仍由 Rust 生命周期核心管理。通用底座独立消费、完整应用图和适配层算法见 [底座与应用架构](foundation-architecture.md)。
 
 默认入口现为 [Rust 主宿主](rust-main-host.md)：`evidence-host` 持有生命周期 coordinator、loop 和 graph，启动执行环境并监督退出。Python worker 保存业务对象，按同一 Rust 命令协议执行并回报效果；断开主宿主后不会回退到本地生命周期。`plugin-host` 是与 Agent 无关的进程监督库，业务 dispatcher 由可执行入口注入。
 
-通用 Agent 内核与知识库业务通过 [插件宿主与 profile](plugin-harness.md) 装配。API 加载 `config/application-profiles/` 中选定的根 profile，展开 platform 与 knowledge 组合包并取得应用服务；模型、上下文、存储、运行时、loop、工具和知识库实现都由可信 catalog 提供。Rust 拥有依赖解析、作用域、生命周期、通用 loop 和图节点推进，Python 执行服务效果与知识库路由策略。通用宿主、loop 与工具目录不导入知识库业务。
+知识库 API 默认加载 `config/applications/knowledge.json`，经 `application_knowledge`、`foundation_services` 和 `knowledge_capabilities` 装配 11 个显式节点：通用 LLM 与存储，以及知识库入口、工作流、上下文、会话、权限、权威数据、模型策略、模型领域视图、文档与检索。Rust 编译具名出口与显式绑定，拥有依赖解析、作用域、生命周期和图节点推进；执行器负责运行实现。通用运行时不导入知识库。未启用远程模型的独立文档工作台仍使用 `config/application-profiles/bm25.json`。
 
 默认本地检索由 embedded 提供；通过存储配置可选择 pg_textsearch BM25 和 pgvector 精确检索。`platform.search.storage` 分别声明 lexical BM25、vector 和 document source 三个槽位，`search_router.SplitSearch` 核对三方身份、内容、封存和发布。BM25 与 dense 可以使用同一实例、不同 PG 数据库或 PG 与 embedded 的组合；通用 PG 搜索分别要求 pg_textsearch 或 pgvector，使用独立搜索 schema；旧知识库专用 PG 搜索代码仅供显式历史数据工具读取，不再出现在运行时 catalog。`KB_SEARCH_CHANNELS_CONFIG` 已移除。知识库正文、权限、发布状态和 Embedding 任务通过 structured 关系合同访问所绑定提供商；`search.py` 保留共有排序与绑定合同。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件通过 files 或 S3 对象接口用于下载、PDF 和图片预览；证据以不可变解析快照为准。当前配置边界见 [存储设计](storage-plugins-design.md)，检索协议见 [检索存储](search-storage.md)。
 
@@ -14,9 +24,11 @@
 
 ## 公共存储与业务所有权
 
-`storage_sdk` 定义六类接口与扩展合同，不依赖宿主、知识库或具体驱动。SQLAlchemy Core 是结构化关系合同的中立表达式类型，厂商类型和编译器只在适配器中。`storage_plugins.compile_storage_plugins` 将实例、具名 export 和槽位配置编译为 registry、instance、bound 和消费者依赖，交给原 Rust 宿主管理。`storage_service` 负责领域合同、授权和绑定，不另建生命周期状态机。`PluginSpec.storage_slots` 允许可信插件声明所需接口，`require_storage` 返回受合同限制的句柄。根应用和独立 core 读取 `KB_STORAGE_CONFIG`，独立应用也能注入自己的 provider catalog。
+`storage_sdk` 定义接口和扩展合同。知识库插件经 `application_storage.StorageClient` 使用 JSON 操作；结构化数据经 `storage_structured_wire` 的受限表达式、事务租约、schema 协商与作用域检查访问。SQLAlchemy 对象只在各执行器内部使用，不跨插件边界传递。未知事务结果保留 operation_id，不自动重发。对象以有界分块传输并核验 SHA-256。`storage_service` 管理领域绑定，不另建插件生命周期。底层 `PluginSpec.requires` 中也已统一声明类型化存储需求，没有独立 storage_slots 字段。
 
 公共模型和公共存储都是可选基础服务。第三方可直接声明依赖自己的适配器或服务；Rust 宿主仍检查一般依赖和生命周期。一个 PostgreSQL 提供商可以导出多个合同，Redis 只导出基础 KV 与 TTL 扩展。合同缺失或版本不符拒绝绑定，不能按数据库品牌推测能力。
+
+内置 data 与 access 显式依赖同一个 `knowledge.authority.storage/1` 出口。其[公开数据协议](knowledge-authority-storage.md)规定权限修订、不可变来源、构建和发布的一致性；[关系线协议](storage-wire.md)规定传输和事务。替换数据插件须履行这个共享协议，也可以同时替换需要另一种权限协议的相关实现。配置不把两个不同权限数据集当成同一权威来源。
 
 PostgreSQL、MySQL、SQLite 提供商管理连接、受限运行权限和事务。适配器管理实现公共合同需要的内部结构，业务插件拥有领域 schema、查询与迁移。`SpaceKey(application_id, owner_id, space_id)` 加显式初始化的 `dataset_id` 标识持久数据，运行注册代次管理当前句柄。正常启动核对现有身份，错误身份或误指空库拒绝，不自动创建替代数据集。Redis 缓存使用明确的 `cache_id`。多个项目可以共用服务器并保持空间独立，多个宿主各有自己的连接池。旧配置只能离线转换，运行时不回退到 `KB_DATABASES_CONFIG`。
 
@@ -36,17 +48,17 @@ flowchart TD
     CLI[scripts/delivery_server_app.py 配置检查] --> Delivery
     Delivery --> API[api.create_app]
     API --> Routes[agent_api]
-    Routes --> Profile[knowledge_profile / PluginHost]
-    Profile --> Application[knowledge_application]
-    Application --> Driver[knowledge.driver.graph]
-    Driver --> Query[kb_query 绑定可信请求控制]
-    Query --> Agent[knowledge_service / knowledge_turn]
+    Routes --> Profile[application_knowledge / Rust composition]
+    Profile --> Application[entry 公共 JSON 入口]
+    Application --> Agent[workflow / knowledge_turn]
     Agent --> Graph[knowledge_workflow / Rust graph + lifecycle]
     Agent --> Gateway[agent_tools]
     Gateway --> Pipeline[retrieval_pipeline]
     Pipeline --> Evidence[原文读取与权限复核]
-    Agent --> Context[agent_context]
-    Context --> Model[agent_model]
+    Agent --> Context[context / knowledge_context]
+    Context --> History[sessions 公共历史接口]
+    Context --> Evidence
+    Agent --> Model[model 公共请求接口]
     Delivery --> Shared[统一预算与物理请求采集]
     Eval[rag_testing runner 与适配器] --> Shared
     Eval --> Scorer[统一 scorer]
@@ -54,15 +66,15 @@ flowchart TD
 
 `scripts/` 负责命令行参数、进程启动和输出。产品模块不导入脚本，也不修改 Python 搜索路径。`delivery.py` 拥有配置校验、身份初始化、预算检查和应用工厂。`--check` 仅验证已有配置，实际应用创建仍是显式操作。
 
-`retrieval_pipeline.PipelineConfig` 表达检索策略。检索管线在授权范围内召回原文子单元、融合候选、重排并装配原文。`agent_context.ContextManager` 管理实际发送前的上下文。此次重构没有改写检索或装配算法。
+`retrieval_pipeline.PipelineConfig` 表达检索策略。检索通过 prepare/finish 阶段衔接工作流内的模型重排，保留权限复核、候选身份和预算。`knowledge_context.KnowledgeContext` 主动读取带 revision 的会话历史并复核证据，调用内部 ContextManager 装配最终模型请求。领域算法仍在原模块内；领域间调用由公开合同约束。
 
 ## Rust Agent 运行时与知识库业务
 
 主宿主模式中，Python 的 `plugin_native.native_call` 通过 `plugin-host/1` 请求主进程，插件状态唯一位于主进程。单次 Agent 的 `Kernel` 是独立值状态，仍通过同一构建的 C ABI 动态库计算；它不创建第二套插件生命周期。直接 Python 嵌入入口继续使用原有 C ABI，供组件调用与离线验证使用。
 
-`rust/plugin-runtime` 独占实例、代次、依赖、服务注册、作用域、调用租约、配置与资源清理。`rust/agent-kernel` 保留单次运行的操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-harness` 保留通用 loop 和 graph，将版本化生命周期命令交给 plugin-runtime。Python 只执行派发动作并回报结果，不再通知 ready 或最终 disposed。loop 发出会话、提示词、模型和工具效果，由 Python 适配器执行。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。
+`rust/plugin-runtime` 独占实例、代次、依赖、服务注册、作用域、调用租约、配置与资源清理。`rust/agent-kernel` 保留单次运行的操作准入、关联、取消、截止时间与终态，并导出内嵌协议入口；`rust/agent-services` 实现默认 loop 和 graph，`rust/agent-harness` 按版本化命令分派到生命周期内核与可选服务。Python 执行派发动作并回报结果，不通知 ready 或最终 disposed。loop 发出会话、提示词、模型和工具效果，由适配器执行。`knowledge_workflow.KnowledgeWorkflow` 继续决定知识库内部规划、检索、生成、核验、修复和交付。
 
-默认 HTTP 路径调用插件提供的 `application` 服务，由 `knowledge.driver.graph` 直接执行绑定的 `kb_query`，进入 `knowledge.workflow.graph` 提供的图程序，不再创建外层 single-tool loop。绑定保留原始身份、session、request ID、expected revision、来源策略和用户约束；模型参数仅包含问题。它不增加外层模型规划调用，返回已验证的原响应及 trace。通用 `model-tools` loop 是另一种可选策略；loop 自身可以替换。
+默认 HTTP 路径通过 `ApplicationClient` 调用入口的 application.run 合同，入口将已声明操作交给工作流。工作流内部运行知识库图程序；工具、驱动和策略类不再成为独立业务节点。绑定保留身份、session、request ID、expected revision、来源策略和用户约束，不增加外层模型规划调用。模型结果在工作流验证通过并确认后才进入应用响应缓存，费用先按实际调用结算。
 
 `knowledge_service.KnowledgeService` 提供独立知识库会话 API；`knowledge_turn` 持有单轮业务状态，`knowledge_model`、`knowledge_planning`、`knowledge_answer` 分别拥有模型调用、规划与答案合同。业务调用者仍可直接使用领域服务，不必额外建立 Agent。`knowledge_tool.query_tool` 保留通用工具接入方式，使用宿主绑定身份和会话，直接交付经过核验的结果。
 
@@ -130,4 +142,4 @@ Markdown/TXT 的新快照使用 `native-text/0.3.0-markdown-it`，快照哈希�
 
 `scripts/check_project.py` 用 AST 检查活动产品源码的依赖方向、已知动态导入和搜索路径修改。它检查架构约定，不是执行任意恶意 Python 的安全沙箱。离线工作进程另行阻断 Python socket 网络发送和子进程启动。
 
-插件化按服务和资源所有权建立边界，知识库内部算法仍保留在现有领域模块中。当前实现不是完整 DSH 移植，没有原生动态插件沙箱、进程隔离或自带模型适配器的交互式 Agent CLI。原生协议驱动程序与完整应用交互界面分开。规则和验证命令见 [开发与合并检查](development.md)。
+插件化按服务和资源所有权建立边界，内部算法保留在领域模块。内置实现使用注册的本地执行器；进程实现可以使用任意语言，通过相同 JSON 合同替换。Rust SDK 和 Python/Node 示例验证进程互调。进程隔离不等于恶意代码安全沙箱；项目没有实现完整 DSH CLI 或自动安装任意插件。规则和验证命令见 [开发与合并检查](development.md)。

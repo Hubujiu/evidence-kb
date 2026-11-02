@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 
+from kb_platform.authentication_plugins import authentication_plugins
 from kb_platform.harness_services import builtin_plugins
 from kb_platform.knowledge_profile import knowledge_plugins
 from kb_platform.model_plugins import model_plugins
@@ -9,6 +10,7 @@ from kb_platform.settings import Settings
 from kb_platform.storage_cache_plugins import stage_cache_plugins
 from kb_platform.storage_catalog import default_storage_providers
 from kb_platform.storage_plugins import storage_plugins
+from kb_platform.storage_sdk import StorageSlot
 
 
 def render():
@@ -20,12 +22,15 @@ def render():
         ('知识库问答', 'knowledge_profile.py', knowledge_plugins(None, None)),
         ('公共存储服务', 'storage_plugins.py', storage_plugins()),
         ('易失阶段缓存', 'storage_cache_plugins.py', stage_cache_plugins()),
+        ('身份认证', 'authentication_plugins.py', authentication_plugins(settings)),
     )
     count = sum(len(specs) for _, _, specs in groups)
     lines = ['# 当前插件目录', '',
         '本文件由 `uv run --no-sync python -m scripts.generate_plugin_catalog --output docs/plugin-catalog.md` 生成。', '',
         f'当前共有 {count} 个静态内置实现键。统计只构造 PluginSpec，不挂载宿主、不连接后端、不调用模型。', '',
         '模型提供商实例、存储实例、授权绑定和消费方包装按配置动态生成；外部安装的进程插件另计。公共服务可选，第三方可以自建服务和适配器。', '',
+        '公共模型合同见 [model_sdk.py](../kb_platform/model_sdk.py)，公共存储合同见 '
+        '[storage_sdk](../kb_platform/storage_sdk/__init__.py)。SDK 是协议定义，不计入挂载插件数量。', '',
         '| 类别 | 数量 | 源码 |', '| --- | ---: | --- |']
     for group, module, specs in groups:
         lines.append(f'| {group} | {len(specs)} | [{module}](../kb_platform/{module}) |')
@@ -40,9 +45,10 @@ def render():
                   '| --- | --- | --- | --- | --- |'])
     for group, _, specs in groups:
         for spec in sorted(specs, key=lambda item: item.key):
-            slots = ', '.join(slot.name + ': ' + slot.contract.key for slot in spec.storage_slots)
+            slots = ', '.join(slot.name + ': ' + slot.contract.key for slot in spec.requires
+                              if isinstance(slot, StorageSlot))
             lines.append(f'| {group} | `{spec.key}` | {", ".join(spec.provides) or "无"} | '
-                         f'{", ".join(spec.requires) or "无"} | {slots or "无"} |')
+                         f'{", ".join(item for item in spec.requires if isinstance(item, str)) or "无"} | {slots or "无"} |')
     lines.extend(['', '消费者声明存储合同与可选预算槽位，生成的真实依赖由 Rust 宿主检查；装配层不补厂商约束。',
                   '合同 SDK 与注册器不强制第三方业务使用公共服务；模型和存储各自检查领域语义。', ''])
     return '\n'.join(lines), count

@@ -4,7 +4,7 @@
 
 项目参考 Codex 的任务生命周期和 DSH 的服务、作用域与插件组合方式，自行实现 Rust 内核，没有依赖这两个项目的运行时。
 
-`plugin-runtime` 独占插件生命周期、代次、依赖、租约、配置应用和资源清理。`agent-kernel` 负责单次运行的操作准入、结果关联、取消、截止时间与终态；`agent-harness` 保留通用 Agent loop 和图节点推进，并转发生命周期协议。图的业务路由选择由 Python 策略提供，Rust 检查已声明边与效果关联。Python 实现模型、工具、会话和上下文服务，并执行原生动作。公开状态和 SDK 见 [插件运行时](plugin-runtime.md)。
+`plugin-runtime` 独占插件生命周期、代次、依赖、租约、配置应用和资源清理。`agent-kernel` 负责单次运行的操作准入、结果关联、取消、截止时间与终态；`agent-services` 实现默认 Agent loop 和图节点推进，`agent-harness` 将生命周期与公共服务命令分派给独立 crate。图的业务路由选择由 Python 策略提供，Rust 检查已声明边与效果关联。Python 实现模型、工具、会话和上下文服务，并执行原生动作。公开状态和 SDK 见 [插件运行时](plugin-runtime.md)，公共 LLM/存储分层见 [服务基础](dsh-rust-foundation.md)。
 
 通用层不导入知识库代码。默认 HTTP 应用由 profile 的 knowledge 组合装配，由 `knowledge.driver.graph` 直接进入 `kb_query` 所绑定的知识库图流程，不再套外层 single-tool loop；知识库服务内部保留检索、生成、核验、修复和现有费用账本。通用 `model-tools` loop 支持模型选择工具，不需要安装知识库插件。
 

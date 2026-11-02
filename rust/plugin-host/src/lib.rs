@@ -10,6 +10,7 @@ use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 
+pub mod process_plugin;
 mod process_tree;
 use process_tree::ProcessTree;
 mod shutdown_signals;

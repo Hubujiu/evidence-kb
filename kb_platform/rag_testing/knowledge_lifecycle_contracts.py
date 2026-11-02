@@ -28,7 +28,7 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
             return KnowledgeService(platform, case.model if model is None else model,
                 **{**settings, 'gateway': case.gateway, 'retrieval_config': {'channels': ['bm25'], 'rerank': False}})
 
-        application, host = create_knowledge_application(case.authority, SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={})),
+        application, host = create_knowledge_application(case.authority, SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={}, retries=0)),
             profile=case.profile, service_factory=factory, extra_plugins=extra_plugins, environment={})
         self.addCleanup(host.close)
         return application, host
@@ -131,7 +131,8 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
             next(row for row in profile['plugins'] if row['id'] == 'store')['config']['root'] = str(Path(directory))
             provider = next(row for row in profile['plugins'] if row['id'] == 'provider')
             provider['config'] = {'providers_config': str(config_path)}
-            borrowed, owned = Mock(), Mock()
+            borrowed, owned = Mock(retries=0), Mock(retries=0)
+            owned.close.return_value = None
 
             def fail_after_mount(*args, **kwargs):
                 raise RuntimeError('synthetic knowledge mount failure')

@@ -1,3 +1,4 @@
+pub mod composition;
 mod coordinator;
 pub mod manifest;
 pub mod native;

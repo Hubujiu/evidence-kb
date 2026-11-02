@@ -5,6 +5,9 @@ edition = "2024"
 publish = false
 
 [dependencies]
+agent-services = { path = "../agent-services" }
+llm-service = { path = "../llm-service" }
+storage-service = { path = "../storage-service" }
 plugin-host = { path = "../plugin-host" }
 plugin-runtime = { path = "../plugin-runtime" }
 serde = { version = "=1.0.228", features = ["derive"] }

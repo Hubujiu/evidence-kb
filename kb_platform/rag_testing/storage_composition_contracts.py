@@ -73,7 +73,7 @@ class StorageCompositionContracts(unittest.TestCase):
             path = root / 'databases.json'
             path.write_text(json.dumps(configuration), encoding='utf-8')
             settings = Settings(root / 'originals', root / 'identities.json')
-            custom = PluginSpec('custom.tasks', ('custom.tasks',), (), mount, storage_slots=(records,))
+            custom = PluginSpec('custom.tasks', ('custom.tasks',), (records,), mount)
             with create_root_application(settings, profile={'version': 1, 'plugins': [
                     {'id': 'task', 'use': 'custom.tasks'}]}, environment={'KB_STORAGE_CONFIG': str(path)},
                     extra_plugins=(custom,)).host as host:

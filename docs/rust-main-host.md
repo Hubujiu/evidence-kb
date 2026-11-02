@@ -48,8 +48,10 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 ```mermaid
 flowchart TD
     Entry[evidence-host Rust 入口] --> Supervisor[plugin-host 进程监督]
-    Entry --> Harness[agent-harness loop / graph]
+    Entry --> Harness[agent-harness 装配与分派]
     Harness --> Runtime[plugin-runtime 生命周期权威]
+    Harness --> Agent[agent-services loop / graph]
+    Harness --> Services[llm-service / storage-service]
     Supervisor <--> Worker[语言执行环境]
     Worker --> Bridge[Python PluginHost 对象与效果执行]
     Bridge --> Plugins[模型 / 上下文 / Loop 驱动 / RAG / 业务插件]
@@ -61,7 +63,9 @@ flowchart TD
 | --- | --- |
 | `rust/plugin-runtime` | 实例、代次、依赖、作用域、服务注册、租约和清理动作 |
 | `rust/plugin-host` | worker 进程树生命周期、双向管道、帧边界、退出与关停期限；依赖 Serde 及按平台选择的 libc 或 windows-sys |
-| `rust/agent-harness` | loop/graph、协议 dispatcher，以及注入 dispatcher 的 `evidence-host` 入口 |
+| `rust/agent-harness` | 协议 dispatcher，以及注入 dispatcher 的 `evidence-host` 入口 |
+| `rust/agent-services` | 默认 loop/graph 控制状态；独立于生命周期内核 |
+| `rust/llm-service`、`rust/storage-service` | 公共协议与服务语义；由装配入口调用，不被通用内核依赖 |
 | Python worker / `PluginHost` | 业务对象、执行派发动作、完成与 ack；不自行决定插件就绪或卸载终态 |
 | `rust/agent-kernel` | 单次 Agent 值状态的准入/关联/取消；当前仍通过 worker 加载同一构建的 C ABI 库 |
 | 业务插件 | RAG 策略、上下文预算、模型适配、会话事务与业务状态 |
@@ -93,7 +97,7 @@ worker 可以发送 `method: "native"`，params 为既有版本 1 harness 命令
 
 安装者负责信任插件。公共模型服务是本项目插件的约定入口，统一模型路由、能力描述和物理请求账本。框架检查依赖声明与接口，不扫描源码，也不阻止插件自行发起网络调用。因此“统一模型入口”是开发合同，不宣称对任意可信代码具有强制封锁能力。
 
-本轮没有改变同步模型接口为流式接口，没有增加前端扩展系统、恶意插件沙箱、通用任意对象 RPC 或 npm 插件兼容层。跨进程参数与结果须可 JSON 序列化；领域对象需要显式适配。
+现有 Python 供应商继续使用同步模型接口。独立 Rust LLM 服务已提供异步流接口，语义与实际接线见 [服务基础](dsh-rust-foundation.md)；前端扩展系统、恶意插件沙箱、通用任意对象 RPC 或 npm 插件兼容层不在当前实现中。跨进程参数与结果须可 JSON 序列化；领域对象需要显式适配。
 
 ## 验证
 

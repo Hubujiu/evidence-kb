@@ -278,10 +278,10 @@ class SearchRouterContracts(unittest.TestCase):
     def test_search_plugin_declares_only_channel_capabilities_and_authoritative_documents(self):
         specs = {spec.key: spec for spec in platform_plugins(SimpleNamespace(storage_root=self.root))}
         router = specs['platform.search.storage']
-        self.assertEqual((), router.requires)
+        self.assertEqual(3, len(router.requires))
         self.assertEqual(('platform.search',), router.provides)
         self.assertEqual({'bm25': LEXICAL_BM25_V1, 'dense': VECTOR_V1, 'source': DOCUMENT_V1},
-                         {slot.name: slot.contract for slot in router.storage_slots})
+                         {slot.name: slot.contract for slot in router.requires})
 
 
 if __name__ == '__main__':

@@ -1459,6 +1459,11 @@ impl Coordinator {
         let command: Command = serde_json::from_value(request)
             .map_err(|error| Error::new("invalid_request", error.to_string()))?;
         match command {
+            Command::RuntimeCompose {
+                application,
+                catalog,
+            } => serde_json::to_value(crate::composition::compile(application, catalog)?)
+                .map_err(|error| Error::new("invalid_composition", error.to_string())),
             Command::RuntimeValidate {
                 plugins,
                 parent,

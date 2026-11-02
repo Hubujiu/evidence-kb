@@ -2,28 +2,7 @@ from .plugin_host import PluginSpec
 from .plugin_configuration import configured_plugins, config_schema, TEXT, POSITIVE, file_inputs
 
 
-class OwnedModelClients:
-    def __init__(self, generation, embedding):
-        self.values = generation, embedding
-        self._unclaimed = list(dict((id(value), value) for value in self.values).values())
-        self._claim_started = False
-
-    def claim(self, context):
-        if self._claim_started:
-            raise ValueError('MODEL_CLIENT_OWNERSHIP_ALREADY_CLAIMED')
-        self._claim_started = True
-        while self._unclaimed:
-            client = self._unclaimed[0]
-            context.defer(client.close)
-            self._unclaimed.pop(0)
-        return self.values
-
-    def close_unclaimed(self):
-        while self._unclaimed:
-            self._unclaimed[-1].close()
-            self._unclaimed.pop()
-
-
+from .model_clients import OwnedModelClients as OwnedModelClients
 
 
 def platform_plugins(settings, *, platform=None, research=None, model_clients=None):
@@ -144,20 +123,17 @@ def platform_plugins(settings, *, platform=None, research=None, model_clients=No
 
     from .storage_sdk.relational import STRUCTURED_RELATIONAL_V1
 
-    checks = {'platform.model_clients.remote': lambda config: client_inputs(config)}
+    checks = {'platform.model_clients.remote': client_inputs}
     return configured_plugins((
         PluginSpec('platform.model_clients.remote', ('model.clients',), (), clients),
         PluginSpec('platform.embedding.client', ('embedding',), ('models', 'model.clients', 'models.route.embedding'), embedding_client),
         PluginSpec('platform.ocr.client', ('ocr',), ('models', 'model.clients', 'models.route.generation'), ocr_client),
-        PluginSpec('platform.repository.storage', ('platform.repository',), (), repository,
-                   storage_slots=(StorageSlot('primary', STRUCTURED_RELATIONAL_V1),)),
-        PluginSpec('platform.originals.storage', ('platform.originals',), (), bound_originals,
-                   storage_slots=(StorageSlot('objects', OBJECT_V1),)),
+        PluginSpec('platform.repository.storage', ('platform.repository',), (StorageSlot('primary', STRUCTURED_RELATIONAL_V1),), repository),
+        PluginSpec('platform.originals.storage', ('platform.originals',), (StorageSlot('objects', OBJECT_V1),), bound_originals),
         PluginSpec('platform.parser.native', ('platform.parser',), (), parser),
         PluginSpec('platform.embedding_jobs', ('platform.embedding_jobs',), ('platform.repository',), jobs),
-        PluginSpec('platform.search.storage', ('platform.search',), (), stored_search,
-                   storage_slots=(StorageSlot('bm25', LEXICAL_BM25_V1), StorageSlot('dense', VECTOR_V1),
-                                  StorageSlot('source', DOCUMENT_V1))),
+        PluginSpec('platform.search.storage', ('platform.search',), (StorageSlot('bm25', LEXICAL_BM25_V1), StorageSlot('dense', VECTOR_V1),
+                                  StorageSlot('source', DOCUMENT_V1)), stored_search),
         *(PluginSpec('platform.capabilities.' + key, ('platform.embedding', 'platform.ocr'), names,
                      capabilities(*names)) for key, names in (
                          ('none', ()), ('embedding', ('embedding',)), ('ocr', ('ocr',)),

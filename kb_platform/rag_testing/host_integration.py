@@ -110,6 +110,28 @@ class HostIntegration(unittest.TestCase):
         self.assertLess(disposed.index('dependent'), disposed.index('base'))
         self.assertLess(disposed.index('child-dependent'), disposed.index('override'))
 
+    def test_contract_application_http_integrations(self):
+        from .contract_http_integration import ContractHTTPIntegration
+
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(ContractHTTPIntegration)
+        count = suite.countTestCases()
+        self.assertGreater(count, 0)
+        stream = io.StringIO()
+        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
+        self.capture(0 if result.wasSuccessful() else 1, stream.getvalue(), '')
+        self.assertEqual(result.testsRun, count)
+        self.assertFalse(result.skipped)
+        self.assertFalse(result.expectedFailures)
+        self.assertTrue(result.wasSuccessful(), stream.getvalue())
+
+    def test_generic_storage_process_transfers_large_index_and_document_values(self):
+        from .generic_storage_contracts import verify_generic_storage_process
+
+        result = verify_generic_storage_process(self.directory)
+        self.assertEqual(result, {'stage': 'VERIFIED', 'read_records': 'VERIFIED', 'get_many': 'VERIFIED',
+            'bounded_frames': True, 'external_model_calls': 0, 'storage_runtime': 'python', 'host_state': 'disposed'})
+        self.capture(0, json.dumps(result), '')
+
     def test_non_python_worker_uses_same_parent_runtime_protocol(self):
         profile = self.profile('generic')
         document = json.loads(profile.read_text('utf-8'))
@@ -124,6 +146,46 @@ class HostIntegration(unittest.TestCase):
         self.assertEqual('ready', result['result']['state'])
         self.assertEqual(document['application'], result['result']['echo'])
         self.assertNotEqual(result['runtime_owner_pid'], result['result']['worker_pid'])
+
+    def test_contract_application_boots_without_python_factory_or_local_runtime(self):
+        empty = {'type': 'object', 'additionalProperties': False}
+        text = {'type': 'string'}
+        fixture = ROOT / 'examples/contract-application'
+        document = {'version': 1,
+            'worker': [sys.executable, '-B', '-m', 'kb_platform.contract_worker'], 'cwd': str(ROOT),
+            'application': {
+                'root': str(self.directory), 'request': {},
+                'application': {'version': 1, 'plugins': {
+                    'api': {'implementation': 'app', 'version': '1', 'config': {'prefix': 'Hello '}},
+                    'provider': {'implementation': 'provider', 'version': '1', 'config': {}}},
+                    'bindings': {'api': {'source': {'plugin': 'provider', 'export': 'value'}}},
+                    'entrypoint': {'plugin': 'api', 'export': 'server'}},
+                'catalog': [
+                    {'implementation': 'app', 'version': '1',
+                     'command': [sys.executable, '-B', str(fixture / 'worker.py')],
+                     'provides': {'server': {'id': 'application.run', 'major': 1}},
+                     'requires': {'source': {'contract': {'id': 'greeting', 'major': 1}}}},
+                    {'implementation': 'provider', 'version': '1',
+                     'command': [sys.executable, '-B', str(fixture / 'provider.py')],
+                     'provides': {'value': {'id': 'greeting', 'major': 1}}, 'requires': {}}],
+                'contracts': [
+                    {'id': 'application.run', 'major': 1, 'methods': {'run': {'request': empty, 'response': text}}},
+                    {'id': 'greeting', 'major': 1, 'methods': {'get': {'request': empty, 'response': text}}}],
+                'schemas': [
+                    {'implementation': 'app', 'version': '1', 'schema': {
+                        'type': 'object', 'properties': {'prefix': text}, 'required': ['prefix'],
+                        'additionalProperties': False}},
+                    {'implementation': 'provider', 'version': '1', 'schema': empty}]}}
+        profile = self.directory / 'contract-profile.json'
+        profile.write_text(json.dumps(document), 'utf-8')
+        environment = {**os.environ, 'KB_AGENT_KERNEL_LIBRARY': str(self.directory / 'missing.dll')}
+        completed = subprocess.run([os.environ['KB_PLUGIN_HOST_BINARY'], '--profile', str(profile)],
+            cwd=ROOT, env=environment, text=True, encoding='utf-8', capture_output=True, timeout=35, check=False)
+        self.capture(completed.returncode, completed.stdout, completed.stderr)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['result'], 'Hello world')
 
     def test_native_extension_import_during_boot_with_open_protocol_stdin(self):
         document = self.successful(self.launch('native_array_import', no_library=True))
@@ -422,15 +484,16 @@ def main():
         raise RuntimeError('CURRENT_HOST_BINARY_REQUIRED')
     HostIntegration.output = args.output.resolve()
     HostIntegration.captures = []
+    from .authentication_contracts import live_suite as authentication_suite
+
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(HostIntegration)
-    stream = io.StringIO()
-    result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
-    print(stream.getvalue())
+    suite.addTests(authentication_suite())
+    result = unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(suite)
     report = {'decision': 'PASS' if result.wasSuccessful() and not result.skipped else 'FAIL',
         'total': result.testsRun, 'failures': len(result.failures), 'errors': len(result.errors),
         'skipped': len(result.skipped), 'captures': HostIntegration.captures,
         'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0,
-        'scope': 'Rust main host with trusted Python worker and controlled localhost HTTP smoke; '
+        'scope': 'Rust main host with trusted Python worker, controlled localhost HTTP and ASGI authentication; '
                  'synthetic component fixtures and unified evidence scoring; '
                  'no live provider or production RAG quality claim; per-run Agent value kernel uses current DLL'}
     (args.output / 'summary.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), 'utf-8')

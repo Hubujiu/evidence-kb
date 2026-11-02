@@ -51,9 +51,9 @@ class StorageContractBindingContracts(unittest.TestCase):
         self.assertFalse(RELATIONAL_V1.satisfies(Contract('storage.relational', 1)))
 
     def test_slots_require_typed_contracts_and_unique_names(self):
-        for slots in (('primary',), (PRIMARY, PRIMARY), (PRIMARY, StorageSlot('primary', KV_V1))):
-            with self.subTest(slots=slots), self.assertRaisesRegex(ValueError, 'INVALID_PLUGIN_STORAGE_SLOTS'):
-                PluginSpec('tasks', (), (), lambda ctx, config: None, storage_slots=slots)
+        for slots in ((123,), (PRIMARY, PRIMARY), (PRIMARY, StorageSlot('primary', KV_V1)), (PRIMARY, 'primary')):
+            with self.subTest(slots=slots), self.assertRaisesRegex(ValueError, 'INVALID_PLUGIN_REQUIREMENTS'):
+                PluginSpec('tasks', (), slots, lambda ctx, config: None)
 
     def test_real_sqlite_initialization_is_explicit_and_existing_identity_is_required(self):
         with TemporaryDirectory() as root:
@@ -80,7 +80,7 @@ class StorageContractBindingContracts(unittest.TestCase):
             identity = initializer.initialize('relational', SpaceKey('independent', 'tasks', 'history'))
             initializer.close()
             config = _configuration(root, identity.dataset_id)
-            spec = PluginSpec('tasks', ('tasks',), (), _mount_tasks, storage_slots=(PRIMARY,))
+            spec = PluginSpec('tasks', ('tasks',), (PRIMARY,), _mount_tasks)
             profile = {'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]}
             compiled, catalog = compile_storage_plugins(profile, (spec,), config, provider_catalog=_provider_catalog())
             with PluginHost(compiled, catalog) as host:
@@ -127,8 +127,7 @@ class StorageContractBindingContracts(unittest.TestCase):
 
     def test_compiler_rejects_missing_contract_before_factory_or_business_write(self):
         called = []
-        spec = PluginSpec('tasks', (), (), lambda ctx, config: None,
-                          storage_slots=(StorageSlot('primary', KV_EXPIRING_V1),))
+        spec = PluginSpec('tasks', (), (StorageSlot('primary', KV_EXPIRING_V1),), lambda ctx, config: None)
         config = _configuration(Path('unused'), 'dataset')
         with self.assertRaisesRegex(StorageError, 'STORAGE_CONTRACT_MISSING'):
             compile_storage_plugins({'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]},
@@ -136,7 +135,7 @@ class StorageContractBindingContracts(unittest.TestCase):
         self.assertEqual(called, [])
 
     def test_compiler_requires_v2_identity_all_slots_and_one_service_per_space(self):
-        spec = PluginSpec('tasks', (), (), lambda ctx, config: None, storage_slots=(PRIMARY,))
+        spec = PluginSpec('tasks', (), (PRIMARY,), lambda ctx, config: None)
         profile = {'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]}
         base = _configuration(Path('unused'), 'dataset')
         variants = []
@@ -186,8 +185,7 @@ class StorageContractBindingContracts(unittest.TestCase):
                 self.assertIs(secondary.seal(), secondary)
                 ctx.provide('other', secondary)
 
-            spec = PluginSpec('tasks', ('tasks', 'other'), (), mount,
-                              storage_slots=(PRIMARY, StorageSlot('secondary', RELATIONAL_V1)))
+            spec = PluginSpec('tasks', ('tasks', 'other'), (PRIMARY, StorageSlot('secondary', RELATIONAL_V1)), mount)
             profile, specs = compile_storage_plugins({'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]},
                 (spec,), config, provider_catalog=providers)
             with PluginHost(profile, specs) as host:
@@ -199,8 +197,7 @@ class StorageContractBindingContracts(unittest.TestCase):
             self.assertEqual(events, ['closed'])
 
     def test_one_space_cannot_be_silently_redirected_to_another_instance_or_dataset(self):
-        spec = PluginSpec('tasks', (), (), lambda ctx, config: None,
-                          storage_slots=(PRIMARY, StorageSlot('secondary', RELATIONAL_V1)))
+        spec = PluginSpec('tasks', (), (PRIMARY, StorageSlot('secondary', RELATIONAL_V1)), lambda ctx, config: None)
         profile = {'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]}
         base = _configuration(Path('unused'), 'dataset')
         base['instances']['other'] = deepcopy(base['instances']['main'])
@@ -286,7 +283,7 @@ class StorageContractBindingContracts(unittest.TestCase):
             self.assertEqual(host.service('result'), 7)
 
     def test_configuration_fingerprints_change_without_exposing_connection_secrets(self):
-        spec = PluginSpec('tasks', (), (), lambda ctx, config: None, storage_slots=(PRIMARY,))
+        spec = PluginSpec('tasks', (), (PRIMARY,), lambda ctx, config: None)
         profile = {'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]}
         configuration = _configuration(Path('unused'), 'dataset')
         first, catalog = compile_storage_plugins(profile, (spec,), configuration, provider_catalog=_provider_catalog())
@@ -306,7 +303,7 @@ class StorageContractBindingContracts(unittest.TestCase):
             identity = initial.initialize('relational', SpaceKey('independent', 'tasks', 'history'))
             initial.close()
             config = _configuration(Path(directory), identity.dataset_id)
-            spec = PluginSpec('tasks', ('tasks',), (), _mount_tasks, storage_slots=(PRIMARY,))
+            spec = PluginSpec('tasks', ('tasks',), (PRIMARY,), _mount_tasks)
             profile, catalog = compile_storage_plugins({'version': 1, 'plugins': [{'id': 'tasks', 'use': 'tasks'}]},
                 (spec,), config, provider_catalog=_provider_catalog())
             host = PluginHost(profile, catalog)

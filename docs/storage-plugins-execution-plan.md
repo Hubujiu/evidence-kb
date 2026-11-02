@@ -46,7 +46,7 @@ uv run --no-sync python -m kb_platform.storage_configuration convert-databases -
 
 转换器只转换原有关系绑定和已知身份，不搬迁数据，也不替旧绑定猜测 `dataset_id`。核对输出后再显式初始化或验证已有空间。运行时拒绝 `KB_DATABASES_CONFIG` 和旧格式，不自动回退。
 
-独立 core 应用使用同一 `KB_STORAGE_CONFIG`，或向 `create_agent_application` 传入 `storage_configuration`。任意应用可调用 `compile_storage_plugins` 并传入自己的 provider catalog。业务插件用 `PluginSpec.storage_slots` 声明需求，mount 中调用 `require_storage`。第三方也可以直接依赖自己的服务；公共服务不强制接管所有插件。
+独立 core 应用使用同一 `KB_STORAGE_CONFIG`，或向 `create_agent_application` 传入 `storage_configuration`。任意应用可调用 `compile_storage_plugins` 并传入自己的 provider catalog。业务插件用 `PluginSpec.requires` 中的类型化存储需求 声明需求，mount 中调用 `require_storage`。第三方也可以直接依赖自己的服务；公共服务不强制接管所有插件。
 
 ## 运行统一检查
 

@@ -130,6 +130,8 @@ OPERATIONS = {
             SOURCES.c.revision.label('source_revision'), PARSE_SNAPSHOTS.c.document)
         .select_from(bindings_parse).where(_where(BINDINGS, *KB), BINDINGS.c.status == 'ACTIVE')
         .order_by(BINDINGS.c.binding_id)),
+    K.BINDING_ACCESS: _statement((*KB, 'source_id'),
+        select(BINDINGS).where(_where(BINDINGS, *KB, 'source_id'), BINDINGS.c.status == 'ACTIVE')),
     K.CITATION_INSERT: _insert(CITATIONS, (*KB, 'citation_id', 'build_id', 'binding_id', 'source_id',
         'source_version_id', 'parse_snapshot_id', 'element_id', 'text', 'evidence_ids', 'anchors', 'table_data')),
     K.KBS_VISIBLE: _statement((*TENANT, 'actor_principal_id'),
@@ -158,6 +160,12 @@ OPERATIONS = {
     K.CITATION_RESOLVE: _statement((*KB, 'citation_id'),
         select(CITATIONS, PARSE_SNAPSHOTS.c.document, SOURCE_VERSIONS.c.filename,
             SOURCE_VERSIONS.c.original_path, SOURCE_VERSIONS.c.original_sha256, SOURCE_VERSIONS.c.media_type,
+            SOURCES.c.policy, SOURCES.c.owner_id, SOURCES.c.readers).select_from(citations_all)
+        .where(_where(CITATIONS, *KB, 'citation_id'), BINDINGS.c.source_id == CITATIONS.c.source_id,
+            BINDINGS.c.status == 'ACTIVE', BUILDS.c.status == 'PUBLISHED')),
+    K.CITATION_ACCESS: _statement((*KB, 'citation_id'),
+        select(CITATIONS, SOURCE_VERSIONS.c.filename, SOURCE_VERSIONS.c.original_path,
+            SOURCE_VERSIONS.c.original_sha256, SOURCE_VERSIONS.c.media_type,
             SOURCES.c.policy, SOURCES.c.owner_id, SOURCES.c.readers).select_from(citations_all)
         .where(_where(CITATIONS, *KB, 'citation_id'), BINDINGS.c.source_id == CITATIONS.c.source_id,
             BINDINGS.c.status == 'ACTIVE', BUILDS.c.status == 'PUBLISHED')),

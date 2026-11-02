@@ -18,7 +18,6 @@ def stage_cache_plugins():
         ctx.defer(cache.close)
         ctx.provide('stage.cache', cache)
 
-    return (PluginSpec('storage.cache.volatile', ('stage.cache',), (), mount,
-                       storage_slots=(INDEX, PAYLOAD_CACHE),
+    return (PluginSpec('storage.cache.volatile', ('stage.cache',), (INDEX, PAYLOAD_CACHE), mount,
                        config_schema=config_schema({'payload_ttl_seconds': {
                            'type': 'number', 'exclusiveMinimum': 0, 'maximum': 365 * 24 * 60 * 60}})),)

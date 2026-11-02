@@ -176,8 +176,7 @@ class StorageObjectContracts(unittest.TestCase):
             ctx.provide(ctx.plugin_id, require_storage(ctx, 'objects'))
 
         names = ('tasks', 'archive')
-        specs = tuple(PluginSpec(name, (name,), (), mount,
-                                storage_slots=(StorageSlot('objects', OBJECT_V1),)) for name in names)
+        specs = tuple(PluginSpec(name, (name,), (StorageSlot('objects', OBJECT_V1),), mount) for name in names)
         providers = {'files': StorageProvider(factory, {'object': (OBJECT_V1,)})}
         profile, catalog = compile_storage_plugins(
             {'version': 1, 'plugins': [{'id': name, 'use': name} for name in names]}, specs, configuration,

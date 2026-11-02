@@ -25,6 +25,7 @@ class ApplicationComposition:
     research: object
     application: object
     models: object
+    authenticate: object = None
 
     def close(self):
         self.host.close()
@@ -53,9 +54,11 @@ def _client_routes():
 def _storage(selected, catalog, settings, environment, *, storage_configuration=None, provider_catalog=None):
     from .storage_catalog import default_storage_providers
     from .storage_plugins import compile_storage_plugins
+    from .storage_sdk import StorageSlot
 
     by_spec = {spec.key: spec for spec in catalog}
-    needs_storage = any(by_spec[row['use']].storage_slots for row in selected['plugins'] if not row.get('disabled'))
+    needs_storage = any(isinstance(item, StorageSlot) for row in selected['plugins'] if not row.get('disabled')
+                        for item in by_spec[row['use']].requires)
     if storage_configuration is None:
         path = environment.get('KB_STORAGE_CONFIG') or (getattr(settings, 'storage_file', None) if needs_storage else None)
         if path is not None:
@@ -117,25 +120,60 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
 
 def create_root_application(settings, *, profile=None, environment=None, platform=None,
                             research=None, models=None, model_clients=None, service_factory=None,
-                            extra_plugins=(), remote=None, storage_configuration=None, provider_catalog=None):
+                            extra_plugins=(), remote=None, storage_configuration=None, provider_catalog=None,
+                            workflow_options=None, semantic_observer=None, authentication=False):
+    from .authentication_plugins import authentication_plugins
+
+    selected_environment = dict(os.environ if environment is None else environment)
+    selected_remote = selected_environment.get('KB_REMOTE_MODELS') == '1' if remote is None else remote
+    candidate = profile or selected_environment.get('KB_APPLICATION_PROFILE')
+    if isinstance(candidate, (str, Path)):
+        candidate = json.loads(Path(candidate).read_text('utf-8'))
+    generation = selected_remote
+    if candidate is None and selected_remote and selected_environment.get('KB_MODELS_CONFIG'):
+        configured_models = json.loads(Path(selected_environment['KB_MODELS_CONFIG']).read_text('utf-8'))['models']
+        generation = 'generation' in configured_models
+    if (isinstance(candidate, dict) and isinstance(candidate.get('plugins'), dict)
+            or candidate is None and generation):
+        from .application_knowledge import create_contract_knowledge
+        from .plugin_deployment import load_plugin_catalog
+
+        if extra_plugins or service_factory is not None:
+            raise ValueError('CONTRACT_APPLICATION_REQUIRES_CONTRACT_EXTENSIONS')
+        deployment = (load_plugin_catalog(selected_environment['KB_PLUGIN_CATALOG'])
+                      if selected_environment.get('KB_PLUGIN_CATALOG') else {})
+        return create_contract_knowledge(settings, profile=candidate, environment=selected_environment,
+            storage_configuration=storage_configuration, provider_catalog=provider_catalog,
+            models=models, model_clients=model_clients, platform=platform, research=research,
+            workflow_options=workflow_options, semantic_observer=semantic_observer, **deployment)
+    if selected_environment.get('KB_PLUGIN_CATALOG'):
+        raise ValueError('PLUGIN_CATALOG_REQUIRES_CONTRACT_APPLICATION')
     selected = load_application_profile(settings, profile=profile, environment=environment, remote=remote)
     if platform is not None:
         excluded = {'repository', 'originals', 'parser', 'embedding-jobs', 'search', 'search_bm25', 'search_dense', 'capabilities'}
         selected['plugins'] = [row for row in selected['plugins'] if row['id'] not in excluded]
         next(row for row in selected['plugins'] if row['id'] == 'platform').update(use='platform.borrowed')
-    selected_environment = os.environ if environment is None else environment
     packages_root = selected_environment.get('KB_PROCESS_PLUGINS_ROOT')
     installed = ProcessPackages(packages_root).catalogs(
         journal=Path(packages_root) / 'transport-journal') if packages_root else ()
     catalog = (*builtin_plugins(), *model_plugins(models), *stage_cache_plugins(),
+               *authentication_plugins(settings),
                *platform_plugins(settings, platform=platform, research=research, model_clients=model_clients),
                *knowledge_plugins(platform, research, service_factory=service_factory), *installed, *extra_plugins)
+    if authentication:
+        specs = {spec.key: spec for spec in catalog}
+        if not any('authentication' in specs[row['use']].provides for row in selected['plugins']
+                   if not row.get('disabled')):
+            selected['plugins'].append(_row('authentication', 'authentication.file'))
     from .model_provider_plugins import compile_model_plugins
 
     selected, catalog = compile_model_plugins(selected, catalog)
     selected, catalog = _storage(selected, catalog, settings, selected_environment,
         storage_configuration=storage_configuration, provider_catalog=provider_catalog)
-    host = PluginHost(selected, catalog)
+    from .authentication import validate_authentication
+
+    host = PluginHost(selected, catalog,
+                      service_validators={'authentication': validate_authentication} if authentication else None)
     try:
         specs = {spec.key: spec for spec in catalog}
         provided = {name for row in selected['plugins'] if not row.get('disabled')

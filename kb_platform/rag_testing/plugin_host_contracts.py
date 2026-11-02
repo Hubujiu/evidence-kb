@@ -37,7 +37,7 @@ class PluginHostContracts(unittest.TestCase):
             context.provide('run', object())
             context.defer(lambda: calls.append(f'consumer disposed with {context.require("model")}'))
         catalog = (PluginSpec('consumer', ('run',), ('model',), consumer),
-                   PluginSpec('provider', ('model',), (), provider))
+                   PluginSpec('provider', ('model',), (), provider, config_schema={'type': 'object'}))
         settings = profile(entry('consumer'), entry('provider', config={'value': 7}))
         with PluginHost(settings, catalog) as host:
             settings['plugins'][1]['config']['value'] = 99
@@ -227,7 +227,7 @@ class PluginHostContracts(unittest.TestCase):
                 def resource(context, config):
                     context.provide('value', config['value'])
                     context.defer(lambda: disposed.append(config['value']))
-                spec = PluginSpec('resource', ('value',), (), resource)
+                spec = PluginSpec('resource', ('value',), (), resource, config_schema={'type': 'object'})
                 parent = PluginHost(profile(), [])
                 first = parent.scope(profile(entry('resource', config={'value': 'first'})), [spec])
                 second = parent.scope(profile(entry('resource', config={'value': 'second'})), [spec])

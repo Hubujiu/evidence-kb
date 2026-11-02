@@ -21,7 +21,7 @@ class StorageBootstrapContracts(unittest.TestCase):
             copyfile(Path(__file__).resolve().parents[2] / 'config/storage.local.example.json',
                      root / 'config/storage.local.example.json')
             with patch.object(bootstrap, 'ROOT', root), redirect_stdout(StringIO()):
-                bootstrap.main()
+                bootstrap.main([])
             storage = root / '.local/storage.json'
             identities = root / '.local/identities.json'
             before = (storage.read_bytes(), identities.read_bytes())
@@ -34,9 +34,28 @@ class StorageBootstrapContracts(unittest.TestCase):
                 build = host.call('platform', 'stage', actor, scope, ['bm25'])
                 host.call('platform', 'publish', actor, scope, build['build_id'])
             with patch.object(bootstrap, 'ROOT', root), redirect_stdout(StringIO()):
-                bootstrap.main()
+                bootstrap.main([])
             self.assertEqual(before, (storage.read_bytes(), identities.read_bytes()))
             with create_root_application(settings, environment={}, storage_configuration=configuration).host as host:
                 result = host.call('platform', 'search', actor, scope, 'QUARTZMARKER')
                 self.assertEqual(result['context'], 'QUARTZMARKER review before release.')
                 self.assertEqual(result['manifest_id'], build['build_id'])
+
+    def test_knowledge_initialization_creates_explicit_session_and_budget_spaces(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'config').mkdir()
+            copyfile(Path(__file__).resolve().parents[2] / 'config/storage.local.example.json',
+                     root / 'config/storage.local.example.json')
+            with patch.object(bootstrap, 'ROOT', root), redirect_stdout(StringIO()):
+                bootstrap.main(['--application', 'knowledge'])
+            path = root / '.local/storage-knowledge.json'
+            before = path.read_bytes()
+            value = json.loads(before)
+            self.assertEqual(value['application_id'], 'knowledge-application-v4')
+            self.assertNotEqual(value['bindings']['store']['primary']['dataset_id'],
+                                value['bindings']['provider']['primary']['dataset_id'])
+            with patch.object(bootstrap, 'ROOT', root), redirect_stdout(StringIO()):
+                bootstrap.main(['--application', 'knowledge'])
+            self.assertEqual(path.read_bytes(), before)
+            self.assertFalse((root / '.local/storage.json').exists())

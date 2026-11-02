@@ -1,6 +1,7 @@
 import argparse
 from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 from threading import Event, Thread, current_thread
 from time import monotonic
@@ -20,6 +21,9 @@ from kb_platform.storage_adapters.values import SqlKeyValueStore
 from kb_platform.storage_plugins import compile_storage_plugins, require_storage
 from kb_platform.storage_sdk import KV_DURABLE_V1, RELATIONAL_V1, SpaceKey, StorageProvider, StorageSlot
 from kb_platform.storage_sdk.relational import GUARDED_RELATIONAL_V1
+from .contract_process_integration import verify_contract_process
+from .context_contract_process_integration import verify_context_contract_process
+from .storage_contract_process_integration import verify_storage_contract_process
 
 
 def wait_until(predicate, seconds):
@@ -373,8 +377,7 @@ def database_dependency_case(manager, installed, root):
         database.seal()
         ctx.provide('shared.database', database)
 
-    storage = PluginSpec('fixture.process-storage', ('shared.database',), (), mount,
-                         storage_slots=(StorageSlot('primary', RELATIONAL_V1),))
+    storage = PluginSpec('fixture.process-storage', ('shared.database',), (StorageSlot('primary', RELATIONAL_V1),), mount)
     profile = {'version': 1, 'plugins': [
         {'id': 'storage', 'use': storage.key}, {'id': 'consumer', 'use': process.key}]}
     database_root = root / 'database-spaces'
@@ -443,7 +446,7 @@ def storage_dependency_case(manager, installed, root):
     def mount(ctx, config):
         ctx.provide('shared.storage', require_storage(ctx, slot))
 
-    storage = PluginSpec('fixture.process-kv', ('shared.storage',), (), mount, storage_slots=(slot,))
+    storage = PluginSpec('fixture.process-kv', ('shared.storage',), (slot,), mount)
     profile = {'version': 1, 'plugins': [
         {'id': 'storage', 'use': storage.key}, {'id': 'consumer', 'use': process.key}]}
     database_root = root / 'kv-spaces'
@@ -529,6 +532,13 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
                 *flags, '-I', '-u', '-c', PROCESS_LAUNCHER,
                 package['package'], str(Path(package['package']) / 'plugin.py')]
             for package in packages.values() for flags in ([], ['-B'])]
+        commands.append([sys.executable, '-B', str(examples / 'contract-application/worker.py')])
+        commands.append([sys.executable, '-B', str(examples / 'contract-storage/worker.py')])
+        commands.append([sys.executable, '-B', str(examples / 'contract-context/worker.py')])
+        if 'KB_CONTRACT_PROVIDER' in os.environ:
+            commands.append([str(Path(os.environ['KB_CONTRACT_PROVIDER']).resolve(strict=True))])
+        if plugin_node is not None:
+            commands.append([str(plugin_node), str(examples / 'contract-application/worker.mjs')])
         def audit(event, args):
             if event in {'socket.connect', 'socket.getaddrinfo', 'socket.sendto', 'socket.sendmsg',
                          'os.system', 'os.posix_spawn', 'os.exec'}:
@@ -695,8 +705,14 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
         if not controls or any(set(row) - {'protocol', 'id', 'kind', 'target', 'identity',
                 'deadline_seconds', 'cancelled'} for row in controls):
             raise RuntimeError('PROCESS_CANCEL_MESSAGE_CONTAINS_BUSINESS_ARGUMENTS')
+        contract_processes = verify_contract_process(root, plugin_node)
+        contract_storage = verify_storage_contract_process(root)
+        contract_context = verify_context_contract_process(root)
         output.mkdir(parents=True, exist_ok=False)
         (output / 'result.json').write_text(json.dumps({'decision': 'PASS',
+            'contract_processes': contract_processes,
+            'contract_storage': contract_storage,
+            'contract_context': contract_context,
             'scope': 'controlled local external process; no provider or production quality claim',
             'installed_digest': installed['digest'], 'echo': value, 'crash_sends': len(crash_sends),
             'large_echo_bytes': len(large_payload),

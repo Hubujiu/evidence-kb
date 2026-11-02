@@ -1,4 +1,5 @@
 from contextlib import contextmanager, nullcontext
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import re
@@ -171,6 +172,9 @@ class BoundStorage:
         self._methods = _methods(grant.contract)
         self.identity = implementation.identity
         self.registration_id = grant.registration_id
+        from .storage_protocol import validate_binding
+
+        self._descriptor = validate_binding(self)
 
     def for_consumer(self, identity, lease, *, consumer_name):
         if consumer_name != self._grant.consumer:
@@ -211,15 +215,54 @@ class BoundStorage:
         with self._lease(), context as value:
             yield self if value is self._implementation else value
 
+    def describe(self):
+        return deepcopy(self._descriptor)
+
+    def _execute(self, name, args, kwargs, encode, *, max_nodes, request_bytes, result_bytes, invoke):
+        from .storage_protocol import prepare
+
+        with self._lease():
+            with prepare(self._descriptor, name, args, kwargs, max_nodes=max_nodes,
+                         request_bytes=request_bytes, result_bytes=result_bytes) as call:
+                result = invoke()
+                encoded = call.complete(lambda: encode(result))
+                return result, encoded
+
+    def _invoke_values(self, name, args, kwargs, *, max_nodes, request_bytes, result_bytes):
+        from .storage_process import decode_value, encode_value
+
+        def invoke():
+            budget = [max_nodes]
+            decoded_args = [decode_value(value, _budget=budget, _validated=True) for value in args]
+            decoded_kwargs = {key: decode_value(value, _budget=budget, _validated=True) for key, value in kwargs.items()}
+            callback = self._dependency_manifest if name == 'dependency_manifest' else getattr(self._implementation, name)
+            return callback(*decoded_args, **decoded_kwargs)
+
+        return self._execute(name, args, kwargs,
+            lambda result: encode_value(result, _budget=[max_nodes], _max_bytes=result_bytes),
+            max_nodes=max_nodes, request_bytes=request_bytes, result_bytes=result_bytes, invoke=invoke)[1]
+
     def __getattr__(self, name):
         if name in {'info', 'schema', 'physical_name', 'runtime_role'} and self._grant.contract.satisfies(RELATIONAL_V1):
             return getattr(self._implementation, name)
         if name not in self._methods:
             raise AttributeError(name)
-        if name == 'dependency_manifest':
-            return self._dependency_manifest
+        operation = self._descriptor['operations'].get(name)
 
         def invoke(*args, **kwargs):
+            if operation is not None and operation['channel'] != 'structured':
+                from .storage_process import encode_value
+                from .storage_protocol import MAX_VALUE_BYTES, MAX_VALUE_NODES
+
+                budget = [MAX_VALUE_NODES]
+                encoded_args = [encode_value(value, _budget=budget, _max_bytes=MAX_VALUE_BYTES) for value in args]
+                encoded_kwargs = {key: encode_value(value, _budget=budget, _max_bytes=MAX_VALUE_BYTES)
+                                  for key, value in kwargs.items()}
+                callback = self._dependency_manifest if name == 'dependency_manifest' else getattr(self._implementation, name)
+                return self._execute(name, encoded_args, encoded_kwargs,
+                    lambda result: encode_value(result, _budget=[MAX_VALUE_NODES], _max_bytes=MAX_VALUE_BYTES),
+                    max_nodes=MAX_VALUE_NODES, request_bytes=MAX_VALUE_BYTES, result_bytes=MAX_VALUE_BYTES,
+                    invoke=lambda: callback(*args, **kwargs))[0]
             with self._lease(include_consumer=name not in {'prepare', 'seal'}):
                 result = getattr(self._implementation, name)(*args, **kwargs)
                 if result is self._implementation:

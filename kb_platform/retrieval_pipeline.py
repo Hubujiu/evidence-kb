@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import math
 from pathlib import Path
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from .core import PlatformError
 from .delivery_units import indexed_elements
 from .embeddings import EmbeddingError
+from .knowledge_embedding import embedding_audit
 from .search import BINDING_FIELDS, SearchUnavailable
 
 
@@ -200,6 +201,23 @@ def _parents(seed, units, mode):
 
 
 def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=()):
+    pending = staged(gateway, actor, scope_id, query, policy, config,
+                     exclude_citation_ids=exclude_citation_ids)
+    try:
+        request = next(pending)
+    except StopIteration as completed:
+        return completed.value
+    try:
+        result = gateway.pipeline_reranker.rank(query, request)
+        pending.send(result)
+    except StopIteration as completed:
+        return completed.value
+    finally:
+        pending.close()
+    raise RuntimeError('INVALID_RETRIEVAL_STAGE')
+
+
+def staged(gateway, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=()):
     from .agent_tools import EVIDENCE_FIELDS, _policy
 
     policy, config = _policy(policy), PipelineConfig.parse(config)
@@ -240,7 +258,16 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
             gateway._unchanged(actor, scope_id, state)
             vector = None
             if channel == 'dense':
-                vector = provider.query(query)
+                if getattr(provider, 'requires_authorization', False):
+                    def authorize():
+                        gateway._unchanged(actor, scope_id, state)
+                        return True
+
+                    vector = provider.query(query, request_id='retrieval-query-' + uuid4().hex,
+                        audit_context=embedding_audit(actor, scope_id, state['manifest_id'],
+                            state['authority_revision'], vector_allowed), authorize=authorize)
+                else:
+                    vector = provider.query(query)
                 if (not isinstance(vector, (list, tuple)) or len(vector) != provider.dimension or
                         any(isinstance(value, bool) or not isinstance(value, (int, float)) or
                             not math.isfinite(value) for value in vector)):
@@ -293,7 +320,8 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
             if (not canonical['policy'].get('rerank', False) or
                     reranker.provider_id not in canonical['policy'].get('allowed_providers', [])):
                 raise PlatformError('PROCESSING_NOT_ALLOWED', 'Source does not permit this reranker', 409)
-        output = reranker.rank(query, [{key: item[key] for key in EVIDENCE_FIELDS} for item in ranked])
+        output = yield [{key: item[key] for key in EVIDENCE_FIELDS} for item in ranked]
+        gateway._unchanged(actor, scope_id, state)
         if (not isinstance(output, list) or len(output) != len(ranked) or
                 any(not isinstance(item, dict) or item.get('citation_id') not in fused_ids or
                     isinstance(item.get('score'), bool) or not isinstance(item.get('score'), (int, float)) or

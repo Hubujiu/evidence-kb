@@ -29,7 +29,17 @@ Rust 为每个 runtime、scope、instance、generation、operation、service reg
 
 ## Python SDK
 
-`PluginSpec` 声明实现键、版本、提供与依赖服务、并发方式，以及纯配置 schema/check。所有内置 catalog 在产生效果前校验配置。profile 的 `use` 只能引用可信 catalog 的键。
+`PluginSpec` 声明实现键、版本、提供与依赖服务、并发方式，以及纯配置 schema/check。所有 catalog 条目必须是通过准入的 `PluginSpec`；profile 的 `use` 只能引用可信 catalog 的键。
+
+实现键与服务名统一限制为 1–128 个 ASCII 字母、数字或 `._:/-`；进程插件的公开方法还必须是非私有 ASCII Python 标识符且不能重复。`configured_plugins` 只替换显式指定的配置声明，保留其余 schema/check/inputs；映射中不存在的实现键会报错，避免拼写错误被静默忽略。
+
+应用可通过 `PluginHost(..., service_validators={name: validator})` 注入公共服务合同。同步 validator 在每代 mount 完成、服务集合核对后、Rust 发布服务前执行；启动、update、apply 和子作用域均使用相同准入。子作用域继承父级校验，不能替换同名校验器来降低要求。校验失败沿现有初始化失败和清理流程处理。
+
+Python 插件公共协议为 `evidence-plugin/1`，由 `PluginSpec.protocol` 声明，SDK 默认使用当前版本；它与实现自身的 `version`、Rust 生命周期的 `plugin-runtime/1` 和进程传输的 `evidence-plugin-process/1` 分别版本化。未知公共协议、重复或不合法的服务声明、无效并发策略，以及不接受 `(context, config)` 的 mount 在启用前拒绝。宿主仍通过原 Rust coordinator 检查依赖、重复提供者、作用域和实际注册的服务集合，不维护第二套生命周期。
+
+所有插件均经过 JSON Schema Draft 2020-12 配置校验。未传 `config_schema` 表示只接受空配置 `{}`；需要配置的插件必须显式声明对象 schema，未知字段通常用 `additionalProperties: false` 拒绝。配置校验和纯 hook 在初始化、apply 和 update 的生命周期变更之前执行。合成生命周期夹具需要任意键值时可显式声明 `{'type': 'object'}`，不能以缺省 schema 跳过校验。
+
+mount、配置 hook 和 disposer 使用同步调用协议，注册时检查参数签名并拒绝 coroutine/generator 函数。同步包装器若返回 awaitable 或 generator 也明确报错，不会被当作完成；初始化失败会清理已经登记的资源，清理未完成则保留资源和 `cleanup_failed`，等待显式重试。服务值依其领域合同验证，允许 `None` 表示明确未配置的可选能力，不强制所有服务都是可调用对象。
 
 ```python
 from kb_platform.plugin_host import PluginHost, PluginSpec

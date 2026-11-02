@@ -6,17 +6,20 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from kb_platform.authentication_plugins import authentication_plugins
 from kb_platform.harness_services import builtin_plugins
 from kb_platform.knowledge_profile import knowledge_plugins
 from kb_platform.model_plugins import model_plugins
 from kb_platform.model_provider_plugins import compile_model_plugins
 from kb_platform.model_service import Capability, ModelRequest
 from kb_platform.platform_plugins import platform_plugins
-from kb_platform.plugin_host import PluginHost, PluginSpec
+from kb_platform.plugin_configuration import configured_plugins, config_schema
+from kb_platform.plugin_host import PLUGIN_PROTOCOL, PluginHost, PluginSpec
 from kb_platform.plugin_native import PluginError
 from kb_platform.settings import Settings
 from kb_platform.storage_catalog import default_storage_providers, initialize_configuration
-from kb_platform.storage_plugins import compile_storage_plugins
+from kb_platform.storage_cache_plugins import stage_cache_plugins
+from kb_platform.storage_plugins import compile_storage_plugins, storage_plugins
 
 
 class PluginConfigurationContracts(unittest.TestCase):
@@ -41,12 +44,41 @@ class PluginConfigurationContracts(unittest.TestCase):
     def test_all_builtin_specs_declare_strict_object_configuration(self):
         settings = Settings(Path('.'), Path('unused'))
         specs = (*builtin_plugins(), *model_plugins(), *platform_plugins(settings),
-                 *knowledge_plugins(None, None))
+                 *knowledge_plugins(None, None), *storage_plugins(), *stage_cache_plugins(),
+                 *authentication_plugins(settings))
+        self.assertEqual(len({spec.key for spec in specs}), len(specs))
         for spec in specs:
             with self.subTest(plugin=spec.key):
+                self.assertEqual(spec.protocol, PLUGIN_PROTOCOL)
                 self.assertIsNotNone(spec.config_schema)
                 self.assertEqual(spec.config_schema['type'], 'object')
                 self.assertFalse(spec.config_schema['additionalProperties'])
+
+    def test_configuration_decoration_preserves_unmodified_schema_checks_and_inputs(self):
+        mounted = []
+        def check(config):
+            if config['value'] < 1:
+                raise ValueError('POSITIVE_VALUE_REQUIRED')
+        spec = PluginSpec('fixture', (), (), lambda ctx, config: mounted.append(config['value']),
+            config_schema=config_schema({'value': {'type': 'integer'}}, required=('value',)),
+            config_check=check, config_inputs=lambda config: {'fixture': 'a' * 64})
+        catalog = configured_plugins(configured_plugins(iter([spec])))
+        for config in ({'unknown': 1}, {'value': 0}):
+            with self.subTest(config=config), self.assertRaises((PluginError, ValueError)):
+                PluginHost({'version': 1, 'plugins': [{'id': 'fixture', 'use': 'fixture', 'config': config}]}, catalog)
+        self.assertEqual(mounted, [])
+        with PluginHost({'version': 1, 'plugins': [
+                {'id': 'fixture', 'use': 'fixture', 'config': {'value': 1}}]}, catalog) as host:
+            self.assertEqual(host.inspect()['plugins'][0]['configuration_inputs'], {'fixture': 'a' * 64})
+        self.assertEqual(mounted, [1])
+
+    def test_configuration_decoration_rejects_misspelled_keys_and_invalid_maps(self):
+        spec = PluginSpec('fixture', (), (), lambda ctx, config: None)
+        for field in ('schemas', 'checks', 'inputs'):
+            for values in ({'fixtuer': None}, []):
+                with self.subTest(field=field, values=values), self.assertRaisesRegex(
+                        ValueError, 'INVALID_PLUGIN_CONFIGURATION'):
+                    configured_plugins([spec], **{field: values})
 
     def test_invalid_store_apply_and_update_preserve_live_registration_and_revision(self):
         with TemporaryDirectory() as directory:

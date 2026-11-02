@@ -1,5 +1,5 @@
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from copy import deepcopy
 from dataclasses import asdict
 from hashlib import sha256
@@ -476,6 +476,44 @@ def http_configuration(fixtures, engine):
     return directory, profile, environment, tokens
 
 
+@contextmanager
+def redis_http_authentication(fixtures, directory, profile, tokens):
+    from kb_platform.authentication import SessionAuthentication
+    from kb_platform.storage_adapters.redis_cache import RedisCacheProvider
+    from kb_platform.storage_sdk import EphemeralCacheSpace
+
+    configuration = json.loads((directory / 'storage.json').read_text('utf-8'))
+    space = SpaceKey(configuration['application_id'], 'authentication', 'sessions')
+    target = EphemeralCacheSpace('http-authentication-' + fixtures.run_id)
+    configuration['instances']['auth'] = {'provider': 'redis', 'config': {
+        'url_env': 'KB_STORAGE_TEST_REDIS_URL'}}
+    configuration['services']['auth.sessions'] = {'instance': 'auth', 'export': 'kv'}
+    configuration['bindings']['authentication'] = {'sessions': {'service': 'auth.sessions',
+        'owner': space.owner_id, 'space': space.space_id, 'cache_id': target.cache_id}}
+    write_json(directory / 'storage.json', configuration)
+    selected = json.loads(profile.read_text('utf-8'))
+    selected['plugins'].append({'id': 'authentication', 'use': 'authentication.sessions'})
+    write_json(profile, selected)
+    (directory / 'identities.json').unlink()
+    provider = RedisCacheProvider(fixtures.environment['KB_STORAGE_TEST_REDIS_URL'])
+    issued = []
+    try:
+        store = provider.open_space(space, target)
+        auth = SessionAuthentication(store)
+        for name in tokens:
+            actor = Actor(fixtures.run_id + ('-other' if name == 'other' else ''), name)
+            session = auth.issue(actor, ttl_seconds=600)
+            issued.append(session.token)
+            tokens[name] = session.token
+        yield auth, store, issued
+    finally:
+        try:
+            for token in issued:
+                auth.revoke(token)
+        finally:
+            provider.close()
+
+
 def score_http_evidence(client, headers, kb_id, source_id, version, directory):
     from kb_platform.agent_context import ContextManager, ContextPolicy
     from .storage_e2e_app import RecordingModelSink
@@ -636,8 +674,10 @@ def http_suite(fixtures, *, engines=('postgres', 'embedded', 'sqlite', 'mysql'))
     class HttpStorageIntegration(unittest.TestCase):
         def test_real_rust_http_split_channels_restart_and_failed_build(self):
             for engine in engines:
-                with self.subTest(dense_backend=engine):
+                with self.subTest(dense_backend=engine), ExitStack() as stack:
                     directory, profile, environment, tokens = http_configuration(fixtures, engine)
+                    authentication = (stack.enter_context(redis_http_authentication(fixtures, directory, profile, tokens))
+                                      if engine == 'sqlite' else None)
                     owner = {'Authorization': 'Bearer ' + tokens['owner']}
                     denied = {'Authorization': 'Bearer ' + tokens['denied']}
                     other = {'Authorization': 'Bearer ' + tokens['other']}
@@ -729,6 +769,33 @@ def http_suite(fixtures, *, engines=('postgres', 'embedded', 'sqlite', 'mysql'))
                         original = client.get(f'/knowledge-bases/{kb_id}/citations/{hit["citation_id"]}/original', headers=owner)
                         self.assertEqual(original.status_code, 200, original.text)
                         self.assertEqual(original.content, TEXT.encode())
+                        if authentication is not None:
+                            auth, store, issued = authentication
+                            self.assertFalse((directory / 'identities.json').exists())
+                            self.assertEqual(client.get('/identity', headers=owner).json(),
+                                             {'tenant_id': fixtures.run_id, 'principal_id': 'owner'})
+                            expired = auth.issue(Actor(fixtures.run_id, 'owner'), ttl_seconds=0.1)
+                            issued.append(expired.token)
+                            time.sleep(0.15)
+                            self.assertIsNone(store.get(auth._key(expired.token)))
+                            response = client.get('/identity', headers={'Authorization': 'Bearer ' + expired.token})
+                            self.assertEqual(response.status_code, 401, response.text)
+                            self.assertEqual(response.headers['WWW-Authenticate'], 'Bearer')
+                            corrupt = auth.issue(Actor(fixtures.run_id, 'owner'))
+                            issued.append(corrupt.token)
+                            store.set(auth._key(corrupt.token), b'not-json')
+                            self.assertEqual(client.get('/identity', headers={
+                                'Authorization': 'Bearer ' + corrupt.token}).status_code, 503)
+                            self.assertTrue(auth.revoke(tokens['owner']))
+                            for path in ('/identity', '/knowledge-bases',
+                                         f'/knowledge-bases/{kb_id}/citations/{hit["citation_id"]}/original'):
+                                response = client.get(path, headers=owner)
+                                self.assertEqual(response.status_code, 401, response.text)
+                            fixtures.observations['authentication_http'] = {
+                                'backend': 'redis', 'identity_file_absent': True, 'browser_authenticated': True,
+                                'survived_host_restart': True, 'server_ttl_expired': True,
+                                'corrupt_session_status': 503, 'revoked_status': 401,
+                                'revoked_original_download_denied': True}
                     fixtures.observations.setdefault('http', []).append({
                         'transport': 'Rust parent + Python worker + actual loopback TCP HTTP',
                         'repository': engine if engine in ('sqlite', 'mysql') else 'postgresql',

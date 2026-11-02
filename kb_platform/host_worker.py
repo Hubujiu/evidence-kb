@@ -149,13 +149,13 @@ def receive_messages(reader, connection, worker):
         worker.stopped.set()
 
 
-def main():
+def main(worker_type=ApplicationWorker):
     reader, writer = PipeReader(sys.stdin.fileno()), sys.stdout.buffer
     sys.stdout = sys.stderr
     os.environ['KB_DEFER_DEFAULT_APP'] = '1'
     connection = HostConnection(writer)
     install_transport(lambda request: connection.request('native', request))
-    worker = ApplicationWorker(connection)
+    worker = worker_type(connection)
     thread = Thread(target=receive_messages, args=(reader, connection, worker), daemon=True)
     thread.start()
     worker.stopped.wait()

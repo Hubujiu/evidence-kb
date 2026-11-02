@@ -4,6 +4,12 @@
 
 当前版本为 `0.2.0`，回答方案固定为 `evidence_release_candidate`。这是本地部署和工程验证项目，合成测试通过不代表企业业务金标验收或生产准入。
 
+## Rust 插件基座
+
+项目按 DeepSeek Harness / Cordis 的服务边界组织，以 Rust 实现生命周期与公共协议；不依赖 TypeScript 运行时。`plugin-runtime` 管理作用域、依赖、服务和资源，`plugin-host` 管理进程，`agent-harness` 负责应用装配。默认 loop/graph 位于独立 `agent-services`，统一 LLM 和存储协议分别位于 `llm-service`、`storage-service`，通用内核不依赖这些可选服务。
+
+知识库由配置绑定业务插件，具体模型 SDK、数据库驱动和知识库算法作为实现接入。现有 Python 模型与存储调用路径使用 Rust 公共协议检查；Rust LLM SDK 另提供真实异步流接口。当前内置 HTTP/Luna 供应商仍使用同步响应，前端尚未提供增量流输出。固定上游版本、所有权、用量语义及接入方式见 [Rust 插件与服务基础](docs/dsh-rust-foundation.md)。
+
 ## 能力
 
 - 原件上传、多格式解析、原文子单元检索与引用定位。
@@ -39,7 +45,7 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 
 正常停止时，在另一终端执行 `New-Item .local/api.stop -ItemType File`；下次启动前移除该标记。宿主等待在途工作与资源清理，异常退出返回非零状态。Linux 可用 `touch .local/api.stop`。HTTP 路由和页面仍由现有 Python 应用提供。
 
-`bootstrap.py` 显式初始化新的本地存储空间，并生成含数据身份的 `.local/storage.json`；已有文件不覆盖。已有旧数据须先按 [存储迁移](docs/storage-capability-cleanup.md) 导入新空间。配置其他后端时，使用 [公共存储配置](docs/storage-plugins-execution-plan.md)，BM25、dense、正文与原件可分别绑定。可选 Compose 只初始化开发 PostgreSQL 账号和扩展，不安装知识库业务表；包含公开开发密码，仅绑定回环地址。
+`bootstrap.py` 显式初始化新的本地存储空间，并生成含数据身份的 `.local/storage.json`；已有文件不覆盖。新的知识库应用不兼容历史业务数据和配置，使用下面的知识库初始化命令创建空空间。切换后端可按 [业务数据重置](docs/storage-reset.md) 创建新的业务空间，旧目录及费用账本不删除。配置其他后端时，使用 [公共存储配置](docs/storage-plugins-execution-plan.md)，BM25、dense、正文与原件可分别绑定。
 
 已有 OpenSearch 数据必须先显式导入，不能只切换环境变量。导入、回退和备份步骤见 [检索存储](docs/search-storage.md)。
 
@@ -50,18 +56,22 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 ## 配置远程提供者
 
 多提供商及 OCR、Embedding、语音、生图接入使用新的 [公共模型服务](docs/model-services.md)，
-配置示例为 `config/models.example.json`。设置 `KB_MODELS_CONFIG` 后，知识库和辅助插件
-共享模型注册表；下述旧配置仍可继续使用。
+配置示例为 `config/models.example.json`。设置 `KB_MODELS_CONFIG` 后，`foundation.llm` 装配提供者和既有物理账本；Rust 统一拥有模型注册与调用状态，知识库通过公开 `llm.service` 合同调用。也可选用下面的 Luna/Google 提供者实现。
 
 将 `config/remote-providers.example.json` 或 `config/vertex-providers.example.json` 复制到 `.local/providers.json`，替换端点、模型和凭据。示例中的模型名称需要你的提供者实际支持，仓库不提供模型账户或额度。
 
 PowerShell 中显式启用后重启服务。
 
 ```powershell
+uv run python scripts/bootstrap.py --application knowledge
 $env:KB_REMOTE_MODELS = '1'
 $env:KB_PROVIDERS_CONFIG = '.local/providers.json'
 uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
+
+知识库默认使用 [`config/applications/knowledge.json`](config/applications/knowledge.json) 的 11 个显式节点：通用 LLM 与存储底座，加上知识库入口、工作流、上下文、会话、权限、权威数据、模型策略、模型领域视图、文档与检索。Rust 根据合同版本、能力及 `bindings` 编译依赖图并管理生命周期。提供者配置位于 `plugins.llm.config`；知识库模型节点只配置路由、策略与应用预算。设置 `KB_APPLICATION_PROFILE` 可选择另一份应用图。职责与适配算法见 [底座与应用架构](docs/foundation-architecture.md)，公开 JSON 和跨语言执行见 [插件合同](docs/plugin-architecture-v4.md)，独立消费者与真实本地 wire 检查见 [验收说明](docs/foundation-acceptance.md)。
+
+默认知识库数据配置为 `.local/storage-knowledge.json`；`KB_STORAGE_CONFIG` 可显式覆盖。初始化命令不会复制旧知识库、索引或会话。没有发生自动迁移，也不会因连接错误清空数据。
 
 上传、索引和问答可能产生付费请求。执行真实验收前冻结输入、明确预算，并核对已有账本。固定交付工厂 `kb_platform.delivery:create_delivery_app` 还要求匹配的交付配置和私有运行目录。Windows 的 `scripts/start_delivery.ps1` 属于该高级交付流程，需要显式提供配置参数；本机交付配置不随仓库发布。
 

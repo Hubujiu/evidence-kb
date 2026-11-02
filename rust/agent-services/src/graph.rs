@@ -180,10 +180,7 @@ struct AcceptRequest {
     route: String,
 }
 
-pub(crate) fn dispatch(
-    command: &str,
-    request: serde_json::Map<String, Value>,
-) -> Result<Value, Error> {
+pub fn dispatch(command: &str, request: serde_json::Map<String, Value>) -> Result<Value, Error> {
     static GRAPHS: OnceLock<Mutex<GraphRegistry>> = OnceLock::new();
     let request = Value::Object(request);
     let mut registry = GRAPHS
