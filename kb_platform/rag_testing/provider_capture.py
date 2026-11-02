@@ -39,54 +39,61 @@ class MeteredTransport(httpx.BaseTransport):
         with ExitStack() as stack:
             try:
                 stack.enter_context(self.ledger.admission())
-            except (ValueError, OSError, sqlite3.Error) as exc:
+            except BaseException as exc:
+                exc.model_sent = False
                 if isinstance(exc, ValueError) and str(exc) in {'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
                     raise CapturePreflightError(str(exc)) from exc
-                raise CaptureAdmissionError(str(exc)) from exc
+                if isinstance(exc, (ValueError, OSError, sqlite3.Error)):
+                    raise CaptureAdmissionError(str(exc)) from exc
+                raise
             return self._handle_admitted(request)
 
     def _handle_admitted(self, request):
-        if self.admission is not None:
-            self.admission.require_available()
         try:
-            pending = self.ledger.summary()['pending_or_unknown']
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            raise CaptureAdmissionError('Physical budget authority is unavailable; no request was sent') from exc
-        if pending:
-            raise CapturePreflightError('UNRESOLVED_PHYSICAL_REQUEST')
-        payload = json.loads(request.content)
-        model = 'messages' in payload
-        resources = dict.fromkeys(self.ledger.caps, 0)
-        resources['model' if model else 'remote_embedding_calls'] = 1
-        resources['input_tokens' if model else 'embedding_input_tokens'] = (
-            estimate_messages(payload['messages'])['tokens'] if model else
-            len(json.dumps(payload, ensure_ascii=False).encode('utf-8')))
-        if model:
-            resources['output_tokens'] = payload.get('max_tokens', 4096)
-        identity = uuid4().hex
-        try:
-            self.ledger.reserve(identity, resources, category=self.category)
-        except (ValueError, OSError, sqlite3.Error) as exc:
-            if isinstance(exc, ValueError) and str(exc) in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST'}:
-                raise CapturePreflightError(str(exc)) from exc
-            raise CaptureAdmissionError(str(exc)) from exc
-        record = {'physical_request_id': identity, 'payload_sha256': digest(payload),
-                  'category': self.category, 'payload': payload, 'context': deepcopy(_context.get()),
-                  'status': 'STARTED', 'reserved': resources}
-        reviews = [{'path': parent['review_path'], 'sha256': parent['review_sha256'],
-                    'unknown_physical_ids': parent['reviewed_unknown_ids']}
-                   for parent in getattr(self.ledger, 'predecessors', []) if parent.get('reviewed_unknown_ids')]
-        if reviews:
-            record['reviewed_predecessors'] = reviews
-        if self.admission is not None:
-            record['provider_scope'] = self.admission.scope_hash
-        target = self.root / (identity + '.json')
+            if self.admission is not None:
+                self.admission.require_available()
+            try:
+                pending = self.ledger.summary()['pending_or_unknown']
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                raise CaptureAdmissionError('Physical budget authority is unavailable; no request was sent') from exc
+            if pending:
+                raise CapturePreflightError('UNRESOLVED_PHYSICAL_REQUEST')
+            payload = json.loads(request.content)
+            model = 'messages' in payload
+            resources = dict.fromkeys(self.ledger.caps, 0)
+            resources['model' if model else 'remote_embedding_calls'] = 1
+            resources['input_tokens' if model else 'embedding_input_tokens'] = (
+                estimate_messages(payload['messages'])['tokens'] if model else
+                len(json.dumps(payload, ensure_ascii=False).encode('utf-8')))
+            if model:
+                resources['output_tokens'] = payload.get('max_tokens', 4096)
+            identity = uuid4().hex
+            try:
+                self.ledger.reserve(identity, resources, category=self.category)
+            except (ValueError, OSError, sqlite3.Error) as exc:
+                if isinstance(exc, ValueError) and str(exc) in {'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST'}:
+                    raise CapturePreflightError(str(exc)) from exc
+                raise CaptureAdmissionError(str(exc)) from exc
+            record = {'physical_request_id': identity, 'payload_sha256': digest(payload),
+                      'category': self.category, 'payload': payload, 'context': deepcopy(_context.get()),
+                      'status': 'STARTED', 'reserved': resources}
+            reviews = [{'path': parent['review_path'], 'sha256': parent['review_sha256'],
+                        'unknown_physical_ids': parent['reviewed_unknown_ids']}
+                       for parent in getattr(self.ledger, 'predecessors', []) if parent.get('reviewed_unknown_ids')]
+            if reviews:
+                record['reviewed_predecessors'] = reviews
+            if self.admission is not None:
+                record['provider_scope'] = self.admission.scope_hash
+            target = self.root / (identity + '.json')
 
-        def save():
-            temporary = target.with_suffix('.tmp')
-            temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
-            temporary.replace(target)
-        save()
+            def save():
+                temporary = target.with_suffix('.tmp')
+                temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+                temporary.replace(target)
+            save()
+        except BaseException as exc:
+            exc.model_sent = False
+            raise
         started = time.perf_counter()
         try:
             response = self.inner.handle_request(request)
@@ -178,10 +185,10 @@ def observe_client(provider, ledger, root, *, category, inner=None, admission_ro
         admission.require_available()
         try:
             return native_attempt(path, payload, headers, key, metadata)
-        except CaptureAdmissionError:
+        except BaseException as error:
 
 
-            if 'physical_request_id' in metadata:
+            if getattr(error, 'model_sent', None) is False and 'physical_request_id' in metadata:
                 with provider._stats_lock:
                     provider._issued_requests -= 1
                 metadata['admission_receipt_id'] = metadata.pop('physical_request_id')

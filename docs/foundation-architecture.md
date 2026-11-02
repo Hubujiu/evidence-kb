@@ -89,7 +89,7 @@ Rust operation catalog 是方法语义的权威定义，包含参数绑定、调
 
 `contract_transfer` 为模型和存储共用的 JSON 分块引擎，使用大小、SHA-256、严格顺序偏移、单次 dispatch 和有界暂存。大值不会绕过单帧 4 MiB 的公共合同上限；未完成上传、完成下载、取消、到期和关闭都释放暂存资源。它不负责业务重试，也不替应用推断操作是否发生。
 
-适配层依据未准入、已派发、已取得结果三个阶段统一投影错误事实，保留 `model_sent`、`physical_request_id`、`preflight_code`、`call_record`、usage 和累计 attempt。`request_id` 保持原合同含义；只有提供者明确观察到的物理身份才进入 `physical_request_id`，不能把逻辑 ID 改名冒充物理事实。结果解码、后置授权或最终分块发布失败仍属于已执行阶段，保留已观察用量；上传容量不足等派发前错误保持零发送。没有供应商 usage 不等于零消耗。已发请求丢失响应后，原账本仍保留预留；应用重启与重复请求不能绕过未决记录。
+适配层用同一个 `model_errors.error_details` / `model_error` 投影提供者事实，保留 `model_sent`、`physical_request_id`、`preflight_code`、`call_record`、usage 和累计 attempt。只有实际执行边界能声明未发送或已经发送；RPC 已开始不证明模型已发送，缺少事实继续保持未知。`request_id` 保持原合同含义；只有提供者明确观察到的物理身份才进入 `physical_request_id`，不能把逻辑 ID 改名冒充物理事实。结果解码、后置授权或最终分块发布失败仍保留已观察用量；请求上传容量不足、端点在 handler 开始前关闭等错误保持零发送，结果下载失败不能反推未发送。没有供应商 usage 不等于零消耗。已发请求丢失响应后，原账本仍保留预留；应用重启与重复请求不能绕过未决记录。参考来源、UNKNOWN 含义与完整边界验收见 [LLM 失败与未知用量](llm-failure-semantics.md)。
 
 会话幂等、原文与发布版本、权限 revision、预算和插件代次分别保留一个权威 owner。通用调用 token 只表示执行与释放所有权，不是第二份账本、事务日志或会话记录。
 

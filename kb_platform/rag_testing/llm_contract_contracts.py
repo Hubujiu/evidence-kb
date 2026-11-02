@@ -6,9 +6,10 @@ from unittest.mock import patch
 
 from kb_platform.agent_model import BudgetLedger
 from kb_platform.agent_provider import ProviderCompletion
-from kb_platform.contract_transfer import MAX_MESSAGE_BYTES
+from kb_platform.contract_transfer import MAX_MESSAGE_BYTES, TransferError
+from kb_platform.knowledge_contracts import ModelEndpoint, domain_call
 from kb_platform.llm_contract import LlmClient, LlmEndpoint, METHODS
-from kb_platform.model_errors import ModelPreflightError, RemoteModelError
+from kb_platform.model_errors import ModelPreflightError, RemoteModelError, TerminalContractError
 from kb_platform.model_sdk import Capability, Media, ModelInfo, ModelRequest, ModelResult
 from kb_platform.model_service import ModelService
 from kb_platform.plugin_contracts import ContractError, ServiceEndpoint
@@ -247,3 +248,133 @@ class LlmContractContracts(unittest.TestCase):
         self.assertEqual(len(adapter.requests), 1)
         self.assertEqual(adapter.cached, {})
         self.assertEqual(endpoint._wire._transfers, {})
+
+    def test_closed_endpoint_rejects_completion_before_adapter_and_attempt(self):
+        adapter = Adapter()
+        _, _, client, endpoint, _ = self.service(adapter)
+        port = client.structured('selected').provider
+        endpoint.close()
+        trace = {'attempt': 0}
+        with self.assertRaisesRegex(ModelPreflightError, 'CONTRACT_WIRE_CLOSED') as caught:
+            port.complete([{'role': 'user', 'content': 'value'}], 10,
+                          purpose='test', key='closed', trace=trace)
+        self.assertIs(caught.exception.model_sent, False)
+        self.assertEqual(trace['attempt'], 0)
+        self.assertEqual(adapter.requests, [])
+
+    def test_lost_rpc_result_does_not_invent_a_provider_send_fact_or_replay(self):
+        adapter = Adapter()
+        _, _, client, _, _ = self.service(adapter)
+        model = client.structured('selected')
+        send = client._wire._send
+
+        def lose_result(request):
+            result = send(request)
+            if request['op'] == 'complete':
+                raise TransferError('CONTRACT_WIRE_RESULT_LOST')
+            return result
+
+        with patch.object(client._wire, '_send', side_effect=lose_result):
+            with self.assertRaisesRegex(RemoteModelError, 'CONTRACT_WIRE_RESULT_LOST') as caught:
+                model.complete([{'role': 'user', 'content': 'value'}], role='test', schema={}, call_context={})
+        self.assertIsNone(getattr(caught.exception, 'model_sent', None))
+        self.assertEqual(caught.exception.call_record['attempts'], 1)
+        self.assertFalse(caught.exception.call_record['usage']['available'])
+        self.assertEqual(model.ledger.snapshot()['unknown_usage_calls'], 1)
+        self.assertGreater(model.ledger.snapshot()['accounted_tokens'], 0)
+        self.assertEqual(len(adapter.requests), 1)
+        self.assertEqual(adapter.cached, {})
+
+    def test_download_failure_cannot_reclassify_completed_operation_as_unsent(self):
+        adapter = Adapter(complete=lambda trace: ProviderCompletion(json.dumps({'value': 'x' * 20000}),
+            'stop', {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}))
+        _, _, client, endpoint, _ = self.service(adapter)
+        model = client.structured('selected')
+        send = client._wire._send
+
+        def close_after_publication(request):
+            result = send(request)
+            if request['op'] == 'complete':
+                endpoint.close()
+            return result
+
+        with patch.object(client._wire, '_send', side_effect=close_after_publication), \
+                patch('kb_platform.contract_transfer.MAX_MESSAGE_BYTES', 4096):
+            with self.assertRaisesRegex(RemoteModelError, 'CONTRACT_WIRE_CLOSED') as caught:
+                model.complete([{'role': 'user', 'content': 'value'}], role='test', schema={}, call_context={})
+        self.assertIsNone(getattr(caught.exception, 'model_sent', None))
+        self.assertEqual(caught.exception.call_record['attempts'], 1)
+        self.assertEqual(model.ledger.snapshot()['unknown_usage_calls'], 1)
+        self.assertGreater(model.ledger.snapshot()['accounted_tokens'], 0)
+        self.assertEqual(len(adapter.requests), 1)
+        self.assertEqual(adapter.cached, {})
+
+    def test_invalid_request_is_known_unsent_at_public_and_direct_boundaries(self):
+        adapter = Adapter()
+        service, _, client, _, _ = self.service(adapter)
+        request = ModelRequest(Capability.CHAT, {'messages': [], 'max_tokens': 10})
+        for invoke in (lambda: service.invoke('selected', request), lambda: client.invoke('selected', request)):
+            with self.subTest(invoke=invoke):
+                with self.assertRaisesRegex(ModelPreflightError, 'INVALID_MODEL_MESSAGES') as caught:
+                    invoke()
+                self.assertIs(caught.exception.model_sent, False)
+        self.assertEqual(adapter.requests, [])
+
+    def test_post_completion_cache_refusal_retains_model_result_facts(self):
+        usage = {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}
+        adapter = Adapter(complete=lambda trace: ProviderCompletion('{"value":42}', 'stop', usage,
+            physical_request_id='completed-before-cache-refusal'))
+        _, _, client, _, _ = self.service(adapter)
+        model = client.structured('selected')
+        with patch.object(adapter, 'cache_put', side_effect=ModelPreflightError('CACHE_WRITE_DENIED')):
+            with self.assertRaisesRegex(ModelPreflightError, 'CACHE_WRITE_DENIED') as caught:
+                model.complete([{'role': 'user', 'content': 'value'}], role='test', schema={}, call_context={})
+        self.assertIs(caught.exception.model_sent, True)
+        self.assertIsNone(caught.exception.preflight_code)
+        self.assertEqual(caught.exception.observed_usage, usage)
+        self.assertEqual(caught.exception.call_record['physical_request_id'], 'completed-before-cache-refusal')
+        self.assertIs(caught.exception.call_record['model_sent'], True)
+        self.assertEqual(caught.exception.call_record['attempts'], 1)
+        self.assertEqual(model.ledger.snapshot()['tokens'], 15)
+        self.assertEqual(model.ledger.snapshot()['unknown_usage_calls'], 0)
+        self.assertEqual(len(adapter.requests), 1)
+
+    def test_terminal_failure_keeps_code_and_usage_through_knowledge_contract(self):
+        usage = {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}
+
+        def fail(trace):
+            error = TerminalContractError('TERMINAL_OUTPUT_REJECTED')
+            error.model_sent, error.observed_usage = True, usage
+            error.physical_request_id = 'terminal-physical-request'
+            raise error
+
+        adapter = Adapter(complete=fail)
+        _, _, client, _, _ = self.service(adapter)
+        model = client.structured('selected')
+        endpoint = ModelEndpoint(model)
+        self.addCleanup(endpoint.close)
+        with self.assertRaises(TerminalContractError) as caught:
+            domain_call(endpoint.complete, {'messages': [{'role': 'user', 'content': 'value'}],
+                'role': 'test', 'schema': {}, 'call_context': {}, 'output_limit': 10})
+        self.assertEqual(caught.exception.code, 'TERMINAL_OUTPUT_REJECTED')
+        self.assertIs(caught.exception.model_sent, True)
+        self.assertEqual(caught.exception.observed_usage, usage)
+        self.assertEqual(caught.exception.physical_request_id, 'terminal-physical-request')
+        self.assertEqual(caught.exception.call_record['attempts'], 1)
+        self.assertEqual(model.ledger.snapshot()['tokens'], 15)
+        self.assertEqual(model.ledger.snapshot()['unknown_usage_calls'], 0)
+        self.assertEqual(len(adapter.requests), 1)
+
+    def test_application_budget_refusal_is_known_unsent(self):
+        adapter = Adapter()
+        _, _, client, _, _ = self.service(adapter)
+        model = client.structured('selected', ledger=BudgetLedger(max_tokens=1))
+        endpoint = ModelEndpoint(model)
+        self.addCleanup(endpoint.close)
+        with self.assertRaisesRegex(RemoteModelError, 'AGENT_TOKEN_BUDGET_EXHAUSTED') as caught:
+            domain_call(endpoint.complete, {'messages': [{'role': 'user', 'content': 'value'}],
+                'role': 'test', 'schema': {}, 'call_context': {}, 'output_limit': 10})
+        self.assertIs(caught.exception.model_sent, False)
+        self.assertEqual(model.ledger.snapshot()['calls'], 0)
+        self.assertEqual(model.ledger.snapshot()['unknown_usage_calls'], 0)
+        self.assertEqual(adapter.requests, [])
