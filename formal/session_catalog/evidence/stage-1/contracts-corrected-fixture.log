@@ -1,0 +1,11 @@
+test_appendonly_rejects_mutation_and_seeded_malformed_content_fails_integrity (kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_appendonly_rejects_mutation_and_seeded_malformed_content_fails_integrity) ... ok
+test_artifact_expired_writer_rejection_preserves_tables (kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_artifact_expired_writer_rejection_preserves_tables) ... ok
+test_artifact_sqlite_failure_rolls_back_and_lost_ack_deduplicates_durable_content (kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_artifact_sqlite_failure_rolls_back_and_lost_ack_deduplicates_durable_content) ... ok
+test_concurrent_artifact_dedup_is_session_scoped_and_uses_canonical_utf8_content (kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_concurrent_artifact_dedup_is_session_scoped_and_uses_canonical_utf8_content) ... ok
+test_create_failure_before_commit_and_lost_ack_are_distinct_after_reopen (kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_create_failure_before_commit_and_lost_ack_are_distinct_after_reopen) ... ok
+test_each_wrong_owner_read_or_mutation_rejects_without_changing_real_tables (kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_each_wrong_owner_read_or_mutation_rejects_without_changing_real_tables) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.458s
+
+OK

@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
+        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -181,7 +181,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
+        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -242,7 +242,7 @@
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation \u2192 consumed/released"
+        "pending reservation → consumed/released"
       ],
       "transitions": [
         "BudgetLedger.reserve",
@@ -700,7 +700,7 @@
         "rust/llm-service/src/registry.rs"
       ],
       "states": [
-        "route Active\u2192Draining\u2192Cleaning\u2192removed/CleanupFailed"
+        "route Active→Draining→Cleaning→removed/CleanupFailed"
       ],
       "transitions": [
         "RoutePhase",
@@ -847,7 +847,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY\u2194WAITING"
+        "READY↔WAITING"
       ],
       "transitions": [
         "transition",
@@ -984,7 +984,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
+        "plan↔tool→compose→verify→repair→verify→deliver→complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1177,7 +1177,7 @@
         "rust/storage-service/src/transaction.rs"
       ],
       "states": [
-        "begin\u2192held\u2192executing\u2192commit/rollback"
+        "begin→held→executing→commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1248,7 +1248,7 @@
         "kb_platform/storage_adapters/values.py"
       ],
       "states": [
-        "Input\u2192Executing\u2192Result\u2192Values / Failed"
+        "Input→Executing→Result→Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1314,7 +1314,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
+        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1376,7 +1376,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent\u2192issued\u2192expired/revoked"
+        "absent→issued→expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1501,7 +1501,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
+        "lexical/dense/source independently staged→verified→sealed→manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1591,7 +1591,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1640,7 +1640,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1713,7 +1713,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
+        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",
@@ -2145,6 +2145,215 @@
           "model_id": "knowledge_postflight_authority"
         }
       ]
+    },
+    {
+      "id": "session_catalog",
+      "status": "partial",
+      "owners": [
+        "kb_platform/session_store.py",
+        "kb_platform/session_storage/schema.py"
+      ],
+      "states": [
+        "absent -> staged create -> committed -> acknowledged or unknown",
+        "artifact absent -> immutable content -> verified read or rejected corruption"
+      ],
+      "transitions": [
+        "SessionStore.create",
+        "SessionStore._owner",
+        "SessionStore.load",
+        "SessionStore.list_sessions",
+        "SessionStore.events",
+        "SessionStore.artifact",
+        "SessionStore.read_artifact"
+      ],
+      "invariants": [
+        "Creation acknowledgement implies committed catalog entry; tenant and principal both gate observations/writes; artifact reads are session scoped and content checked; writes require a valid lease."
+      ],
+      "assumptions": [
+        "Real transaction commit is atomic; SQLite BEGIN IMMEDIATE serializes writers; PostgreSQL FOR UPDATE is a mapping assumption, not new PostgreSQL execution evidence.",
+        "UUID allocation is abstracted to two fresh identities and digest collision resistance to two distinct bodies; corruption is an explicit external fault, never a supported writer mutation.",
+        "Read authorization and integrity linearize at the database read, not at arbitrary later response delivery. Lease validity is supplied by the already modeled SessionWriterLease boundary."
+      ],
+      "exclusions": [
+        "No ownership transfer, storage-grant generation, file-system correctness, hash collision proof, actual authorization service expiry, or artifact retention/GC claim.",
+        "Creation has no client idempotency key: a lost acknowledgement may leave a durable session; a repeated create is not promised to deduplicate."
+      ],
+      "remaining_obligations": [
+        "Unbounded identities/content/event histories and pagination ordering are not proven; arbitrary post-check corruption is outside snapshot observation.",
+        "DurableSessions adapter and commit-acknowledgement/replay composition are the next independent slice; SessionWriterLease and PostflightAuthority models remain unchanged."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "canonical",
+          "sha256": "efa76beb78864d2abb22905be8ecdd1ba086fb34bca6f238de2083efe4e19ebf"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "digest",
+          "sha256": "369c0fba894afef48ddd789f89ec1d1587691c5237631d7f2191e36b31df1c43"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore._owner",
+          "sha256": "2c0f506f9e57a8f9177554b5b2b0f3c2cd9f5788dda2eb1cd5362a0d459a9108"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.create",
+          "sha256": "21a100e4c47e926ea04838b8677f9d1929b7e7497305aa530f6d19d9c2deb1f4"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.load",
+          "sha256": "97eb5f0be2edd8f34464b16ff37f4307cc1e8d2eaba3ac5a9ff0d4ca249f8af7"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.list_sessions",
+          "sha256": "6f0a17182e1c54294b1839b259dca1b199fb5d0957f93822571a01d3304bc0c1"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.events",
+          "sha256": "66c9bc707bba31900541bb7bdaa516d477c5ca9c4c121b979836c5a459c4c2df"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.artifact",
+          "sha256": "55fb2a9126a7ea3d18e7ce24aaf9b71493d8e7fa926cc839f85318fe7bf14159"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.read_artifact",
+          "sha256": "d1b91dd122d47134b18db48170d96692fc832f203ad9deb4090326ea5b4e800c"
+        },
+        {
+          "path": "kb_platform/session_storage/schema.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "ddb319b5e6cdeb457928d3a93ea7e5603bb4c887883f8a03633ba6c63a346c4e"
+        }
+      ],
+      "models": [
+        {
+          "id": "session-catalog",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalog.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "invariants": [
+            "TypeOK",
+            "CreateAcknowledgedDurable",
+            "ArtifactHasSession",
+            "OwnerIsolation",
+            "ArtifactContentChecked",
+            "ArtifactSessionBound",
+            "ArtifactWriterLease"
+          ],
+          "properties": [],
+          "bounds": {
+            "actors": 3,
+            "tenants": 2,
+            "principals": 2,
+            "sessions": 2,
+            "bodies": 2,
+            "artifact_keys": 4
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "session-catalog-tenant",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogTenantBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "OwnerIsolation",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-principal",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogPrincipalBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "OwnerIsolation",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-content",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogContentBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "ArtifactContentChecked",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-key",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogSessionKeyBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "ArtifactSessionBound",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-lease",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogLeaseBypass.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "ArtifactWriterLease",
+          "kind": "negative",
+          "purpose": "Disable one source-mapped catalog/artifact guard."
+        },
+        {
+          "id": "session-catalog-witness-create",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogCreateUnknownWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoCreateUnknownWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior reachability witness, not a seeded runtime defect."
+        },
+        {
+          "id": "session-catalog-witness-dedup",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogArtifactDedupWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoArtifactDedupWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior reachability witness, not a seeded runtime defect."
+        },
+        {
+          "id": "session-catalog-witness-read",
+          "module": "formal/session_catalog/SessionCatalog.tla",
+          "config": "formal/session_catalog/SessionCatalogAuthorizedReadWitness.cfg",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "expected_invariant": "NoAuthorizedReadWitness",
+          "kind": "negative",
+          "purpose": "Positive-behavior reachability witness, not a seeded runtime defect."
+        }
+      ],
+      "known_limitations": []
     }
   ]
 }
