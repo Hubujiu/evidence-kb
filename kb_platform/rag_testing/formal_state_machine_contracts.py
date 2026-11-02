@@ -56,12 +56,25 @@ class FormalRegistryContracts(unittest.TestCase):
             self.assertEqual([], registry_violations(root, registry))
             target = root / owners[0]
             original = target.read_text('utf-8')
-            self.assertIn("if 'ledger_settlement' in record:", original)
-            target.write_text(original.replace("if 'ledger_settlement' in record:", 'if False:', 1), encoding='utf-8')
-            bindings[owners[0]]['sha256'] = source_digest(root, bindings[owners[0]])
-            errors = registry_violations(root, registry)
-            self.assertTrue(any('physical settlement:' in error for error in errors))
-            self.assertFalse(any('source review drift' in error for error in errors))
+            mutants = (("if 'ledger_settlement' in record:", 'if False:'),
+                       ("if 'http_status' in record:", 'if True:'),
+                       ("body.get('usage') if model and isinstance(body, dict) else None", "record.get('usage')"),
+                       ('                preserve_observed(error)\n', ''),
+                       ('                    preserve_observed(capture_error)\n', ''),
+                       ('            record.update(http_status=response.status_code, response=body)\n'
+                        "            settle(state, actual, None if state == 'COMPLETE' else f'HTTP_{response.status_code}')",
+                        "            settle(state, actual, None if state == 'COMPLETE' else f'HTTP_{response.status_code}')\n"
+                        '            record.update(http_status=response.status_code, response=body)'),
+                       ('\n        except BaseException as exc:\n            exc.model_sent = False\n',
+                        '\n        except BaseException as exc:\n            exc.model_sent = True\n'))
+            for before, after in mutants:
+                with self.subTest(mutation=before):
+                    self.assertIn(before, original)
+                    target.write_text(original.replace(before, after, 1), encoding='utf-8')
+                    bindings[owners[0]]['sha256'] = source_digest(root, bindings[owners[0]])
+                    errors = registry_violations(root, registry)
+                    self.assertTrue(any('physical settlement:' in error for error in errors))
+                    self.assertFalse(any('source review drift' in error for error in errors))
 
     def modeled_fixture(self, root):
         registry = self.fixture(root)

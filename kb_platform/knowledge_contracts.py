@@ -147,15 +147,14 @@ def domain_call(call, request):
     except ContractError as error:
         details = error.details
         if details.get('kind') == 'model':
-            from .model_errors import RemoteModelError
+            from .model_errors import model_error
 
-            converted = RemoteModelError(error.code, details.get('status'),
-                                         retry_after_seconds=details.get('retry_after_seconds'))
+            converted = model_error({'code': error.code, **details})
         else:
             converted = PlatformError(error.code, str(error), error.status_code)
-        for name in ('call_record', 'model_sent', 'physical_request_id', 'preflight_code'):
-            if details.get(name) is not None:
-                setattr(converted, name, details[name])
+            for name in ('call_record', 'model_sent', 'physical_request_id', 'preflight_code'):
+                if details.get(name) is not None:
+                    setattr(converted, name, details[name])
         converted.details = details
         raise converted from error
 
@@ -376,13 +375,9 @@ class ModelEndpoint:
                 self._pending.pop(token, None)
             if not hasattr(error, 'code'):
                 raise
-            details = {'kind': 'model', 'status': getattr(error, 'status', None),
-                       'retry_after_seconds': getattr(error, 'retry_after_seconds', None)}
-            for field in ('model_sent', 'physical_request_id', 'preflight_code'):
-                if getattr(error, field, None) is not None:
-                    details[field] = getattr(error, field)
-            if hasattr(error, 'call_record'):
-                details['call_record'] = error.call_record
+            from .model_errors import error_details
+
+            details = {'kind': 'model', **error_details(error)}
             raise ContractError(error.code, str(error), status_code=502, details=details) from error
 
     def settle(self, request):

@@ -152,6 +152,72 @@ def _named(body, symbol):
     return selected
 
 
+def _capture_boundary_violations(function):
+    errors = []
+    def dispatch(node):
+        return _same(node, 'self.inner.handle_request')
+
+    attempts = [node for node in function.body if isinstance(node, ast.Try) and _calls(node.body, dispatch)]
+    preflights = [node for node in function.body if isinstance(node, ast.Try) and len(node.handlers) == 1
+                 and node.handlers[0].name == 'exc' and len(node.handlers[0].body) == 2
+                 and _shape(node.handlers[0].body) == _shape(ast.parse('exc.model_sent = False\nraise').body)]
+    valid = len(attempts) == len(preflights) == 1 and len(_calls(function.body, dispatch)) == 1
+    if valid:
+        preflight, attempt = preflights[0], attempts[0]
+        valid = (function.body.index(preflight) < function.body.index(attempt)
+                 and preflight.handlers[0].type is not None
+                 and _same(preflight.handlers[0].type, 'BaseException')
+                 and not preflight.orelse and not preflight.finalbody
+                 and not _calls(preflight.body, lambda node: dispatch(node) or
+                     _same(node, 'settle') or _same(node, 'preserve_observed')))
+        markers = [node for node in ast.walk(function) if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Attribute) and target.attr == 'model_sent'
+                           for target in node.targets)]
+        valid = valid and markers == [preflight.handlers[0].body[0]]
+    if not valid:
+        errors.append('known-zero-send marker must remain confined to the separate pre-dispatch block')
+    expected = ast.parse("def preserve_observed(error):\n"
+        "    if 'http_status' in record:\n"
+        "        body = record.get('response')\n"
+        "        usage = body.get('usage') if model and isinstance(body, dict) else None\n"
+        "        preserve_result_failure(error, usage, physical_request_id=identity)\n").body[0]
+    helpers = [node for node in function.body if isinstance(node, ast.FunctionDef)
+               and node.name == 'preserve_observed']
+    canonical = [node for node in ast.walk(function) if isinstance(node, ast.Call)
+                 and _same(node.func, 'preserve_result_failure')]
+    if len(helpers) != 1 or _shape(helpers[0]) != _shape(expected) or len(canonical) != 1:
+        errors.append('observed-result boundary must preserve only raw provider usage after an observed response')
+    helper = _named(function.body, 'settle')
+    if helper is not None and len(helper.body) > 1 and isinstance(helper.body[1], ast.Try):
+        handlers = helper.body[1].handlers
+        if (len(handlers) != 1 or not handlers[0].body or
+                _shape(handlers[0].body[0]) != _shape(ast.parse('preserve_observed(error)').body[0])):
+            errors.append('settlement failure must preserve observed result before bare rethrow')
+    else:
+        errors.append('observed-result settlement handler missing')
+    if len(attempts) == 1:
+        attempt = attempts[0]
+        snapshots = [index for index, node in enumerate(attempt.body) if isinstance(node, ast.Expr)
+                     and _same(node.value, 'record.update(http_status=response.status_code, response=body)')]
+        settlements = [index for index, node in enumerate(attempt.body) if isinstance(node, ast.Expr)
+                       and isinstance(node.value, ast.Call) and _same(node.value.func, 'settle')]
+        if len(snapshots) != 1 or len(settlements) != 1 or snapshots[0] >= settlements[0]:
+            errors.append('observed response facts must be captured before entering fallible settlement')
+        handlers = attempt.handlers
+        if (len(handlers) != 1 or len(handlers[0].body) < 3 or _shape(handlers[0].body[2]) !=
+                _shape(ast.parse('preserve_observed(exc)').body[0])):
+            errors.append('post-response and capture-publication failures must retain observed result facts')
+        final = ast.parse("record['elapsed_seconds'] = time.perf_counter() - started\n"
+            "failure = sys.exception() if failed else None\n"
+            "try:\n    save()\n"
+            "except Exception as capture_error:\n"
+            "    if failure is None:\n        preserve_observed(capture_error)\n        raise\n"
+            "    failure.add_note('Physical capture persistence failed: ' + type(capture_error).__name__)\n").body
+        if _shape(attempt.finalbody) != _shape(final):
+            errors.append('capture publication must retain observed result or note, never replace the original error')
+    return errors
+
+
 def _boolean_contains(node, expression, operator):
     return (_same(node, expression) or isinstance(node, ast.BoolOp) and isinstance(node.op, operator)
             and any(_boolean_contains(value, expression, operator) for value in node.values))
@@ -205,6 +271,8 @@ def settlement_violations(root: Path) -> list[str]:
                        if isinstance(node, ast.FunctionDef) and node.name == method_name]
             found = (_owner_violations(methods[0], exception_type) if len(methods) == 1
                      else ['settlement owner missing or duplicated'])
+            if class_name == 'MeteredTransport' and len(methods) == 1:
+                found.extend(_capture_boundary_violations(methods[0]))
         except (OSError, SyntaxError, UnicodeError) as error:
             found = ['settlement owner unreadable: ' + type(error).__name__]
         errors.extend(f'physical settlement: {path}:{class_name}.{method_name}: {message}' for message in found)

@@ -12,6 +12,9 @@ from ..database_contracts import DatabaseError
 from ..persistence_local import local_database, read_frozen_ledger, sealed_local_ledger
 from ..persistence_schema import budget_calls, budget_config, budget_guard, budget_schema
 
+
+BUDGET_READ_ERRORS = (OSError, ValueError, KeyError, TypeError, sqlite3.Error, SQLAlchemyError, DatabaseError)
+
 @contextmanager
 def producer_guard(path, *, allow_sealed=False):
     target = Path(str(Path(path).resolve()) + '.producer.sqlite3')
@@ -222,3 +225,16 @@ class BudgetLedger:
                 "unknown_usage_requests": sum(u is None or set(json.loads(u)) != set(self.caps) for _, _, u in normalized),
                 "pending_or_unknown": sum(s in ("STARTED", "UNKNOWN") for s, _, _ in normalized),
                 "over_budget": any(totals[k] > cap for k, cap in self.caps.items())}
+
+    def status_snapshot(self):
+        try:
+            current = self.summary()
+        except BUDGET_READ_ERRORS:
+            return {'current': None, 'cumulative': None, 'admission_pending_or_unknown': None,
+                    'reviewed_unknown_requests': 0, 'blocked': True,
+                    'blocked_reason': 'BUDGET_READ_UNAVAILABLE'}
+        return {'current': current, 'cumulative': current,
+                'admission_pending_or_unknown': current['pending_or_unknown'],
+                'reviewed_unknown_requests': 0,
+                'blocked': bool(current['pending_or_unknown'] or current['over_budget']),
+                'blocked_reason': None}

@@ -67,7 +67,8 @@
         "kb_platform/rag_testing/sdk_gateway.py",
         "kb_platform/rag_testing/reader_diagnostic.py",
         "kb_platform/rag_testing/pageindex_probe.py",
-        "kb_platform/rag_testing/pageindex_full_query.py"
+        "kb_platform/rag_testing/pageindex_full_query.py",
+        "kb_platform/model_errors.py"
       ],
       "states": [
         "absent → STARTED → COMPLETE / ERROR / UNKNOWN",
@@ -86,14 +87,17 @@
         "Never send without durable reservation; UNKNOWN or STARTED retains reservation; finish exactly once; a failed reserve acknowledgment does not prove physical send; no blind replay. DB write/guard serialization and external HTTP are distinct atomicity domains.",
         "Send requires acknowledged durable reservation; never replay the same physical identity.",
         "Call settlement at most once even after lost commit acknowledgement; preserve original commit failure identity.",
-        "Unknown or STARTED charges retain modeled reservation; acknowledged settlement matches durable state."
+        "Unknown or STARTED charges retain modeled reservation; acknowledged settlement matches durable state.",
+        "ObservedSettlementFacts keeps raw partial/known provider usage in reported failure facts; post-send errors cannot become known-unsent, independently of durable commit knowledge."
       ],
       "assumptions": [
         "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model.",
         "Producer admission is serialized; receipt and budget identities are paired, not equal strings.",
         "Two physical requests for one logical request, one crash, one resource: reservation 2, known usage 1, cap 4.",
         "Acknowledged commit is durable; unknown commit has both committed and rolled-back branches. Active or late commits are not modeled.",
-        "Only the registered finite physical-budget and capture-observer abstractions are checked; uncovered owners and transitions remain explicit."
+        "Only the registered finite physical-budget and capture-observer abstractions are checked; uncovered owners and transitions remain explicit.",
+        "PR31 pre-dispatch failures can establish zero sends while reservation commit remains unknown; response/capture observation and durable settlement are separate facts.",
+        "ObservedSettlementFacts abstracts one physical invocation and four raw-usage classes. It models exception fact publication separately from durable budget and capture results; seeded controls are not claims of byte-identical historical source execution."
       ],
       "exclusions": [
         "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory.",
@@ -118,7 +122,7 @@
           "path": "kb_platform/rag_testing/provider_capture.py",
           "language": "python",
           "symbol": "MeteredTransport._handle_admitted",
-          "sha256": "37e8741f2ad0848f5d216afcc6797986f05516391301afddc57b98236bad0308"
+          "sha256": "85d8fcdbb1240f8628336e99d15c27472102e28a01da3ce22ef0c92d311f23a5"
         },
         {
           "path": "kb_platform/embeddings.py",
@@ -136,7 +140,7 @@
           "path": "kb_platform/model_http.py",
           "language": "python",
           "symbol": "OpenAICompatibleAdapter.invoke",
-          "sha256": "7aca4fb4a257f49625d294b1542a3cb8a9832b33aa277ad2628ea71ff3fb7dde"
+          "sha256": "a9047f20ed44f5cd7a713d865dc17dc22e58b6eefff77c68fb35be69a71786c0"
         },
         {
           "path": "kb_platform/provider_runtime.py",
@@ -209,6 +213,30 @@
           "language": "python",
           "symbol": "PDFAdapter.run",
           "sha256": "3af258c140cd6197b4919919c43c1476bb64dcc0cefb8d0f073268c8bd0b4926"
+        },
+        {
+          "path": "kb_platform/model_errors.py",
+          "language": "python",
+          "symbol": "preserve_result_failure",
+          "sha256": "27595e5aa1e384455f45b80fdaaa1260fcb07512a1a0a6838285895ad96559ec"
+        },
+        {
+          "path": "kb_platform/rag_testing/provider_capture.py",
+          "language": "python",
+          "symbol": "MeteredTransport.handle_request",
+          "sha256": "58de2396b22ec0dfae9e42339ef0fcf2af02aa583a84c2534633d219567a4e3c"
+        },
+        {
+          "path": "kb_platform/rag_testing/provider_capture.py",
+          "language": "python",
+          "symbol": "observe_client",
+          "sha256": "791ad78c0f6e5b1272a871ffcf8b71644fada18f37a91e5869dbfeb754af7349"
+        },
+        {
+          "path": "kb_platform/rag_testing/provider_capture.py",
+          "language": "python",
+          "symbol": "MeteredTransport._handle_admitted.preserve_observed",
+          "sha256": "2bf0bd2fb0fa492d7e289fe5813813b96bd903b8b3127a49ca6e6282eb9d660b"
         }
       ],
       "models": [
@@ -267,6 +295,54 @@
           },
           "timeout_seconds": 30,
           "heap_mb": 128
+        },
+        {
+          "id": "observed_settlement_facts",
+          "module": "formal/physical_budget/ObservedSettlementFacts.tla",
+          "config": "formal/physical_budget/ObservedSettlementFacts.cfg",
+          "invariants": [
+            "TypeOK",
+            "SendRequiresReserveAck",
+            "ReserveUnknownRetainsAuthority",
+            "KnownZeroSendAccounting",
+            "PostSendNeverReportedUnsent",
+            "ObservedResponseReported",
+            "ObservedUsagePreserved",
+            "NoInventedUsage",
+            "AccountingConservative",
+            "PriorFailureNotMasked"
+          ],
+          "properties": [],
+          "bounds": {
+            "physical_requests": 1,
+            "usage_classes": [
+              "missing",
+              "unknown",
+              "partial",
+              "known"
+            ],
+            "reservation_results": [
+              "ack",
+              "rollback",
+              "lost_commit",
+              "lost_rollback"
+            ],
+            "settlement_results": [
+              "ack",
+              "rollback",
+              "lost_commit",
+              "lost_rollback"
+            ],
+            "capture_results": [
+              "published",
+              "failed"
+            ],
+            "known_prompt_tokens": 1,
+            "known_completion_tokens": 1,
+            "known_total_tokens": 2
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
         }
       ],
       "negative_controls": [
@@ -285,6 +361,22 @@
           "expected_invariant": "NoWorkflowReleaseWithoutConfirmedSettlement",
           "timeout_seconds": 30,
           "heap_mb": 128
+        },
+        {
+          "id": "observed_settlement_drop_usage",
+          "module": "formal/physical_budget/ObservedSettlementFacts.tla",
+          "config": "formal/physical_budget/ObservedSettlementFactsDropUsage.cfg",
+          "expected_invariant": "ObservedUsagePreserved",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "observed_settlement_false_unsent",
+          "module": "formal/physical_budget/ObservedSettlementFacts.tla",
+          "config": "formal/physical_budget/ObservedSettlementFactsFalseUnsent.cfg",
+          "expected_invariant": "PostSendNeverReportedUnsent",
+          "timeout_seconds": 60,
+          "heap_mb": 256
         }
       ],
       "remaining_obligations": [
@@ -294,7 +386,9 @@
         "Cross-layer unsent admission persistence failures and PR31 outcome projection require separate validation.",
         "Model batch rollover and reviewed unknowns, lease expiry and concurrent producers.",
         "Model file receipt concurrency, stale finish/reconcile, full cross-store identity recovery, provider admission and cancellation.",
-        "Model active/late commits, partial/multidimensional usage and actual usage exceeding reservations."
+        "Model active/late commits, partial/multidimensional usage and actual usage exceeding reservations.",
+        "Raw provider-usage propagation through the public failure boundary is covered by deterministic contracts, not by the scalar finite accounting model; unknown/partial provider usage and cross-store identity reconciliation remain distinct obligations.",
+        "ObservedSettlementFacts does not prove arbitrary token values, all provider usage schemas, multi-attempt aggregation, process crash before exception publication, cross-store identity alignment, or actual network/SQLite durability. Existing no-second-settlement and capture-consumer models remain separate."
       ]
     },
     {
@@ -333,13 +427,19 @@
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "LinkedBudgetLedger.cumulative_summary",
-          "sha256": "1aaa845b5c3d4df5012676155053ed25df0f0713ba5aed1f7e0f328759578054"
+          "sha256": "8bc9ce672c0c1b1b9ea7bf3cd6ddbf15e5f0c232a3859d22697dbbd10b56ae6d"
         },
         {
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "ReviewedPredecessorLedger.cumulative_summary",
-          "sha256": "a9010aceb4d2a3a25b78dbea5c09e0627169c1c4697e9dec1f040d704b1d8ad6"
+          "sha256": "ebd3cf86acc17f17991ec25e5723c08f6e14cb8b58ccbf98f238fde46d786410"
+        },
+        {
+          "path": "kb_platform/rag_testing/budget_batches.py",
+          "language": "python",
+          "symbol": "ReviewedPredecessorLedger._review_summary",
+          "sha256": "ffa7746235cec3d7556a89ee943dbd77be7b9cd3620b27b648dd9fdc0e5c2282"
         }
       ],
       "models": [],
@@ -439,7 +539,7 @@
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "BudgetLedger.reserve",
-          "sha256": "2357ea31650462f417b1d4022ce52bf589bfae062d46d5740b9d389881b712f1"
+          "sha256": "fa3509f0aff7395119d5f37623b1d9373fa6e369698d4f34d9e001c67f81cd05"
         },
         {
           "path": "kb_platform/agent_model.py",
@@ -451,7 +551,7 @@
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "AgentModel.complete",
-          "sha256": "aa2a137fa0d11394b9aa21aa7868896298a280b77ec83943621a5862587c8c69"
+          "sha256": "f1f33d434ac14332452b2a1393f5dfc62bf203827a292120e4def670abe4d85d"
         },
         {
           "path": "kb_platform/agent_model.py",
@@ -1415,7 +1515,7 @@
           "path": "kb_platform/contract_transfer.py",
           "language": "python",
           "symbol": "JsonEndpoint.execute",
-          "sha256": "eeef3078396601c772b98a8c5f245d171af19604f78c5b1bcf9bf9835f569c34"
+          "sha256": "1ef6cbfc1375770cd12b34ad516d92550f0759112990700852fcf37f1d395d3d"
         },
         {
           "path": "kb_platform/contract_transfer.py",
@@ -1427,7 +1527,7 @@
           "path": "kb_platform/contract_transfer.py",
           "language": "python",
           "symbol": "JsonClient._call",
-          "sha256": "acbc112e1da50988c06943f1e3c9ff440729ddc9165133f89f008f7b51bfcf96"
+          "sha256": "1592a38c7eed38286c22b331f20b9bdea75d35fa4ce21129ac167172edb30727"
         },
         {
           "path": "kb_platform/storage_object_wire.py",
@@ -1440,6 +1540,18 @@
           "language": "python",
           "symbol": "ObjectTransferEndpoint.close",
           "sha256": "bb2bf9ba0768cf2d6f1d6cfabcc0569dac3cc352ddb8f5a6211b79389f403b9e"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonEndpoint._execute",
+          "sha256": "b0ad073359b8a42ac24f59b65db7163f094ce227de3487c7ad0032888856115b"
+        },
+        {
+          "path": "kb_platform/contract_transfer.py",
+          "language": "python",
+          "symbol": "JsonClient._dispatch",
+          "sha256": "de92a0af92927696e26e2343653e62d0be2f9d8b5f70f19647a09a9cc72d4c02"
         }
       ],
       "models": [],
@@ -1713,7 +1825,8 @@
         "kb_platform/provider_admission.py",
         "kb_platform/delivery.py",
         "kb_platform/provider_runtime.py",
-        "kb_platform/remote.py"
+        "kb_platform/remote.py",
+        "kb_platform/model_errors.py"
       ],
       "states": [
         "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
@@ -1729,7 +1842,8 @@
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model.",
+        "Canonical model_errors module anchors preserve known-unsent vs observed-response facts; this is source review-drift coverage, not a provider-admission model."
       ],
       "exclusions": [
         "No model or formal proof exists for this inventory entry yet.",
@@ -1746,7 +1860,7 @@
           "path": "kb_platform/provider_admission.py",
           "language": "python",
           "symbol": "ProviderAdmission.require_available",
-          "sha256": "34e5d3ecd6d9075c1b0b97fc77e0ba7e595b0c853da088fb01d1beddd24a0469"
+          "sha256": "84ec750df0b82f73a4284f7d42babf4c16829ac8a73125d418bdd29a8f8c3ea4"
         },
         {
           "path": "kb_platform/provider_admission.py",
@@ -1770,13 +1884,19 @@
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "classify_failure",
-          "sha256": "3c2f067657f416d0625091df29d3ebf9858af75c4aab2f189fb4ddbeb0195273"
+          "sha256": "4adc66c521182b504c421700567b44159cf359595ba8f96ec5156830a58632ef"
         },
         {
           "path": "kb_platform/remote.py",
           "language": "python",
           "symbol": "GoogleEmbeddingProvider._post",
           "sha256": "4f6eb4f2e5cbd0068852763c994817a17c9caaaa7f11189bef6141aa37476bc7"
+        },
+        {
+          "path": "kb_platform/model_errors.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "a73f6a45159f6c0f92f02c9f521778470dbee7f530b9cace64e728e50a7384ec"
         }
       ],
       "models": [],
@@ -1900,7 +2020,7 @@
           "path": "kb_platform/knowledge_contracts.py",
           "language": "python",
           "symbol": "ModelEndpoint.complete",
-          "sha256": "5abf9663da57dfcbff2d5d0672a37fca867f2e2b251e17b1b2d859cab1469753"
+          "sha256": "4d88494cb04af4727e3a66d503926b33c8109e93db2c39de3873686c3d7a6894"
         },
         {
           "path": "kb_platform/knowledge_contracts.py",

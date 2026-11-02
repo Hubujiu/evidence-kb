@@ -91,3 +91,83 @@ Delivery preparation/next-case guards, delivery summaries and final bindings, SD
 Real-SQLite regression contracts execute those consumers after both committed/no-acknowledgement and rolled-back settlements. SDK recovery tests verify no cache admission and no HTTP transport construction for unconfirmed terminal records. Structural-lint mutants remove each of the seven registered consumer gates or replace the shared predicate with status-only checking; each is rejected. This finite companion model does not establish arbitrary recovery graphs, user edits to capture files, or cross-store atomicity.
 
 A directory-only guard still cannot establish capture completeness when the initial capture write produced no file at all. That pre-existing observation limit is not repaired by a predicate over present files; the durable ledger remains the admission authority. PR #31 separately preserves known-zero-send facts for that pre-send failure without erasing its STARTED reservation. No change here claims those two authorities have become one atomic store.
+
+## PR31 outcome-boundary integration (same PR34 feature)
+
+This revision applies the PR34 feature delta onto immutable dependency
+[`956b71ba3c0f36a080e315210e26b66a5add9dca`](https://github.com/Hubujiu/evidence-kb/commit/956b71ba3c0f36a080e315210e26b66a5add9dca)
+(PR31 + PR32, tree `d22c7878393386c91ad63a246a2718c7da3d7ab6`). The original
+PR34 head `b6b703c1d48e8423786bd0b9dcef73fc016e2cf9` and its evidence remain historical inputs.
+This is not an all-feature integration or a claim that the dependency base passed separately.
+
+The PR31 pre-dispatch try/except AST is unchanged. It can report `model_sent=False`
+when reservation acknowledgement or initial capture publication fails, **without**
+asserting that the physical reservation rolled back. The PR34 settlement helper and
+post-dispatch try/except are deliberately outside that block. Their only finish call,
+UNCONFIRMED marker, consumer gates and original-error bare rethrow remain intact.
+Neither provider dispatch nor settlement is retried.
+
+The first combined-source contracts exposed a separate observation loss: a received
+response and provider usage survived in capture JSON but not in the settlement exception.
+The public SDK therefore could not carry those observed facts into global/turn accounting.
+[The pre-fix run](evidence/pr31-boundary-before.log.gz) records five assertion failures
+(including committed and rolled-back settlement outcomes), while zero-send reservation
+uncertainty and missing-response UNKNOWN paths pass. An earlier local attempt lacked a
+native library and is recorded outside the repository as infrastructure ERROR, not this
+semantic counterexample. The pre-fix raw log is losslessly gzip-encoded (zero timestamp)
+to preserve its original trailing whitespace; decompressed SHA-256 is
+`ebff0583837c0176a7a7ce082d3cdb482f57a89310c7ba7f52a74e1e6deb6110`.
+
+The narrow `preserve_observed` helper calls the existing canonical
+`model_errors.preserve_result_failure` only when capture has observed HTTP response facts.
+It passes the original provider `response['usage']` dictionary for model responses, never
+the physical ledger's resource vector. Missing or partial usage remains missing/partial;
+it is not normalized into fabricated zero tokens. The physical identity attached here is
+the capture/budget identity; the separate provider-receipt UUID need not be equal.
+No canonical error field or normalizer implementation changes in this revision.
+
+Concrete sealed, offline contracts use actual SQLite transactions and controlled
+`httpx.MockTransport` responses through `ModelService`, `LlmEndpoint`, the serialized
+public SDK and `AgentModel` accounting. They cover:
+
+- reserve acknowledgement loss: zero sends/attempts and zero global/turn usage, while
+  the durable physical STARTED reservation remains unresolved when commit occurred;
+- finish acknowledgement loss or rollback: exactly one send and one finish, response
+  and raw usage retained, UNCONFIRMED capture rejected by workflow consumers;
+- known complete usage: one upper-level call and 15 observed tokens; absent/partial
+  usage: one call and conservative unknown-usage accounting, not zero-cost success;
+- final capture write failure: same settlement exception object/cause plus a note,
+  or the capture error itself when settlement succeeded; received usage survives both;
+- no response: UNKNOWN physical outcome and unknown upper-level usage, never known-zero-send.
+
+Mandatory AST lint checks the separate pre-dispatch marker scope, response-only/raw-usage
+helper, propagation on settlement and capture failures, and original-error preservation.
+Mutants expand the zero-send scope over dispatch, add a false post-send marker, remove
+propagation, or substitute ledger resources for provider usage. The formal-registry
+contract refreshes the mutated source hash and still requires rejection. The original
+single-settlement and all seven consumer-gate negative checks remain.
+
+The focused verification runs 73 contracts with zero failures/errors/skips; its initial
+full result is [saved here](evidence/pr31-boundary-targeted.log). The reused PR32 native
+library was built from an identical Rust source tree to this dependency/candidate
+(SHA-256 `64ce43188c42fcb00f041acb92f5999a3a3b8b3d433f3be26e2ea36a5cdf2a3c`);
+this is explicitly reuse, not a fresh candidate-native build. New-head CI must build its
+own native artifacts. Actual unified `--formal-only` also passes all 11 registered/control
+runs, including both unchanged physical models and both named negatives above. All six
+physical-budget TLA/CFG input files remain byte-identical to the original PR34 feature.
+
+[The source-anchor review](pr31-anchor-review.md) validates the 11 reviewed dependency
+updates against original snapshots, explicitly reviews the combined capture hash, retains
+three extracted-owner additions and adds four boundary anchors. The 21 unaffected
+bindings remain unchanged. `model_errors.<module>` includes `ERROR_FIELDS`; unrelated
+families remain unmodeled. No blanket hash refresh or expanded TLA proof claim is made.
+
+### Independent observed-facts model follow-up
+
+The stage above was frozen locally as `b692040`. A subsequent review correctly noted
+that the original two models do not track usage reported to the caller. The new
+[ObservedSettlementFacts model](ObservedSettlementFacts.md) supplies that independent
+state and two separately named negative controls, while preserving all six old TLA/CFG
+files byte-for-byte. Current actual formal verification is 14 runs, not the earlier
+stage's 11. This bounded extension does not turn seeded variants into historical-source
+counterexamples or expand the old models' claims retroactively.

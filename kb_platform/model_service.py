@@ -158,9 +158,10 @@ class ModelService:
         request = validate_request(request)
         remaining = request.call_context.get('remaining_seconds')
         scope = execution_scope(deadline_seconds=remaining) if remaining is not None else nullcontext()
-        received, result = False, None
+        started, received, result = False, False, None
         try:
             with scope, self._admit(name, request.capability, expected=expected, request=request) as (adapter, info, call):
+                started = True
                 result = adapter.invoke(request)
                 received = True
                 validate_result(request, result, info=info)
@@ -176,6 +177,8 @@ class ModelService:
         except Exception as error:
             if received:
                 preserve_result_failure(error, getattr(result, 'usage', None), result=result)
+            elif not started:
+                error.model_sent = False
             raise
 
     def completion_port(self, name, *, expected=None):
@@ -193,9 +196,10 @@ class ModelService:
     def _complete_port(self, name, expected, port, messages, output_limit, *, purpose, key, trace):
         request = validate_request(ModelRequest(Capability.CHAT,
                                    {'messages': messages, 'max_tokens': output_limit}, trace))
-        received, result = False, None
+        started, received, result = False, False, None
         try:
             with self._admit(name, Capability.CHAT, expected=expected, request=request) as (_, info, call):
+                started = True
                 result = port.complete(request.payload['messages'], output_limit, purpose=purpose, key=key, trace=trace)
                 received = True
                 if isinstance(result.content, str):
@@ -207,6 +211,8 @@ class ModelService:
             if received:
                 preserve_result_failure(error, getattr(result, 'usage', None), result=result,
                                         physical_request_id=trace.get('last_physical_request_id'))
+            elif not started:
+                error.model_sent = False
             raise
 
     def structured(self, name, *, policy=None, ledger=None):

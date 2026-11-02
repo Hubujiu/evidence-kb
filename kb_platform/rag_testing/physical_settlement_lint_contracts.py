@@ -134,3 +134,18 @@ class PhysicalSettlementLintContracts(unittest.TestCase):
                 else:
                     target.write_text(content, 'utf-8')
                 self.assertTrue(any('owner unreadable' in error for error in settlement_violations(root)))
+
+    def test_dispatch_inside_zero_send_handler_and_false_postsend_marker_are_rejected(self):
+        def encompass_dispatch(method, helper, attempt):
+            preflight = next(node for node in method.body if isinstance(node, ast.Try) and node is not attempt)
+            method.body.remove(attempt)
+            preflight.body.append(attempt)
+
+        def mark_unsent_after_send(method, helper, attempt):
+            helper.body[1].handlers[0].body.insert(0, ast.parse('error.model_sent = False').body[0])
+
+        for mutate in (encompass_dispatch, mark_unsent_after_send):
+            with self.subTest(mutation=mutate.__name__):
+                root = self.fixture()
+                self.mutate(root, OWNERS[0], mutate)
+                self.assertTrue(any('known-zero-send marker' in error for error in settlement_violations(root)))

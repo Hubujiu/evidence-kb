@@ -31,6 +31,8 @@ class Failure:
 
 def classify_failure(error=None, *, status=None):
 
+    if getattr(error, 'model_sent', None) is False:
+        return Failure('admission', False, 'ERROR')
     if getattr(error, 'code', '') in {'PROVIDER_RATE_LIMIT_WAIT_EXCEEDED', 'PROVIDER_RETRY_WAIT_EXCEEDED',
             'PROVIDER_REQUEST_UNRESOLVED', 'PROVIDER_REQUEST_ALREADY_SETTLED', 'PROVIDER_CIRCUIT_OPEN',
             'PROVIDER_DEADLINE_EXCEEDED', 'PROVIDER_REQUEST_LIMIT', 'PROVIDER_CANCELLED'}:
