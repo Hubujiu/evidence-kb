@@ -1,0 +1,102 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 57 and seed 3137144361857160136 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 5] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-llm-stream-formal/formal/llm_stream/LlmStreamKnowledge.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module LlmStreamKnowledge
+Starting... (2026-11-02 11:39:37)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 11:39:37.
+Error: Invariant NoLostKnownUsage is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ cancelled = FALSE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 0
+/\ published = 0
+/\ dispatched = FALSE
+/\ closed = FALSE
+/\ produced = 0
+/\ terminal = "none"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<>>
+/\ knownAtTerminal = 0
+/\ lease = TRUE
+
+State 2: <Dispatch line 17, col 13 to line 21, col 43 of module LlmStreamKnowledge>
+/\ cancelled = FALSE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 0
+/\ published = 0
+/\ dispatched = TRUE
+/\ closed = FALSE
+/\ produced = 0
+/\ terminal = "none"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<>>
+/\ knownAtTerminal = 0
+/\ lease = TRUE
+
+State 3: <Emit line 22, col 12 to line 28, col 74 of module LlmStreamKnowledge>
+/\ cancelled = FALSE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 0
+/\ published = 0
+/\ dispatched = TRUE
+/\ closed = FALSE
+/\ produced = 1
+/\ terminal = "none"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<"validTool">>
+/\ knownAtTerminal = 0
+/\ lease = TRUE
+
+State 4: <Emit line 22, col 12 to line 28, col 74 of module LlmStreamKnowledge>
+/\ cancelled = FALSE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 1
+/\ published = 0
+/\ dispatched = TRUE
+/\ closed = FALSE
+/\ produced = 2
+/\ terminal = "none"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<"validTool", "usageHigh">>
+/\ knownAtTerminal = 0
+/\ lease = TRUE
+
+State 5: <Consume line 34, col 12 to line 55, col 94 of module LlmStreamKnowledge>
+/\ cancelled = TRUE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 1
+/\ published = 0
+/\ dispatched = TRUE
+/\ closed = FALSE
+/\ produced = 2
+/\ terminal = "error"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<"usageHigh">>
+/\ knownAtTerminal = 1
+/\ lease = TRUE
+
+251 states generated, 174 distinct states found, 124 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 4 (minimum is 1, the maximum 10 and the 95th percentile is 10).
+Finished in 00s at (2026-11-02 11:39:37)
