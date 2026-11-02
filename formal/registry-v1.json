@@ -1882,6 +1882,204 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "object_transfer_ownership",
+      "status": "partial",
+      "owners": [
+        "kb_platform/storage_object_wire.py"
+      ],
+      "states": [
+        "endpoint open/closed admission; unused/upload/download/retired handle; held finish/close lock; storage effect versus client observation"
+      ],
+      "transitions": [
+        "ObjectTransferEndpoint._begin",
+        "ObjectTransferEndpoint._capacity",
+        "ObjectTransferEndpoint._discard",
+        "ObjectTransferEndpoint.execute",
+        "ObjectTransferEndpoint.close",
+        "ObjectTransferClient.put",
+        "ObjectTransferClient.read",
+        "ObjectTransferClient._cancel"
+      ],
+      "invariants": [
+        "Declared capacity and ordered offsets; validated uploads before put; finish owns stream through actual put and discards on all outcomes; client never automatically replays an ambiguous finish; download final read releases handle; close never rolls back an existing physical effect."
+      ],
+      "assumptions": [
+        "Current built-in files/S3 stores do not reenter the same endpoint; RLock serialization across provider calls excludes concurrent-thread close/cancel/expiry, not arbitrary same-thread callbacks.",
+        "Finite 0/2-byte upload and 2-byte existing-object download, one-byte chunks, two unique non-reused handles, capacity 3 bytes, monotonic idle clock 0/1/expired; exact production limits and malformed wire responses tested on implementation.",
+        "Native streams may raise on close: pop precedes cleanup attempt; a failed endpoint close rejects new admission but may leave other handles until explicit retry. No assertion says arbitrary failed close released its OS resource."
+      ],
+      "exclusions": [
+        "Generic JSON dispatch is a different owner (PR41): it releases its lock around handler work and must not be conflated with this held-lock endpoint.",
+        "No product defect found in the reviewed bounds; leak/replay mutants are intentionally unsafe controls, while success/ambiguous-effect controls establish reachability, not production bugs.",
+        "No fairness/liveness, byte-cryptography proof, OS/provider durability, network exactly-once delivery, process restart recovery, malicious/reentrant provider, UUID collision or unbounded multi-client refinement proof."
+      ],
+      "remaining_obligations": [
+        "Refine arbitrary numbers of handles and clients, real monotonic time and cleanup exceptions; prove source-to-model relation beyond source digest lint and real deterministic contracts.",
+        "Audit new third-party providers for callback/reentry before relying on held RLock; built-in providers currently have no endpoint callback.",
+        "No safety statement equates absent acknowledgment to absent object. External reconciliation/retry policy remains outside this client."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "_Transfer",
+          "sha256": "ea33317f981431a4c809e1574593eab55aec359ecd61271e843fbfa3a06fa4ff"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferEndpoint.__init__",
+          "sha256": "e3dd6291ad62c380aaf6652301ea1329e43822a717ff5d9732683d7a318fc9db"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferEndpoint._discard",
+          "sha256": "852dd8cd38aac6de2f1d234658e801786a6b456a89025b3738b9ad37ffbb1ad5"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferEndpoint._capacity",
+          "sha256": "0959d6004a56bf66b241d3aeacf222e9b8bcc47267149bdf828e769b01f0a388"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferEndpoint._begin",
+          "sha256": "09dc6ca0de98319d9f11a0794fc2a54c71a92a8b08b8f3b68f179b555ac91b99"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferEndpoint.execute",
+          "sha256": "555727cf2e7ff2e87e5c574f4fabc859aa376d2bee529ed25b62e7478aa5eb24"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferEndpoint.close",
+          "sha256": "bb2bf9ba0768cf2d6f1d6cfabcc0569dac3cc352ddb8f5a6211b79389f403b9e"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferClient.__init__",
+          "sha256": "fa1261f05e1a6c12928eb49c2f20126a2b25de1d90bc41c91a11b8a2c3fc55f3"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferClient._cancel",
+          "sha256": "f4cfa6b5822b2916ae341af07b5a52eaa52eca2c5598143d507462fdded090ae"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferClient.put",
+          "sha256": "28d9c26698e6ea997f41815e1036a1b15c27a28fb906d9988a8cf0a4dbf4468f"
+        },
+        {
+          "path": "kb_platform/storage_object_wire.py",
+          "language": "python",
+          "symbol": "ObjectTransferClient.read",
+          "sha256": "14aca959755763c04ad42fcc1138d93f2ffc598c70a461b8896f9d4ebde300b6"
+        }
+      ],
+      "models": [
+        {
+          "module": "formal/object_transfer/ObjectTransferOwnership.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "object-transfer-ownership",
+          "config": "formal/object_transfer/ObjectTransferOwnership.cfg",
+          "invariants": [
+            "TypeOK",
+            "BoundedCapacity",
+            "OrderedOffsets",
+            "FinishOwnsStream",
+            "TerminalHandleReleased",
+            "NoUnverifiedPut",
+            "ClientSingleAttempt",
+            "AcknowledgmentSound",
+            "DownloadReleased"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 2,
+            "upload_bytes": 2,
+            "download_bytes": 2,
+            "chunk_bytes": 1,
+            "aggregate_bytes": 3,
+            "idle_clock_buckets": 3,
+            "cleanup_faults": 1
+          }
+        },
+        {
+          "module": "formal/object_transfer/ObjectTransferOwnership.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "object-transfer-ownership-empty",
+          "config": "formal/object_transfer/ObjectTransferEmpty.cfg",
+          "invariants": [
+            "TypeOK",
+            "BoundedCapacity",
+            "OrderedOffsets",
+            "FinishOwnsStream",
+            "TerminalHandleReleased",
+            "NoUnverifiedPut",
+            "ClientSingleAttempt",
+            "AcknowledgmentSound",
+            "DownloadReleased"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 2,
+            "upload_bytes": 0,
+            "download_bytes": 2,
+            "chunk_bytes": 1,
+            "aggregate_bytes": 3,
+            "idle_clock_buckets": 3,
+            "cleanup_faults": 1
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/object_transfer/ObjectTransferOwnership.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "object-transfer-leak-mutant",
+          "config": "formal/object_transfer/LeakFinishedHandle.cfg",
+          "expected_invariant": "TerminalHandleReleased"
+        },
+        {
+          "module": "formal/object_transfer/ObjectTransferOwnership.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "object-transfer-replay-mutant",
+          "config": "formal/object_transfer/ReplayAmbiguous.cfg",
+          "expected_invariant": "ClientSingleAttempt"
+        },
+        {
+          "module": "formal/object_transfer/ObjectTransferOwnership.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "object-transfer-success-witness",
+          "config": "formal/object_transfer/SuccessfulTransferWitness.cfg",
+          "expected_invariant": "NotSuccessfulTransfer"
+        },
+        {
+          "module": "formal/object_transfer/ObjectTransferOwnership.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "object-transfer-ambiguous-effect-witness",
+          "config": "formal/object_transfer/AmbiguousEffectWitness.cfg",
+          "expected_invariant": "NotAmbiguousEffect"
+        }
+      ]
     }
   ]
 }
