@@ -164,7 +164,7 @@ def compile_model_plugins(profile, catalog):
         key = _generated_key('budget', row['id'])
         base = next(spec for spec in specs if spec.key == 'models.budget')
         additions.append(replace(base, key=key,
-            storage_slots=(StorageSlot(row['config']['database_slot'], GUARDED_RELATIONAL_V1),)))
+            requires=(*base.requires, StorageSlot(row['config']['database_slot'], GUARDED_RELATIONAL_V1))))
         row['use'] = key
     selected['plugins'].extend(entries)
     by_spec = {spec.key: spec for spec in (*specs, *additions)}

@@ -74,22 +74,22 @@ def _freeze(value):
 class PluginSpec:
     key: str
     provides: tuple[str, ...]
-    requires: tuple[str, ...]
+    requires: tuple[str | StorageSlot, ...]
     mount: Callable
     version: str = '1'
     concurrency: str = 'concurrent'
     config_schema: dict | None = None
     config_check: Callable | None = None
     config_inputs: Callable | None = None
-    storage_slots: tuple[StorageSlot, ...] = ()
 
     def __post_init__(self):
         object.__setattr__(self, 'provides', tuple(self.provides))
         object.__setattr__(self, 'requires', tuple(self.requires))
-        object.__setattr__(self, 'storage_slots', tuple(self.storage_slots))
-        if (any(not isinstance(slot, StorageSlot) for slot in self.storage_slots) or
-                len({slot.name for slot in self.storage_slots}) != len(self.storage_slots)):
-            raise ValueError('INVALID_PLUGIN_STORAGE_SLOTS')
+        if any(not isinstance(requirement, (str, StorageSlot)) for requirement in self.requires):
+            raise ValueError('INVALID_PLUGIN_REQUIREMENTS')
+        names = [item.name if isinstance(item, StorageSlot) else item for item in self.requires]
+        if any(not name for name in names) or len(set(names)) != len(names):
+            raise ValueError('INVALID_PLUGIN_REQUIREMENTS')
         if self.config_schema is not None:
             Draft202012Validator.check_schema(self.config_schema)
             object.__setattr__(self, 'config_schema', deepcopy(self.config_schema))
@@ -275,6 +275,8 @@ class PluginHost:
             self._validate_config(spec, entry.get('config', {}))
             if entry.get('disabled'):
                 continue
+            if any(not isinstance(requirement, str) for requirement in spec.requires):
+                raise PluginError('UNRESOLVED_PLUGIN_REQUIREMENTS', spec.key)
             entries[plugin_id] = (spec, entry.get('config', {}))
             manifests.append({'id': plugin_id, 'version': spec.version, 'provides': list(spec.provides),
                 'requires': list(spec.requires), 'config': entry.get('config', {}),

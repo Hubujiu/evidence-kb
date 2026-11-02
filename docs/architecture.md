@@ -14,7 +14,7 @@
 
 ## 公共存储与业务所有权
 
-`storage_sdk` 定义六类接口与扩展合同，不依赖宿主、知识库或具体驱动。SQLAlchemy Core 是结构化关系合同的中立表达式类型，厂商类型和编译器只在适配器中。`storage_plugins.compile_storage_plugins` 将实例、具名 export 和槽位配置编译为 registry、instance、bound 和消费者依赖，交给原 Rust 宿主管理。`storage_service` 负责领域合同、授权和绑定，不另建生命周期状态机。`PluginSpec.storage_slots` 允许可信插件声明所需接口，`require_storage` 返回受合同限制的句柄。根应用和独立 core 读取 `KB_STORAGE_CONFIG`，独立应用也能注入自己的 provider catalog。
+`storage_sdk` 定义六类接口与扩展合同，不依赖宿主、知识库或具体驱动。SQLAlchemy Core 是结构化关系合同的中立表达式类型，厂商类型和编译器只在适配器中。`storage_plugins.compile_storage_plugins` 将实例、具名 export 和槽位配置编译为 registry、instance、bound 和消费者依赖，交给原 Rust 宿主管理。`storage_service` 负责领域合同、授权和绑定，不另建生命周期状态机。`PluginSpec.requires` 中的类型化存储需求 允许可信插件声明所需接口，`require_storage` 返回受合同限制的句柄。根应用和独立 core 读取 `KB_STORAGE_CONFIG`，独立应用也能注入自己的 provider catalog。
 
 公共模型和公共存储都是可选基础服务。第三方可直接声明依赖自己的适配器或服务；Rust 宿主仍检查一般依赖和生命周期。一个 PostgreSQL 提供商可以导出多个合同，Redis 只导出基础 KV 与 TTL 扩展。合同缺失或版本不符拒绝绑定，不能按数据库品牌推测能力。
 

@@ -139,8 +139,7 @@ class BlobStorageContracts(unittest.TestCase):
     def test_host_registry_provider_binding_and_independent_consumer(self):
         def mount(ctx, config):
             ctx.provide('tasks', require_storage(ctx, 'objects'))
-        spec = PluginSpec('tasks', ('tasks',), (), mount,
-                          storage_slots=(StorageSlot('objects', OBJECT_V1),))
+        spec = PluginSpec('tasks', ('tasks',), (StorageSlot('objects', OBJECT_V1),), mount)
         providers = default_storage_providers()
         configuration = initialize_configuration({
             'version': 2, 'application_id': 'project-a',
@@ -164,8 +163,7 @@ class BlobStorageContracts(unittest.TestCase):
             ctx.provide(ctx.plugin_id, require_storage(ctx, 'objects'))
 
         names = ('project-a', 'project-b')
-        specs = tuple(PluginSpec(name, (name,), (), mount,
-                                storage_slots=(StorageSlot('objects', OBJECT_V1),)) for name in names)
+        specs = tuple(PluginSpec(name, (name,), (StorageSlot('objects', OBJECT_V1),), mount) for name in names)
         providers = default_storage_providers()
         configuration = initialize_configuration({
             'version': 2, 'application_id': 'shared-host',

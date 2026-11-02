@@ -9,6 +9,7 @@ from kb_platform.settings import Settings
 from kb_platform.storage_cache_plugins import stage_cache_plugins
 from kb_platform.storage_catalog import default_storage_providers
 from kb_platform.storage_plugins import storage_plugins
+from kb_platform.storage_sdk import StorageSlot
 
 
 def render():
@@ -40,9 +41,10 @@ def render():
                   '| --- | --- | --- | --- | --- |'])
     for group, _, specs in groups:
         for spec in sorted(specs, key=lambda item: item.key):
-            slots = ', '.join(slot.name + ': ' + slot.contract.key for slot in spec.storage_slots)
+            slots = ', '.join(slot.name + ': ' + slot.contract.key for slot in spec.requires
+                              if isinstance(slot, StorageSlot))
             lines.append(f'| {group} | `{spec.key}` | {", ".join(spec.provides) or "无"} | '
-                         f'{", ".join(spec.requires) or "无"} | {slots or "无"} |')
+                         f'{", ".join(item for item in spec.requires if isinstance(item, str)) or "无"} | {slots or "无"} |')
     lines.extend(['', '消费者声明存储合同与可选预算槽位，生成的真实依赖由 Rust 宿主检查；装配层不补厂商约束。',
                   '合同 SDK 与注册器不强制第三方业务使用公共服务；模型和存储各自检查领域语义。', ''])
     return '\n'.join(lines), count

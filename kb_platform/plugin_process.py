@@ -223,11 +223,11 @@ class _Write:
 
 
 class ProcessTransport:
-    def __init__(self, package, *, journal, timeout, identity):
+    def __init__(self, package, *, journal, timeout, identity, manifest=None):
         if type(timeout) not in {int, float} or not 0 < timeout <= 300:
             raise PluginError('INVALID_PROCESS_TIMEOUT')
         self.package, self.timeout = Path(package).resolve(), timeout
-        self.manifest = _document(self.package / 'plugin.json')
+        self.manifest = _document(self.package / 'plugin.json') if manifest is None else manifest
         self.identity, self.session = identity, uuid4().hex
         self.journal = Path(journal).resolve()
         self.journal.mkdir(parents=True, exist_ok=True)
@@ -264,7 +264,8 @@ class ProcessTransport:
             self._process.stdout = BufferedReader(self._process.stdout)
             self._reader = Thread(target=self._read, daemon=True)
             self._reader.start()
-        response = self.request('handshake', capabilities=self.manifest['services'])
+        response = self.request('handshake', capabilities=self.manifest['services'],
+            **({'configuration': self.manifest['configuration']} if 'configuration' in self.manifest else {}))
         if (not isinstance(response, dict) or response.get('protocol') != PROTOCOL
                 or response.get('services') != self.manifest['services']
                 or not isinstance(response.get('runtime'), dict)

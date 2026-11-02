@@ -13,7 +13,7 @@ from .storage_service import StorageService
 
 
 def require_storage(ctx, slot):
-    declared = {item.name: item for item in ctx.spec.storage_slots}
+    declared = getattr(ctx, '_storage_requirements', {})
     name = slot.name if isinstance(slot, StorageSlot) else slot
     if (not isinstance(name, str) or name not in declared
             or isinstance(slot, StorageSlot) and declared[name] != slot):
@@ -76,7 +76,7 @@ def compile_storage_plugins(profile, catalog, configuration, *, provider_catalog
         raise ValueError('UNKNOWN_STORAGE_CONSUMER')
     planned, ownership = [], {}
     for consumer, row in by_id.items():
-        declared = {slot.name: slot for slot in by_spec[row['use']].storage_slots}
+        declared = {slot.name: slot for slot in by_spec[row['use']].requires if isinstance(slot, StorageSlot)}
         configured = bindings.get(consumer, {})
         if not isinstance(configured, dict) or set(configured) != set(declared):
             raise ValueError('STORAGE_SLOT_CONFIGURATION_MISMATCH')
@@ -203,12 +203,15 @@ def _binding_plugin(key, marker, name, slot, space, target, consumer):
 
 def _consumer_plugin(spec, key, mapping):
     frozen = MappingProxyType(dict(mapping))
+    requirements = MappingProxyType({item.name: item for item in spec.requires if isinstance(item, StorageSlot)})
 
     def mount(ctx, config):
         ctx._storage_slots = frozen
+        ctx._storage_requirements = requirements
         return spec.mount(ctx, config)
 
-    return replace(spec, key=key, requires=tuple(dict.fromkeys((*spec.requires, *frozen.values()))), mount=mount)
+    requires = tuple(item for item in spec.requires if isinstance(item, str))
+    return replace(spec, key=key, requires=tuple(dict.fromkeys((*requires, *frozen.values()))), mount=mount)
 
 
 def _key(prefix, *parts):

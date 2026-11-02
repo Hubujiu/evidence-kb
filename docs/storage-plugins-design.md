@@ -70,7 +70,7 @@ def mount(ctx, config):
 	cache = require_storage(ctx, CACHE)
 	cache.put_expiring("request:123", b"payload", ttl_seconds=60)
 
-PLUGIN = PluginSpec("example.consumer", (), (), mount, storage_slots=(CACHE,))
+PLUGIN = PluginSpec("example.consumer", (), (CACHE,), mount)
 ```
 
 `compile_storage_plugins(profile, catalog, configuration, provider_catalog=...)` 将声明和配置编译为已有宿主的静态依赖。生成的依赖顺序为 `storage.service`、`storage.instance.*`、`storage.bound.*`、消费者。实例依赖公共注册服务并向其注册，注册服务不反向依赖所有提供商。一个实例导出多个接口时，资源只有一个关闭所有者。

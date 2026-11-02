@@ -74,6 +74,10 @@ pub struct Completion {
 #[derive(Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Command {
+    RuntimeCompose {
+        application: crate::composition::Application,
+        catalog: Vec<crate::composition::Definition>,
+    },
     RuntimeValidate {
         plugins: Vec<Manifest>,
         #[serde(default)]

@@ -125,6 +125,46 @@ class HostIntegration(unittest.TestCase):
         self.assertEqual(document['application'], result['result']['echo'])
         self.assertNotEqual(result['runtime_owner_pid'], result['result']['worker_pid'])
 
+    def test_contract_application_boots_without_python_factory_or_local_runtime(self):
+        empty = {'type': 'object', 'additionalProperties': False}
+        text = {'type': 'string'}
+        fixture = ROOT / 'examples/contract-application'
+        document = {'version': 1,
+            'worker': [sys.executable, '-B', '-m', 'kb_platform.contract_worker'], 'cwd': str(ROOT),
+            'application': {
+                'root': str(self.directory), 'request': {},
+                'application': {'version': 1, 'plugins': {
+                    'api': {'implementation': 'app', 'version': '1', 'config': {'prefix': 'Hello '}},
+                    'provider': {'implementation': 'provider', 'version': '1', 'config': {}}},
+                    'bindings': {'api': {'source': {'plugin': 'provider', 'export': 'value'}}},
+                    'entrypoint': {'plugin': 'api', 'export': 'server'}},
+                'catalog': [
+                    {'implementation': 'app', 'version': '1',
+                     'command': [sys.executable, '-B', str(fixture / 'worker.py')],
+                     'provides': {'server': {'id': 'application.run', 'major': 1}},
+                     'requires': {'source': {'contract': {'id': 'greeting', 'major': 1}}}},
+                    {'implementation': 'provider', 'version': '1',
+                     'command': [sys.executable, '-B', str(fixture / 'provider.py')],
+                     'provides': {'value': {'id': 'greeting', 'major': 1}}, 'requires': {}}],
+                'contracts': [
+                    {'id': 'application.run', 'major': 1, 'methods': {'run': {'request': empty, 'response': text}}},
+                    {'id': 'greeting', 'major': 1, 'methods': {'get': {'request': empty, 'response': text}}}],
+                'schemas': [
+                    {'implementation': 'app', 'version': '1', 'schema': {
+                        'type': 'object', 'properties': {'prefix': text}, 'required': ['prefix'],
+                        'additionalProperties': False}},
+                    {'implementation': 'provider', 'version': '1', 'schema': empty}]}}
+        profile = self.directory / 'contract-profile.json'
+        profile.write_text(json.dumps(document), 'utf-8')
+        environment = {**os.environ, 'KB_AGENT_KERNEL_LIBRARY': str(self.directory / 'missing.dll')}
+        completed = subprocess.run([os.environ['KB_PLUGIN_HOST_BINARY'], '--profile', str(profile)],
+            cwd=ROOT, env=environment, text=True, encoding='utf-8', capture_output=True, timeout=35, check=False)
+        self.capture(completed.returncode, completed.stdout, completed.stderr)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['result'], 'Hello world')
+
     def test_native_extension_import_during_boot_with_open_protocol_stdin(self):
         document = self.successful(self.launch('native_array_import', no_library=True))
         self.assertEqual(document['result']['values'], [0, 1, 2, 3])

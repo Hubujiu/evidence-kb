@@ -71,6 +71,8 @@ AGENT_DEPENDENCIES = {
                                   'model_plugins', 'storage_catalog', 'storage_plugins', 'storage_sdk',
                                   'storage_cache_plugins', 'model_provider_plugins'}),
     'plugin_process': frozenset({'plugin_host', 'plugin_native'}),
+    'plugin_contracts': frozenset({'plugin_host', 'plugin_native', 'plugin_process'}),
+    'contract_worker': frozenset({'host_protocol', 'host_worker', 'plugin_contracts'}),
     'model_service': frozenset({'agent_engine', 'agent_model', 'model_errors'}),
     'agent_tool_registry': frozenset({'agent_protocol'}),
     'agent_builtin_tools': frozenset({'agent_tools', 'agent_tool_registry', 'agent_history'}),

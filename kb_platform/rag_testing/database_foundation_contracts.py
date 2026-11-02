@@ -442,8 +442,8 @@ class DatabasePluginContracts(unittest.TestCase):
             database.seal()
             ctx.provide(config['service'], database)
 
-        return (PluginSpec('fixture.tasks.a', ('tasks.a',), (), mount, storage_slots=(self.primary,)),
-                PluginSpec('fixture.tasks.b', ('tasks.b',), (), mount, storage_slots=(self.primary,)))
+        return (PluginSpec('fixture.tasks.a', ('tasks.a',), (self.primary,), mount),
+                PluginSpec('fixture.tasks.b', ('tasks.b',), (self.primary,), mount))
 
     def profile(self):
         return {'version': 1, 'plugins': [
@@ -493,9 +493,9 @@ class DatabasePluginContracts(unittest.TestCase):
                                             provider_catalog=self.providers())
 
     def test_catalog_rejects_duplicate_and_empty_storage_slots(self):
-        for slots in ((self.primary, self.primary), ('primary',), (self.primary, None)):
-            with self.subTest(slots=slots), self.assertRaisesRegex(ValueError, 'INVALID_PLUGIN_STORAGE_SLOTS'):
-                PluginSpec('fixture.invalid', (), (), lambda ctx, config: None, storage_slots=slots)
+        for slots in ((self.primary, self.primary), (123,), (self.primary, None)):
+            with self.subTest(slots=slots), self.assertRaisesRegex(ValueError, 'INVALID_PLUGIN_REQUIREMENTS'):
+                PluginSpec('fixture.invalid', (), slots, lambda ctx, config: None)
         with self.assertRaisesRegex(ValueError, 'INVALID_STORAGE_SLOT'):
             StorageSlot('', RELATIONAL_V1)
 

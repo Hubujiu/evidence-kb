@@ -53,9 +53,11 @@ def _client_routes():
 def _storage(selected, catalog, settings, environment, *, storage_configuration=None, provider_catalog=None):
     from .storage_catalog import default_storage_providers
     from .storage_plugins import compile_storage_plugins
+    from .storage_sdk import StorageSlot
 
     by_spec = {spec.key: spec for spec in catalog}
-    needs_storage = any(by_spec[row['use']].storage_slots for row in selected['plugins'] if not row.get('disabled'))
+    needs_storage = any(isinstance(item, StorageSlot) for row in selected['plugins'] if not row.get('disabled')
+                        for item in by_spec[row['use']].requires)
     if storage_configuration is None:
         path = environment.get('KB_STORAGE_CONFIG') or (getattr(settings, 'storage_file', None) if needs_storage else None)
         if path is not None:
