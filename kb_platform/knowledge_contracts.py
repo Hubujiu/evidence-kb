@@ -359,11 +359,14 @@ class ModelEndpoint:
     def complete(self, request):
         token = uuid4().hex
         with self._lock:
-            expired = [key for key, (deadline, _) in self._pending.items() if deadline < monotonic()]
+            expired = [key for key, (deadline, envelope) in self._pending.items()
+                       if envelope is not None and deadline < monotonic()]
             for key in expired:
                 del self._pending[key]
             if len(self._pending) >= 64:
-                raise ContractError('MODEL_VALIDATION_CAPACITY', 'Too many pending model validations', status_code=503)
+                raise ContractError('MODEL_VALIDATION_CAPACITY', 'Too many pending model validations',
+                    status_code=503, details={'model_sent': False,
+                                             'call_record': {'attempts': 0, 'model_sent': False}})
             self._pending[token] = (monotonic() + 900, None)
         try:
             envelope = self._model.complete(**request, cache_result=False)

@@ -278,6 +278,9 @@ def source_quality_violations(root: Path) -> list[str]:
             module = relative.removesuffix('.py').replace('/', '.')
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
+            if relative == 'kb_platform/knowledge_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in model_receipt_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_capacity_outcome_violations(tree))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -291,6 +294,59 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def model_receipt_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    candidates = [node.value for method in methods for node in ast.walk(method)
+                  if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                      and target.id == 'expired' for target in node.targets)]
+    expected = {'envelope is not None', 'deadline < monotonic()'}
+
+    def conjuncts(node):
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
+            return {value for child in node.values for value in conjuncts(child)}
+        return {ast.unparse(node)}
+
+    if len(candidates) == 1 and isinstance(candidates[0], ast.ListComp):
+        candidate = candidates[0]
+        if len(candidate.generators) == 1:
+            generator = candidate.generators[0]
+            conditions = {value for condition in generator.ifs for value in conjuncts(condition)}
+            if (ast.unparse(generator.iter) == 'self._pending.items()'
+                    and ast.unparse(generator.target) == '(key, (deadline, envelope))'
+                    and ast.unparse(candidate.elt) == 'key' and expected <= conditions):
+                return []
+    return ['model receipt expiry must retain in-flight placeholders and only prune expired completed envelopes']
+
+
+def model_capacity_outcome_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    guards = [node for method in methods for node in ast.walk(method)
+              if isinstance(node, ast.If) and ast.unparse(node.test) == 'len(self._pending) >= 64']
+    invocations = [node for method in methods for node in ast.walk(method)
+                   if isinstance(node, ast.Call) and ast.unparse(node.func) == 'self._model.complete']
+    if (len(guards) == len(invocations) == 1 and guards[0].lineno < invocations[0].lineno
+            and len(guards[0].body) == 1 and isinstance(guards[0].body[0], ast.Raise)):
+        call = guards[0].body[0].exc
+        if isinstance(call, ast.Call) and ast.unparse(call.func) == 'ContractError':
+            for keyword in call.keywords:
+                if keyword.arg == 'details':
+                    try:
+                        details = ast.literal_eval(keyword.value)
+                    except (ValueError, TypeError):
+                        break
+                    if (isinstance(details, dict) and details.get('model_sent') is False
+                            and isinstance(details.get('call_record'), dict)
+                            and type(details['call_record'].get('attempts')) is int
+                            and details['call_record']['attempts'] == 0
+                            and details['call_record'].get('model_sent') is False):
+                        return []
+    return ['model receipt capacity refusal must expose known-unsent zero attempts before model invocation']
 
 
 def offline_bootstrap_violations(tree: ast.AST) -> list[str]:

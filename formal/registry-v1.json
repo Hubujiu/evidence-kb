@@ -1671,13 +1671,14 @@
     },
     {
       "id": "cache_evidence",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/rag_testing/cache.py",
         "kb_platform/knowledge_contracts.py"
       ],
       "states": [
-        "cache absent/indexed/payload-present-or-lost"
+        "cache absent/indexed/payload-present-or-lost (not yet modeled)",
+        "model receipt absent/reserved/ready/consumed"
       ],
       "transitions": [
         "StageCache.put",
@@ -1691,12 +1692,13 @@
         "Exact immutable dependency key + content hash + current auth; TTL disappearance is miss, never budget reset; one-shot actor-bound retrieval continuation; result cached only after successful validation/confirmation."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "ModelReceiptSlots: three fresh nonces, two slots, each nonce used for at most one complete call; no guessing of unpublished receipt nonces.",
+        "Host leases serialize close after active complete/settle invocations drain; direct concurrent endpoint close is outside this checked contract.",
+        "Expiry is the existing strict deadline < monotonic boundary; an active completion may exceed receipt TTL. Individual provider timeouts are not a universal bound."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No proof of network transport, real clocks, nonce entropy, provider execution deadlines, host lease implementation or Python-to-TLA refinement.",
+        "StageCache and EvidenceEndpoint remain inventoried but unmodeled in this first receipt-only stage."
       ],
       "source_bindings": [
         {
@@ -1727,17 +1729,119 @@
           "path": "kb_platform/knowledge_contracts.py",
           "language": "python",
           "symbol": "ModelEndpoint.complete",
-          "sha256": "5abf9663da57dfcbff2d5d0672a37fca867f2e2b251e17b1b2d859cab1469753"
+          "sha256": "ad07d4b296dc72c1af077acb9ccda449b054f320662c4e43195fd752e2aa370e"
         },
         {
           "path": "kb_platform/knowledge_contracts.py",
           "language": "python",
           "symbol": "ModelEndpoint.settle",
           "sha256": "69615a702c47762f784103735e3bf3994bac118482dc5bf0ab95c42acbe0f474"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "ModelEndpoint.close",
+          "sha256": "eb7a247ea6cb7f7f204ef61ec765c69a99879d8cc22681855a0abdf70222035e"
+        },
+        {
+          "path": "kb_platform/rag_testing/model_receipt_contracts.py",
+          "language": "python",
+          "symbol": "ModelReceiptContracts",
+          "sha256": "b360237a7a443bdb6f66037c0d1e3f2beeb04122ceebfd7ddc74cafaf71255f7"
+        },
+        {
+          "path": "kb_platform/rag_testing/model_receipt_contracts.py",
+          "language": "python",
+          "symbol": "ModelReceiptLintContracts",
+          "sha256": "e5e92516234fef5a4d4cd34b4a145ee58c334ff724ab3d735b9f7c6c09358e7c"
+        },
+        {
+          "path": "scripts/check_project.py",
+          "language": "python",
+          "symbol": "model_receipt_violations",
+          "sha256": "77c1c32507882bb3a489806dfcf6641423dac46ba269544e709cc76de921a34b"
+        },
+        {
+          "path": "kb_platform/rag_testing/model_receipt_contracts.py",
+          "language": "python",
+          "symbol": "ModelCapacityOutcomeContracts",
+          "sha256": "656ec0b9da35f3b56d3d35108e15cccd884dc74ff63c91319c2bd0f98e75c667"
+        },
+        {
+          "path": "scripts/check_project.py",
+          "language": "python",
+          "symbol": "model_capacity_outcome_violations",
+          "sha256": "e4e15c12c51485553bfd916a0b2bc4ff60cb488538f71bd46da9af9bbb5645f4"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "model_receipt_slots",
+          "module": "formal/cache_evidence/ModelReceiptSlots.tla",
+          "config": "formal/cache_evidence/ModelReceiptSlots.cfg",
+          "invariants": [
+            "TypeOK",
+            "ReservationRetained",
+            "CapacityBound",
+            "ConfirmedReadyOnly",
+            "ConsumedNeverReappears",
+            "ClosedOwnsNothing"
+          ],
+          "properties": [],
+          "bounds": {
+            "nonces": 3,
+            "capacity": 2,
+            "clock_classes": 2,
+            "completions_per_nonce": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "model_capacity_refusal",
+          "module": "formal/cache_evidence/CapacityRefusal.tla",
+          "config": "formal/cache_evidence/CapacityRefusal.cfg",
+          "invariants": [
+            "TypeOK",
+            "RefusalNeverDispatches",
+            "RefusalReportsNoAttempt"
+          ],
+          "properties": [],
+          "bounds": {
+            "slots": 2,
+            "callers": 1,
+            "dispatches": 1,
+            "failure_events": 1
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "model_receipt_expired_inflight",
+          "module": "formal/cache_evidence/ModelReceiptSlots.tla",
+          "config": "formal/cache_evidence/ModelReceiptSlotsNegative.cfg",
+          "expected_invariant": "CapacityBound",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "model_capacity_unknown_refusal",
+          "module": "formal/cache_evidence/CapacityRefusal.tla",
+          "config": "formal/cache_evidence/CapacityRefusalNegative.cfg",
+          "expected_invariant": "RefusalReportsNoAttempt",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "StageCache exact dependency/content authorization and volatile payload loss.",
+        "Actor-bound retrieval continuation preparation, finish and cancellation.",
+        "Unbounded nonce space, actual capacity64 induction, clock jumps and expiry precision.",
+        "Concurrent direct close without host leases, cancellation by BaseException, adversarial guessing of unpublished nonces.",
+        "At-most-once cache side effects across response loss and cache commit failures; this model only bounds receipt consumption."
+      ]
     },
     {
       "id": "ingestion_migration",
