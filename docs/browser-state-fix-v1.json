@@ -1,0 +1,60 @@
+{
+  "kind": "fixed-source-review",
+  "baseline_local": "638ad262fc5b2616b21e81629ed7b294a8056345",
+  "baseline_remote": "55315bd447e81fe510a73c9486f6e9e7ef2354a6",
+  "baseline_tree": "96c80b498956186593137f717c8c457e7d971047",
+  "baseline_run_id": 41533302556,
+  "baseline_observation": {
+    "original_knowledge_pass": 2,
+    "original_citation_pass": 7,
+    "draft_intended_fail": 4,
+    "draft_positive_pass": 1,
+    "scope_intended_fail": 1,
+    "scope_positive_pass": 2
+  },
+  "source_snapshot_normalization": "UTF-8 text with universal-newline normalization",
+  "source_reviews": [
+    {
+      "path": "kb_platform/agent_console.html",
+      "baseline_sha256": "4d5dbfc98e48a093f44863aa697df7113520604a91e4628c32b0959ba67e4801",
+      "current_sha256": "1ed9089b2fc395c19ad2bd51809e82c1eced468e4d4f3994ad5f0d162b6bcc73",
+      "review": "Extract only the existing inline script into a single mapped module; markup and CSS outside that script remain byte-identical."
+    },
+    {
+      "path": "kb_platform/console.mjs",
+      "baseline_sha256": "30d5447a8f77d1224ce554cc6504af4e0a00f747ff315b08c86676d05f408a38",
+      "current_sha256": "5520272272aaceabecfd3c5ef873fbfdc261cb89c40894cd9a0cc6cb388fba08",
+      "review": "Capture upload currentScope before awaiting json; recheck immediately before the synchronous ingest and status writes. Existing citation selection/URL/error ownership unchanged."
+    },
+    {
+      "path": "e2e/agent-draft-state.e2e.js",
+      "baseline_sha256": "e45d955a8a2b11ecb0313519c36dce30991dbbb0d9cef6980bdd13dafaf06f5c",
+      "current_sha256": "0eb0ee087002a33b8c6f6c6f1f0ca4f7f9d24d5ed77c29e4716660d44ad61a7b",
+      "review": "Retain all five baseline cases and add unchanged implicit-session draft clearing as a positive control."
+    }
+  ],
+  "added_sources": {
+    "kb_platform/agent_console.mjs": "accfb524680ebd4d058d9775d24e2c8c070132d0ce7688c43ce6a5f56047f472"
+  },
+  "extraction": {
+    "legacy_inline_script_sha256": "0327cc911472cd099ad9e6a3f82556b3fd6b8af67b98e6f75bba039a901a892f",
+    "legacy_inline_bytes": 14807,
+    "baseline_html_sha256": "4d5dbfc98e48a093f44863aa697df7113520604a91e4628c32b0959ba67e4801",
+    "outside_script_equal": true
+  },
+  "current_suite_counts": {
+    "agent-draft-state.e2e.js": 6,
+    "console-scope-state.e2e.js": 3
+  },
+  "fixed_browser_status": "PASS in normal CI run 41540663562 for exact product source; NOT_RUN locally; corrected test-stage head still requires complete CI",
+  "proof_boundary": "Source-review drift, standard HTMLParser placement and actual V8 syntax checks are not semantic JavaScript refinement proof. The bounded models and actual browser regressions establish separate limited facts.",
+  "first_fixed_ci": {
+    "head": "a00984281cc4da5bdd14a4c28c22527e8159967f",
+    "tree": "91c80f915368c59c51cc6ba20e04c2741e2e907b",
+    "run": 41540663562,
+    "browser_cases_passed": 18,
+    "complete_raw_zero_usage_suites": 4,
+    "actual_host_exit_code": 0,
+    "overall": "FAIL: new ASGI fixture was incorrectly placed in sealed offline worker on Windows; unchanged test moves to existing mandatory controlled foundation stage"
+  }
+}

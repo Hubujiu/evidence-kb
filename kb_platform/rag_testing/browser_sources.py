@@ -1,3 +1,4 @@
+import ast
 from html.parser import HTMLParser
 from hashlib import sha256
 import json
@@ -8,7 +9,8 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ENTRIES = {'kb_platform/console.html': ('kb_platform/console.mjs', '/console.mjs')}
+ENTRIES = {'kb_platform/console.html': ('kb_platform/console.mjs', '/console.mjs'),
+           'kb_platform/agent_console.html': ('kb_platform/agent_console.mjs', '/agent_console.mjs')}
 
 
 class BrowserMarkup(HTMLParser):
@@ -74,8 +76,38 @@ def placement_violations(root):
     return errors
 
 
+def controlled_stage_violations(checker, runner):
+    def same(left, right):
+        return ast.dump(left, include_attributes=False) == ast.dump(right, include_attributes=False)
+
+    native = ast.parse('native_library is not None', mode='eval').body
+    recorded = ast.parse("results.append(run_check('foundation-integration', "
+        "[sys.executable, '-B', '-m', 'kb_platform.rag_testing.foundation_integration', "
+        "'--output', str(output / 'foundation-integration')], output, env))").body[0]
+    blocked = ast.parse("results.append(CheckResult('foundation-integration', 2, "
+                        "'foundation-integration.log'))").body[0]
+    branches = [node for node in ast.walk(ast.parse(checker))
+                if isinstance(node, ast.If) and same(node.test, native)]
+    errors = []
+    if sum(any(same(node, recorded) for node in branch.body) and
+           any(same(node, blocked) for node in branch.orelse) for branch in branches) != 1:
+        errors.append('Browser ASGI assets require the recorded controlled foundation gate and blocked failure')
+    main = next((node for node in ast.parse(runner).body
+                 if isinstance(node, ast.FunctionDef) and node.name == 'main'), None)
+    capture = ast.parse('suite = integration_suite()').body[0]
+    planned = ast.parse('planned = suite.countTestCases()').body[0]
+    statements = main.body if main else []
+    captures = [index for index, node in enumerate(statements) if same(node, capture)]
+    plans = [index for index, node in enumerate(statements) if same(node, planned)]
+    if len(captures) != 1 or len(plans) != 1 or captures[0] >= plans[0]:
+        errors.append('Controlled foundation main must plan the validated integration suite')
+    return errors
+
+
 def main():
     errors = placement_violations(ROOT)
+    errors.extend(controlled_stage_violations((ROOT / 'scripts/check_project.py').read_text('utf-8'),
+        (ROOT / 'kb_platform/rag_testing/foundation_integration.py').read_text('utf-8')))
     node = shutil.which('node')
     results = []
     version, control = None, None
