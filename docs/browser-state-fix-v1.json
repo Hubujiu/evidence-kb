@@ -46,6 +46,15 @@
     "agent-draft-state.e2e.js": 6,
     "console-scope-state.e2e.js": 3
   },
-  "fixed_browser_status": "NOT_RUN; normal CI evidence required",
-  "proof_boundary": "Source-review drift, standard HTMLParser placement and actual V8 syntax checks are not semantic JavaScript refinement proof. The bounded models and actual browser regressions establish separate limited facts."
+  "fixed_browser_status": "PASS in normal CI run 41540663562 for exact product source; NOT_RUN locally; corrected test-stage head still requires complete CI",
+  "proof_boundary": "Source-review drift, standard HTMLParser placement and actual V8 syntax checks are not semantic JavaScript refinement proof. The bounded models and actual browser regressions establish separate limited facts.",
+  "first_fixed_ci": {
+    "head": "a00984281cc4da5bdd14a4c28c22527e8159967f",
+    "tree": "91c80f915368c59c51cc6ba20e04c2741e2e907b",
+    "run": 41540663562,
+    "browser_cases_passed": 18,
+    "complete_raw_zero_usage_suites": 4,
+    "actual_host_exit_code": 0,
+    "overall": "FAIL: new ASGI fixture was incorrectly placed in sealed offline worker on Windows; unchanged test moves to existing mandatory controlled foundation stage"
+  }
 }

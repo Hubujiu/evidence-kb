@@ -102,10 +102,52 @@ One added positive browser case requires an unchanged draft through implicit
 session creation to clear, giving **18 mandatory cases**. Usage must be fully
 observed at zero, not inferred from policy; missing reports remain UNKNOWN.
 
-Fixed-head actual browser result is **NOT_RUN locally**, awaiting normal CI.
+Fixed-head actual browser result is **NOT_RUN locally**; the first normal CI
+result and the subsequent test-stage correction are recorded below.
 No local browser/download/sandbox workaround is attempted. No paid provider,
 embedding or judge calls are made. Ordinary full checks and formal-only results
 must be reported for the frozen source, separately from direct targeted runs.
+
+## First fixed CI and mandatory test-stage correction
+
+Remote fixed head `a00984281cc4da5bdd14a4c28c22527e8159967f`, tree
+`91c80f915368c59c51cc6ba20e04c2741e2e907b`, completed normal CI run
+`41540663562`. The official merge tree matches exactly. All **18 browser cases
+passed** on Chromium 156.0.8078.4: raw reports, JUnit and traces agree, one attempt
+each, no skip/retry/infra errors, four complete zero-usage observations. Four
+public assets match exact source bytes; the one reported download attachment's
+size/hash matches; host exit code is actually recorded as 0. The original five
+targeted failures now pass, without removing or editing their assertions.
+Passing traces need not contain failure screenshots; the actual recorded steps,
+case results and source assertions are audited rather than inventing attachments.
+
+Integration, both Linux quality jobs and formal/secrets passed. Both Windows
+quality jobs failed with exactly **one new fixture-placement error** among 1,105
+contracts, zero assertion failures: `asyncio.run()` constructs a Windows Proactor
+self-wakeup socketpair and the sealed offline worker correctly rejects
+`socket.connect`. This is our ASGI test in the wrong stage, **not a random
+environment failure**. That overall CI remains FAIL. Its six ZIPs, raw logs and
+audits are retained in `ci-evidence-pr52-fixed/`; the integration ZIP SHA-256 is
+`84c0b9ff9e06b7f45104dbdcbabbbe52cedf1672cb320763215c8192e1c05392`.
+
+The real ASGI test is moved into the existing controlled foundation
+integration stage, following its existing `delivery_status_contracts.live_suite`
+pattern. It remains mandatory on both Windows and Linux, with the same public
+asset and protected-identity assertions. A further pre-publication check of the
+actual Windows raw module hashes confirmed exact CRLF checkout bytes; existing
+routes use `Path.read_text()` and serve LF text. Only the fixture's expected
+content normalizes CRLF pairs to LF. Every other byte remains significant:
+changed content, added whitespace and lone CR have explicit rejecting controls.
+The intermediate local layout commit `881e4408cd8bc83ed6016fc97e51ef1667d1bd45`
+is retained but was not published or accepted. No audit hook, loop implementation,
+socket policy, timeout, retry, production source, model or browser case changes.
+Offline tests verify the suite includes exactly one required asset case and
+reject omitted/duplicated registrations. The mandatory browser-source lint also
+uses Python's standard AST to require the recorded foundation stage, its blocked
+failure branch, and the validated suite factory before planning. Seeded deletion
+and replacement negatives must fail; these are registration constraints, not an
+automatic proof of arbitrary checker control flow. Normal CI must validate the
+corrected stage placement before overall acceptance.
 
 ## Explicit remaining boundaries
 
