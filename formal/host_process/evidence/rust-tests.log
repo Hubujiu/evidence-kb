@@ -1,0 +1,36 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.228
+   Compiling libc v0.2.186
+   Compiling serde_json v1.0.150
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling syn v2.0.119
+   Compiling serde_derive v1.0.228
+   Compiling plugin-host v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-host-formal/rust/plugin-host)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.13s
+     Running unittests src/lib.rs (target/host-owned/debug/deps/plugin_host-e66c961c7fb14d2b)
+
+running 17 tests
+test process_plugin::tests::expired_context_and_initial_cancellation_are_observable ... ok
+test process_plugin::tests::configuration_error_preserves_public_error_fields ... ok
+test process_plugin::tests::invalid_protocol_fails_without_configuration_or_execution ... ok
+test process_plugin::tests::malformed_public_error_is_replaced_before_serialization ... ok
+test process_plugin::tests::cancellation_waits_for_handler_before_close_and_shutdown_response ... ok
+test process_plugin::tests::lifecycle_requires_one_matching_handshake ... ok
+test process_plugin::tests::repeated_invoke_identity_never_executes_twice ... ok
+test process_plugin::tests::unknown_method_is_rejected_without_execution ... ok
+test tests::dispatcher_preserves_raw_failure_envelopes ... ok
+test process_plugin::tests::valid_caller_scope_change_keeps_provider_identity ... ok
+test process_plugin::tests::stale_or_malformed_execution_identity_never_reaches_handler ... ok
+test process_plugin::tests::invokes_json_handler_and_closes_after_completion ... ok
+test process_plugin::tests::request_identity_replay_cache_is_bounded ... ok
+test process_plugin::tests::lost_successful_response_joins_and_closes_without_reinvoking ... ok
+test process_plugin::tests::wrong_cancellation_identity_fails_and_drains_call ... ok
+test process_plugin::tests::active_identity_stays_protected_after_replay_cache_eviction ... ok
+test tests::bounded_frames_require_delimiters_and_accept_crlf ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s

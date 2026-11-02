@@ -156,6 +156,10 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
             models = machine['models']
             controls = machine['negative_controls']
+            if identity == 'host_process' and models:
+                from kb_platform.rag_testing.host_process_lint import PATHS, host_source_violations
+                errors.extend(f'host_process: {error}' for error in host_source_violations(
+                    {path: local_file(root, path).read_text('utf-8') for path in PATHS}))
             if (machine['status'] == 'partial') != bool(models):
                 errors.append(f'{identity}: partial requires actual models; unmodeled cannot claim models')
             if models and (not isinstance(machine.get('remaining_obligations'), list) or
