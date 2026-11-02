@@ -1,0 +1,13 @@
+architecture: PASS
+formal-lint: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/formal-lint.log)
+rust-format: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/rust-format.log)
+rust-clippy: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/rust-clippy.log)
+rust-build: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/rust-build.log)
+rust-tests: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/rust-tests.log)
+plugin-process-integration: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/plugin-process-integration.log)
+foundation-integration: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/foundation-integration.log)
+host-integration: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/host-integration.log)
+lint: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/lint.log)
+contracts: FAIL (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/contracts.log)
+scorer: PASS (/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/scorer.log)
+FAIL: /workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-full-20261102-2143/summary.json

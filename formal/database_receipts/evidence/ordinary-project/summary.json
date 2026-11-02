@@ -1,0 +1,134 @@
+{
+  "schema": "historical-project-gate-summary/1",
+  "source_commit": "c81c8ba9c561ca6198d4ba7efe21afdad44af235",
+  "source_tree": "aff30c3ff2d01c290653c9d4a2e92a70efacb897",
+  "command": "UV_CACHE_DIR=/tmp/evidence-uv-cache uv run --no-sync python scripts/check_project.py --output .local/receipt-database-full-20261102-2143",
+  "toolchain_environment": {
+    "CARGO_HOME": "/tmp/evidence-rust-tools/cargo",
+    "RUSTUP_HOME": "/tmp/evidence-rust-tools/rustup",
+    "cargo_and_rustc": "1.99.0"
+  },
+  "decision": "FAIL",
+  "exit_code": 1,
+  "checks": [
+    {
+      "name": "architecture",
+      "exit_code": 0,
+      "log": "architecture.json"
+    },
+    {
+      "name": "formal-lint",
+      "exit_code": 0,
+      "log": "formal-lint.log"
+    },
+    {
+      "name": "rust-format",
+      "exit_code": 0,
+      "log": "rust-format.log"
+    },
+    {
+      "name": "rust-clippy",
+      "exit_code": 0,
+      "log": "rust-clippy.log"
+    },
+    {
+      "name": "rust-build",
+      "exit_code": 0,
+      "log": "rust-build.log"
+    },
+    {
+      "name": "rust-tests",
+      "exit_code": 0,
+      "log": "rust-tests.log"
+    },
+    {
+      "name": "plugin-process-integration",
+      "exit_code": 0,
+      "log": "plugin-process-integration.log"
+    },
+    {
+      "name": "foundation-integration",
+      "exit_code": 0,
+      "log": "foundation-integration.log"
+    },
+    {
+      "name": "host-integration",
+      "exit_code": 0,
+      "log": "host-integration.log"
+    },
+    {
+      "name": "lint",
+      "exit_code": 0,
+      "log": "lint.log"
+    },
+    {
+      "name": "contracts",
+      "exit_code": 1,
+      "log": "contracts.log"
+    },
+    {
+      "name": "scorer",
+      "exit_code": 0,
+      "log": "scorer.log"
+    }
+  ],
+  "contracts": {
+    "decision": "FAIL",
+    "total": 1086,
+    "failures": 0,
+    "errors": 18,
+    "skipped": 0,
+    "expected_failures": 0,
+    "discovery_complete": true
+  },
+  "new_receipt_database_tests": [
+    {
+      "test": "kb_platform.rag_testing.receipt_database_transition_contracts.ReceiptDatabaseTransitionContracts.test_begin_commit_ack_loss_keeps_started_but_this_transport_invocation_does_not_send",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_transition_contracts.ReceiptDatabaseTransitionContracts.test_terminal_retry_policy_requires_link_and_complete_requires_format_correction",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_transition_contracts.ReceiptDatabaseTransitionContracts.test_explicit_reconcile_does_not_refund_independent_unknown_budget",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_transition_contracts.ReceiptDatabaseTransitionContracts.test_trigger_failure_rolls_back_physical_and_logical_writes_together",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_lint_contracts.ReceiptDatabaseLintContracts.test_actual_transaction_and_transition_guards_accept_annotations_and_spacing",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_transition_contracts.ReceiptDatabaseTransitionContracts.test_finish_commit_ack_loss_keeps_completed_receipt_and_one_observed_send",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_transition_contracts.ReceiptDatabaseTransitionContracts.test_two_actual_sqlite_clients_admit_only_one_physical_request",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_lint_contracts.ReceiptDatabaseLintContracts.test_mandatory_registry_lint_rejects_database_mutants_with_refreshed_source_hashes",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_transition_contracts.ReceiptDatabaseTransitionContracts.test_finish_serializes_competing_finish_and_reconcile_and_hides_uncommitted_rows",
+      "status": "PASS"
+    },
+    {
+      "test": "kb_platform.rag_testing.receipt_database_transition_contracts.ReceiptDatabaseTransitionContracts.test_wrong_logical_dataset_and_stale_physical_rejections_leave_actual_rows_unchanged",
+      "status": "PASS"
+    }
+  ],
+  "terminal_error_classification": {
+    "count": 18,
+    "exception": "ImportError",
+    "message": "Using SOCKS proxy, but the 'socksio' package is not installed.",
+    "observation": "All 18 terminal ImportError lines in the four actual worker logs matched. No proxy settings, installed dependencies or gate limits were changed; no rerun."
+  },
+  "new_provider_calls": 0,
+  "scope": "Actual one ordinary project gate, not full acceptance. Complete original logs remain in the named local artifact; concise tracked summary and driver log omit no failing check. New source remains model-only."
+}

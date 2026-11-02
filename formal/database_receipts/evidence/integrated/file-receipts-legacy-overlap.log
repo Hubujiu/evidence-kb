@@ -1,0 +1,322 @@
+@!@!@STARTMSG 2262:0 @!@!@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+@!@!@ENDMSG 2262 @!@!@
+@!@!@STARTMSG 2187:0 @!@!@
+Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 455MB heap and 64MB offheap memory [pid: 261] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+@!@!@ENDMSG 2187 @!@!@
+@!@!@STARTMSG 2220:0 @!@!@
+Starting SANY...
+@!@!@ENDMSG 2220 @!@!@
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-formal-20261102-2118/formal/file-receipts-legacy-overlap/inputs/FileReceipts.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module FileReceipts
+@!@!@STARTMSG 2219:0 @!@!@
+SANY finished.
+@!@!@ENDMSG 2219 @!@!@
+@!@!@STARTMSG 2185:0 @!@!@
+Starting... (2026-11-02 13:18:45)
+@!@!@ENDMSG 2185 @!@!@
+@!@!@STARTMSG 2189:0 @!@!@
+Computing initial states...
+@!@!@ENDMSG 2189 @!@!@
+@!@!@STARTMSG 2190:0 @!@!@
+Finished computing initial states: 1 distinct state generated at 2026-11-02 13:18:45.
+@!@!@ENDMSG 2190 @!@!@
+@!@!@STARTMSG 2110:1 @!@!@
+Invariant SingleUnresolved is violated.
+@!@!@ENDMSG 2110 @!@!@
+@!@!@STARTMSG 2121:1 @!@!@
+The behavior up to this point is:
+@!@!@ENDMSG 2121 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+1: <Initial predicate>
+/\ pending = 0
+/\ operation = <<"Begin", "Begin">>
+/\ owner = 0
+/\ selected = <<0, 0>>
+/\ outcome = <<"ERROR", "ERROR">>
+/\ status = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Idle", "Idle">>
+/\ nextId = 1
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+2: <StartBegin line 20, col 18 to line 26, col 87 of module FileReceipts>
+/\ pending = 0
+/\ operation = <<"Begin", "Begin">>
+/\ owner = 0
+/\ selected = <<1, 0>>
+/\ outcome = <<"ERROR", "ERROR">>
+/\ status = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"BeginCheck", "Idle">>
+/\ nextId = 2
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+3: <BeginClaim line 27, col 18 to line 31, col 64 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Begin", "Begin">>
+/\ owner = 0
+/\ selected = <<1, 0>>
+/\ outcome = <<"ERROR", "ERROR">>
+/\ status = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"BeginPersist", "Idle">>
+/\ nextId = 2
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+4: <BeginPersist line 32, col 20 to line 36, col 66 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Begin", "Begin">>
+/\ owner = 0
+/\ selected = <<1, 0>>
+/\ outcome = <<"ERROR", "ERROR">>
+/\ status = <<"STARTED", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"BeginReturn", "Idle">>
+/\ nextId = 2
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+5: <BeginReturn line 37, col 19 to line 42, col 65 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Begin", "Begin">>
+/\ owner = 0
+/\ selected = <<1, 0>>
+/\ outcome = <<"ERROR", "ERROR">>
+/\ status = <<"STARTED", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Idle", "Idle">>
+/\ nextId = 2
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+6: <StartTransition line 44, col 5 to line 52, col 73 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Finish", "Begin">>
+/\ owner = 0
+/\ selected = <<1, 0>>
+/\ outcome = <<"UNKNOWN", "ERROR">>
+/\ status = <<"STARTED", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Read", "Idle">>
+/\ nextId = 2
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+7: <Read line 55, col 12 to line 58, col 58 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Finish", "Begin">>
+/\ owner = 0
+/\ selected = <<1, 0>>
+/\ outcome = <<"UNKNOWN", "ERROR">>
+/\ status = <<"STARTED", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Write", "Idle">>
+/\ nextId = 2
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+8: <StartTransition line 44, col 5 to line 52, col 73 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Finish", "Finish">>
+/\ owner = 0
+/\ selected = <<1, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"STARTED", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Write", "Read">>
+/\ nextId = 2
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+9: <Read line 55, col 12 to line 58, col 58 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Finish", "Finish">>
+/\ owner = 0
+/\ selected = <<1, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"STARTED", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Write", "Write">>
+/\ nextId = 2
+/\ settled = <<"ABSENT", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+10: <Write line 59, col 13 to line 64, col 101 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Finish", "Finish">>
+/\ owner = 0
+/\ selected = <<1, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Write", "Publish">>
+/\ nextId = 2
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+11: <Write line 59, col 13 to line 64, col 101 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Finish", "Finish">>
+/\ owner = 0
+/\ selected = <<1, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"UNKNOWN", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Done", "Publish">>
+/\ nextId = 2
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+12: <Release line 74, col 15 to line 79, col 61 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Finish", "Finish">>
+/\ owner = 0
+/\ selected = <<1, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"UNKNOWN", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"Idle", "Publish">>
+/\ nextId = 2
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+13: <StartBegin line 20, col 18 to line 26, col 87 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Begin", "Finish">>
+/\ owner = 0
+/\ selected = <<2, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"UNKNOWN", "ABSENT", "ABSENT">>
+/\ terminal = 0
+/\ pc = <<"BeginCheck", "Publish">>
+/\ nextId = 3
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+14: <Publish line 65, col 15 to line 69, col 61 of module FileReceipts>
+/\ pending = 1
+/\ operation = <<"Begin", "Finish">>
+/\ owner = 0
+/\ selected = <<2, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"UNKNOWN", "ABSENT", "ABSENT">>
+/\ terminal = 1
+/\ pc = <<"BeginCheck", "Unlink">>
+/\ nextId = 3
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+15: <Unlink line 70, col 14 to line 73, col 60 of module FileReceipts>
+/\ pending = 0
+/\ operation = <<"Begin", "Finish">>
+/\ owner = 0
+/\ selected = <<2, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"UNKNOWN", "ABSENT", "ABSENT">>
+/\ terminal = 1
+/\ pc = <<"BeginCheck", "Done">>
+/\ nextId = 3
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+16: <BeginClaim line 27, col 18 to line 31, col 64 of module FileReceipts>
+/\ pending = 2
+/\ operation = <<"Begin", "Finish">>
+/\ owner = 0
+/\ selected = <<2, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"UNKNOWN", "ABSENT", "ABSENT">>
+/\ terminal = 1
+/\ pc = <<"BeginPersist", "Done">>
+/\ nextId = 3
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+17: <BeginPersist line 32, col 20 to line 36, col 66 of module FileReceipts>
+/\ pending = 2
+/\ operation = <<"Begin", "Finish">>
+/\ owner = 0
+/\ selected = <<2, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"UNKNOWN", "STARTED", "ABSENT">>
+/\ terminal = 1
+/\ pc = <<"BeginReturn", "Done">>
+/\ nextId = 3
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+18: <BeginReturn line 37, col 19 to line 42, col 65 of module FileReceipts>
+/\ pending = 2
+/\ operation = <<"Begin", "Finish">>
+/\ owner = 0
+/\ selected = <<2, 1>>
+/\ outcome = <<"UNKNOWN", "COMPLETE">>
+/\ status = <<"UNKNOWN", "STARTED", "ABSENT">>
+/\ terminal = 1
+/\ pc = <<"Idle", "Done">>
+/\ nextId = 3
+/\ settled = <<"COMPLETE", "ABSENT", "ABSENT">>
+/\ admitted = {1, 2}
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2200:0 @!@!@
+Progress(18) at 2026-11-02 13:18:47: 367,812 states generated (8,216,202 s/min), 47,417 distinct states found (1,059,203 ds/min), 12,865 states left on queue.
+@!@!@ENDMSG 2200 @!@!@
+@!@!@STARTMSG 2199:0 @!@!@
+367812 states generated, 47417 distinct states found, 12865 states left on queue.
+@!@!@ENDMSG 2199 @!@!@
+@!@!@STARTMSG 2194:0 @!@!@
+The depth of the complete state graph search is 18.
+@!@!@ENDMSG 2194 @!@!@
+@!@!@STARTMSG 2268:0 @!@!@
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 22 and the 95th percentile is 6).
+@!@!@ENDMSG 2268 @!@!@
+@!@!@STARTMSG 2186:0 @!@!@
+Finished in 2694ms at (2026-11-02 13:18:47)
+@!@!@ENDMSG 2186 @!@!@
