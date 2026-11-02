@@ -1,0 +1,82 @@
+@!@!@STARTMSG 2262:0 @!@!@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+@!@!@ENDMSG 2262 @!@!@
+@!@!@STARTMSG 2187:0 @!@!@
+Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 141] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+@!@!@ENDMSG 2187 @!@!@
+@!@!@STARTMSG 2220:0 @!@!@
+Starting SANY...
+@!@!@ENDMSG 2220 @!@!@
+Parsing file /tmp/evidence-linked-budget-batch-tlc-20261102-2002/importintent/inputs/ImportIntent.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module ImportIntent
+@!@!@STARTMSG 2219:0 @!@!@
+SANY finished.
+@!@!@ENDMSG 2219 @!@!@
+@!@!@STARTMSG 2185:0 @!@!@
+Starting... (2026-11-02 12:02:32)
+@!@!@ENDMSG 2185 @!@!@
+@!@!@STARTMSG 2189:0 @!@!@
+Computing initial states...
+@!@!@ENDMSG 2189 @!@!@
+@!@!@STARTMSG 2269:0 @!@!@
+Computed 2 initial states...
+@!@!@ENDMSG 2269 @!@!@
+@!@!@STARTMSG 2190:0 @!@!@
+Finished computing initial states: 4 distinct states generated at 2026-11-02 12:02:32.
+@!@!@ENDMSG 2190 @!@!@
+@!@!@STARTMSG 1000:1 @!@!@
+TLC threw an unexpected exception.
+This was probably caused by an error in the spec or model.
+See the User Output or TLC Console for clues to what happened.
+The exception was a java.lang.RuntimeException
+: Attempted to evaluate an expression of form P /\ Q when P was
+an integer.
+line 14, col 62 to line 14, col 92 of module ImportIntent
+@!@!@ENDMSG 1000 @!@!@
+@!@!@STARTMSG 2121:1 @!@!@
+The behavior up to this point is:
+@!@!@ENDMSG 2121 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+1: <Initial predicate>
+/\ markers = <<FALSE, FALSE>>
+/\ importedRows = <<{}, {}>>
+/\ phase = "idle"
+/\ occupied = <<FALSE, FALSE>>
+/\ intent = 0
+/\ requested = 1
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+2: <Start line 11, col 13 to line 12, col 68 of module ImportIntent>
+/\ markers = <<FALSE, FALSE>>
+/\ importedRows = <<{}, {}>>
+/\ phase = "checked"
+/\ occupied = <<FALSE, FALSE>>
+/\ intent = 0
+/\ requested = 1
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2103:1 @!@!@
+The error occurred when TLC was evaluating the nested
+expressions at the following positions:
+0. Line 13, column 14 to line 15, column 72 in ImportIntent
+1. Line 13, column 17 to line 13, column 62 in ImportIntent
+2. Line 13, column 17 to line 13, column 33 in ImportIntent
+3. Line 13, column 38 to line 13, column 62 in ImportIntent
+4. Line 14, column 17 to line 14, column 92 in ImportIntent
+5. Line 14, column 27 to line 14, column 92 in ImportIntent
+6. Line 14, column 62 to line 14, column 92 in ImportIntent
+
+
+@!@!@ENDMSG 2103 @!@!@
+@!@!@STARTMSG 2200:0 @!@!@
+Progress(2) at 2026-11-02 12:02:32: 12 states generated (1,076 s/min), 12 distinct states found (1,076 ds/min), 7 states left on queue.
+@!@!@ENDMSG 2200 @!@!@
+@!@!@STARTMSG 2199:0 @!@!@
+12 states generated, 12 distinct states found, 7 states left on queue.
+@!@!@ENDMSG 2199 @!@!@
+@!@!@STARTMSG 2186:0 @!@!@
+Finished in 675ms at (2026-11-02 12:02:32)
+@!@!@ENDMSG 2186 @!@!@

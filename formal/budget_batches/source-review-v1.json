@@ -1,0 +1,362 @@
+{
+  "scope": "PR31 dependency anchor review plus bounded batch/import source mapping; no product implementation changes.",
+  "dependency_commit": "27c4180e1a66d0b7c9d554eff9620ef16a49023b",
+  "reviewed_pr31_updates": [
+    {
+      "machine_id": "physical_budget",
+      "path": "kb_platform/rag_testing/provider_capture.py",
+      "language": "python",
+      "symbol": "MeteredTransport._handle_admitted",
+      "old_sha256": "3903308da069fc59c1a1144977a356077be2a6bc47161740ff01c9e588d398d0",
+      "new_sha256": "92ae8197031b951c91e0298be3fe05c703d8401952216b4effba79caadbb778a",
+      "semantic_review": "The pre-send preparation block now catches BaseException and marks model_sent=False, including unknown reservation commit or capture-file publication failures. It does not infer reservation rollback, remove durable reservations, or retry; post-send finish behavior remains unchanged and is not proven by this update.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "physical_budget",
+      "path": "kb_platform/model_http.py",
+      "language": "python",
+      "symbol": "OpenAICompatibleAdapter.invoke",
+      "old_sha256": "7aca4fb4a257f49625d294b1542a3cb8a9832b33aa277ad2628ea71ff3fb7dde",
+      "new_sha256": "a9047f20ed44f5cd7a713d865dc17dc22e58b6eefff77c68fb35be69a71786c0",
+      "semantic_review": "Request construction and reserve failures are explicitly known-unsent; usage is extracted before content decoding, and response/postflight failures retain observed usage and physical identity through the shared helper. No new send/retry path is added; physical reserve/finish atomicity is unchanged.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "budget_batches",
+      "path": "kb_platform/rag_testing/budget_batches.py",
+      "language": "python",
+      "symbol": "LinkedBudgetLedger.cumulative_summary",
+      "old_sha256": "1aaa845b5c3d4df5012676155053ed25df0f0713ba5aed1f7e0f328759578054",
+      "new_sha256": "8bc9ce672c0c1b1b9ea7bf3cd6ddbf15e5f0c232a3859d22697dbbd10b56ae6d",
+      "semantic_review": "Delegates cumulative projection through _review_summary so the same reviewed-predecessor policy is reusable by status_snapshot; base implementation is identity. This is a read-only derived-state projection, not a physical request transition.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "budget_batches",
+      "path": "kb_platform/rag_testing/budget_batches.py",
+      "language": "python",
+      "symbol": "ReviewedPredecessorLedger.cumulative_summary",
+      "old_sha256": "a9010aceb4d2a3a25b78dbea5c09e0627169c1c4697e9dec1f040d704b1d8ad6",
+      "new_sha256": "ebd3cf86acc17f17991ec25e5723c08f6e14cb8b58ccbf98f238fde46d786410",
+      "semantic_review": "Keeps predecessor validation and delegates to the base projection; reviewed UNKNOWN subtraction and REVIEWED_UNKNOWN projection moved to _review_summary, which must receive its own binding. Operator review is not provider completion and does not erase unknown reservations.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "turn_budget",
+      "path": "kb_platform/agent_model.py",
+      "language": "python",
+      "symbol": "BudgetLedger.reserve",
+      "old_sha256": "2357ea31650462f417b1d4022ce52bf589bfae062d46d5740b9d389881b712f1",
+      "new_sha256": "fa3509f0aff7395119d5f37623b1d9373fa6e369698d4f34d9e001c67f81cd05",
+      "semantic_review": "Both existing budget-limit refusals now carry model_sent=False. Locking, admission arithmetic and pending-reservation mutation are unchanged; this supports zero attempted-send accounting rather than changing physical budget authority.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "turn_budget",
+      "path": "kb_platform/agent_model.py",
+      "language": "python",
+      "symbol": "AgentModel.complete",
+      "old_sha256": "aa2a137fa0d11394b9aa21aa7868896298a280b77ec83943621a5862587c8c69",
+      "new_sha256": "f1f33d434ac14332452b2a1393f5dfc62bf203827a292120e4def670abe4d85d",
+      "semantic_review": "Tracks whether a provider result was actually observed; post-result failures preserve usage/identity and normalized failure facts in call_record. Existing finally settlement and cache-confirmation structure remain. RPC result loss remains unknown, not a fabricated physical send or zero usage.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "transfer_protocol",
+      "path": "kb_platform/contract_transfer.py",
+      "language": "python",
+      "symbol": "JsonEndpoint.execute",
+      "old_sha256": "eeef3078396601c772b98a8c5f245d171af19604f78c5b1bcf9bf9835f569c34",
+      "new_sha256": "1ef6cbfc1375770cd12b34ad516d92550f0759112990700852fcf37f1d395d3d",
+      "semantic_review": "Now a dispatch-fact wrapper around new _execute. Initial false denotes handler not entered; wire_read/wire_cancel start unknown because they may refer to an earlier invocation. Preserve original exception and attach request_dispatched; bind the extracted transition body separately.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "transfer_protocol",
+      "path": "kb_platform/contract_transfer.py",
+      "language": "python",
+      "symbol": "JsonClient._call",
+      "old_sha256": "acbc112e1da50988c06943f1e3c9ff440729ddc9165133f89f008f7b51bfcf96",
+      "new_sha256": "1592a38c7eed38286c22b331f20b9bdea75d35fa4ce21129ac167172edb30727",
+      "semantic_review": "Direct and chunked logical calls use new _dispatch to distinguish endpoint-proven pre-handler rejection from entered/unknown RPC. Download failure is not recast as known-unsent, and no request replay is added. Bind _dispatch separately.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "provider_admission",
+      "path": "kb_platform/provider_admission.py",
+      "language": "python",
+      "symbol": "ProviderAdmission.require_available",
+      "old_sha256": "34e5d3ecd6d9075c1b0b97fc77e0ba7e595b0c853da088fb01d1beddd24a0469",
+      "new_sha256": "84ec750df0b82f73a4284f7d42babf4c16829ac8a73125d418bdd29a8f8c3ea4",
+      "semantic_review": "Any failure of the pre-send admission snapshot is marked model_sent=False; existing expected failures retain the public admission error, while unexpected storage/error types are re-raised. Persistent permission-block and acknowledgment transitions do not change.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "provider_admission",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "classify_failure",
+      "old_sha256": "3c2f067657f416d0625091df29d3ebf9858af75c4aab2f189fb4ddbeb0195273",
+      "new_sha256": "4adc66c521182b504c421700567b44159cf359595ba8f96ec5156830a58632ef",
+      "semantic_review": "Explicit model_sent=False takes precedence over status/cause heuristics and is classified admission/nonretryable/ERROR. Unchanged ToolExecutor and transport call sites consume this changed classifier semantically; unchanged call-site hashes must not be refreshed.",
+      "coverage_status_remains": "unmodeled"
+    },
+    {
+      "machine_id": "cache_evidence",
+      "path": "kb_platform/knowledge_contracts.py",
+      "language": "python",
+      "symbol": "ModelEndpoint.complete",
+      "old_sha256": "5abf9663da57dfcbff2d5d0672a37fca867f2e2b251e17b1b2d859cab1469753",
+      "new_sha256": "4d88494cb04af4727e3a66d503926b33c8109e93db2c39de3873686c3d7a6894",
+      "semantic_review": "Pending token removal/confirmation behavior is unchanged; model failure serialization delegates to canonical model_errors.error_details, retaining observed usage, original code and send facts instead of a partial hand-written field copy.",
+      "coverage_status_remains": "unmodeled"
+    }
+  ],
+  "reviewed_pr31_additions": [
+    {
+      "machine_id": "transfer_protocol",
+      "binding": {
+        "path": "kb_platform/contract_transfer.py",
+        "language": "python",
+        "symbol": "JsonEndpoint._execute",
+        "sha256": "b0ad073359b8a42ac24f59b65db7163f094ce227de3487c7ad0032888856115b"
+      },
+      "reason": "Extracted original endpoint state/dispatch implementation; wrapper-only binding would lose future state-transition drift coverage.",
+      "classification": "register existing-family transition/projection; do not exclude"
+    },
+    {
+      "machine_id": "transfer_protocol",
+      "binding": {
+        "path": "kb_platform/contract_transfer.py",
+        "language": "python",
+        "symbol": "JsonClient._dispatch",
+        "sha256": "de92a0af92927696e26e2343653e62d0be2f9d8b5f70f19647a09a9cc72d4c02"
+      },
+      "reason": "New RPC dispatch boundary downgrades only endpoint-proven request_dispatched=False; it must not conflate RPC admission with physical model send.",
+      "classification": "register existing-family transition/projection; do not exclude"
+    },
+    {
+      "machine_id": "budget_batches",
+      "binding": {
+        "path": "kb_platform/rag_testing/budget_batches.py",
+        "language": "python",
+        "symbol": "ReviewedPredecessorLedger._review_summary",
+        "sha256": "ffa7746235cec3d7556a89ee943dbd77be7b9cd3620b27b648dd9fdc0e5c2282"
+      },
+      "reason": "Only new discovered state owner; REVIEWED_UNKNOWN is a derived operator-attestation state, not provider verification, settlement or erased reservation.",
+      "classification": "register existing-family transition/projection; do not exclude"
+    }
+  ],
+  "unchanged_reviewed_bindings": [
+    {
+      "machine_id": "physical_budget",
+      "path": "kb_platform/rag_testing/budget.py",
+      "language": "python",
+      "symbol": "BudgetLedger._reserve",
+      "sha256": "60c7a90dd70762316f57d7078c03cc53642d9182ae58fca642db0baaaf0b62d0"
+    },
+    {
+      "machine_id": "physical_budget",
+      "path": "kb_platform/rag_testing/budget.py",
+      "language": "python",
+      "symbol": "BudgetLedger.finish",
+      "sha256": "281f8912e880a77985967b545fdf4e9320aebbd89908d4a5b80d344d73a0b6e7"
+    },
+    {
+      "machine_id": "budget_batches",
+      "path": "kb_platform/rag_testing/budget_batches.py",
+      "language": "python",
+      "symbol": "LinkedBudgetLedger.reserve",
+      "sha256": "55c9fa0eed988ba8f18181d5f969755a55a039d34b6e2ac7ad39e6076a3f6647"
+    },
+    {
+      "machine_id": "provider_receipts",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "RequestReceipts.begin",
+      "sha256": "72784a2a41c0418ed583e16af0566d04cb9138736fb042ba719020b8c63ab4b1"
+    },
+    {
+      "machine_id": "provider_receipts",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "RequestReceipts.finish",
+      "sha256": "2a5262fd35e3396b520059ef6579b6810e277349bee40aabf379f6dd487ede0a"
+    },
+    {
+      "machine_id": "provider_receipts",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "RequestReceipts.reconcile",
+      "sha256": "1be9a3e0348dc6d1267f6c39914bc7b281f564977e9088862e4584366d192ac9"
+    },
+    {
+      "machine_id": "turn_budget",
+      "path": "kb_platform/agent_model.py",
+      "language": "python",
+      "symbol": "BudgetLedger.settle",
+      "sha256": "539a52cedcd070ab78751e633d5f3f675132c94e651b16f9012ea7e41a8f8911"
+    },
+    {
+      "machine_id": "turn_budget",
+      "path": "kb_platform/agent_model.py",
+      "language": "python",
+      "symbol": "AgentModel.accept_completion",
+      "sha256": "192811f6b92d436c2c332072864424c9a0f5c8f353ad67b970e899c0b54af0a5"
+    },
+    {
+      "machine_id": "transfer_protocol",
+      "path": "kb_platform/contract_transfer.py",
+      "language": "python",
+      "symbol": "JsonEndpoint.close",
+      "sha256": "eba8d88bdf58917e31651b2901b1a81fb846e30283568edf279964e926eb7022"
+    },
+    {
+      "machine_id": "provider_admission",
+      "path": "kb_platform/provider_admission.py",
+      "language": "python",
+      "symbol": "ProviderAdmission.block",
+      "sha256": "ff99f7f54ab9ebe0d4fb514c6d09bcfe754730ba96f5fc436a0d60ed4d136edf"
+    },
+    {
+      "machine_id": "provider_admission",
+      "path": "kb_platform/provider_admission.py",
+      "language": "python",
+      "symbol": "ProviderAdmission.snapshot",
+      "sha256": "09d2a9df51c78e2726e7dcc7f63e677edbd185e4100709fe421c69b9a9dd63f8"
+    },
+    {
+      "machine_id": "provider_admission",
+      "path": "kb_platform/provider_admission.py",
+      "language": "python",
+      "symbol": "ProviderAdmission.acknowledge",
+      "sha256": "7a7ed444077a6a97f46b221152ed5b54ae40439f0f996cb1fc847e078ca3c0a5"
+    },
+    {
+      "machine_id": "provider_admission",
+      "path": "kb_platform/delivery.py",
+      "language": "python",
+      "symbol": "check_delivery_configuration",
+      "sha256": "a5bd5e736d87c5ccda8256a66644da06ae32642815f34b25d6f1b6ac7982f855"
+    },
+    {
+      "machine_id": "circuit_tool_retry",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "ProviderCircuit.acquire",
+      "sha256": "a2640dbb48811efa2b4c3d1d4273c450bf00fc549990384cf82833efa9929e8d"
+    },
+    {
+      "machine_id": "circuit_tool_retry",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "ProviderCircuit.finish",
+      "sha256": "bc814b2d80248206ee7ab20031c8db9821cfdff484d042adf04ea59663c14ff6"
+    },
+    {
+      "machine_id": "circuit_tool_retry",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "ToolExecutor.execute",
+      "sha256": "54de6c4d4282f26a91d6c9e5b86a066569b9a38d9a8725b667a44098ca9eec4c"
+    },
+    {
+      "machine_id": "circuit_tool_retry",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "ProviderCircuit.snapshot",
+      "sha256": "543ac6e070a0aa73d445a19a2af34b76a44a5c86907e7f8ea5d10c8d88557e6c"
+    },
+    {
+      "machine_id": "circuit_tool_retry",
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "ToolOutcome",
+      "sha256": "8a6dfd586c7b05a2d632e7c1a7302b6a9d7934cb19b1a92c9e1a281caf04472a"
+    },
+    {
+      "machine_id": "cache_evidence",
+      "path": "kb_platform/knowledge_contracts.py",
+      "language": "python",
+      "symbol": "EvidenceEndpoint.prepare_pipeline",
+      "sha256": "3a87d5761f49c4ab042c219f486a229d5715dbe4164d97d10893135ee8b8ede4"
+    },
+    {
+      "machine_id": "cache_evidence",
+      "path": "kb_platform/knowledge_contracts.py",
+      "language": "python",
+      "symbol": "EvidenceEndpoint.finish_pipeline",
+      "sha256": "bed15c825408b0f18c91e6268e99636533f068acd51c9ce282aa6babfeb01e17"
+    },
+    {
+      "machine_id": "cache_evidence",
+      "path": "kb_platform/knowledge_contracts.py",
+      "language": "python",
+      "symbol": "ModelEndpoint.settle",
+      "sha256": "69615a702c47762f784103735e3bf3994bac118482dc5bf0ab95c42acbe0f474"
+    }
+  ],
+  "readonly_reviewed_additions": [
+    {
+      "machine_id": "physical_budget",
+      "binding": {
+        "path": "kb_platform/rag_testing/budget.py",
+        "language": "python",
+        "symbol": "BudgetLedger.status_snapshot",
+        "sha256": "ff200a4a4324111948e27b43a91e90420bc0da15c1e0ce0bdc046f1be728380e"
+      },
+      "reason": "Read-only local summary; unavailable data stays null and blocks admission, never clears reservations."
+    },
+    {
+      "machine_id": "physical_budget",
+      "binding": {
+        "path": "kb_platform/delivery.py",
+        "language": "python",
+        "symbol": "_budget_status",
+        "sha256": "74aa7173e5ef96f98c816f353631dc13db08b551a174d3591c0362e74ccd3bfe"
+      },
+      "reason": "Read-only public projection distinguishes unavailable current/cumulative usage and preserves provider/block reasons; does not mutate ledger."
+    },
+    {
+      "machine_id": "budget_batches",
+      "binding": {
+        "path": "kb_platform/rag_testing/budget_batches.py",
+        "language": "python",
+        "symbol": "LinkedBudgetLedger.status_snapshot",
+        "sha256": "a61efc966353ac5251ba3080be2bf6e84d589257f0f24cf9ea227b05141ac4ba"
+      },
+      "reason": "Read-only current/cumulative snapshots remain independent; unavailable or changed predecessors block continuation without erasing UNKNOWN."
+    },
+    {
+      "machine_id": "budget_batches",
+      "binding": {
+        "path": "kb_platform/rag_testing/budget_batches.py",
+        "language": "python",
+        "symbol": "LinkedBudgetLedger._review_summary",
+        "sha256": "423abc7680242b17da021f6fbac4e55774900a4342f0c291c2bea075808d1115"
+      },
+      "reason": "Identity projection hook; reviewed predecessor subclass owns operator-attestation projection, not provider settlement."
+    },
+    {
+      "machine_id": "budget_batches",
+      "binding": {
+        "path": "kb_platform/rag_testing/budget_batches.py",
+        "language": "python",
+        "symbol": "_cumulative_summary",
+        "sha256": "f580b515e80f199e4e9287bc2683a2c60620e2c4d564a1e9827f42b7d645b0d9"
+      },
+      "reason": "Read-only aggregate preserves pending usage/cost, detects duplicate physical IDs and drift, and never constructs a merged spendable budget."
+    }
+  ],
+  "canonical_error_module": {
+    "binding": {
+      "path": "kb_platform/model_errors.py",
+      "language": "python",
+      "symbol": "<module>",
+      "sha256": "a73f6a45159f6c0f92f02c9f521778470dbee7f530b9cace64e728e50a7384ec"
+    },
+    "review": "Whole module includes ERROR_FIELDS. PR31 canonical normalizer unchanged; no presend fields or remote transport modifications introduced."
+  },
+  "owned_review": "Constructors, guards, duplicate checks, review status projection and import durable intent inspected. Real SQLite partial-commit and insertion faults preserve rows/cost and allow only compatible recovery. No all-or-nothing cross-file guarantee or nonempty-target liveness claim."
+}

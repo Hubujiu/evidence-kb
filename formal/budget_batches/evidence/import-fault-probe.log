@@ -1,0 +1,15 @@
+fault first_failure IntegrityError gkpj
+fault source_pinned_to_destination True
+fault destination_rows_and_import_markers 0 0
+fault recovery_summary {"effective_usage_or_reserved": {"calls": 1, "tokens": 71}, "over_budget": false, "pending_or_unknown": 1, "physical_requests": 1, "unknown_usage_requests": 1}
+fault replay_preserves_summary True
+fault source_bytes_unchanged True
+fault old_unknown_preserved True
+fault old_source_admission BUDGET_PRODUCER_SEALED
+conflict first_failure ValueError LEDGER_IMPORT_DESTINATION_NOT_EMPTY
+conflict source_pinned_to_destination True
+conflict destination_rows_and_import_markers 1 0
+conflict same_target_retry LEDGER_IMPORT_DESTINATION_NOT_EMPTY
+conflict source_bytes_unchanged True
+conflict old_unknown_preserved True
+conflict old_source_admission BUDGET_PRODUCER_SEALED

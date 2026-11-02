@@ -1,0 +1,4 @@
+injected_constructor_failure OperationalError SQLITE_BUSY
+after_failure_seals [None, 'child.sqlite']
+after_same_child_recovery_seals ['child.sqlite', 'child.sqlite']
+cumulative {"effective_usage_or_reserved": {"model": 3}, "monetary_cost": "NOT_MEASURED", "over_budget": false, "pending_or_unknown": 0, "physical_requests": 3, "registered_rows_including_duplicates": 3, "unknown_usage_requests": 0}
