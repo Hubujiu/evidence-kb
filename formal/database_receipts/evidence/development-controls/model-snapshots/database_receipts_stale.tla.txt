@@ -1,0 +1,137 @@
+------------------------ MODULE DatabaseReceipts ------------------------
+EXTENDS Naturals, FiniteSets
+CONSTANTS SplitCommit, SkipTransitionCAS, AllowUnknownRetry, SendBeforeAck, IgnoreLogicalOwner
+Logicals == 1..2
+Physicals == 1..2
+Callers == 1..2
+States == {"ABSENT", "STARTED", "UNKNOWN", "COMPLETE", "ERROR"}
+Unresolved == {"STARTED", "UNKNOWN"}
+Terminal == {"COMPLETE", "ERROR"}
+VARIABLES latest, logicalStatus, status, belongs, settled, nextId, owner,
+          stagedLatest, stagedLogicalStatus, stagedStatus, stagedBelongs,
+          pc, logical, physical, operation, outcome, retryOf, reason, evidence,
+          acknowledged, sent
+vars == <<latest, logicalStatus, status, belongs, settled, nextId, owner,
+          stagedLatest, stagedLogicalStatus, stagedStatus, stagedBelongs,
+          pc, logical, physical, operation, outcome, retryOf, reason, evidence,
+          acknowledged, sent>>
+Init == /\ latest = [l \in Logicals |-> 0] /\ logicalStatus = [l \in Logicals |-> "ABSENT"]
+        /\ status = [p \in Physicals |-> "ABSENT"] /\ belongs = [p \in Physicals |-> 0]
+        /\ settled = [p \in Physicals |-> "ABSENT"] /\ nextId = 1 /\ owner = 0
+        /\ stagedLatest = latest /\ stagedLogicalStatus = logicalStatus
+        /\ stagedStatus = status /\ stagedBelongs = belongs
+        /\ pc = [a \in Callers |-> "Idle"] /\ logical = [a \in Callers |-> 0]
+        /\ physical = [a \in Callers |-> 0] /\ operation = [a \in Callers |-> "None"]
+        /\ outcome = [a \in Callers |-> "ERROR"] /\ retryOf = [a \in Callers |-> 0]
+        /\ reason = [a \in Callers |-> "none"] /\ evidence = [a \in Callers |-> FALSE]
+        /\ acknowledged = {} /\ sent = {}
+StartBegin(a, l, link, why) ==
+    /\ pc[a] = "Idle" /\ owner = 0 /\ nextId \in Physicals
+    /\ owner' = a /\ nextId' = nextId + 1
+    /\ logical' = [logical EXCEPT ![a] = l] /\ physical' = [physical EXCEPT ![a] = nextId]
+    /\ operation' = [operation EXCEPT ![a] = "Begin"] /\ pc' = [pc EXCEPT ![a] = "Check"]
+    /\ retryOf' = [retryOf EXCEPT ![a] = link] /\ reason' = [reason EXCEPT ![a] = why]
+    /\ outcome' = [outcome EXCEPT ![a] = "ERROR"] /\ evidence' = [evidence EXCEPT ![a] = FALSE]
+    /\ stagedLatest' = latest /\ stagedLogicalStatus' = logicalStatus /\ stagedStatus' = status /\ stagedBelongs' = belongs
+    /\ UNCHANGED <<latest, logicalStatus, status, belongs, settled, acknowledged, sent>>
+StartTransition(a, l, p, op, result, proof) ==
+    /\ pc[a] = "Idle" /\ owner = 0
+    /\ owner' = a /\ logical' = [logical EXCEPT ![a] = l] /\ physical' = [physical EXCEPT ![a] = p]
+    /\ operation' = [operation EXCEPT ![a] = op] /\ outcome' = [outcome EXCEPT ![a] = result]
+    /\ evidence' = [evidence EXCEPT ![a] = proof] /\ pc' = [pc EXCEPT ![a] = "Check"]
+    /\ retryOf' = [retryOf EXCEPT ![a] = 0] /\ reason' = [reason EXCEPT ![a] = "none"]
+    /\ stagedLatest' = latest /\ stagedLogicalStatus' = logicalStatus /\ stagedStatus' = status /\ stagedBelongs' = belongs
+    /\ UNCHANGED <<latest, logicalStatus, status, belongs, settled, nextId, acknowledged, sent>>
+ValidBegin(a) == LET old == latest[logical[a]] IN
+    IF old = 0 THEN TRUE ELSE
+      /\ status[old] \in (IF AllowUnknownRetry THEN Terminal \cup {"UNKNOWN"} ELSE Terminal)
+      /\ retryOf[a] = old /\ reason[a] # "none"
+      /\ (status[old] = "COMPLETE" => reason[a] = "format")
+ValidTransition(a) ==
+    /\ status[physical[a]] # "ABSENT"
+    /\ (IgnoreLogicalOwner \/ belongs[physical[a]] = logical[a])
+    /\ (IgnoreLogicalOwner \/ SkipTransitionCAS \/ latest[logical[a]] = physical[a])
+    /\ (SkipTransitionCAS \/ status[physical[a]] \in
+            (IF operation[a] = "Finish" THEN {"STARTED"} ELSE Unresolved))
+    /\ (operation[a] = "Reconcile" => evidence[a] /\ outcome[a] \in Terminal)
+Valid(a) == IF operation[a] = "Begin" THEN ValidBegin(a) ELSE ValidTransition(a)
+Check(a) == /\ owner = a /\ pc[a] = "Check" /\ Valid(a) /\ pc' = [pc EXCEPT ![a] = "Physical"]
+            /\ UNCHANGED <<latest, logicalStatus, status, belongs, settled, nextId, owner,
+                           stagedLatest, stagedLogicalStatus, stagedStatus, stagedBelongs,
+                           logical, physical, operation, outcome, retryOf, reason, evidence, acknowledged, sent>>
+WritePhysical(a) == LET value == IF operation[a] = "Begin" THEN "STARTED" ELSE outcome[a] IN
+    /\ owner = a /\ pc[a] = "Physical"
+    /\ stagedStatus' = [stagedStatus EXCEPT ![physical[a]] = value]
+    /\ stagedBelongs' = IF operation[a] = "Begin" THEN [stagedBelongs EXCEPT ![physical[a]] = logical[a]] ELSE stagedBelongs
+    /\ status' = IF SplitCommit THEN stagedStatus' ELSE status
+    /\ belongs' = IF SplitCommit THEN stagedBelongs' ELSE belongs
+    /\ pc' = [pc EXCEPT ![a] = "Logical"]
+    /\ UNCHANGED <<latest, logicalStatus, settled, nextId, owner, stagedLatest, stagedLogicalStatus,
+                   logical, physical, operation, outcome, retryOf, reason, evidence, acknowledged, sent>>
+WriteLogical(a) ==
+    /\ owner = a /\ pc[a] = "Logical" /\ stagedLatest' = [stagedLatest EXCEPT ![logical[a]] = physical[a]]
+    /\ stagedLogicalStatus' = [stagedLogicalStatus EXCEPT ![logical[a]] = stagedStatus[physical[a]]]
+    /\ pc' = [pc EXCEPT ![a] = "Commit"]
+    /\ UNCHANGED <<latest, logicalStatus, status, belongs, settled, nextId, owner, stagedStatus, stagedBelongs,
+                   logical, physical, operation, outcome, retryOf, reason, evidence, acknowledged, sent>>
+Commit(a) == /\ owner = a /\ pc[a] = "Commit"
+             /\ latest' = stagedLatest /\ logicalStatus' = stagedLogicalStatus
+             /\ status' = stagedStatus /\ belongs' = stagedBelongs
+             /\ settled' = IF stagedStatus[physical[a]] \in Terminal /\ settled[physical[a]] = "ABSENT"
+                            THEN [settled EXCEPT ![physical[a]] = stagedStatus[physical[a]]] ELSE settled
+             /\ owner' = 0 /\ pc' = [pc EXCEPT ![a] = "Committed"]
+             /\ logical' = [logical EXCEPT ![a] = 0] /\ outcome' = [outcome EXCEPT ![a] = "ERROR"]
+             /\ retryOf' = [retryOf EXCEPT ![a] = 0] /\ reason' = [reason EXCEPT ![a] = "none"]
+             /\ evidence' = [evidence EXCEPT ![a] = FALSE]
+             /\ UNCHANGED <<nextId, stagedLatest, stagedLogicalStatus, stagedStatus, stagedBelongs,
+                            physical, operation, acknowledged, sent>>
+Acknowledge(a) == /\ pc[a] = "Committed"
+                  /\ acknowledged' = IF operation[a] = "Begin" THEN acknowledged \cup {physical[a]} ELSE acknowledged
+                  /\ pc' = [pc EXCEPT ![a] = IF operation[a] = "Begin" THEN "SendReady" ELSE "Idle"]
+                  /\ physical' = [physical EXCEPT ![a] = IF operation[a] = "Begin" THEN @ ELSE 0]
+                  /\ operation' = [operation EXCEPT ![a] = "None"]
+                  /\ UNCHANGED <<latest, logicalStatus, status, belongs, settled, nextId, owner,
+                                 stagedLatest, stagedLogicalStatus, stagedStatus, stagedBelongs,
+                                 logical, outcome, retryOf, reason, evidence, sent>>
+Send(a) == /\ (pc[a] = "SendReady" \/ (SendBeforeAck /\ pc[a] = "Committed" /\ operation[a] = "Begin"))
+           /\ sent' = sent \cup {physical[a]} /\ pc' = [pc EXCEPT ![a] = "Idle"]
+           /\ physical' = [physical EXCEPT ![a] = 0] /\ operation' = [operation EXCEPT ![a] = "None"]
+           /\ UNCHANGED <<latest, logicalStatus, status, belongs, settled, nextId, owner,
+                          stagedLatest, stagedLogicalStatus, stagedStatus, stagedBelongs,
+                          logical, outcome, retryOf, reason, evidence, acknowledged>>
+AbortOrRestart(a) == /\ pc[a] # "Idle" /\ owner' = IF owner = a THEN 0 ELSE owner
+                     /\ pc' = [pc EXCEPT ![a] = "Idle"]
+                     /\ logical' = [logical EXCEPT ![a] = 0] /\ physical' = [physical EXCEPT ![a] = 0]
+                     /\ operation' = [operation EXCEPT ![a] = "None"] /\ outcome' = [outcome EXCEPT ![a] = "ERROR"]
+                     /\ retryOf' = [retryOf EXCEPT ![a] = 0] /\ reason' = [reason EXCEPT ![a] = "none"]
+                     /\ evidence' = [evidence EXCEPT ![a] = FALSE]
+                     /\ stagedLatest' = IF owner = a THEN latest ELSE stagedLatest
+                     /\ stagedLogicalStatus' = IF owner = a THEN logicalStatus ELSE stagedLogicalStatus
+                     /\ stagedStatus' = IF owner = a THEN status ELSE stagedStatus
+                     /\ stagedBelongs' = IF owner = a THEN belongs ELSE stagedBelongs
+                     /\ UNCHANGED <<latest, logicalStatus, status, belongs, settled, nextId, acknowledged, sent>>
+Next == \E a \in Callers :
+    (\E l \in Logicals, link \in 0..2, why \in {"none", "retry", "format"} : StartBegin(a, l, link, why))
+    \/ (\E l \in Logicals, p \in Physicals, op \in {"Finish", "Reconcile"}, result \in Terminal \cup {"UNKNOWN"}, proof \in BOOLEAN :
+            StartTransition(a, l, p, op, result, proof))
+    \/ Check(a) \/ WritePhysical(a) \/ WriteLogical(a) \/ Commit(a) \/ Acknowledge(a) \/ Send(a) \/ AbortOrRestart(a)
+Spec == Init /\ [][Next]_vars
+TypeOK == /\ latest \in [Logicals -> 0..2] /\ logicalStatus \in [Logicals -> States]
+          /\ status \in [Physicals -> States] /\ belongs \in [Physicals -> 0..2]
+          /\ settled \in [Physicals -> Terminal \cup {"ABSENT"}] /\ nextId \in 1..3 /\ owner \in 0..2
+          /\ stagedLatest \in [Logicals -> 0..2] /\ stagedLogicalStatus \in [Logicals -> States]
+          /\ stagedStatus \in [Physicals -> States] /\ stagedBelongs \in [Physicals -> 0..2]
+          /\ pc \in [Callers -> {"Idle", "Check", "Physical", "Logical", "Commit", "Committed", "SendReady"}]
+          /\ logical \in [Callers -> 0..2] /\ physical \in [Callers -> 0..2]
+          /\ operation \in [Callers -> {"None", "Begin", "Finish", "Reconcile"}]
+          /\ outcome \in [Callers -> Terminal \cup {"UNKNOWN"}] /\ retryOf \in [Callers -> 0..2]
+          /\ reason \in [Callers -> {"none", "retry", "format"}] /\ evidence \in [Callers -> BOOLEAN]
+          /\ acknowledged \subseteq Physicals /\ sent \subseteq Physicals
+AtomicMirror == \A l \in Logicals : IF latest[l] = 0 THEN logicalStatus[l] = "ABSENT"
+                                      ELSE logicalStatus[l] = status[latest[l]]
+UnresolvedCovered == \A p \in Physicals : status[p] \in Unresolved => \E l \in Logicals : latest[l] = p
+SingleUnresolved == \A l \in Logicals : Cardinality({p \in Physicals : belongs[p] = l /\ status[p] \in Unresolved}) <= 1
+LogicalSourceIsolation == \A l \in Logicals : latest[l] # 0 => belongs[latest[l]] = l
+TerminalImmutable == \A p \in Physicals : settled[p] \in Terminal => status[p] = settled[p]
+NoUnacknowledgedSend == sent \subseteq acknowledged
+=============================================================================

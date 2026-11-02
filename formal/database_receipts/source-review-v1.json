@@ -1,0 +1,123 @@
+{
+  "base_commit": "08fb15fe49f58e7a7d8cc97679f0f53f42edf30a",
+  "scope": "Model-only and actual contracts; no production source modifications.",
+  "bindings": [
+    {
+      "path": "kb_platform/provider_receipt_database.py",
+      "language": "python",
+      "symbol": "ReceiptDatabase.__init__",
+      "sha256": "600c32d89010bed66dbb218983b7fe30fcbde31792a846413e8a0ff0e4cc7886"
+    },
+    {
+      "path": "kb_platform/provider_receipt_database.py",
+      "language": "python",
+      "symbol": "ReceiptDatabase._locked",
+      "sha256": "4ba4b8edbd8ac9b632b012b9d28072ef1b297277c05ccbafdfa2027175f4c463"
+    },
+    {
+      "path": "kb_platform/provider_receipt_database.py",
+      "language": "python",
+      "symbol": "ReceiptDatabase._save",
+      "sha256": "c97b67edbbe67559c980d9f0059564a5331e3c1fa160538c6f22976cfb443322"
+    },
+    {
+      "path": "kb_platform/provider_receipt_database.py",
+      "language": "python",
+      "symbol": "ReceiptDatabase.begin",
+      "sha256": "e081e702e3d3f7c3ebb7c4b5e6cc72ab7e94b05e3ec68538d9472f12e6a258ee"
+    },
+    {
+      "path": "kb_platform/provider_receipt_database.py",
+      "language": "python",
+      "symbol": "ReceiptDatabase.read",
+      "sha256": "00e4842447ab98a7536967424a0db55abc0923d424fde99c4e14454a804de641"
+    },
+    {
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "RequestReceipts._validate_previous",
+      "sha256": "9689f3749e66632387f5a3bc88a902df17be148363e6355ca08d7acc5f085cd5"
+    },
+    {
+      "path": "kb_platform/storage_adapters/structured.py",
+      "language": "python",
+      "symbol": "StructuredSqlSpace.transaction",
+      "sha256": "adb10682793b25754ccf72fed5f2757bc8d62bc3fea4a3fa3a291b49c0301733"
+    },
+    {
+      "path": "kb_platform/database_providers/base.py",
+      "language": "python",
+      "symbol": "transaction",
+      "sha256": "f29f19380fd35498adc67285008f3c3dda00e3689f16df325d88e27b46eb2425"
+    },
+    {
+      "path": "scripts/receipt_database_checks.py",
+      "language": "python",
+      "symbol": "<module>",
+      "sha256": "f8ebe1024aaab93a1f8965e2b6f4f37c2d96cf1f4e2ca08030b66558fd4c09bf"
+    },
+    {
+      "path": "kb_platform/rag_testing/receipt_database_transition_contracts.py",
+      "language": "python",
+      "symbol": "ReceiptDatabaseTransitionContracts",
+      "sha256": "04c202c258a9c3b6bd1761815016780d86ed12a16e859bf4c258f1ee5ac8a972"
+    },
+    {
+      "path": "kb_platform/rag_testing/receipt_database_lint_contracts.py",
+      "language": "python",
+      "symbol": "ReceiptDatabaseLintContracts",
+      "sha256": "eef4a96123b2c6d05e534eb5d09ec0f4beab4d0bef2aad9aad3a3339564cf457"
+    }
+  ],
+  "existing_bindings_retained": [
+    {
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "RequestReceipts.begin",
+      "sha256": "4f6bbbed75281b5f75ab86c7d054686e97f1080d468598a92d17d9d54467b76a"
+    },
+    {
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "RequestReceipts.finish",
+      "sha256": "17cade226b0be4710f504c28630e43efb8e98e3f695689f47a01c73717e576b7"
+    },
+    {
+      "path": "kb_platform/provider_runtime.py",
+      "language": "python",
+      "symbol": "RequestReceipts.reconcile",
+      "sha256": "c552600764b4e8c05d7ab3408a0b3bca4cf3bd0c31878b4e1b087cec8324360b"
+    },
+    {
+      "path": "kb_platform/provider_receipt_database.py",
+      "language": "python",
+      "symbol": "ReceiptDatabase.transition",
+      "sha256": "68d95771319ef94fe23c6ef2b3dab38d510b2016eff1e22112f2da7d4fbaf714"
+    },
+    {
+      "path": "kb_platform/remote.py",
+      "language": "python",
+      "symbol": "_Transport._send_attempt",
+      "sha256": "c4354fd45b218db3d783ae0716eab5f93ce8328fe6384b49c627cd59e6f18ddc"
+    },
+    {
+      "path": "kb_platform/database_providers/sqlite_guard.py",
+      "language": "python",
+      "symbol": "sqlite_guard",
+      "sha256": "bb125a768790d51560ad6bedcbb5e998904cf1461a1bd9fcc899ee6e2dcd9b9b"
+    }
+  ],
+  "review": [
+    "Physical and logical writes share _locked write transaction, which exits before begin returns identity.",
+    "Structured database writer lock plus SQLite BEGIN IMMEDIATE serialize SQLite writers; FOR UPDATE remains required on supported SQL row-lock dialects.",
+    "finish/reconcile validate logical origin, current physical ownership and predecessor before saving; no generic metadata trust expansion.",
+    "Reconciliation requires explicit evidence but does not alter independent physical budgets.",
+    "Transport order is tested via controlled DB receipt injection; default transport still chooses file receipts."
+  ],
+  "remaining_obligations": [
+    "Model database-backed receipt transitions, retry metadata validation and remote transport coordination without losing current inventory.",
+    "Establish implementation refinement and crash durability beyond completed atomic file replacements; assess unbounded IDs and additional actors.",
+    "Persistent UNKNOWN and interrupted publication can remain blocked indefinitely; no liveness claim is made.",
+    "Database-backed receipt coverage trusts atomic SQL and locks; it does not infer all STARTED rows were unsent or reconcile independent UNKNOWN spend reservations."
+  ]
+}

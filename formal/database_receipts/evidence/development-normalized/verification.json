@@ -1,0 +1,48 @@
+{
+  "schema": "historical-tlc-verification-summary/1",
+  "scope": "Historical finite model runs, not a live runner report or ordinary project acceptance.",
+  "runs": [
+    {
+      "id": "database_receipts",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 18.920202070992673,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 1049161,
+        "distinct": 292179,
+        "remaining": 0
+      },
+      "raw_log": "database_receipts.log",
+      "input_checksums": "input-checksums/database_receipts/SHA256SUMS",
+      "original_command": [
+        "java",
+        "-Xmx512m",
+        "-XX:MaxMetaspaceSize=128m",
+        "-XX:+UseParallelGC",
+        "-XX:+ExitOnOutOfMemoryError",
+        "-cp",
+        "/tmp/evidence-tla-tools/tla2tools-1.7.4.jar",
+        "tlc2.TLC",
+        "-tool",
+        "-workers",
+        "1",
+        "-seed",
+        "1",
+        "-fp",
+        "0",
+        "-fpmem",
+        "0.25",
+        "-metadir",
+        "/workspace/scratch/75c2273f6a80/evidence-kb-receipt-database-formal/.local/receipt-database-tlc-20261102-2111/database_receipts/states",
+        "-config",
+        "DatabaseReceipts.cfg",
+        "DatabaseReceipts"
+      ],
+      "historical_model_snapshot": "model-snapshots/database_receipts.tla.txt"
+    }
+  ]
+}
