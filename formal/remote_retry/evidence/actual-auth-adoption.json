@@ -1,0 +1,9 @@
+{
+  "result": "PASS",
+  "rejected_token_callers": 2,
+  "actual_refresh_invocations": 1,
+  "both_adopt_current_token": true,
+  "synchronization": "Events and real provider auth lock; no sleep",
+  "external_calls": 0,
+  "production_changes": false
+}

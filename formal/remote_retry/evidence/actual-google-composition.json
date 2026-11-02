@@ -1,0 +1,139 @@
+{
+  "base": "54a2686ebde6e2b88662e3d695ffa53be3eb36e9",
+  "result": "PASS",
+  "cases": [
+    {
+      "responses": [
+        401,
+        503,
+        200
+      ],
+      "actual_model_dispatches": 3,
+      "credential_refresh_invocations": 1,
+      "auth_stage_metadata": [
+        0,
+        1,
+        1
+      ],
+      "authentication_retry": [
+        false,
+        true,
+        false
+      ],
+      "retry_reasons": [
+        null,
+        "authentication",
+        "server"
+      ],
+      "states": [
+        "ERROR",
+        "ERROR",
+        "COMPLETE"
+      ],
+      "waits": [
+        1.0
+      ],
+      "terminal_http_status": null,
+      "unknown_usage_requests": 2
+    },
+    {
+      "responses": [
+        503,
+        401,
+        200
+      ],
+      "actual_model_dispatches": 3,
+      "credential_refresh_invocations": 1,
+      "auth_stage_metadata": [
+        0,
+        0,
+        1
+      ],
+      "authentication_retry": [
+        false,
+        false,
+        true
+      ],
+      "retry_reasons": [
+        null,
+        "server",
+        "authentication"
+      ],
+      "states": [
+        "ERROR",
+        "ERROR",
+        "COMPLETE"
+      ],
+      "waits": [
+        1.0
+      ],
+      "terminal_http_status": null,
+      "unknown_usage_requests": 2
+    },
+    {
+      "responses": [
+        503,
+        401,
+        503
+      ],
+      "actual_model_dispatches": 3,
+      "credential_refresh_invocations": 1,
+      "auth_stage_metadata": [
+        0,
+        0,
+        1
+      ],
+      "authentication_retry": [
+        false,
+        false,
+        true
+      ],
+      "retry_reasons": [
+        null,
+        "server",
+        "authentication"
+      ],
+      "states": [
+        "ERROR",
+        "ERROR",
+        "ERROR"
+      ],
+      "waits": [
+        1.0
+      ],
+      "terminal_http_status": 503,
+      "unknown_usage_requests": 3
+    },
+    {
+      "responses": [
+        401,
+        401
+      ],
+      "actual_model_dispatches": 2,
+      "credential_refresh_invocations": 1,
+      "auth_stage_metadata": [
+        0,
+        1
+      ],
+      "authentication_retry": [
+        false,
+        true
+      ],
+      "retry_reasons": [
+        null,
+        "authentication"
+      ],
+      "states": [
+        "ERROR",
+        "ERROR"
+      ],
+      "waits": [],
+      "terminal_http_status": 401,
+      "unknown_usage_requests": 2
+    }
+  ],
+  "external_oauth_calls": 0,
+  "external_model_calls": 0,
+  "production_changes": false,
+  "fixture": "Real provider/query, receipt and physical ledger with MockTransport; credential refresh stub, not a real OAuth call. Explicit trust_env=False is fixture configuration, environment unchanged."
+}

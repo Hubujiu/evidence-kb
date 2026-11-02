@@ -1,0 +1,12 @@
+{
+  "scope": "Actual pinned google-auth 2.62.0 jwt_grant with in-memory request function; no network/credentials/provider calls.",
+  "logical_refresh_operations": 1,
+  "actual_mock_request_invocations": 3,
+  "planned_sdk_sleeps": [
+    1.0,
+    2.0
+  ],
+  "token_observed": true,
+  "external_http_calls": 0,
+  "model_physical_calls": 0
+}

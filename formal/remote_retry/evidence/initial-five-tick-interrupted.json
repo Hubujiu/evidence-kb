@@ -1,0 +1,5 @@
+{
+  "exit": 130,
+  "complete": false,
+  "reason": "Bounded five-tick exploratory profile exceeded practical targeted-model runtime; interrupted without a verdict. Preserve log/input. Review reduces explicit clock bound to two ticks, not the invariants."
+}

@@ -1,0 +1,17 @@
+{
+  "base": "54a2686ebde6e2b88662e3d695ffa53be3eb36e9",
+  "production_owner_changes": false,
+  "new_product_bugs_confirmed": 0,
+  "targeted_contracts": 13,
+  "targeted_exit": 0,
+  "source_mutants": 21,
+  "refreshed_hash_mutants": 7,
+  "model_seeded_controls": 10,
+  "model_reachability_witnesses": 4,
+  "initial_auth_model": "FAIL: completed auth-stage count does not include failed/inflight refresh; actual failed-refresh regression confirms distinction",
+  "initial_shared_policy": "INTERRUPTED exit 130; five-tick exploration has no proof verdict. Explicit final bound two ticks.",
+  "initial_receipt_probe": "KeyError: format/transport fields belong to provider events, not durable receipt rows",
+  "external_model_embedding_judge_oauth_calls": 0,
+  "precommit_targeted_contracts": 57,
+  "precommit_targeted_exit": 0
+}

@@ -1,0 +1,16 @@
+{
+  "reviewed_source_base": "54a2686ebde6e2b88662e3d695ffa53be3eb36e9 (read only; canonical parent-approved base pending)",
+  "packages": {
+    "openai": "2.54.0",
+    "google-auth": "2.62.0",
+    "httpx": "0.28.1",
+    "tenacity": "9.2.1"
+  },
+  "source_sha256": {
+    "openai/_base_client.py": "5539c83d01c27e1bbf1ad34e59cc872202feb6c8bf81b56fadbeeb2b81a3e869",
+    "google/oauth2/_client.py": "4ef6014f32070788e3a4ee731c0bb8af87b1200e5562ff288651d430c1915026",
+    "google/auth/_exponential_backoff.py": "ab103d7a4f34ac1928011c741209766f5325614d03fa940d56a80299487e9605",
+    "google/oauth2/service_account.py": "56b822aa3e99722a6a680fc4b30270c51d55be779852813ce9f05fe69b207f82"
+  },
+  "new_external_model_embedding_judge_calls": 0
+}
