@@ -26,6 +26,35 @@ written. The model deliberately retains the nonempty intermediate error
 payload; it does not assume redaction happened inside compose or generic graph
 completion.
 
+## Source-policy timing and repeated-tool boundary
+
+`SourcePolicy` and `ValidateSources` represent turn initialization, before the
+first `BeginNode`/`Plan`, not a planner-selectable mid-turn source switch. In the
+mapped implementation, `KnowledgeTurn.run` applies the validated request policy,
+invalidates prior evidence/catalog/offsets/checkpoints, then creates a fresh
+`seen_actions` set before graph execution. The current built-in tool registry
+and generated decision schema have no `select_sources` action. A policy change
+is an explicit request control on the next turn; the unchanged query can then
+execute against the newly selected sources.
+
+A read-only audit of the fixed implementation checked the actual schema rejection
+and executed two ordinary turns through `KnowledgeService`, Python/native Rust
+graph execution and SQLite sessions. The same `search(query="original")` ran
+once for locked source `s0` and once for locked source `s1`; only `s1` evidence
+was delivered by the second turn. The action/argument digest was identical, but
+the actual tool receipt keys differed by request id. Replaying the second request
+returned the same JSON response without another model or tool execution. Model
+completions and authority/search inputs were synthetic, not paid providers or
+production HTTP/PostgreSQL evidence.
+
+Existing `AgentGraphContracts` cases already require same-turn repeated arguments
+to halt without reexecution, remove old source catalog entries after a new-turn
+policy change, and reject a cross-turn stale quote. The audit found no supported
+`search → select_sources → search` path and does not introduce a product fix or
+claim a new bug. Receipt-key correctness, arbitrary plugin effects, and external
+authority changes are not proved by this model; its `RepeatedTool` action
+abstracts an already detected repetition rather than modeling digest/cache keys.
+
 ## Bounds and transitions
 
 - MaxSteps = 2: zero, one, or two ordinary tool actions, including a successful

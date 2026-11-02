@@ -34,6 +34,21 @@ The contract suite checks ten bad AST variants after refreshing all affected sou
 
 Existing graph contracts remain intact: source selection removes previous evidence from planner input/schema, stale citations are rejected, semantic verification repairs at most once and reverifies, partial/abstained results remain legitimate, budgets prevent extra exploration, and permission changes redact delivery. Additional contracts cancel after an actual tool result and change authority after actual graph completion, demonstrating that terminal graph state alone is insufficient for answer publication.
 
+## Source-selection audit boundary
+
+A follow-up hypothesis about repeated searches after a same-turn source switch
+was excluded for the current built-in workflow. Source selection is a validated
+request control applied before planning, not a `select_sources` planner action.
+Each new turn initializes `seen_actions` after policy invalidation. An actual
+two-turn fixture repeated the same query under a new locked source policy,
+observed a second tool execution and a distinct request-scoped receipt key, and
+returned only the new source evidence. The actual decision schema rejects the
+hypothesized action. Three existing graph contracts also retain their repetition,
+catalog-clearing and stale-quote checks; no duplicate product regression or
+speculative runtime change is added. The model's precise initialization boundary
+and unmodeled receipt-key obligations are documented in its
+[Source-policy timing section](../formal/knowledge_workflow/README.md#source-policy-timing-and-repeated-tool-boundary).
+
 ## Explicit limits
 
 The [finite model](../formal/knowledge_workflow/README.md) is partial coverage, not code refinement. Semantic verification repair is distinct from bounded local output-format/citation repair and abstention review. The model and regressions do not prove semantic answer correctness, arbitrary model output behavior, or unlimited execution domains.
