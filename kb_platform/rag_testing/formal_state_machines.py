@@ -14,6 +14,8 @@ import sys
 import time
 import unittest
 
+from scripts.receipt_transition_checks import receipt_transition_violations, sqlite_guard_violations
+
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'formal/registry-v1.json'
 LOCK = 'formal/toolchain-v1.json'
@@ -141,6 +143,10 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
             if identity in ids or not re.fullmatch(r'[a-z][a-z0-9_-]+', identity):
                 raise ValueError(f'Duplicate or invalid machine id: {identity}')
             ids.add(identity)
+            if identity == 'provider_receipts':
+                for path, check in (('kb_platform/provider_runtime.py', receipt_transition_violations),
+                                    ('kb_platform/database_providers/sqlite_guard.py', sqlite_guard_violations)):
+                    errors.extend(f'{identity}: {error}' for error in check(local_file(root, path).read_text('utf-8')))
             if machine['status'] not in {'partial', 'unmodeled'}:
                 raise ValueError(f'{identity}: unknown coverage status')
             for key in ('owners', 'states', 'transitions', 'invariants', 'assumptions', 'exclusions', 'source_bindings'):
