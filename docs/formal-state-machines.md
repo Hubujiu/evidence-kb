@@ -39,6 +39,16 @@ TLC 需要 Java 21。安装脚本是显式联网准备步骤，检查过程中�
 
 `formal/controls` 有真实执行的合成正确模型、注入提前释放的错误变体，以及故意无效的配置。它们只检查工具链灵敏度，不计入产品覆盖。每个实际模型也必须带有对应命名负控。`kb_platform/rag_testing/formal_state_machine_contracts.py` 同时提供可由统一 unittest 发现的状态/守卫变异 lint 负控、TLC 输出判定合同，以及实际运行证据的附加合同；普通离线 worker 的子进程禁令不变，Java 只由独立受控阶段启动。
 
+### 官方 SANY 同行布尔赋值审阅
+
+独立 formal required 阶段在 TLC 前，使用同一已校验 jar 的 `tla2sany.xml.XMLExporter -o` 离线导出每个唯一登记模块的官方语义树。每次导出最多 30 秒、256 MiB heap / 128 MiB metaspace，不放宽既有 TLC 或整个 formal 阶段限制。导出命令、源副本/摘要、原始 XML/摘要、stderr 和真实退出码保留在 `inline-boolean-review/`；解析错误或审阅错误不能被当成零项后继续宣称 TLC 已执行。
+
+`INLINE_PRIMED_BOOLEAN_REVIEW` 仅提示直接二元、同一行的 `x' = a /\ b` 形态：官方 AST 中 equality 的 RHS 已在 `a` 结束，`b` 是独立 guard。另一 primed equality、`UNCHANGED` 和赋值内部 IF/CASE/LET 条件不会被混同；完整 `(a /\ b)` RHS 不报。它要求明确审阅，不推断作者意图、不自动修复：赋值值需完整括号，独立 guard 可移到独立 conjunct 行。
+
+此规则不覆盖跨行意图、链式 conjunction 后段、其他逻辑符、helper、record/EXCEPT、漏 action 或 cfg/bounds 引起的不可达，更不是实现精化证明。手工定义的 terminal/action-after witness 仍必需；仅 Init 取值不算执行证据。
+
+[控制输入说明](../formal/controls/inline_boolean/README.md) 保留 PR35/44 真实旧坏/新好源文件，以及固定官方 exporter 的小型明文 XML fixtures 和来源/hash。ordinary sealed contracts 只读取这些 fixtures，不启动 Java；formal 阶段重新导出并核对指定行/赋值名/guard，不接受“任意错误即负控通过”。工具升级或 exporter 格式变化必须重新审查 fixtures，缺失/坏 XML、未解析 UID、超时和非零退出均明确失败。控制文件不计入产品状态机覆盖。
+
 另有实际活性正负控：活性负控必须在配置中只启用指定 `expected_property`，并同时得到 exit 13、temporal-violation 事件 2116 和完整活性检查事件；只出现同为 exit 13 的 action-property-evaluation 错误不能通过。TLC 不在该违反事件中命名属性，因此用单属性配置及输入摘要绑定反例，不能凭退出码推断失败性质。
 
 默认输出是新的 `.local/checks/<唯一编号>/`；CI 保存完整 formal 输出 14 天。现有结果目录拒绝覆盖。失败、缺失运行或零真实模型不接受；合成控制不能代替产品模型。

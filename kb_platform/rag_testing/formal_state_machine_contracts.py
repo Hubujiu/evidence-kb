@@ -211,6 +211,23 @@ class FormalVerdictContracts(unittest.TestCase):
 
 def live_suite(report):
     class ActualFormalEvidenceContracts(unittest.TestCase):
+        def test_official_inline_review_and_named_controls_ran_before_model_claims(self):
+            from .formal_inline_boolean import CONTROL_EXPECTATIONS, finding_signature
+            review = report['inline_boolean_review']
+            self.assertEqual('PASS', review['decision'])
+            self.assertEqual(review['expected_modules'], [row['source_path'] for row in review['modules']])
+            self.assertEqual(set(CONTROL_EXPECTATIONS), set(review['expected_controls']))
+            self.assertEqual(list(CONTROL_EXPECTATIONS), [row['fixture_id'] for row in review['controls']])
+            self.assertTrue(review['modules'])
+            for row in review['modules'] + review['controls']:
+                with self.subTest(export=row['id']):
+                    self.assertEqual('PASS', row['decision'])
+                    self.assertEqual(0, row['returncode'])
+                    self.assertFalse(row['timeout'])
+                    self.assertTrue(row['input_sha256'])
+                    self.assertTrue(row['xml_sha256'])
+                    self.assertEqual(row['expected_findings'], [list(item) for item in finding_signature(row['findings'])])
+
         def test_every_registered_run_executed_exactly_once(self):
             actual = {row['id']: row['kind'] for row in report['results']}
             self.assertEqual(report['expected_runs'], actual)
