@@ -1,0 +1,60 @@
+   Compiling plugin-runtime v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-plugin-formal/rust/plugin-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.63s
+     Running unittests src/lib.rs (target/debug/deps/plugin_runtime-e9d1061b614bf8b9)
+
+running 46 tests
+test composition::tests::aliases_compile_into_existing_lifecycle_dependencies ... ok
+test composition::tests::local_executor_has_no_process_command_and_process_executor_requires_one ... ok
+test composition::tests::configuration_identity_includes_changed_commands_and_contracts ... ok
+test composition::tests::provider_can_change_without_changing_consumers ... ok
+test composition::tests::optional_dependency_can_be_absent_but_explicit_binding_must_match ... ok
+test composition::tests::protocol_exposes_compilation_without_creating_runtime_state ... ok
+test composition::tests::rejects_cycles_and_non_application_entrypoints ... ok
+test composition::tests::two_instances_of_same_contract_have_distinct_exports_and_explicit_bindings ... ok
+test composition::tests::rejects_missing_or_undeclared_bindings_and_unknown_targets ... ok
+test composition::tests::rejects_wrong_contract_version_and_missing_capability ... ok
+test tests::active_internal_owner_can_lease_during_assembly_but_public_work_cannot_start ... ok
+test tests::collecting_disposed_child_cannot_leave_parent_revision_references_or_invoke_records ... ok
+test tests::completion_replay_is_idempotent_and_conflicts_do_not_rewrite_accepted_outcome ... ok
+test tests::changed_configuration_file_fingerprint_restarts_only_bound_dependents_at_the_same_path ... ok
+test tests::current_init_failure_and_explicit_cancellation_remain_terminal ... ok
+test tests::cancelled_expired_invocation_pins_resources_until_real_completion ... ok
+test tests::exit_notification_ignores_old_generation_and_draining_replacement ... ok
+test tests::explicit_cancelled_init_cannot_activate_on_a_late_success ... ok
+test tests::init_actions_publish_only_declared_completed_services_and_cleanup_reverses_dependencies ... ok
+test tests::initialization_lease_requires_current_owner_and_cannot_admit_calls_after_completion ... ok
+test tests::inherited_listener_borrows_admitted_child_lease_without_exposing_hidden_service ... ok
+test tests::invalid_apply_and_unknown_protocol_fields_leave_live_registration_unchanged ... ok
+test tests::admitted_child_scope_can_finish_nested_inherited_call_after_ancestor_drain ... ok
+test tests::late_init_after_replacement_is_never_published_and_its_resources_are_cleaned ... ok
+test tests::invocation_and_late_draining_effects_are_owned_until_real_call_end_and_cleanup_retry ... ok
+test tests::initializing_consumer_invokes_declared_dependency_only_with_current_initialization_authority ... ok
+test tests::native_async_task_reports_cleanup_only_after_cancellation_has_finished ... ok
+test tests::isolated_service_domains_and_nested_intercepts_preserve_definition_and_call_contexts ... ok
+test tests::never_dispatched_init_is_cancelled_without_running_mount_and_update_uses_new_generation ... ok
+test tests::partial_initialization_failure_owns_resources_and_retry_never_repeats_successful_cleanup ... ok
+test tests::pending_dependencies_activate_and_consumer_cleanup_pins_replaced_provider ... ok
+test tests::previous_generation_owner_and_dependency_handles_cannot_rebind_after_restart ... ok
+test tests::retired_instance_completion_history_remains_until_explicit_ack_after_replacement ... ok
+test tests::same_priority_listener_order_uses_actual_registration_after_a_pending_activation ... ok
+test tests::native_timer_resource_is_cancelled_and_joined_without_waiting_for_its_deadline ... ok
+test tests::superseded_dependency_init_failure_does_not_poison_replacement ... ok
+test tests::scope_override_visibility_parent_ownership_and_listener_cleanup_are_explicit ... ok
+test tests::strict_validation_rejects_invalid_graphs_without_creating_instances ... ok
+test tests::serial_plugin_scope_pins_allow_first_and_nested_work_but_reject_parallel_sibling_calls ... ok
+test tests::switching_same_shape_implementation_restarts_only_that_dependency_subgraph ... ok
+test tests::explicit_collection_releases_completed_records_and_never_reuses_identity ... ok
+test tests::diagnostics_validate_runtime_identity_and_keep_parallel_failures_observable ... ok
+test tests::full_catalog_and_nested_scope_admission_preserve_existing_leases ... ok
+test tests::unclaimed_cancelled_activations_do_not_accumulate_unacknowledgeable_reports ... ok
+test tests::same_root_remove_and_readd_churn_reclaims_retired_instances_after_acknowledgement ... ok
+test tests::acknowledged_terminal_operations_do_not_accumulate_in_a_long_lived_runtime ... ok
+
+test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.68s
+
+   Doc-tests plugin_runtime
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,63 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 119 and seed -4053064363495342216 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 6] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-plugin-formal/formal/plugin_lifecycle/PluginLifecycle.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module PluginLifecycle
+Starting... (2026-11-02 08:46:25)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 08:46:26.
+Error: Invariant NoSupersededFailure is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ updated = FALSE
+/\ generation = [P |-> 1, C |-> 1]
+/\ initializing = [P |-> FALSE, C |-> TRUE]
+/\ lateError = FALSE
+/\ cleanupFaultUsed = [P |-> FALSE, C |-> FALSE]
+/\ desired = [P |-> "enabled", C |-> "enabled"]
+/\ phase = [P |-> "Active", C |-> "Starting"]
+/\ calls = [P |-> "none", C |-> "none"]
+/\ failure = [P |-> "none", C |-> "none"]
+/\ nextManifest = [P |-> FALSE, C |-> FALSE]
+/\ resources = [P |-> 1, C |-> 1]
+/\ binding = 1
+
+State 2: <UpdateProvider line 31, col 5 to line 39, col 57 of module PluginLifecycle>
+/\ updated = TRUE
+/\ generation = [P |-> 1, C |-> 1]
+/\ initializing = [P |-> FALSE, C |-> TRUE]
+/\ lateError = FALSE
+/\ cleanupFaultUsed = [P |-> FALSE, C |-> FALSE]
+/\ desired = [P |-> "enabled", C |-> "enabled"]
+/\ phase = [P |-> "Draining", C |-> "Draining"]
+/\ calls = [P |-> "none", C |-> "none"]
+/\ failure = [P |-> "none", C |-> "none"]
+/\ nextManifest = [P |-> TRUE, C |-> FALSE]
+/\ resources = [P |-> 1, C |-> 1]
+/\ binding = 1
+
+State 3: <CompleteInit line 60, col 5 to line 72, col 60 of module PluginLifecycle>
+/\ updated = TRUE
+/\ generation = [P |-> 1, C |-> 1]
+/\ initializing = [P |-> FALSE, C |-> FALSE]
+/\ lateError = TRUE
+/\ cleanupFaultUsed = [P |-> FALSE, C |-> FALSE]
+/\ desired = [P |-> "enabled", C |-> "enabled"]
+/\ phase = [P |-> "Draining", C |-> "Draining"]
+/\ calls = [P |-> "none", C |-> "none"]
+/\ failure = [P |-> "none", C |-> "superseded"]
+/\ nextManifest = [P |-> TRUE, C |-> FALSE]
+/\ resources = [P |-> 1, C |-> 1]
+/\ binding = 1
+
+11 states generated, 10 distinct states found, 7 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 6 (minimum is 6, the maximum 6 and the 95th percentile is 6).
+Finished in 01s at (2026-11-02 08:46:26)

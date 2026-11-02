@@ -1742,3 +1742,100 @@ fn changed_configuration_file_fingerprint_restarts_only_bound_dependents_at_the_
     );
     assert_eq!(inspect(&mut runtime, host), before);
 }
+
+#[test]
+fn superseded_dependency_init_failure_does_not_poison_replacement() {
+    let mut runtime = Coordinator::default();
+    let host = create(
+        &mut runtime,
+        vec![
+            plugin("provider", &["dependency"], &[]),
+            plugin("consumer", &["service"], &["dependency"]),
+        ],
+        None,
+    );
+    let provider = poll(&mut runtime, host).remove(0);
+    complete(&mut runtime, &provider, "ok", &["dependency"]);
+    let consumer = poll(&mut runtime, host).remove(0);
+    let resource = request(
+        &mut runtime,
+        "resource",
+        json!({"host":host,"operation":consumer["operation"],"kind":"partial"}),
+    )
+    .unwrap()["resource"]
+        .clone();
+    request(
+        &mut runtime,
+        "update",
+        json!({"host":host,"plugin":"provider","config":{"revision":2}}),
+    )
+    .unwrap();
+    assert!(
+        poll(&mut runtime, host)
+            .iter()
+            .all(|action| action["kind"] == "cancel")
+    );
+    complete(&mut runtime, &consumer, "error", &[]);
+    let cleanup = poll(&mut runtime, host).remove(0);
+    assert_eq!(cleanup["plugin"], "consumer");
+    assert_eq!(cleanup["resource"], resource);
+    complete(&mut runtime, &cleanup, "error", &[]);
+    assert_eq!(inspect(&mut runtime, host)["state"], "cleanup_failed");
+    assert!(poll(&mut runtime, host).is_empty());
+    request(
+        &mut runtime,
+        "retry",
+        json!({"host":host,"plugin":"consumer"}),
+    )
+    .unwrap();
+    let retried = poll(&mut runtime, host).remove(0);
+    assert_eq!(retried["resource"], resource);
+    complete(&mut runtime, &retried, "ok", &[]);
+    let cleanup = poll(&mut runtime, host).remove(0);
+    assert_eq!(cleanup["plugin"], "consumer");
+    assert_eq!(cleanup["resource"], 0);
+    complete(&mut runtime, &cleanup, "ok", &[]);
+    let cleanup = poll(&mut runtime, host).remove(0);
+    assert_eq!(cleanup["plugin"], "provider");
+    complete(&mut runtime, &cleanup, "ok", &[]);
+    let replacement = poll(&mut runtime, host).remove(0);
+    assert_eq!(replacement["plugin"], "provider");
+    complete(&mut runtime, &replacement, "ok", &["dependency"]);
+    let actions = poll(&mut runtime, host);
+    assert_eq!(
+        actions.len(),
+        1,
+        "superseded consumer must restart without an explicit retry"
+    );
+    let replacement = &actions[0];
+    assert_eq!(replacement["plugin"], "consumer");
+    assert_eq!(replacement["generation"], 2);
+    complete(&mut runtime, replacement, "ok", &["service"]);
+    assert_eq!(inspect(&mut runtime, host)["state"], "ready");
+}
+
+#[test]
+fn current_init_failure_and_explicit_cancellation_remain_terminal() {
+    for cancelled in [false, true] {
+        let mut runtime = Coordinator::default();
+        let host = create(&mut runtime, vec![plugin("p", &["service"], &[])], None);
+        let init = poll(&mut runtime, host).remove(0);
+        if cancelled {
+            request(
+                &mut runtime,
+                "cancel",
+                json!({"host":host,"operation":init["operation"]}),
+            )
+            .unwrap();
+        }
+        complete(&mut runtime, &init, "error", &[]);
+        finish_cleanup(&mut runtime, host);
+        assert_eq!(inspect(&mut runtime, host)["state"], "failed");
+        assert!(poll(&mut runtime, host).is_empty());
+        request(&mut runtime, "retry", json!({"host":host,"plugin":"p"})).unwrap();
+        let retry = poll(&mut runtime, host).remove(0);
+        assert_eq!(retry["generation"], 2);
+        complete(&mut runtime, &retry, "ok", &["service"]);
+        assert_eq!(inspect(&mut runtime, host)["state"], "ready");
+    }
+}
