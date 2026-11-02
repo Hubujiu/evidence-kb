@@ -377,7 +377,8 @@
         "Unallocated/live/completed lease identities and retained ancestor chains.",
         "Pending/queued/claimed/suppressed/completed activation identities across two generations.",
         "Claimed/completed/acknowledged operations, active/failed/retried resources and retained/retired/collected instance identities.",
-        "Live/disposed/detached/collected subtree identities, call-host versus owner-instance operation references and non-reused fresh handles."
+        "Live/disposed/detached/collected subtree identities, call-host versus owner-instance operation references and non-reused fresh handles.",
+        "Ordered queued normal/cancel action pairs, scoped bounded poll batches, claimed operations and terminal acknowledgements."
       ],
       "transitions": [
         "Phase",
@@ -403,7 +404,8 @@
         "Coordinator::instance_exited",
         "Coordinator::diagnostic",
         "Coordinator::retry",
-        "Coordinator::resolve"
+        "Coordinator::resolve",
+        "Coordinator::request"
       ],
       "invariants": [
         "No unrelated fresh admission on a draining owner; an already-admitted live chain may acquire nested leases. Cancellation is notification, not completion or resource release.",
@@ -417,7 +419,8 @@
         "Exit notices match scoped plugin, immutable instance identity and current generation and are accepted only while enabled and starting/active; old notices cannot disable a readded incarnation with the same generation number.",
         "Diagnostics validate payload and runtime-owned identities before bounded global FIFO mutation; runtime-filtered inspection and concrete-host collection do not expose or retain another owner accidentally. A valid foreign-runtime event may evict the globally oldest event.",
         "A current initialization failure remains terminal after cleanup until explicit retry; retry resets only the selected failure state, advances generation and allocates a fresh init identity without rewriting historical completion or reopening a closed scope.",
-        "Initialization leases require the current claimed operation identity; cancellation does not close inherited admitted work but actual initialization completion does. Cleanup dependency lookup requires the current operation and declared current-generation consumer, including after cleanup failure/retry."
+        "Initialization leases require the current claimed operation identity; cancellation does not close inherited admitted work but actual initialization completion does. Cleanup dependency lookup requires the current operation and declared current-generation consumer, including after cleanup failure/retry.",
+        "Poll selects the bounded FIFO subsequence in its scope subtree, preserves all unselected actions in order, claims normal operations and refreshes cancellation from the current record without dispatching suppressed unclaimed initialization."
       ],
       "assumptions": [
         "Inventory originated at main 8160c051e63952278c5f8a80d1b024ebbe3cea17; this batch uses dependency base 27c4180 and only its explicitly registered finite slices, not all coordinator states.",
@@ -589,13 +592,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "cancelled_serial_chain_in_child_retains_both_providers_until_real_completion",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "inherited_deadline_and_foreign_runtime_rejections_do_not_allocate_leases",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -619,13 +622,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "all_dependencies_gate_unclaimed_disable_and_reenable_dispatch",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "claimed_disabled_epoch_cannot_publish_after_reenable_or_overwrite_successor",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -673,13 +676,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "acknowledgement_validates_entire_batch_before_forgetting_any_completion",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "listener_order_lifo_failure_retry_and_retirement_preserve_resource_identity",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -697,7 +700,7 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "overlapping_updates_keep_earlier_descendant_work_in_revision_fence",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -727,13 +730,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "retained_registration_keeps_definition_identity_after_dynamic_shadowing",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "retained_registration_during_pending_shadow_does_not_strand_an_operation",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -745,25 +748,25 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "subtree_collection_follows_detached_parent_links_and_call_scope_ownership",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "exited_notice_uses_full_incarnation_identity_after_remove_and_readd",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "diagnostic_global_capacity_rejects_foreign_identity_without_eviction_and_collects_by_host",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "failed_init_retry_selects_owner_advances_generation_and_respects_closed_scope",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -775,13 +778,19 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "initialization_authority_requires_claim_and_closes_inherited_leases_only_on_completion",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "cleanup_resolution_tracks_current_operation_and_declared_consumer_generation",
-          "sha256": "5a8236cf5e3939a6b867a6b49bf52b2db936569b4bc270c33460b7abb7844169"
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "scoped_poll_preserves_other_queues_limits_and_current_cancelled_cleanup_snapshot",
+          "sha256": "7ac72b71b5f36348201c5e341422bc01adf938da683cf70ada38976860813224"
         }
       ],
       "models": [
@@ -1082,6 +1091,34 @@
             "leases": 2,
             "generations": 2,
             "cleanup_retry": 1
+          }
+        },
+        {
+          "id": "plugin-poll-dispatch",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollDispatch.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "invariants": [
+            "TypeOK",
+            "NoForeignDispatch",
+            "BoundedBatch",
+            "ScopedFIFO",
+            "UnselectedRemain",
+            "DeliveryClaimsOperation",
+            "CurrentCancellationSnapshot",
+            "NoSuppressedDispatch",
+            "QueueOwnersExist",
+            "QueueIdentityUnique",
+            "TerminalWasClaimed"
+          ],
+          "properties": [],
+          "bounds": {
+            "scopes": 3,
+            "operation_identities": 3,
+            "action_pairs": 6,
+            "max_poll_batch": 2,
+            "cancellations_per_operation": 1
           }
         }
       ],
@@ -1701,12 +1738,84 @@
           "timeout_seconds": 60,
           "heap_mb": 128,
           "expected_invariant": "ClaimedAuthoritySuccessUnreachable"
+        },
+        {
+          "id": "plugin-poll-scope",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollScope.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "NoForeignDispatch"
+        },
+        {
+          "id": "plugin-poll-limit",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollLimit.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "BoundedBatch"
+        },
+        {
+          "id": "plugin-poll-f-i-f-o",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollFIFO.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ScopedFIFO"
+        },
+        {
+          "id": "plugin-poll-rest",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollRest.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "UnselectedRemain"
+        },
+        {
+          "id": "plugin-poll-claim",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollClaim.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "DeliveryClaimsOperation"
+        },
+        {
+          "id": "plugin-poll-cancellation",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollCancellation.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "CurrentCancellationSnapshot"
+        },
+        {
+          "id": "plugin-poll-suppressed",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollSuppressed.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "NoSuppressedDispatch"
+        },
+        {
+          "id": "plugin-poll-complete-success",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollCompleteSuccess.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "CompletePollSuccessUnreachable"
+        },
+        {
+          "id": "plugin-poll-foreign-success",
+          "module": "formal/plugin_ownership/PollDispatch.tla",
+          "config": "formal/plugin_ownership/PollForeignSuccess.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ForeignIsolationSuccessUnreachable"
         }
       ],
       "remaining_obligations": [
-        "Current WIP concrete owner: RuntimePoll multi-scope bounded queue dispatch and rest preservation. Initialization-bound leases and current cleanup/consumer resolve authority now have a separate finite slice. Arbitrary graphs/configuration values/topology and cross-slice unbounded composition remain outside the finite bounds.",
-        "Arbitrary plugin graphs and repeated reconfiguration, all resource/callback payloads, process transport and cross-slice composed execution remain outside the currently registered bounds.",
-        "Allocation exhaustion, operating-system/backend guarantees, compiler-level refinement and unbounded progress remain assumptions, not established by hashes or finite safety runs."
+        "Finite slices now separately cover principal Coordinator phase/revision/lease/resource/operation/visibility/collection/exit/diagnostic/retry/authority/poll owners. They are not a combined Rust refinement proof. Scope creation is represented by valid fixed topology and fresh allocation, not every graph-validation or capacity-limit boundary.",
+        "Arbitrary plugin graphs, repeated reconfiguration beyond the stated bounds, nested JSON overlays, callback/resource payloads, all command error text, host/process transport and cross-slice composed execution remain outside the registered finite bounds.",
+        "Allocation exhaustion and the 4096-scope boundary, operating-system/backend guarantees, compiler-level refinement and unbounded progress remain explicit limitations, not established by hashes or finite safety runs."
       ]
     },
     {

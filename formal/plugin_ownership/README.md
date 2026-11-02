@@ -3,7 +3,7 @@
 Base: `27c4180e1a66d0b7c9d554eff9620ef16a49023b` (PR31 and PR32 dependency
 integration). This independent batch leaves the existing
 `formal/plugin_lifecycle/PluginLifecycle.tla` and its superseded-initialization
-fix unchanged. Stages 1–3 are model-only; stages 4–5 separately reproduce and fix
+fix unchanged. Stages 1–3 and 6–11 are model-only; stages 4–5 separately reproduce and fix
 concrete revision-convergence and dynamic-binding defects. Seeded mutants alone are not bug evidence.
 
 ## Mature reference before modeling
@@ -378,15 +378,65 @@ mandatory guard was strengthened to include its enclosing predicate prefix; the
 mutant now fails after hash refresh. The original FAIL is retained and no production
 source changed. Ordinary full remains NOT_RUN.
 
+## Stage 11: scoped bounded poll dispatch (model-only)
+
+Pinned Cordis events `_resolve`/`dispatch` were re-read for context-filtered ordered
+callback snapshots. Rust additionally owns a durable-in-memory action queue,
+explicit claim state and bounded polling; upstream event enumeration is not a
+proof of this stronger queue protocol. `PollDispatch` starts with three operation
+identities in root, child and foreign scopes, batch limits one/two, and up to six
+normal/cancel action pairs. The action numbers denote immutable `(operation, kind)`
+pairs, not extra numeric action handles invented by the implementation.
+
+`Poll`, `Cancel`, `Complete` and `Ack` map to the corresponding `request` arm and
+coordinator methods. A root poll selects its own and child actions in FIFO order,
+leaves foreign/unselected actions ordered, marks normal actions claimed, and
+refreshes cancellation from the current record. Unclaimed suppressed init is
+removed rather than dispatched. Notifications are distinct from work completion;
+terminal ack can remove queued notifications. No independent negative is claimed
+for a cancel notification changing claim state: that defense is redundant in the
+bounded reachable queue ordering, and its actual source guard is retained.
+
+Seven named negative profiles target scope, batch bound, FIFO, rest loss, missing
+claim, stale cancellation snapshot and unclaimed suppression. Two reached witnesses
+show a foreign-only poll preserving the root/child queue, and all three real
+completions plus acknowledgement after a cancelled cleanup snapshot was delivered.
+The positive graph has 3,732 states. An initial draft failed parsing because chained
+set difference lacked parentheses; the original parse FAIL is retained and never
+counted as a counterexample or successful verification.
+
+The real contract combines root/child/foreign queues, invalid poll limits with no
+mutation, a finite synthetic cancel-ID probe whose actual cleanup ID is subsequently
+verified inside the range, ordered limit-one dispatch, current cancellation flags,
+foreign preservation, cleanup retry and actual replacement completion. All 62
+native tests, 20 targeted methods / 76 refreshed-hash mutants and 104 unified formal
+runs plus two evidence contracts pass. This stage changes no production source.
+
+## Concrete coordinator owner map
+
+| Actual owner/fields | Finite slice(s) and boundary |
+| --- | --- |
+| `acquire`, `release`, `cancel`, `tick`; Lease owners/registrations/ancestors/deadline/initialization | ScopeLeaseAdmission, DynamicVisibility, AuthorityHandles; cancellation remains notification, never an implicit release |
+| `reconcile`, `complete`, `retry`; Phase/Desired/generation/init/cleanup/failed_init/failure | original PluginLifecycle, ActivationDispatch, FinalizationOwnership, FailedInitRetry, AuthorityHandles |
+| `update`, `apply`, `revision_affected`, `affected_closure`; desired/observed revision, affected closure, next_manifest | RevisionConvergence plus activation/visibility/exit slices; finite repeated update/remove/readd bounds only |
+| `lookup_binding`, `registered_binding`, `intercept`, `resolve`; retained and currently visible definitions | DynamicVisibility and AuthorityHandles; recursive JSON payloads and arbitrary dependency graphs remain outside bounds |
+| `resource`, `listeners`, `ack`, `prune_retired`; resources/listeners/completion/retired identities | FinalizationOwnership plus source guards for live current-generation registration; callbacks are external |
+| `collect`, `state`, detached children and stored parents | SubtreeCollection; explicit real completion precedes reclamation |
+| `instance_exited` | ExitIdentity, including same generation in a new immutable instance |
+| `diagnostic`, runtime inspection and host cleanup | DiagnosticRetention; bounded global FIFO, not per-runtime durable audit history |
+| RuntimePoll and `actions`, claimed/cancelled/completion records | PollDispatch with bounded scoped batches and preserved unselected queue |
+| `create`, `allocate`, scope topology and initial manifests | Valid fixed initial topology and fresh allocation in these slices; capacity/exhaustion boundary handling is not proved |
+| `scope_options`, manifest/order/compose/validate, `scope`, `counts` and other read projections | Pure validation/projection or initialization preconditions, reviewed with existing actual contracts; hashes do not turn them into model proofs |
+
 ## Explicit remaining work and boundaries
 
-This feature is still WIP. Concrete next owners, not merely external assumptions:
-
-- multi-scope bounded RuntimePoll dispatch, queue ordering and rest preservation.
-
-Their source bindings are inventory/review anchors only until separate registered
-models and actual contracts cover their transitions. Remaining work is not
-silently declared covered by the ten existing slices.
+The finite principal-owner slices above are complete as this batch's modeling
+scope, not as a proof that the implementation has no possible bugs. Verification
+and independent review are still pending before delivery. Explicit uncovered
+boundaries include the 4096-live-scope admission limit, u64 allocation exhaustion
+and partial-allocation failure handling, arbitrary manifest graph validation,
+callback effects and combined cross-slice refinement. These are not silently
+reclassified as proved because a family or source symbol has a hash binding.
 
 Unbounded scopes/plugins/calls and arbitrary recursive intercept payloads,
 arbitrary callback effects, process transport, allocation exhaustion, OS failure,

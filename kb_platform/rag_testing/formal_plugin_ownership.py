@@ -70,6 +70,13 @@ RULES = {
     'current cleanup authority': ('resolve', 'action.instance != consumer || action.kind != "cleanup" || instance.cleanup != Some(operation)'),
     'consumer live lookup': ('resolve', '!matches!(instance.phase, Phase::Starting | Phase::Active)'),
     'resource operation authority': ('resource', 'record.completion.is_some() || !record.claimed || self.instances[&record.action.instance].generation != record.action.generation'),
+    'poll scoped owner': ('request', 'if hosts.contains(&action.host) && actions.len() < limit'),
+    'poll bounded batch': ('request', 'if limit == 0 || limit > 1024'),
+    'poll queue FIFO': ('request', 'while let Some(mut action) = self.actions.pop_front()'),
+    'poll unselected preservation': ('request', '} else { rest.push_back(action); }'),
+    'poll claims normal action': ('request', '&& action.kind != "cancel" { record.claimed = true;'),
+    'poll cancellation snapshot': ('request', 'action.cancelled = record.action.cancelled;'),
+    'poll publishes remaining queue': ('request', 'self.actions = rest;'),
     'deadline minimum': ('acquire', '(Some(a), Some(b)) => Some(a.min(b))'),
     'expired admission': ('acquire', 'if deadline.is_some_and(|deadline| deadline <= self.now) { return Err(Error::new("deadline", "deadline already elapsed")); }'),
 }

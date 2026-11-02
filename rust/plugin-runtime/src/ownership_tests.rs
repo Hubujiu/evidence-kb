@@ -1332,3 +1332,122 @@ fn cleanup_resolution_tracks_current_operation_and_declared_consumer_generation(
         "ready"
     );
 }
+
+#[test]
+fn scoped_poll_preserves_other_queues_limits_and_current_cancelled_cleanup_snapshot() {
+    let mut runtime = Coordinator::default();
+    let root = create(&mut runtime, vec![plugin("root", &["root"], &[])], None);
+    let foreign = create(
+        &mut runtime,
+        vec![plugin("foreign", &["foreign"], &[])],
+        None,
+    );
+    let child = create(
+        &mut runtime,
+        vec![plugin("child", &["child"], &[])],
+        Some(root),
+    );
+    let child_init =
+        call(&mut runtime, "poll", json!({"host":child,"limit":1})).unwrap()["actions"][0].clone();
+    assert_eq!(child_init["plugin"], "child");
+    complete(&mut runtime, &child_init, "ok", &["child"]);
+    call(
+        &mut runtime,
+        "update",
+        json!({"host":child,"plugin":"child","config":{"revision":2}}),
+    )
+    .unwrap();
+    let before = call(&mut runtime, "inspect", json!({"host":root})).unwrap();
+    let before_foreign = call(&mut runtime, "inspect", json!({"host":foreign})).unwrap();
+    for limit in [0, 1025] {
+        assert_eq!(
+            call(&mut runtime, "poll", json!({"host":root,"limit":limit}))
+                .unwrap_err()
+                .code,
+            "invalid_limit"
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":root})).unwrap(),
+            before
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":foreign})).unwrap(),
+            before_foreign
+        );
+    }
+    let mut pending_cancelled = 0;
+    for operation in 1..128 {
+        match call(
+            &mut runtime,
+            "cancel",
+            json!({"host":child,"operation":operation}),
+        ) {
+            Ok(result) => {
+                if result["cancelled"] == true && result["complete"] == false {
+                    pending_cancelled += 1;
+                }
+            }
+            Err(error) => assert!(matches!(
+                error.code.as_str(),
+                "operation_scope" | "unknown_operation"
+            )),
+        }
+    }
+    assert_eq!(pending_cancelled, 1);
+    let first = call(&mut runtime, "poll", json!({"host":root,"limit":1})).unwrap()["actions"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0]["host"], root);
+    assert_eq!(first[0]["kind"], "init");
+    let second = call(&mut runtime, "poll", json!({"host":root,"limit":1})).unwrap()["actions"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(second.len(), 1);
+    assert_eq!(second[0]["host"], child);
+    assert_eq!(second[0]["kind"], "cleanup");
+    assert_eq!(second[0]["cancelled"], true);
+    assert!(second[0]["operation"].as_u64().unwrap() < 128);
+    let notification =
+        call(&mut runtime, "poll", json!({"host":root,"limit":1})).unwrap()["actions"]
+            .as_array()
+            .unwrap()
+            .clone();
+    assert_eq!(notification.len(), 1);
+    assert_eq!(notification[0]["kind"], "cancel");
+    assert_eq!(notification[0]["operation"], second[0]["operation"]);
+    assert!(poll(&mut runtime, root).is_empty());
+    let other = poll(&mut runtime, foreign);
+    assert_eq!(other.len(), 1);
+    assert_eq!(other[0]["plugin"], "foreign");
+    complete(&mut runtime, &first[0], "ok", &["root"]);
+    complete(&mut runtime, &other[0], "ok", &["foreign"]);
+    complete(&mut runtime, &second[0], "error", &[]);
+    call(
+        &mut runtime,
+        "retry",
+        json!({"host":child,"plugin":"child"}),
+    )
+    .unwrap();
+    let retry = poll(&mut runtime, root).remove(0);
+    assert_ne!(retry["operation"], second[0]["operation"]);
+    assert_eq!(retry["cancelled"], false);
+    complete(&mut runtime, &retry, "ok", &[]);
+    let replacement = poll(&mut runtime, root).remove(0);
+    assert_eq!(replacement["kind"], "init");
+    complete(&mut runtime, &replacement, "ok", &["child"]);
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":root})).unwrap()["state"],
+        "ready"
+    );
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":child})).unwrap()["state"],
+        "ready"
+    );
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":foreign})).unwrap()["state"],
+        "ready"
+    );
+}

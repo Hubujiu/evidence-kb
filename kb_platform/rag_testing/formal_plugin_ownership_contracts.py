@@ -82,6 +82,13 @@ class PluginOwnershipLintContracts(unittest.TestCase):
             'current cleanup authority': ('instance.cleanup != Some(operation)', 'instance.cleanup == Some(operation)'),
             'consumer live lookup': ('!matches!(instance.phase, Phase::Starting | Phase::Active)', 'matches!(instance.phase, Phase::Starting | Phase::Active)'),
             'resource operation authority': ('|| !record.claimed', '|| record.claimed'),
+            'poll scoped owner': ('hosts.contains(&action.host) && actions.len() < limit', 'hosts.contains(&action.host) || actions.len() < limit'),
+            'poll bounded batch': ('if limit == 0 || limit > 1024', 'if limit > 1024'),
+            'poll queue FIFO': ('self.actions.pop_front()', 'self.actions.pop_back()'),
+            'poll unselected preservation': ('rest.push_back(action);', 'rest.push_front(action);'),
+            'poll claims normal action': ('record.claimed = true;', 'record.claimed = false;'),
+            'poll cancellation snapshot': ('action.cancelled = record.action.cancelled;', 'action.cancelled = false;'),
+            'poll publishes remaining queue': ('self.actions = rest;', 'self.actions.clear();'),
             'deadline minimum': ('Some(a.min(b))', 'Some(a.max(b))'),
             'expired admission': ('deadline <= self.now', 'deadline < self.now'),
         }
