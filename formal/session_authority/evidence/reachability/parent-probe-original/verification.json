@@ -1,0 +1,33 @@
+{
+  "schema": "historical-independent-tlc-probe-summary/1",
+  "source_base": "aa909eef335cc95f75cff3fc5e76e6f87b723b51",
+  "provenance": "Parent independent probe formal-audit-postflight-20261102; original and grouped source differ only in the two Boolean RHS parentheses. Original command and measured wall duration were not recorded in these probe files.",
+  "runs": [
+    {
+      "id": "NoDeniedReplayWitness",
+      "expected_invariant": "NoDeniedReplayWitness",
+      "returncode": 0,
+      "states": {
+        "generated": 349,
+        "distinct": 216,
+        "remaining": 0
+      },
+      "raw_log": "NoDeniedReplayWitness.log",
+      "input_checksums": "NoDeniedReplayWitness-SHA256SUMS",
+      "interpretation": "Unreachable terminal witness in the restricted model."
+    },
+    {
+      "id": "NoEvidenceRevokedCommitWitness",
+      "expected_invariant": "NoEvidenceRevokedCommitWitness",
+      "returncode": 0,
+      "states": {
+        "generated": 349,
+        "distinct": 216,
+        "remaining": 0
+      },
+      "raw_log": "NoEvidenceRevokedCommitWitness.log",
+      "input_checksums": "NoEvidenceRevokedCommitWitness-SHA256SUMS",
+      "interpretation": "Unreachable terminal witness in the restricted model."
+    }
+  ]
+}

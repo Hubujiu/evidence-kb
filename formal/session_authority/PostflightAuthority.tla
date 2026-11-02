@@ -80,7 +80,7 @@ BuildState ==
 Commit ==
     /\ phase = "ready" /\ phase' = "complete"
     /\ commitAuthority' = authorityRevision
-    /\ commitAllowed' = scopeAllowed /\ evidenceAllowed
+    /\ commitAllowed' = (scopeAllowed /\ evidenceAllowed)
     /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
           cancelled, initialRevision, authorityChecked, evidenceChecked,
           cancelChecked, authorityAtCheck, evidenceAtCheck>>
@@ -89,7 +89,7 @@ Replay ==
     /\ phase = "replay_evidence"
     /\ LET valid == scopeAllowed /\ evidenceAllowed IN
        /\ phase' = IF ~ValidateReplay \/ valid THEN "complete" ELSE "error"
-       /\ evidenceChecked' = ValidateReplay /\ valid
+       /\ evidenceChecked' = (ValidateReplay /\ valid)
     /\ evidenceAtCheck' = authorityRevision
     /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
           cancelled, initialRevision, authorityChecked, cancelChecked,
@@ -138,6 +138,9 @@ ReplayResponseWasRevalidated ==
 CurrentAuthorityAtCommit ==
     (mode = "fresh" /\ phase = "complete") =>
         (commitAllowed /\ commitAuthority = evidenceAtCheck)
+
+NoDeniedReplayWitness == ~(mode = "replay" /\ phase = "error" /\ scopeAllowed /\ ~evidenceAllowed /\ ~evidenceChecked /\ evidenceAtCheck = authorityRevision)
+NoEvidenceRevokedCommitWitness == ~(mode = "fresh" /\ phase = "complete" /\ scopeAllowed /\ ~evidenceAllowed /\ ~commitAllowed /\ commitAuthority = authorityRevision /\ commitAuthority # evidenceAtCheck /\ authorityChecked /\ evidenceChecked /\ cancelChecked)
 
 Spec == Init /\ [][Next]_vars
 =============================================================================

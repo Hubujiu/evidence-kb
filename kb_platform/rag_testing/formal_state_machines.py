@@ -232,6 +232,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                         errors.append(f'{identity}: liveness negative control must isolate its named property')
                 elif model['expected_invariant'] not in configured:
                     errors.append(f'{identity}: negative control must target a configured invariant')
+        from scripts.postflight_model_checks import postflight_model_violations
+
+        errors.extend(postflight_model_violations(root, registry))
         exclusions = registry['discovery']['exclusions']
         excluded = {(row['path'], row['symbol']) for row in exclusions if row.get('reason', '').strip()}
         if len(excluded) != len(exclusions):

@@ -116,7 +116,7 @@ guard independently; these two modules are not a proved refinement/composition.
 
 ### Explicit limitation: validation is not a cross-store commit lock
 
-The unmodified model has this counterexample to `CurrentAuthorityAtCommit`:
+The source-behavior model (no injected fault) has this counterexample to `CurrentAuthorityAtCommit`:
 
 1. Native result completes under authority revision 0.
 2. Post-native authority and evidence checks succeed at revision 0.
@@ -181,8 +181,66 @@ PostgreSQL/MySQL integration. The mapped native-runtime knowledge tests require
 the repository's freshly built Rust artifacts and are not represented by that
 13-test result.
 
-Final direct TLC verification explored 44,129 distinct session states (152,181
+Historical direct TLC verification of the original model explored 44,129 distinct session states (152,181
 generated, depth 13) and 216 authority states (349 generated, depth 12). All three
 mutation controls and the separately labeled limitation witness produced their
 expected invariant violation with exit 12. `verification.json` records these
 bounded results; runner logs remain execution evidence, not a timeless pass.
+
+
+## Model-only reachability correction
+
+The historical 216-state authority model and its old CI results were restricted
+by two unparenthesized Boolean RHS expressions. `commitAllowed' = scopeAllowed
+/\ evidenceAllowed` made `evidenceAllowed` an extra action guard;
+`evidenceChecked' = ValidateReplay /\ valid` made `valid` an extra replay guard.
+Consequently evidence-denied replay could not reach its error return, and a
+commit with evidence already revoked could not occur. Prior safety PASS results
+do **not** establish coverage of those paths. Historical `verification.json` and
+logs are unchanged; this is a model correction, not a runtime bug fix.
+
+Both complete Boolean values are now parenthesized, following
+[Lamport's parsing guidance](https://lamport.azurewebsites.net/tla/tutorial/parsing.html)
+to make compound expression grouping explicit. Official TLC, not a custom TLA
+parser, establishes the two newly reachable paths. The finite bounds, positive
+invariants, original mutation controls and the original
+`CurrentAuthorityAtCommit` limitation are unchanged.
+
+- `NoDeniedReplayWitness` negates a terminal replay **error** with scope still
+  allowed, evidence denied, `evidenceChecked = FALSE` and a remembered current
+  evidence revision. Its exact invariant counterexample confirms actual replay
+  rejection, not merely selection of replay mode at Init. It is labeled a
+  reachability witness, not a seeded runtime defect.
+- `NoEvidenceRevokedCommitWitness` requires a fresh completed commit with scope
+  still allowed, evidence denied, `commitAllowed = FALSE` remembered at commit,
+  and `commitAuthority` different from the successful evidence-check
+  revision. Thus it is not revocation occurring only after completion. All
+  preceding checks succeeded. This is registered in **known_limitations**,
+  reported as `OBSERVED_LIMITATION`, and does not count as a mutation PASS. The
+  original stronger `CurrentAuthorityAtCommit` observation remains independent.
+
+The corrected positive authority model exhausts 228 distinct states (367
+generated, queue zero). The integrated gate records 13 expected model/control
+results PASS, two separate `OBSERVED_LIMITATION` observations, and three evidence
+contracts PASS. Forty targeted Python contracts passed, including unchanged
+session SQLite contracts and new mandatory review-guard mutants. The latter
+reject either old RHS, Init-only/after-completion-only predicates, removed
+witness registration, disabled replay validation, erasure of the original
+limitation and moving the new limitation into the mutation channel, even after
+source hash refresh. This narrow reviewed-shape guard is not a TLA parser or
+implementation-refinement theorem.
+
+The same two terminal predicates added to the old assignments each exhaust 216
+states with exit 0; both expected reachability observations are correctly FAIL.
+The parent's independent original/grouped probes and the local stronger probes
+are retained in [reachability evidence](evidence/reachability/), with raw logs,
+transparent compact summaries and original-input `SHA256SUMS`. An auxiliary
+legacy-report construction error (missing required limitation metadata after
+TLC) is preserved separately; its corrected invocation uses a new output path.
+No failed result is relabeled.
+
+All production blobs, `SessionWriterLease` inputs, existing Python contracts and
+the ordinary project entrypoint remain unchanged from local
+`aa909eef335cc95f75cff3fc5e76e6f87b723b51` / remote PR35
+`a18947af1a79424dde4dc1e1d237748ef26259c2`. This additional formal verification
+does not replace ordinary full-project acceptance.

@@ -2056,6 +2056,18 @@
           "language": "python",
           "symbol": "EvidenceGateway.revalidate",
           "sha256": "ef48889f5f0f92e6b00c89bf4647e7e8566028fb29d597025ddc5b4e5f2a3c9b"
+        },
+        {
+          "path": "scripts/postflight_model_checks.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "4ab15687a364f4c8ee077a4ee74ae6d4c300083a511594c33a6506497dc0a00f"
+        },
+        {
+          "path": "kb_platform/rag_testing/postflight_model_contracts.py",
+          "language": "python",
+          "symbol": "PostflightModelContracts",
+          "sha256": "ef612e5f27c8005b649460216f5d9e1a602667a574fe2e5f8cd718e807323678"
         }
       ],
       "models": [
@@ -2097,6 +2109,16 @@
           "heap_mb": 256,
           "kind": "negative",
           "purpose": "Bypass current evidence validation on the completed-request replay path"
+        },
+        {
+          "id": "knowledge_postflight_witness_deniedreplay",
+          "module": "formal/session_authority/PostflightAuthority.tla",
+          "config": "formal/session_authority/PostflightAuthorityDeniedReplayWitness.cfg",
+          "expected_invariant": "NoDeniedReplayWitness",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "kind": "negative",
+          "purpose": "Terminal reachability witness, not a seeded runtime defect."
         }
       ],
       "known_limitations": [
@@ -2109,6 +2131,17 @@
           "heap_mb": 256,
           "kind": "limitation",
           "purpose": "Known implementation-contract limitation: authority can change after revalidation and before a separate session transaction commits; not a fixed bug",
+          "model_id": "knowledge_postflight_authority"
+        },
+        {
+          "id": "knowledge_postflight_witness_evidencerevokedcommit",
+          "module": "formal/session_authority/PostflightAuthority.tla",
+          "config": "formal/session_authority/PostflightAuthorityEvidenceRevokedCommitWitness.cfg",
+          "expected_invariant": "NoEvidenceRevokedCommitWitness",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "kind": "limitation",
+          "purpose": "Evidence-only revocation at the actual separate session commit; independently observed known cross-store limitation, not a fixed bug.",
           "model_id": "knowledge_postflight_authority"
         }
       ]
