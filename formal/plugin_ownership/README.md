@@ -3,8 +3,8 @@
 Base: `27c4180e1a66d0b7c9d554eff9620ef16a49023b` (PR31 and PR32 dependency
 integration). This independent batch leaves the existing
 `formal/plugin_lifecycle/PluginLifecycle.tla` and its superseded-initialization
-fix unchanged. Stages 1–3 are model-only; stage 4 separately reproduces and fixes
-a concrete revision-convergence defect. Seeded mutants alone are not bug evidence.
+fix unchanged. Stages 1–3 are model-only; stages 4–5 separately reproduce and fix
+concrete revision-convergence and dynamic-binding defects. Seeded mutants alone are not bug evidence.
 
 ## Mature reference before modeling
 
@@ -178,19 +178,57 @@ positive graph has 89 states. The 20 targeted gate/lint tests include 28 refresh
 mutants. Source guards require both entry points, conditional pending carry,
 transitive closure and no-op identity. No ordinary full gate is claimed yet.
 
+## Stage 5: dynamic visibility and admitted definition identity (confirmed defects)
+
+A real root registration retained by a child scope lease remained callable after
+installing a local shadow. The old `invoke` admitted the retained root instance,
+then re-resolved the service name to construct its action binding. With an active
+shadow, the action carried the old instance but the new registration/definition
+and lost the ancestor intercept. With a still-starting shadow, this late lookup
+returned `service_inactive` after allocating an unreturned lease and operation.
+Both actual one-test baseline runs failed (exit 101), separately recorded in
+`.local/plugin-visibility-baseline.log` and
+`.local/plugin-visibility-pending-baseline.log`; neither is a seeded-mutant claim.
+
+The pinned [Cordis reflect implementation](https://github.com/deepseek-ai/deepseek-harness/blob/ce7073d51254c26cd63b22a60835b8f948deb447/vendor/cordis/src/reflect.ts)
+was inspected before changing this path: committed implementation identity,
+`getTraceable`, `_getImpl`, and provider release keep definition ownership distinct
+from current name visibility. Its SHA-256 matches the existing reference lock.
+This does not import upstream semantics that differ from this protocol.
+
+The minimal fix constructs binding metadata from the exact registration instance
+already admitted by `acquire`. `registered_binding` is shared with ordinary
+lookup, but introduces no new admission bypass: fresh calls still check visibility,
+isolation and activity; retained calls still require their real parent lease.
+The admitted definition determines host, generation, registration and the ancestor
+intercept chain. No post-allocation name lookup can fail or switch providers.
+
+`DynamicVisibility` bounds two immutable registrations, two never-reused call IDs,
+one scope pin and one local shadow lifecycle. Two positive profiles separately
+exercise normal and isolated scopes. Five named negatives cover the two real
+legacy failures, isolation bypass, inactive-shadow fallback and lost ancestor
+intercept. Two reached success witnesses require retained calls during both pending
+and active shadow followed by explicit completion/disposal, and a legitimate local
+call under isolation. The intercept abstraction records root participation and
+child override; arbitrary recursive JSON merge is not proved by this model.
+
+All 55 actual Rust plugin contracts pass, including both new regressions. Twenty
+mandatory gate/lint methods pass with 36 refreshed-hash source mutants; all 47
+unified formal runs and two evidence contracts pass. Raw stage-5 evidence is in
+`.local/plugin-*stage5*` and `.local/formal-stage5/`. Ordinary full is still NOT_RUN.
+
 ## Explicit remaining work and boundaries
 
 This feature is still WIP. Concrete next owners, not merely external assumptions:
 
-- dynamic service shadowing, isolation and intercept visibility;
 - `collect` subtree-level reclamation (distinct from modeled `prune_retired`);
 - stale/current `instance_exited` events and bounded diagnostic retention.
 
 Their source bindings are inventory/review anchors only until separate registered
 models and actual contracts cover their transitions. Remaining work is not
-silently declared covered by the three existing slices.
+silently declared covered by the five existing slices.
 
-Unbounded scopes/plugins/calls, dynamic shadowing/isolation/intercept payloads,
+Unbounded scopes/plugins/calls and arbitrary recursive intercept payloads,
 arbitrary callback effects, process transport, allocation exhaustion, OS failure,
 and implementation refinement remain outside the finite scope. The model has
 no fairness/liveness assertion; terminal deadlock checking is disabled deliberately.
@@ -213,5 +251,5 @@ four named negative profiles and both positive-outcome witnesses were reached.
 The initial formatting check failed on the new Rust test formatting and was corrected;
 an earlier shell redirection failed before Java started, and is not a model run.
 Raw authoring evidence is retained in `.local/plugin-*stage1.log` and
-`.local/formal-stage1/`. Final-tree verification follows after all three slices;
+`.local/formal-stage1/`. Final-tree verification follows after the concrete remaining owners;
 no ordinary full gate or remote CI is claimed yet.

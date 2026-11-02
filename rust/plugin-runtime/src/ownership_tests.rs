@@ -643,3 +643,107 @@ fn overlapping_updates_keep_earlier_descendant_work_in_revision_fence() {
         }
     }
 }
+
+#[test]
+fn retained_registration_keeps_definition_identity_after_dynamic_shadowing() {
+    let mut runtime = Coordinator::default();
+    let root = call(&mut runtime, "create", json!({"plugins":[plugin("root", &["service"], &[])],"intercept":{"service":{"root":"retained","nested":{"outer":true}}}})).unwrap()["host"].as_u64().unwrap();
+    let init = poll(&mut runtime, root).remove(0);
+    complete(&mut runtime, &init, "ok", &["service"]);
+    let child = call(
+        &mut runtime,
+        "create",
+        json!({"plugins":[],"parent":root,"intercept":{"service":{"nested":{"inner":true}}}}),
+    )
+    .unwrap()["host"]
+        .as_u64()
+        .unwrap();
+    let original = call(
+        &mut runtime,
+        "resolve",
+        json!({"host":child,"service":"service"}),
+    )
+    .unwrap();
+    let pin = call(&mut runtime, "acquire", json!({"host":child})).unwrap()["lease"].clone();
+    let mut replacement = plugin("shadow", &["service"], &[]);
+    replacement["overrides"] = json!(["service"]);
+    call(
+        &mut runtime,
+        "apply",
+        json!({"host":child,"plugins":[replacement]}),
+    )
+    .unwrap();
+    let shadow = poll(&mut runtime, child).remove(0);
+    complete(&mut runtime, &shadow, "ok", &["service"]);
+    let visible = call(
+        &mut runtime,
+        "resolve",
+        json!({"host":child,"service":"service"}),
+    )
+    .unwrap();
+    assert_ne!(visible["registration"], original["registration"]);
+    assert_eq!(
+        call(
+            &mut runtime,
+            "invoke",
+            json!({"host":child,"registration":original["registration"],"method":"fresh"})
+        )
+        .unwrap_err()
+        .code,
+        "stale_binding"
+    );
+    let invocation = call(&mut runtime, "invoke", json!({"host":child,"registration":original["registration"],"method":"retained","parent_lease":pin})).unwrap();
+    assert_eq!(invocation["instance"], original["instance"]);
+    assert_eq!(
+        invocation["binding"], original,
+        "admitted old registration cannot take the new shadow's definition metadata"
+    );
+    complete(&mut runtime, &invocation, "ok", &[]);
+    call(&mut runtime, "release", json!({"host":child,"lease":pin})).unwrap();
+}
+
+#[test]
+fn retained_registration_during_pending_shadow_does_not_strand_an_operation() {
+    let mut runtime = Coordinator::default();
+    let root = create(&mut runtime, vec![plugin("root", &["service"], &[])], None);
+    let init = poll(&mut runtime, root).remove(0);
+    complete(&mut runtime, &init, "ok", &["service"]);
+    let child = create(&mut runtime, vec![], Some(root));
+    let binding = call(
+        &mut runtime,
+        "resolve",
+        json!({"host":child,"service":"service"}),
+    )
+    .unwrap();
+    let pin = call(&mut runtime, "acquire", json!({"host":child})).unwrap()["lease"].clone();
+    let mut replacement = plugin("shadow", &["service"], &[]);
+    replacement["overrides"] = json!(["service"]);
+    call(
+        &mut runtime,
+        "apply",
+        json!({"host":child,"plugins":[replacement]}),
+    )
+    .unwrap();
+    let before = call(&mut runtime, "inspect", json!({"host":root})).unwrap()["counts"].clone();
+    let result = call(
+        &mut runtime,
+        "invoke",
+        json!({"host":child,"registration":binding["registration"],"method":"retained","parent_lease":pin}),
+    );
+    let after = call(&mut runtime, "inspect", json!({"host":root})).unwrap()["counts"].clone();
+    assert!(
+        result.is_ok(),
+        "error={:?}; before={before}; after={after}",
+        result.as_ref().err().map(|error| &error.code)
+    );
+    let invocation = result.unwrap();
+    assert_eq!(invocation["binding"], binding);
+    complete(&mut runtime, &invocation, "ok", &[]);
+    call(&mut runtime, "release", json!({"host":child,"lease":pin})).unwrap();
+    let shadow = poll(&mut runtime, child).remove(0);
+    complete(&mut runtime, &shadow, "ok", &["service"]);
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":root})).unwrap()["counts"]["pending_operations"],
+        0
+    );
+}

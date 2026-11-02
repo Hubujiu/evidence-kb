@@ -229,18 +229,7 @@ impl Coordinator {
                         format!("{} is not active", instance.manifest.id),
                     ));
                 }
-                return Ok(Binding {
-                    runtime: scope.runtime,
-                    host,
-                    plugin: instance.manifest.id.clone(),
-                    instance: *id,
-                    generation: instance.generation,
-                    registration: instance.registrations[service],
-                    service: service.into(),
-                    definition_scope: host,
-                    call_scope,
-                    intercept: self.intercept(call_scope, host, service),
-                });
+                return Ok(self.registered_binding(call_scope, *id, service));
             }
             if scope.isolated.contains(service) {
                 break;
@@ -251,6 +240,23 @@ impl Coordinator {
             "missing_service",
             format!("unknown service {service}"),
         ))
+    }
+
+    fn registered_binding(&self, call_scope: u64, id: u64, service: &str) -> Binding {
+        let instance = &self.instances[&id];
+        let host = instance.host;
+        Binding {
+            runtime: self.scopes[&host].runtime,
+            host,
+            plugin: instance.manifest.id.clone(),
+            instance: id,
+            generation: instance.generation,
+            registration: instance.registrations[service],
+            service: service.into(),
+            definition_scope: host,
+            call_scope,
+            intercept: self.intercept(call_scope, host, service),
+        }
     }
 
     fn action(
@@ -1121,7 +1127,7 @@ impl Coordinator {
             .find(|(_, id)| **id == registration)
             .unwrap()
             .0;
-        action.binding = Some(self.lookup_binding(host, service, true)?);
+        action.binding = Some(self.registered_binding(host, id, service));
         self.operations.get_mut(&action.operation).unwrap().action = action.clone();
         self.operations.get_mut(&action.operation).unwrap().claimed = true;
         Ok(json!(action))
