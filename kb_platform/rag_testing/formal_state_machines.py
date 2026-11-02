@@ -14,6 +14,8 @@ import sys
 import time
 import unittest
 
+from scripts.presend_admission_checks import presend_admission_violations
+
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'formal/registry-v1.json'
 LOCK = 'formal/toolchain-v1.json'
@@ -141,6 +143,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
             if identity in ids or not re.fullmatch(r'[a-z][a-z0-9_-]+', identity):
                 raise ValueError(f'Duplicate or invalid machine id: {identity}')
             ids.add(identity)
+            if identity == 'provider_admission':
+                source = local_file(root, 'kb_platform/remote.py').read_text('utf-8')
+                errors.extend(f'{identity}: {error}' for error in presend_admission_violations(source))
             if machine['status'] not in {'partial', 'unmodeled'}:
                 raise ValueError(f'{identity}: unknown coverage status')
             for key in ('owners', 'states', 'transitions', 'invariants', 'assumptions', 'exclusions', 'source_bindings'):
