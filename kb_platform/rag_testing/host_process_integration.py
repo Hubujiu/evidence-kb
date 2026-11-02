@@ -1,8 +1,10 @@
 import json
+from pathlib import Path
+import subprocess
 import sys
 
 from kb_platform.plugin_native import PluginError
-from kb_platform.plugin_process import PROTOCOL, ProcessTransport
+from kb_platform.plugin_process import PROCESS_LAUNCHER, PROTOCOL, ProcessTransport
 
 
 WORKER = '''import json, os, sys
@@ -13,7 +15,7 @@ for line in sys.stdin:
                   "runtime": {"language": "python", "version": sys.version, "executable": sys.executable}}
         print(json.dumps({"protocol": request["protocol"], "id": request["id"], "ok": True, "result": result}), flush=True)
     elif request["kind"] == "invoke":
-        with open(sys.argv[1], "a") as effect:
+        with open(request["args"][0]["effect"], "a") as effect:
             effect.write(json.dumps({"request_id": request["id"]}) + "\\n")
             effect.flush()
             os.fsync(effect.fileno())
@@ -21,17 +23,42 @@ for line in sys.stdin:
 '''
 
 
-def verify_physical_knowledge(root):
-    observations = []
+def prepare_physical_knowledge(root, manager):
+    cases = []
     for fail_intent in (False, True):
         name = 'intent-without-bytes' if fail_intent else 'effect-without-reply'
         source = root / name
         source.mkdir()
-        effect, journal = source / 'effects.jsonl', source / 'journal'
         (source / 'worker.py').write_text(WORKER, 'utf-8')
         (source / 'plugin.json').write_text(json.dumps({'protocol': PROTOCOL, 'name': name,
-            'version': '1', 'command': [sys.executable, '-B', '-u', 'worker.py', str(effect)],
-            'services': {'fixture': ['invoke']}}), 'utf-8')
+            'version': '1', 'entry': 'worker.py', 'services': {'fixture': ['invoke']}}), 'utf-8')
+        installed = manager.install(source)
+        package = Path(installed['package'])
+        command = [sys.executable, '-B', '-I', '-u', '-c', PROCESS_LAUNCHER,
+                   str(package), str(package / 'worker.py')]
+        cases.append({'name': name, 'fail_intent': fail_intent, 'package': package,
+            'effect': root / f'{name}.effects.jsonl', 'journal': root / f'{name}.journal',
+            'command': command, 'digest': installed['digest']})
+    return cases
+
+
+def verify_physical_knowledge(cases):
+    observations = []
+    for case in cases:
+        name, fail_intent = case['name'], case['fail_intent']
+        source, effect, journal = case['package'], case['effect'], case['journal']
+        rejected = []
+        for label, command in [('unregistered', [sys.executable, '-B', '-c', 'pass']),
+                               ('tampered', [*case['command'], 'unregistered-extra'])]:
+            try:
+                subprocess.run(command, cwd=source, input=b'', stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=3, check=False)
+            except RuntimeError as error:
+                if str(error) != 'PROCESS_FIXTURE_REJECTS_OTHER_COMMAND':
+                    raise
+                rejected.append(label)
+            else:
+                raise RuntimeError('PHYSICAL_FIXTURE_ACCEPTED_UNREGISTERED_COMMAND')
         transport = ProcessTransport(source, journal=journal, timeout=3, identity={})
         record, attempted = transport._record, []
 
@@ -46,7 +73,7 @@ def verify_physical_knowledge(root):
             transport.start()
             transport._record = recording
             try:
-                transport.request('invoke', service='fixture', method='invoke', args=[{'value': 1}], kwargs={})
+                transport.request('invoke', service='fixture', method='invoke', args=[{'value': 1, 'effect': str(effect)}], kwargs={})
             except PluginError as error:
                 observed = error.code
             else:
@@ -69,5 +96,6 @@ def verify_physical_knowledge(root):
             raise RuntimeError(f'PHYSICAL_KNOWLEDGE_MISMATCH: {name}, {observed}, {statuses}, {effects}, {clean}')
         observations.append({'mode': name, 'decision': 'PASS', 'outcome': observed,
             'statuses': statuses, 'actual_effects': len(effects), 'physical_requests': len(attempted),
-            'child_exit': transport._process.poll(), 'io_threads_stopped': clean})
+            'child_exit': transport._process.poll(), 'io_threads_stopped': clean,
+            'installed_digest': case['digest'], 'rejected_launches': rejected})
     return observations

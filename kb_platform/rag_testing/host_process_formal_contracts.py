@@ -71,5 +71,18 @@ class HostProcessFormalContracts(unittest.TestCase):
         calls = [node for node in ast.walk(run) if isinstance(node, ast.Call)
                  and isinstance(node.func, ast.Name) and node.func.id == 'verify_physical_knowledge']
         self.assertEqual(len(calls), 1)
-        self.assertEqual(ast.unparse(calls[0]), 'verify_physical_knowledge(root)')
+        self.assertEqual(ast.unparse(calls[0]), 'verify_physical_knowledge(physical_cases)')
         self.assertIn("'physical_knowledge': physical_knowledge", ast.unparse(run))
+
+    def test_exact_fixture_commands_are_declared_before_unchanged_process_audit(self):
+        tree = ast.parse((ROOT / 'kb_platform/rag_testing/plugin_process_integration.py').read_text('utf-8'))
+        run = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'run')
+        source = ast.unparse(run)
+        positions = [source.index(value) for value in ('prepare_physical_knowledge(root, manager)',
+            "commands.extend((case['command'] for case in physical_cases))", 'sys.addaudithook(audit)',
+            'verify_physical_knowledge(physical_cases)')]
+        self.assertEqual(positions, sorted(positions))
+        audit = next(node for node in ast.walk(run) if isinstance(node, ast.FunctionDef) and node.name == 'audit')
+        self.assertIn("args[1] in (command, subprocess.list2cmdline(command))", ast.unparse(audit))
+        self.assertIn("raise RuntimeError('PROCESS_FIXTURE_REJECTS_OTHER_COMMAND')", ast.unparse(audit))
+        self.assertIn("raise RuntimeError('PROCESS_FIXTURE_FORBIDS_' + event)", ast.unparse(audit))

@@ -163,3 +163,32 @@ correlation 104 / 62, physical knowledge 298 / 178; all positive exits 0.
 Five seeded profiles exit 12 at the named invariant, including physical replay
 at two actual invocations (381 / 230 states). These counts cover only the listed
 bounded models, not production schedule coverage.
+
+## Exact-argv integration wiring correction
+
+The first frozen `d755136` unified run genuinely failed ordinary
+`plugin-process-integration`: its preexisting audit rejected the two new worker
+commands (`PROCESS_FIXTURE_REJECTS_OTHER_COMMAND`). Standalone targeted child
+execution had not checked this composition. That failure is preserved externally
+at `/tmp/evidence-host-frozen-20261102T202215Z-ordinary/plugin-process-integration.log`
+and bound by `evidence/fixture-wiring-SHA256SUMS`; it is not called environmental.
+The same full run also had an actual overall host timeout at the SIGINT test and
+18 SOCKS ImportErrors in 1,071 completely discovered contracts. Formal-only
+passed all 15 actual TLC runs. No tracked file changed during that frozen run.
+
+After the run reached terminal and the scoped registration fix was approved,
+the fixture now installs its two static workers through the existing
+ProcessPackages manager. Their complete, exact launcher argv are declared in
+`commands` before the existing audit is installed; execution stays after audit
+installation. The audit function AST is unchanged (digest in the summary).
+No general command, network exception or scanner allowlist was introduced.
+Both workers additionally exercise an unregistered command and a tampered argv;
+each must fail with exactly `PROCESS_FIXTURE_REJECTS_OTHER_COMMAND` before any
+child executes. The full existing process-integration component then passes
+under that audit: two real UNKNOWN cases and four rejected-launch controls.
+
+`fixture-wiring-summary.json` records the focused results and raw-artifact digest
+without embedding the large full protocol JSON. The follow-up frozen commit
+still requires fresh ordinary and formal-only unified gates; focused success
+does not replace those results. Seven owner/structural contracts passed after
+this wiring change, including registration-before-audit / execution-after-audit.

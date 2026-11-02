@@ -1,0 +1,12 @@
+test_actual_host_owners_match_reviewed_structure (kb_platform.rag_testing.host_process_formal_contracts.HostProcessFormalContracts.test_actual_host_owners_match_reviewed_structure) ... ok
+test_exact_fixture_commands_are_declared_before_unchanged_process_audit (kb_platform.rag_testing.host_process_formal_contracts.HostProcessFormalContracts.test_exact_fixture_commands_are_declared_before_unchanged_process_audit) ... ok
+test_mandatory_semantic_guard_rejects_refreshed_hashes (kb_platform.rag_testing.host_process_formal_contracts.HostProcessFormalContracts.test_mandatory_semantic_guard_rejects_refreshed_hashes) ... ok
+test_physical_knowledge_regression_is_on_the_mandatory_process_integration_path (kb_platform.rag_testing.host_process_formal_contracts.HostProcessFormalContracts.test_physical_knowledge_regression_is_on_the_mandatory_process_integration_path) ... ok
+test_seeded_early_cleanup_wrong_correlation_and_replay_mutants_are_rejected (kb_platform.rag_testing.host_process_formal_contracts.HostProcessFormalContracts.test_seeded_early_cleanup_wrong_correlation_and_replay_mutants_are_rejected) ... ok
+test_shutdown_waits_for_stop_and_real_close_before_reply (kb_platform.rag_testing.host_owner_contracts.HostOwnerContracts.test_shutdown_waits_for_stop_and_real_close_before_reply) ... ok
+test_unique_ids_can_arrive_two_then_one_and_correlate_exactly (kb_platform.rag_testing.host_owner_contracts.HostOwnerContracts.test_unique_ids_can_arrive_two_then_one_and_correlate_exactly) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 1.777s
+
+OK

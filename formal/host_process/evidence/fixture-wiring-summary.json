@@ -1,0 +1,56 @@
+{
+  "status": "PASS",
+  "scope": "Actual ordinary plugin-process integration under the unchanged exact-argv audit; not a full unified gate claim.",
+  "corrects": "d755136 ordinary plugin-process-integration failed because the two controlled fixture commands were not registered; this was a real new wiring failure, not environmental.",
+  "baseline_commit": "d755136a2016167050012789309c209444357e6f",
+  "audit_ast_sha256": "d15c0bbffb1921e4cff3332e12c1325768762a8dc26ae29762db67d7fccc82da",
+  "audit_changed": false,
+  "physical_knowledge": [
+    {
+      "mode": "effect-without-reply",
+      "decision": "PASS",
+      "outcome": "PROCESS_RESULT_UNKNOWN",
+      "statuses": [
+        "PREPARED",
+        "SENT",
+        "UNKNOWN"
+      ],
+      "actual_effects": 1,
+      "physical_requests": 1,
+      "child_exit": 7,
+      "io_threads_stopped": true,
+      "installed_digest": "761ee1f921ccf69289444b567210d147e3ef63b5b6587c3c8fe7a8e6cae7963d",
+      "rejected_launches": [
+        "unregistered",
+        "tampered"
+      ]
+    },
+    {
+      "mode": "intent-without-bytes",
+      "decision": "PASS",
+      "outcome": "PROCESS_RESULT_UNKNOWN",
+      "statuses": [
+        "PREPARED",
+        "UNKNOWN"
+      ],
+      "actual_effects": 0,
+      "physical_requests": 1,
+      "child_exit": -15,
+      "io_threads_stopped": true,
+      "installed_digest": "790ab56e29f9f914ff8035e2a00d16aba66370fa760896e8098312bd08642ebf",
+      "rejected_launches": [
+        "unregistered",
+        "tampered"
+      ]
+    }
+  ],
+  "raw_artifact": "/tmp/evidence-host-fixture-audited-20261102T203020Z/result.json",
+  "raw_sha256": "37e0052c60a7d3d9771b8eaf7544e38f909cc6834820c79877509ee6f28ba2f0",
+  "reused_native_library": {
+    "path": "/tmp/evidence-host-frozen-20261102T202215Z-ordinary/native/libagent_kernel.so",
+    "reason": "All production Rust owners and Rust crate fixture sources unchanged from the completed d755 native build."
+  },
+  "new_model_calls": 0,
+  "new_embedding_calls": 0,
+  "new_judge_calls": 0
+}
