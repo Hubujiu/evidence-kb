@@ -1,0 +1,23 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling libc v0.2.186
+   Compiling pin-project-lite v0.2.17
+   Compiling syn v2.0.119
+   Compiling serde_derive v1.0.228
+   Compiling tokio-macros v2.6.1
+   Compiling tokio v1.48.0
+   Compiling agent-services v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-storage-idle-fixture/rust/agent-services)
+   Compiling storage-service v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-storage-idle-fixture/rust/storage-service)
+   Compiling llm-service v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-storage-idle-fixture/rust/llm-service)
+   Compiling plugin-host v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-storage-idle-fixture/rust/plugin-host)
+   Compiling plugin-runtime v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-storage-idle-fixture/rust/plugin-runtime)
+   Compiling agent-harness v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-storage-idle-fixture/rust/agent-harness)
+   Compiling agent-kernel v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-storage-idle-fixture/rust/agent-kernel)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.39s

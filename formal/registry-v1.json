@@ -1074,10 +1074,11 @@
     },
     {
       "id": "storage_transaction",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/storage_structured_wire.py",
-        "rust/storage-service/src/transaction.rs"
+        "rust/storage-service/src/transaction.rs",
+        "kb_platform/database_providers/base.py"
       ],
       "states": [
         "begin→held→executing→commit/rollback"
@@ -1094,19 +1095,20 @@
         "Lost/malformed commit evidence stays UNKNOWN with original operation_id and replay_allowed=false; handle ownership, resource limits and scope preserved; write result serialization failure is not rollback."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "One transaction, one exit invocation, two receipt observations; backend effect and endpoint/client knowledge are separate variables.",
+        "Normal context-manager exit is trusted acknowledgement; failures, missing/malformed/mismatched evidence and timeouts do not establish rollback.",
+        "SQLite/SQLAlchemy provide the existing transaction; operation_id correlates evidence only and never grants generic idempotency."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No machine-checked Python/Rust refinement proof; source hashes detect reviewed-source drift only.",
+        "No proof of database internals, foreign-driver honesty, SQL semantics, OS cleanup or unbounded executions."
       ],
       "source_bindings": [
         {
           "path": "kb_platform/storage_structured_wire.py",
           "language": "python",
           "symbol": "_Handle._run",
-          "sha256": "10727ecfdf5953603527e5aa22a4d56e7f30ce5d752898b843ca9d58e5e4a4ea"
+          "sha256": "41096024cbe3fc352cba29c933e6597448f2621a56f4c5e3903c29858c7c12c0"
         },
         {
           "path": "kb_platform/storage_structured_wire.py",
@@ -1137,10 +1139,51 @@
           "language": "rust",
           "symbol": "resolve_commit",
           "sha256": "b0e151b10dacbcbc18f913293dd234b79fce1e63dd4d98f0bcb737cf2d47caa8"
+        },
+        {
+          "path": "kb_platform/database_providers/base.py",
+          "language": "python",
+          "symbol": "transaction",
+          "sha256": "f29f19380fd35498adc67285008f3c3dda00e3689f16df325d88e27b46eb2425"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/storage_transaction/StorageCommitKnowledge.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "storage-commit-knowledge",
+          "config": "formal/storage_transaction/StorageCommitKnowledge.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoUnsupportedReceipt",
+            "ObserverNeedsEvidence",
+            "NoReplay",
+            "IdentityPreserved"
+          ],
+          "properties": [],
+          "bounds": {
+            "transactions": 1,
+            "exit_invocations": 1,
+            "receipt_observations": 2,
+            "actual_outcomes": 3
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/storage_transaction/StorageCommitKnowledge.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "storage-commit-legacy-rollback",
+          "config": "formal/storage_transaction/StorageCommitKnowledgeNegative.cfg",
+          "expected_invariant": "NoUnsupportedReceipt"
+        }
+      ],
+      "remaining_obligations": [
+        "Handle queues, lease capacity/expiry concurrency, guard heartbeat, scope/schema enforcement, begin/connection failure and 256-outcome eviction are not covered by this bounded model.",
+        "Backend progress is not assumed: this safety model intentionally claims no liveness or guaranteed transaction resolution."
+      ]
     },
     {
       "id": "storage_value_call",

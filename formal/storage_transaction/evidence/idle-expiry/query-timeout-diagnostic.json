@@ -1,0 +1,18 @@
+{
+  "kind": "deterministic local diagnostic, not a retry of failed CI",
+  "original_ci_run": 41502706899,
+  "original_ci_tested_tree": "883dfc8b65b594241a73d0274dd99418d36d0cab",
+  "max_seconds": 0.2,
+  "injection": "driver monotonic 0.0 -> 1.0 after real SQL INSERT returns, before Transaction._execute post-result deadline check",
+  "driver_source_sha256": "8294ec07c4331e87ccefc351991d3d0ab7e6558d4c320b05ef74b26613c50e10",
+  "public_error": "DATABASE_QUERY_TIMEOUT",
+  "real_insert_rowcounts": [
+    1
+  ],
+  "cached_outcome": {
+    "status": "ROLLED_BACK",
+    "operation_id": "query-timeout-diagnostic"
+  },
+  "persisted_rows_after_rollback": [],
+  "new_external_model_embedding_judge_calls": 0
+}

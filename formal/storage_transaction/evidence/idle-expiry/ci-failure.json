@@ -1,0 +1,31 @@
+{
+  "ci_run": 41502706899,
+  "ci_run_url": "https://github.com/Hubujiu/evidence-kb/actions/runs/41502706899",
+  "decision": "FAIL",
+  "tested_tree": "883dfc8b65b594241a73d0274dd99418d36d0cab",
+  "local_base_commit": "896d61f9ed17a70823748eee657e74ed169977ca",
+  "local_base_tree_matches_failed_ci": true,
+  "raw_contract_log_sha256": "6b4d140feb34ab2e30b068273ba4d8e64aabad34f862e70fb30a91b80a02ce6d",
+  "failure_excerpt": "FAIL: test_expired_transaction_rolls_back_and_repeated_finish_observes_same_outcome (kb_platform.rag_testing.storage_structured_wire_contracts.StructuredWireContracts.test_expired_transaction_rolls_back_and_repeated_finish_observes_same_outcome)\n----------------------------------------------------------------------\nkb_platform.database_contracts.DatabaseError: DATABASE_QUERY_TIMEOUT\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/runner/work/evidence-kb/evidence-kb/kb_platform/rag_testing/storage_structured_wire_contracts.py\", line 182, in test_expired_transaction_rolls_back_and_repeated_finish_observes_same_outcome\n    with self.assertRaisesRegex(DatabaseError, 'STORAGE_TRANSACTION_ROLLED_BACK'):\nAssertionError: \"STORAGE_TRANSACTION_ROLLED_BACK\" does not match \"DATABASE_QUERY_TIMEOUT\"\n\n----------------------------------------------------------------------\nRan 267 tests in 35.153s\n\nFAILED (failures=1)\n",
+  "test_timing": [
+    {
+      "test": "kb_platform.rag_testing.storage_structured_wire_contracts.StructuredWireContracts.test_expired_transaction_rolls_back_and_repeated_finish_observes_same_outcome",
+      "event": "start",
+      "status": "RUNNING",
+      "monotonic": 742.347434177,
+      "process_time": 26.791865954
+    },
+    {
+      "test": "kb_platform.rag_testing.storage_structured_wire_contracts.StructuredWireContracts.test_expired_transaction_rolls_back_and_repeated_finish_observes_same_outcome",
+      "event": "stop",
+      "status": "FAIL",
+      "monotonic": 742.61497164,
+      "process_time": 27.047782973
+    }
+  ],
+  "test_elapsed_seconds": 0.2675374630000533,
+  "source_path": "kb_platform/rag_testing/storage_structured_wire_contracts.py",
+  "expected_error": "STORAGE_TRANSACTION_ROLLED_BACK",
+  "actual_error": "DATABASE_QUERY_TIMEOUT",
+  "interpretation": "The fixture expected idle handle expiry after a successful insert, but its query deadline could expire before the insert returned. Query timeout remains a real failure of the original contract, not an accepted alternative or a rerun-to-pass."
+}

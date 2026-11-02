@@ -1,0 +1,46 @@
+test_post_commit_cleanup_failure_keeps_actual_sqlite_write_but_no_rollback_receipt (kb_platform.rag_testing.storage_commit_knowledge_contracts.StorageCommitKnowledgeContracts.test_post_commit_cleanup_failure_keeps_actual_sqlite_write_but_no_rollback_receipt) ... FAIL
+test_provider_unknown_and_observed_normal_outcomes_stay_distinct (kb_platform.rag_testing.storage_commit_knowledge_contracts.StorageCommitKnowledgeContracts.test_provider_unknown_and_observed_normal_outcomes_stay_distinct) ... ok
+test_rollback_cleanup_failure_is_unknown_even_when_sqlite_actually_rolled_back (kb_platform.rag_testing.storage_commit_knowledge_contracts.StorageCommitKnowledgeContracts.test_rollback_cleanup_failure_is_unknown_even_when_sqlite_actually_rolled_back) ... FAIL
+test_source_terminal_receipts_require_normal_exit_acknowledgement (kb_platform.rag_testing.storage_commit_knowledge_contracts.StorageCommitKnowledgeContracts.test_source_terminal_receipts_require_normal_exit_acknowledgement) ... FAIL
+
+======================================================================
+FAIL: test_post_commit_cleanup_failure_keeps_actual_sqlite_write_but_no_rollback_receipt (kb_platform.rag_testing.storage_commit_knowledge_contracts.StorageCommitKnowledgeContracts.test_post_commit_cleanup_failure_keeps_actual_sqlite_write_but_no_rollback_receipt)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-formal/kb_platform/rag_testing/storage_commit_knowledge_contracts.py", line 89, in test_post_commit_cleanup_failure_keeps_actual_sqlite_write_but_no_rollback_receipt
+    self.assertEqual(endpoint._outcomes[transaction._token]['status'], 'UNKNOWN')
+AssertionError: 'ROLLED_BACK' != 'UNKNOWN'
+- ROLLED_BACK
++ UNKNOWN
+
+
+======================================================================
+FAIL: test_rollback_cleanup_failure_is_unknown_even_when_sqlite_actually_rolled_back (kb_platform.rag_testing.storage_commit_knowledge_contracts.StorageCommitKnowledgeContracts.test_rollback_cleanup_failure_is_unknown_even_when_sqlite_actually_rolled_back)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-formal/kb_platform/rag_testing/storage_commit_knowledge_contracts.py", line 117, in test_rollback_cleanup_failure_is_unknown_even_when_sqlite_actually_rolled_back
+    self.assertEqual(endpoint._outcomes[transaction._token]['status'], 'UNKNOWN')
+AssertionError: 'ROLLED_BACK' != 'UNKNOWN'
+- ROLLED_BACK
++ UNKNOWN
+
+
+======================================================================
+FAIL: test_source_terminal_receipts_require_normal_exit_acknowledgement (kb_platform.rag_testing.storage_commit_knowledge_contracts.StorageCommitKnowledgeContracts.test_source_terminal_receipts_require_normal_exit_acknowledgement)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-formal/kb_platform/rag_testing/storage_commit_knowledge_contracts.py", line 154, in test_source_terminal_receipts_require_normal_exit_acknowledgement
+    self.assertEqual(outcome_evidence_violations(source), [])
+AssertionError: Lists differ: ['outcome must start UNKNOWN'] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+'outcome must start UNKNOWN'
+
+- ['outcome must start UNKNOWN']
++ []
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.084s
+
+FAILED (failures=3)
