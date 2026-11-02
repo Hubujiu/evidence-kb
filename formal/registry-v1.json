@@ -1008,10 +1008,11 @@
       "assumptions": [
         "DatabaseService RLock protects admission, route phase and snapshot transitions; adapter.close executes outside that lock.",
         "Two route identities, two competing cleaners, one active lease per route, one cleanup failure per route, one service close snapshot; helper calls may stutter.",
-        "Existing BlobService lifecycle is the reference: block duplicate cleanup and close admission before snapshot; retain cleanup_failed owner for explicit retry."
+        "Existing BlobService lifecycle is the reference: block duplicate cleanup and close admission before snapshot; retain cleanup_failed owner for explicit retry.",
+        "Grant identity is opaque; replacement revokes old grants. External owner-context entry may replace a route before its second locked check. A live admitted lease pins replacement."
       ],
       "exclusions": [
-        "This model covers DatabaseService disposal and close only, not all storage registry operations.",
+        "DatabaseRegistryClose covers disposal/close; StorageGrants additionally covers one-call grant and captured-entry admission across replacement. Other registry operations remain outside these models.",
         "No backend disposal correctness, Python-to-TLA refinement, OS resource proof or liveness under an indefinitely blocked adapter."
       ],
       "source_bindings": [
@@ -1019,7 +1020,7 @@
           "path": "kb_platform/storage_service.py",
           "language": "python",
           "symbol": "StorageService.lease",
-          "sha256": "9e0bd3c0bb9ae4b20db99e20aa757a58eca39f742dc0fa05a59ac8eac610edfa"
+          "sha256": "a5be68aa257868668b28f8f6e6109a24efba0f27dade56f570e9068c6c7a15a9"
         },
         {
           "path": "kb_platform/storage_service.py",
@@ -1085,7 +1086,61 @@
           "path": "kb_platform/database_service.py",
           "language": "python",
           "symbol": "DatabaseService.lease",
-          "sha256": "fa9f4297118cdb865d89b352bd6f8cdccff5402b27824629766714a4b03e3a95"
+          "sha256": "23da3f3d4ebe5edddb5096f7a8a317dfc733e083f0cc466626d0f6826c4675ae"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "StorageService.register",
+          "sha256": "b6c688acb0e4934d51869f11b74301441c9a20d3646e6b9cc5ad9ff83323eb4c"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "StorageService.grant",
+          "sha256": "9c4cbd3e4795f0ebb278a7dc22eaa1fe30e863d4f2b4e2cdb4650de3a9325cc4"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "StorageService.bind",
+          "sha256": "a00d20cc0a8a963869e6000f213d5dc4bae58fabb72b818430f4c031f4131ba1"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "StorageService._validate_lease_grant",
+          "sha256": "eb87044f3c33cecc34496c406b3842bf7fd9f8f1da840035a35af492df33361f"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "BoundStorage._lease",
+          "sha256": "0eca31029dfedfbd4dc33a1a07e16771ae5c2fcb07151cabc87cf2504718ba9e"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "DatabaseService.grant",
+          "sha256": "c05ac698aefa2f63facede92da76e52f77cb70683f5e4111265ffdf20dd2efa9"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "DatabaseService.bind",
+          "sha256": "d7547c0cdd30e3a63e2e479bb9d442a5107b137370101b21c81546ebda619640"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "DatabaseService._validate_lease_grant",
+          "sha256": "f86f16e6cf11b4efca8106664c34a2eb560dde0a13bbbbb1e9ea6f4f503a09fa"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "BoundDatabase._lease",
+          "sha256": "c6e49a733f6194b71c640e8f4646f3324bd5da06b11ee67195ac34371727c8f7"
         }
       ],
       "models": [
@@ -1111,6 +1166,27 @@
             "cleanup_failures_per_route": 1,
             "service_close_snapshots": 1
           }
+        },
+        {
+          "module": "formal/storage_grants/StorageGrants.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "storage-grant-ownership",
+          "config": "formal/storage_grants/StorageGrants.cfg",
+          "invariants": [
+            "TypeOK",
+            "OwnerContextMatches",
+            "RevokedGrantCannotRun",
+            "ImplementationMatches",
+            "RejectedHasNoEffects"
+          ],
+          "properties": [],
+          "bounds": {
+            "routes": 1,
+            "owner_generations": 2,
+            "calls": 1,
+            "active_leases": 1
+          }
         }
       ],
       "negative_controls": [
@@ -1129,11 +1205,51 @@
           "id": "database-registry-late-registration",
           "config": "formal/storage_registry/DatabaseRegistryAdmissionNegative.cfg",
           "expected_invariant": "ClosedOwnsNothing"
+        },
+        {
+          "module": "formal/storage_grants/StorageGrants.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "storage-grant-revoked",
+          "config": "formal/storage_grants/StorageGrantsGrantNegative.cfg",
+          "expected_invariant": "RevokedGrantCannotRun"
+        },
+        {
+          "module": "formal/storage_grants/StorageGrants.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "storage-grant-entry",
+          "config": "formal/storage_grants/StorageGrantsEntryNegative.cfg",
+          "expected_invariant": "OwnerContextMatches"
+        },
+        {
+          "module": "formal/storage_grants/StorageGrants.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "storage-grant-new-witness",
+          "config": "formal/storage_grants/StorageGrantsNewWitness.cfg",
+          "expected_invariant": "NoReplacementSuccess"
+        },
+        {
+          "module": "formal/storage_grants/StorageGrants.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "storage-grant-revoked-witness",
+          "config": "formal/storage_grants/StorageGrantsRevokedWitness.cfg",
+          "expected_invariant": "NoOldGrantRejected"
+        },
+        {
+          "module": "formal/storage_grants/StorageGrants.tla",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "id": "storage-grant-swap-witness",
+          "config": "formal/storage_grants/StorageGrantsSwapWitness.cfg",
+          "expected_invariant": "NoCallbackSwapRejected"
         }
       ],
       "remaining_obligations": [
-        "StorageService grant/dataset/generation/ABA binding and BoundDatabase prepare/seal are not modeled here.",
-        "BlobService is a reviewed implementation reference, not fully modeled; arbitrary route counts, owner-lease callbacks and whole plugin lifecycle composition remain outside this bounded check."
+        "Dataset identity validation and BoundDatabase prepare/seal remain source-bound but are not modeled by grant/entry ownership.",
+        "BlobService, multiple concurrent grants/calls, repeated owner replacement and whole plugin lifecycle composition remain outside these bounded checks."
       ]
     },
     {

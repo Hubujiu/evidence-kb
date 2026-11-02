@@ -128,6 +128,8 @@ def operator_names(value, *, allow_empty: bool) -> bool:
 
 
 def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
+    from scripts.storage_grant_checks import violations as storage_grant_violations
+
     errors = []
     try:
         registry = registry if registry is not None else json.loads(local_file(root, REGISTRY).read_text('utf-8'))
@@ -138,6 +140,8 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
         model_files = {spec[key] for spec in control_specs() for key in ('module', 'config')}
         for machine in registry['machines']:
             identity = machine['id']
+            if identity == 'storage_registry':
+                errors.extend(storage_grant_violations(root))
             if identity in ids or not re.fullmatch(r'[a-z][a-z0-9_-]+', identity):
                 raise ValueError(f'Duplicate or invalid machine id: {identity}')
             ids.add(identity)

@@ -1,0 +1,43 @@
+FFFF
+======================================================================
+FAIL: test_database_owner_callback_cannot_replace_entry_between_lease_checks (kb_platform.rag_testing.storage_grant_generation_contracts.StorageGrantGenerationContracts.test_database_owner_callback_cannot_replace_entry_between_lease_checks)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-grant-formal/kb_platform/rag_testing/storage_grant_generation_contracts.py", line 81, in test_database_owner_callback_cannot_replace_entry_between_lease_checks
+    self._owner_callback(DatabaseService, DatabaseError)
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-grant-formal/kb_platform/rag_testing/storage_grant_generation_contracts.py", line 109, in _owner_callback
+    self.fail('old ownership context admitted a replacement entry')
+AssertionError: old ownership context admitted a replacement entry
+
+======================================================================
+FAIL: test_revoked_database_handle_cannot_write_old_dataset_using_new_owner_lease (kb_platform.rag_testing.storage_grant_generation_contracts.StorageGrantGenerationContracts.test_revoked_database_handle_cannot_write_old_dataset_using_new_owner_lease)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-grant-formal/kb_platform/rag_testing/storage_grant_generation_contracts.py", line 62, in test_revoked_database_handle_cannot_write_old_dataset_using_new_owner_lease
+    with self.assertRaises(DatabaseError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: DatabaseError not raised
+
+======================================================================
+FAIL: test_revoked_storage_handle_cannot_reenter_same_registration_under_new_owner (kb_platform.rag_testing.storage_grant_generation_contracts.StorageGrantGenerationContracts.test_revoked_storage_handle_cannot_reenter_same_registration_under_new_owner)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-grant-formal/kb_platform/rag_testing/storage_grant_generation_contracts.py", line 43, in test_revoked_storage_handle_cannot_reenter_same_registration_under_new_owner
+    with self.assertRaises(StorageError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: StorageError not raised
+
+======================================================================
+FAIL: test_storage_owner_callback_cannot_replace_entry_between_lease_checks (kb_platform.rag_testing.storage_grant_generation_contracts.StorageGrantGenerationContracts.test_storage_owner_callback_cannot_replace_entry_between_lease_checks)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-grant-formal/kb_platform/rag_testing/storage_grant_generation_contracts.py", line 78, in test_storage_owner_callback_cannot_replace_entry_between_lease_checks
+    self._owner_callback(StorageService, StorageError)
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-storage-grant-formal/kb_platform/rag_testing/storage_grant_generation_contracts.py", line 109, in _owner_callback
+    self.fail('old ownership context admitted a replacement entry')
+AssertionError: old ownership context admitted a replacement entry
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.033s
+
+FAILED (failures=4)
