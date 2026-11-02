@@ -1681,7 +1681,9 @@
         "kb_platform/embedding_jobs.py",
         "kb_platform/knowledge_sql.py",
         "kb_platform/knowledge_storage.py",
-        "kb_platform/rag_testing/publication_embedding_contracts.py"
+        "kb_platform/rag_testing/publication_embedding_contracts.py",
+        "kb_platform/rag_testing/embedding_lease_contracts.py",
+        "kb_platform/storage_adapters/structured.py"
       ],
       "states": [
         "PENDING/RUNNING/COMPLETE/ERROR/UNKNOWN/RETRY"
@@ -1690,17 +1692,22 @@
         "EmbeddingJobs._prepare",
         "EmbeddingJobs._claim",
         "EmbeddingJobs._finish",
-        "EmbeddingJobs.reconcile"
+        "EmbeddingJobs.reconcile",
+        "EmbeddingJobs.run",
+        "recovered_observation",
+        "recovered_vectors",
+        "recovered_unsent"
       ],
       "invariants": [
         "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
-        "One bounded job, two fresh physical IDs and dependency identities, binary definitely-live/expired lease; owner-local SQL transactions atomically change job and attempt.",
-        "Physical execution, local cancellation, durable persistence and caller acknowledgment are distinct; exact matched observations are trusted abstractions, not provider verification."
+        "The original two-ID binary-lease model remains. Its companion uses one job, two IDs, database clock 0..5, unit lease/retry/circuit intervals, max_attempts=2 and circuit_threshold=1; database writes serialize atomically.",
+        "Physical execution, local cancellation, durable persistence and caller acknowledgment are distinct; exact matched observations are trusted abstractions, not provider verification.",
+        "The companion resolves now<deadline, now=deadline and now>deadline explicitly. Snapshot recovery and evidence acquisition occur outside the finishing transaction; clocks only advance between modeled transactions."
       ],
       "exclusions": [
-        "No claim about exact clock equality, provider circuit generations, unbounded jobs/IDs, arbitrary vectors, actual cancellation, network, database isolation or power-loss durability.",
+        "Unbounded jobs/IDs, arbitrary retry durations, clock reversal or clock movement inside transactions, actual cancellation/network/database isolation/power-loss correctness are not proved.",
         "No machine-checked Python/SQL refinement, eventual success or zero-bug guarantee."
       ],
       "source_bindings": [
@@ -1787,6 +1794,48 @@
           "language": "python",
           "symbol": "PublicationEmbeddingContracts.test_job_and_attempt_persistence_roll_back_together",
           "sha256": "a555f77bcba4b050262d36f6aee9a012f85e236a7b1fe7b1bace120dac9c6b23"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "EmbeddingJobs.run",
+          "sha256": "44eb865c765adf68ae2d7b5a0565d4991cd4868d52c1fd8b709ed35376940a59"
+        },
+        {
+          "path": "kb_platform/embedding_jobs.py",
+          "language": "python",
+          "symbol": "retry_delay",
+          "sha256": "ed2d792ef39bbb3d3568b3a3b29b32e09baa08f58b5b666872ce870a87657e19"
+        },
+        {
+          "path": "kb_platform/rag_testing/embedding_lease_contracts.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "a85450c0254c14317ba4ee075341949aeaf2c5bd60a40700ea565b743bd87ba3"
+        },
+        {
+          "path": "kb_platform/knowledge_storage.py",
+          "symbol": "KnowledgeRepository.job_transaction",
+          "language": "python",
+          "sha256": "2cbb7244066a1d3c865e37f5217d5e9faf7f366b78578b6829a6e4d5f2ccd8ba"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured.py",
+          "symbol": "_clock_sqlite",
+          "language": "python",
+          "sha256": "5f95569d7ba37655b37e1576cdadced275a1d6fab013c6a104e5c746477cf3c2"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured.py",
+          "symbol": "_after_sqlite",
+          "language": "python",
+          "sha256": "bb106d8a57ac484b124eca320a609ba7b98fb7fe6bfc812beefe06227dddad5f"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured.py",
+          "symbol": "StructuredSqlSpace.transaction",
+          "language": "python",
+          "sha256": "adb10682793b25754ccf72fed5f2757bc8d62bc3fea4a3fa3a291b49c0301733"
         }
       ],
       "models": [
@@ -1813,6 +1862,34 @@
             "charged_attempts": 2,
             "lease_classes": 2,
             "concurrent_sql_transactions": 1
+          }
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-boundaries-positive",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundaries.cfg",
+          "invariants": [
+            "TypeOK",
+            "LeaseSettlementFenced",
+            "RecoveryCAS",
+            "ScheduleRespected",
+            "ReconcileStrictExpiry",
+            "AttemptAccounting",
+            "AtomicJobAttempt",
+            "CompleteObserved",
+            "CircuitAccounting"
+          ],
+          "properties": [],
+          "bounds": {
+            "jobs": 1,
+            "physical_request_ids": 2,
+            "database_clock_max": 5,
+            "deadline_max": 6,
+            "max_attempts": 2,
+            "circuit_threshold": 1,
+            "transaction_clock_samples": 1
           }
         }
       ],
@@ -1848,11 +1925,115 @@
           "id": "embedding-jobs-atomiccommit",
           "config": "formal/embedding_jobs/EmbeddingJobsAtomicCommitNegative.cfg",
           "expected_invariant": "AtomicJobAttempt"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-latefinishnegative",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesLateFinishNegative.cfg",
+          "expected_invariant": "LeaseSettlementFenced"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-recoveryrequestnegative",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesRecoveryRequestNegative.cfg",
+          "expected_invariant": "RecoveryCAS"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-recoverystatenegative",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesRecoveryStateNegative.cfg",
+          "expected_invariant": "RecoveryCAS"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-earlyretrynegative",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesEarlyRetryNegative.cfg",
+          "expected_invariant": "ScheduleRespected"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-refundhttpnegative",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesRefundHTTPNegative.cfg",
+          "expected_invariant": "AttemptAccounting"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-reconcileequalitynegative",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesReconcileEqualityNegative.cfg",
+          "expected_invariant": "ReconcileStrictExpiry"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-finishequalitywitness",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesFinishEqualityWitness.cfg",
+          "expected_invariant": "NoFinishAtEquality"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-claimequalitywitness",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesClaimEqualityWitness.cfg",
+          "expected_invariant": "NoClaimExpiryAtEquality"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-recoveredcompletionwitness",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesRecoveredCompletionWitness.cfg",
+          "expected_invariant": "NoRecoveredCompletion"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-recoveredunsentwitness",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesRecoveredUnsentWitness.cfg",
+          "expected_invariant": "NoRecoveredUnsent"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-retryequalitywitness",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesRetryEqualityWitness.cfg",
+          "expected_invariant": "NoRetryAtEquality"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-circuitfailurenegative",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesCircuitFailureNegative.cfg",
+          "expected_invariant": "CircuitAccounting"
+        },
+        {
+          "module": "formal/embedding_jobs/EmbeddingLeaseBoundaries.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "embedding-lease-circuitresetnegative",
+          "config": "formal/embedding_jobs/EmbeddingLeaseBoundariesCircuitResetNegative.cfg",
+          "expected_invariant": "CircuitAccounting"
         }
       ],
       "remaining_obligations": [
-        "Refine production SQLite/PostgreSQL locking, physical evidence integrity, clocks, circuits and cross-batch behavior; preserve unknown physical outcomes independently of worker state.",
-        "Verify lease equality separately: claim uses <=, finish >= and reconcile <; this finite binary-lease model excludes that unconfirmed corner."
+        "Refine production PostgreSQL/MySQL locking, clock sampling inside transactions and clock reversal, cross-batch circuit interference, arbitrary thresholds/backoff and physical evidence integrity.",
+        "Exact equality is covered by the companion and real SQLite fixed-clock contracts, not a proof of whole-source refinement. Original binary model remains intentionally narrower. Persisted recoverable ERROR compatibility is concrete-contract coverage, not a companion-model initial state."
       ]
     },
     {
