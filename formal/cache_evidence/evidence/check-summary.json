@@ -1,0 +1,22 @@
+{
+  "baseline": "27c4180 (PR31 canonical errors + formal base)",
+  "scope": "offline synthetic endpoint/receipt checks; not full project acceptance",
+  "regression_baseline": "FAIL: original code accepted request beyond outstanding receipt capacity",
+  "focused_contracts": 24,
+  "focused_contracts_result": "PASS",
+  "ruff_kb_platform_scripts": "PASS",
+  "architecture": "PASS",
+  "positive_tlc": {
+    "generated": 3282,
+    "distinct": 790,
+    "remaining": 0,
+    "exit": 0
+  },
+  "negative_tlc": {
+    "expected_invariant": "CapacityBound",
+    "exit": 12
+  },
+  "registry": "11 known PR31 dependency anchor/candidate deltas outside this owner remain for parent-reviewed integration; cache_evidence has no drift",
+  "full_check": "Not run in child; parent owns final aggregate gates",
+  "paid_model_calls": 0
+}

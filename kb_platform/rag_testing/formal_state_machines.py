@@ -214,6 +214,20 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
             if path.suffix in {'.tla', '.cfg'}:
                 if path.relative_to(root).as_posix() not in model_files:
                     errors.append(f'Unregistered model input: {path.relative_to(root)}')
+        from scripts.error_projection_model_checks import error_projection_model_violations
+
+        errors.extend(error_projection_model_violations(root, registry))
+        receipt_owner = root / 'kb_platform/knowledge_contracts.py'
+        if receipt_owner.is_file():
+            from scripts.check_project import (
+                model_capacity_outcome_violations, model_error_projection_violations,
+                model_receipt_cleanup_violations, model_receipt_violations,
+            )
+
+            tree = ast.parse(receipt_owner.read_text('utf-8'))
+            errors.extend(f'model receipts: {error}' for check in
+                          (model_receipt_violations, model_capacity_outcome_violations,
+                           model_receipt_cleanup_violations, model_error_projection_violations) for error in check(tree))
     except (KeyError, TypeError, ValueError, OSError, SyntaxError) as exc:
         errors.append(f'Invalid formal registry: {exc}')
     return sorted(set(errors))

@@ -1,0 +1,48 @@
+{
+  "schema": "historical-tlc-verification-summary/1",
+  "scope": "Model validation only; ordinary full-project acceptance remains separate.",
+  "runs": [
+    {
+      "id": "legacy-coded-unreachable",
+      "kind": "negative",
+      "decision": "FAIL",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.129529158002697,
+      "expected_invariant": "NoCodedWitness",
+      "expected_property": null,
+      "states": {
+        "generated": 60,
+        "distinct": 60,
+        "remaining": 0
+      },
+      "raw_log": "legacy-coded-unreachable.log",
+      "input_checksums": "input-checksums/legacy-coded-unreachable/SHA256SUMS",
+      "original_command": [
+        "java",
+        "-Xmx256m",
+        "-XX:MaxMetaspaceSize=128m",
+        "-XX:+UseParallelGC",
+        "-XX:+ExitOnOutOfMemoryError",
+        "-cp",
+        "/tmp/evidence-tla-tools/tla2tools-1.7.4.jar",
+        "tlc2.TLC",
+        "-tool",
+        "-workers",
+        "1",
+        "-seed",
+        "1",
+        "-fp",
+        "0",
+        "-fpmem",
+        "0.25",
+        "-metadir",
+        "/workspace/scratch/75c2273f6a80/evidence-kb-model-error-observation/.local/error-projection-legacy-coded-reachability-20261102-2125/results-v2/legacy-coded-unreachable/states",
+        "-config",
+        "ErrorProjectionCodedWitness.cfg",
+        "ErrorProjection"
+      ],
+      "interpretation": "Expected reachability is FAIL: old assignment exhausts its graph without coded observed state. TLC exit 0 is not witness success."
+    }
+  ]
+}

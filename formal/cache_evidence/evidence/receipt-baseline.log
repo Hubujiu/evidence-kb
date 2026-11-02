@@ -1,0 +1,14 @@
+F
+======================================================================
+FAIL: test_inflight_receipt_reservation_survives_ttl_and_bounds_public_capacity (kb_platform.rag_testing.model_receipt_contracts.ModelReceiptContracts.test_inflight_receipt_reservation_survives_ttl_and_bounds_public_capacity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-auth-cache-formal/kb_platform/rag_testing/model_receipt_contracts.py", line 51, in test_inflight_receipt_reservation_survives_ttl_and_bounds_public_capacity
+    with self.assertRaises(ContractError) as caught:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ContractError not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 0.038s
+
+FAILED (failures=1)

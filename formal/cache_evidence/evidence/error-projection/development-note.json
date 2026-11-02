@@ -1,0 +1,5 @@
+{
+  "contract_baseline": "Three genuine missing-fact assertions; fourteen tests included nine accidentally rediscovered imported fixture methods. Module import fixes duplicate discovery without changing those tests.",
+  "first_formal": "Development model used heterogeneous integer/string record fields; TLC exit75 before any reachable states for all four new runs. Existing twenty runs passed. Typed string observation labels corrected the model encoding; no invariant or expected failure was relaxed.",
+  "verified_scope": "Additional formal gate24/24, evidence2/2, focusedcontracts60/60. Ordinary full-project gate not run for this candidate yet; prior candidate failures remain unchanged."
+}

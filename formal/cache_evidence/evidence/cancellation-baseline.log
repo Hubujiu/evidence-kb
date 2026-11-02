@@ -1,0 +1,16 @@
+F
+======================================================================
+FAIL: test_real_host_propagates_cancellation_identity_releases_slot_and_keeps_unknown_cost (kb_platform.rag_testing.model_receipt_contracts.ModelReceiptCancellationContracts.test_real_host_propagates_cancellation_identity_releases_slot_and_keeps_unknown_cost)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-auth-cache-formal/kb_platform/rag_testing/model_receipt_contracts.py", line 255, in test_real_host_propagates_cancellation_identity_releases_slot_and_keeps_unknown_cost
+    self.assertEqual(endpoint._pending, {})
+AssertionError: {'[REDACTED_SYNTHETIC_RECEIPT_NONCE]': (900,[3089 chars]one)} != {}
+Diff is 3333 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 1 test in 0.415s
+
+FAILED (failures=1)
+
+Evidence hygiene: one generated 32-character synthetic endpoint receipt nonce was explicitly redacted; the original failure and abbreviated dictionary-size evidence are unchanged.

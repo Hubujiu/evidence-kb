@@ -278,6 +278,11 @@ def source_quality_violations(root: Path) -> list[str]:
             module = relative.removesuffix('.py').replace('/', '.')
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
+            if relative == 'kb_platform/knowledge_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in model_receipt_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_capacity_outcome_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_receipt_cleanup_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_error_projection_violations(tree))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -291,6 +296,95 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def model_receipt_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    candidates = [node.value for method in methods for node in ast.walk(method)
+                  if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                      and target.id == 'expired' for target in node.targets)]
+    expected = {'envelope is not None', 'deadline < monotonic()'}
+
+    def conjuncts(node):
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
+            return {value for child in node.values for value in conjuncts(child)}
+        return {ast.unparse(node)}
+
+    if len(candidates) == 1 and isinstance(candidates[0], ast.ListComp):
+        candidate = candidates[0]
+        if len(candidate.generators) == 1:
+            generator = candidate.generators[0]
+            conditions = {value for condition in generator.ifs for value in conjuncts(condition)}
+            if (ast.unparse(generator.iter) == 'self._pending.items()'
+                    and ast.unparse(generator.target) == '(key, (deadline, envelope))'
+                    and ast.unparse(candidate.elt) == 'key' and expected <= conditions):
+                return []
+    return ['model receipt expiry must retain in-flight placeholders and only prune expired completed envelopes']
+
+
+def model_capacity_outcome_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    guards = [node for method in methods for node in ast.walk(method)
+              if isinstance(node, ast.If) and ast.unparse(node.test) == 'len(self._pending) >= 64']
+    invocations = [node for method in methods for node in ast.walk(method)
+                   if isinstance(node, ast.Call) and ast.unparse(node.func) == 'self._model.complete']
+    if (len(guards) == len(invocations) == 1 and guards[0].lineno < invocations[0].lineno
+            and len(guards[0].body) == 1 and isinstance(guards[0].body[0], ast.Raise)):
+        call = guards[0].body[0].exc
+        if isinstance(call, ast.Call) and ast.unparse(call.func) == 'ContractError':
+            for keyword in call.keywords:
+                if keyword.arg == 'details':
+                    try:
+                        details = ast.literal_eval(keyword.value)
+                    except (ValueError, TypeError):
+                        break
+                    if (isinstance(details, dict) and details.get('model_sent') is False
+                            and isinstance(details.get('call_record'), dict)
+                            and type(details['call_record'].get('attempts')) is int
+                            and details['call_record']['attempts'] == 0
+                            and details['call_record'].get('model_sent') is False):
+                        return []
+    return ['model receipt capacity refusal must expose known-unsent zero attempts before model invocation']
+
+
+def model_receipt_cleanup_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    blocks = [node for method in methods for node in method.body if isinstance(node, ast.Try)]
+    if len(blocks) == 1 and len(blocks[0].handlers) == 1:
+        handler = blocks[0].handlers[0]
+        expected = ast.parse('with self._lock:\n    self._pending.pop(token, None)\n'
+                             'if not isinstance(error, Exception):\n    raise\n').body
+        if (handler.type is not None and ast.unparse(handler.type) == 'BaseException'
+                and handler.name == 'error' and len(handler.body) >= 2
+                and all(ast.dump(actual, include_attributes=False) == ast.dump(required, include_attributes=False)
+                        for actual, required in zip(handler.body[:2], expected, strict=True))):
+            return []
+    return ['model receipt failures must clean BaseException placeholders then bare-raise cancellation identity']
+
+
+def model_error_projection_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    blocks = [node for method in methods for node in method.body if isinstance(node, ast.Try)]
+    expected = ast.parse('from .model_errors import error_details\n'
+        'details = error_details(error)\n'
+        "if not hasattr(error, 'code'):\n"
+        "    raise ContractError('CONTRACT_IMPLEMENTATION_FAILED', 'Service implementation failed',\n"
+        "        details={**details, 'code': 'CONTRACT_IMPLEMENTATION_FAILED'}) from error\n").body
+    if len(blocks) == 1 and len(blocks[0].handlers) == 1:
+        handler = blocks[0].handlers[0]
+        if (len(handler.body) >= 5
+                and all(ast.dump(actual, include_attributes=False) == ast.dump(required, include_attributes=False)
+                        for actual, required in zip(handler.body[2:5], expected, strict=True))):
+            return []
+    return ['generic model failures must preserve canonical facts with fixed safe public code and message']
 
 
 def offline_bootstrap_violations(tree: ast.AST) -> list[str]:

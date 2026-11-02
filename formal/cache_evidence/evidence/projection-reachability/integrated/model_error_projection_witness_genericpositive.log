@@ -1,0 +1,130 @@
+@!@!@STARTMSG 2262:0 @!@!@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+@!@!@ENDMSG 2262 @!@!@
+@!@!@STARTMSG 2187:0 @!@!@
+Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 851] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+@!@!@ENDMSG 2187 @!@!@
+@!@!@STARTMSG 2220:0 @!@!@
+Starting SANY...
+@!@!@ENDMSG 2220 @!@!@
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-model-error-observation/.local/error-projection-model-correction-final-20261102-2127/formal/model_error_projection_witness_genericpositive/inputs/ErrorProjection.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module ErrorProjection
+@!@!@STARTMSG 2219:0 @!@!@
+SANY finished.
+@!@!@ENDMSG 2219 @!@!@
+@!@!@STARTMSG 2185:0 @!@!@
+Starting... (2026-11-02 13:26:25)
+@!@!@ENDMSG 2185 @!@!@
+@!@!@STARTMSG 2189:0 @!@!@
+Computing initial states...
+@!@!@ENDMSG 2189 @!@!@
+@!@!@STARTMSG 2269:0 @!@!@
+Computed 2 initial states...
+@!@!@ENDMSG 2269 @!@!@
+@!@!@STARTMSG 2269:0 @!@!@
+Computed 4 initial states...
+@!@!@ENDMSG 2269 @!@!@
+@!@!@STARTMSG 2269:0 @!@!@
+Computed 8 initial states...
+@!@!@ENDMSG 2269 @!@!@
+@!@!@STARTMSG 2190:0 @!@!@
+Finished computing initial states: 15 distinct states generated at 2026-11-02 13:26:25.
+@!@!@ENDMSG 2190 @!@!@
+@!@!@STARTMSG 2110:1 @!@!@
+Invariant NoGenericPositiveWitness is violated.
+@!@!@ENDMSG 2110 @!@!@
+@!@!@STARTMSG 2121:1 @!@!@
+The behavior up to this point is:
+@!@!@ENDMSG 2121 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+1: <Initial predicate>
+/\ pending = FALSE
+/\ source = [attempts |-> "one", usage |-> "one", sent |-> "yes"]
+/\ publicCode = "none"
+/\ wire = [attempts |-> "absent", usage |-> "unknown", sent |-> "unknown"]
+/\ privateVisible = FALSE
+/\ publicMessage = "none"
+/\ event = [attempts |-> "absent", usage |-> "unknown", sent |-> "unknown"]
+/\ phase = "new"
+/\ ledger = 0
+/\ kind = "generic"
+/\ originalRaised = FALSE
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+2: <Begin line 20, col 10 to line 21, col 118 of module ErrorProjection>
+/\ pending = TRUE
+/\ source = [attempts |-> "one", usage |-> "one", sent |-> "yes"]
+/\ publicCode = "none"
+/\ wire = [attempts |-> "absent", usage |-> "unknown", sent |-> "unknown"]
+/\ privateVisible = FALSE
+/\ publicMessage = "none"
+/\ event = [attempts |-> "absent", usage |-> "unknown", sent |-> "unknown"]
+/\ phase = "active"
+/\ ledger = 0
+/\ kind = "generic"
+/\ originalRaised = FALSE
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+3: <Fail line 22, col 9 to line 23, col 109 of module ErrorProjection>
+/\ pending = FALSE
+/\ source = [attempts |-> "one", usage |-> "one", sent |-> "yes"]
+/\ publicCode = "none"
+/\ wire = [attempts |-> "absent", usage |-> "unknown", sent |-> "unknown"]
+/\ privateVisible = FALSE
+/\ publicMessage = "none"
+/\ event = [attempts |-> "absent", usage |-> "unknown", sent |-> "unknown"]
+/\ phase = "failed"
+/\ ledger = 1
+/\ kind = "generic"
+/\ originalRaised = FALSE
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+4: <Project line 24, col 12 to line 32, col 80 of module ErrorProjection>
+/\ pending = FALSE
+/\ source = [attempts |-> "one", usage |-> "one", sent |-> "yes"]
+/\ publicCode = "CONTRACT_IMPLEMENTATION_FAILED"
+/\ wire = [attempts |-> "one", usage |-> "one", sent |-> "yes"]
+/\ privateVisible = FALSE
+/\ publicMessage = "Service implementation failed"
+/\ event = [attempts |-> "absent", usage |-> "unknown", sent |-> "unknown"]
+/\ phase = "projected"
+/\ ledger = 1
+/\ kind = "generic"
+/\ originalRaised = FALSE
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2217:4 @!@!@
+5: <Observe line 33, col 12 to line 34, col 122 of module ErrorProjection>
+/\ pending = FALSE
+/\ source = [attempts |-> "one", usage |-> "one", sent |-> "yes"]
+/\ publicCode = "CONTRACT_IMPLEMENTATION_FAILED"
+/\ wire = [attempts |-> "one", usage |-> "one", sent |-> "yes"]
+/\ privateVisible = FALSE
+/\ publicMessage = "Service implementation failed"
+/\ event = [attempts |-> "one", usage |-> "one", sent |-> "yes"]
+/\ phase = "observed"
+/\ ledger = 1
+/\ kind = "generic"
+/\ originalRaised = FALSE
+
+@!@!@ENDMSG 2217 @!@!@
+@!@!@STARTMSG 2200:0 @!@!@
+Progress(5) at 2026-11-02 13:26:25: 65 states generated (5,882 s/min), 65 distinct states found (5,882 ds/min), 14 states left on queue.
+@!@!@ENDMSG 2200 @!@!@
+@!@!@STARTMSG 2199:0 @!@!@
+65 states generated, 65 distinct states found, 14 states left on queue.
+@!@!@ENDMSG 2199 @!@!@
+@!@!@STARTMSG 2194:0 @!@!@
+The depth of the complete state graph search is 5.
+@!@!@ENDMSG 2194 @!@!@
+@!@!@STARTMSG 2268:0 @!@!@
+The average outdegree of the complete state graph is 1 (minimum is 1, the maximum 1 and the 95th percentile is 1).
+@!@!@ENDMSG 2268 @!@!@
+@!@!@STARTMSG 2186:0 @!@!@
+Finished in 670ms at (2026-11-02 13:26:25)
+@!@!@ENDMSG 2186 @!@!@

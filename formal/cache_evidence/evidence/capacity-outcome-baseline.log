@@ -1,0 +1,13 @@
+F
+======================================================================
+FAIL: test_public_capacity_refusal_preserves_zero_calls_in_turn_trace_and_failure_event (kb_platform.rag_testing.model_receipt_contracts.ModelCapacityOutcomeContracts.test_public_capacity_refusal_preserves_zero_calls_in_turn_trace_and_failure_event)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-auth-cache-formal/kb_platform/rag_testing/model_receipt_contracts.py", line 157, in test_public_capacity_refusal_preserves_zero_calls_in_turn_trace_and_failure_event
+    self.assertEqual(sum(row.get('attempts', 1) for row in calls), 0)
+AssertionError: 1 != 0
+
+----------------------------------------------------------------------
+Ran 1 test in 0.755s
+
+FAILED (failures=1)
