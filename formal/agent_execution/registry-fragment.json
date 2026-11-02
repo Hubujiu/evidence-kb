@@ -1,0 +1,341 @@
+{
+  "machines": [
+    {
+      "id": "kernel_execution",
+      "status": "partial",
+      "owners": [
+        "rust/agent-kernel/src/lib.rs",
+        "kb_platform/agent_native.py"
+      ],
+      "states": [
+        "READY\u2194WAITING"
+      ],
+      "transitions": [
+        "transition",
+        "valid_state",
+        "stop"
+      ],
+      "invariants": [
+        "One pending matching operation, monotonic time, deadline and max-operation bounds, terminal absorption."
+      ],
+      "assumptions": [
+        "Baseline main 8160c051e63952278c5f8a80d1b024ebbe3cea17; only the finite abstractions in formal/agent_execution/README.md are checked.",
+        "Atomic serialized command transitions; no fairness assumptions and no liveness claim."
+      ],
+      "exclusions": [
+        "No machine-checked source-to-TLA+ refinement proof; external effects, persistence, scheduling and process termination are not modeled.",
+        "Untrusted/corrupted initial State values and arbitrary u64 domains (partially covered by concrete Rust tests).",
+        "Python cancellation/deadline propagation, ABI/FFI memory safety and concurrent callers."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/agent-kernel/src/lib.rs",
+          "language": "rust",
+          "symbol": "transition",
+          "sha256": "81d127af60f5a3aab15b3193deb0a299a7355e7d8e0cc7785391703fd6334651"
+        },
+        {
+          "path": "rust/agent-kernel/src/lib.rs",
+          "language": "rust",
+          "symbol": "valid_state",
+          "sha256": "81d127af60f5a3aab15b3193deb0a299a7355e7d8e0cc7785391703fd6334651"
+        },
+        {
+          "path": "rust/agent-kernel/src/lib.rs",
+          "language": "rust",
+          "symbol": "stop",
+          "sha256": "81d127af60f5a3aab15b3193deb0a299a7355e7d8e0cc7785391703fd6334651"
+        },
+        {
+          "path": "kb_platform/agent_native.py",
+          "language": "python",
+          "symbol": "_State",
+          "sha256": "5595336e7a03730a169a2b5e896c75c63120dfa39376767943dc1a7e119f89ec"
+        },
+        {
+          "path": "rust/agent-kernel/src/tests.rs",
+          "language": "rust",
+          "symbol": "bounded_event_exploration_preserves_kernel_safety_invariants",
+          "sha256": "b7afa2bdd0c8421f52df8d969c24cad3a5ec71b21bdbe184c53adb1fc9024e8c"
+        },
+        {
+          "path": "rust/agent-kernel/src/tests.rs",
+          "language": "rust",
+          "symbol": "invalid_receipt_after_deadline_does_not_expire_or_settle_pending_work",
+          "sha256": "b7afa2bdd0c8421f52df8d969c24cad3a5ec71b21bdbe184c53adb1fc9024e8c"
+        },
+        {
+          "path": "rust/agent-kernel/src/tests.rs",
+          "language": "rust",
+          "symbol": "corrupted_value_snapshots_are_rejected_without_repair_or_dispatch",
+          "sha256": "b7afa2bdd0c8421f52df8d969c24cad3a5ec71b21bdbe184c53adb1fc9024e8c"
+        }
+      ],
+      "models": [
+        {
+          "id": "kernel_execution",
+          "module": "formal/agent_execution/KernelExecution.tla",
+          "config": "formal/agent_execution/KernelExecution.cfg",
+          "invariants": [
+            "TerminalAbsorbing",
+            "SettlementCorrelated",
+            "DeadlineEnforced",
+            "TypeOK",
+            "PendingMatches",
+            "ExpiredClock",
+            "LimitReached",
+            "RejectsPreserveState",
+            "CountersMonotone"
+          ],
+          "properties": [],
+          "bounds": {
+            "runs": 1,
+            "max_operations": 2,
+            "deadline": 2,
+            "clock_max": 3,
+            "operation_kinds": 3,
+            "event_id_max": 3
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "kernel_correlation_negative",
+          "module": "formal/agent_execution/KernelExecution.tla",
+          "config": "formal/agent_execution/KernelCorrelationNegative.cfg",
+          "expected_invariant": "SettlementCorrelated",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "kernel_terminal_negative",
+          "module": "formal/agent_execution/KernelExecution.tla",
+          "config": "formal/agent_execution/KernelTerminalNegative.cfg",
+          "expected_invariant": "TerminalAbsorbing",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "kernel_deadline_negative",
+          "module": "formal/agent_execution/KernelExecution.tla",
+          "config": "formal/agent_execution/KernelDeadlineNegative.cfg",
+          "expected_invariant": "DeadlineEnforced",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Untrusted/corrupted initial State values and arbitrary u64 domains (partially covered by concrete Rust tests).",
+        "Python cancellation/deadline propagation, ABI/FFI memory safety and concurrent callers."
+      ]
+    },
+    {
+      "id": "loop_graph",
+      "status": "partial",
+      "owners": [
+        "rust/agent-services/src/agent_loop.rs",
+        "rust/agent-services/src/graph.rs",
+        "kb_platform/harness_loop.py"
+      ],
+      "states": [
+        "loop Start/Context/Model/Append/Tool/Complete/Failed"
+      ],
+      "transitions": [
+        "Phase",
+        "ServiceLoop::accept_phase",
+        "ServiceLoop::next",
+        "ServiceLoop::accept",
+        "Graph::next",
+        "Graph::accept"
+      ],
+      "invariants": [
+        "Built-in ServiceLoop effect correlation, call/result append-before-progress, cached shortcut and direct-return order; graph result correlation and declared edges; registry errors remove the handle, without replay."
+      ],
+      "assumptions": [
+        "Baseline main 8160c051e63952278c5f8a80d1b024ebbe3cea17; only the finite abstractions in formal/agent_execution/README.md are checked.",
+        "Atomic serialized command transitions; no fairness assumptions and no liveness claim."
+      ],
+      "exclusions": [
+        "No machine-checked source-to-TLA+ refinement proof; external effects, persistence, scheduling and process termination are not modeled.",
+        "Arbitrary custom LoopProgram implementations; multiple handles, capacity and handle-ID exhaustion.",
+        "Unbounded tool turns and graph topologies, concrete JSON content, Python callback scheduling and persistence."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/agent-services/src/agent_loop.rs",
+          "language": "rust",
+          "symbol": "Phase",
+          "sha256": "f109591d011a5de10206103b478a32407409fa0f7a868f5676565676328aac15"
+        },
+        {
+          "path": "rust/agent-services/src/agent_loop.rs",
+          "language": "rust",
+          "symbol": "ServiceLoop::accept_phase",
+          "sha256": "f109591d011a5de10206103b478a32407409fa0f7a868f5676565676328aac15"
+        },
+        {
+          "path": "rust/agent-services/src/agent_loop.rs",
+          "language": "rust",
+          "symbol": "ServiceLoop::next",
+          "sha256": "f109591d011a5de10206103b478a32407409fa0f7a868f5676565676328aac15"
+        },
+        {
+          "path": "rust/agent-services/src/agent_loop.rs",
+          "language": "rust",
+          "symbol": "ServiceLoop::accept",
+          "sha256": "f109591d011a5de10206103b478a32407409fa0f7a868f5676565676328aac15"
+        },
+        {
+          "path": "rust/agent-services/src/graph.rs",
+          "language": "rust",
+          "symbol": "Graph::next",
+          "sha256": "df4541263d852746244b0c6575e2f9c4c5bd394df33caf294d53c6969dbe23c6"
+        },
+        {
+          "path": "rust/agent-services/src/graph.rs",
+          "language": "rust",
+          "symbol": "Graph::accept",
+          "sha256": "df4541263d852746244b0c6575e2f9c4c5bd394df33caf294d53c6969dbe23c6"
+        },
+        {
+          "path": "kb_platform/harness_loop.py",
+          "language": "python",
+          "symbol": "_NativeProgram.accept",
+          "sha256": "0e78dc8b4978cc43bfa79cc38c42ad69c1eed25222630408f0bcb39932fae7fe"
+        },
+        {
+          "path": "rust/agent-services/src/agent_loop_tests.rs",
+          "language": "rust",
+          "symbol": "result_append_acknowledgment_precedes_direct_completion",
+          "sha256": "e982342c477425d2ebec2a6a2551a8612237acb86baf14e14f6586766607c9e7"
+        },
+        {
+          "path": "rust/agent-services/src/agent_loop_tests.rs",
+          "language": "rust",
+          "symbol": "exhausted_effect_identity_closes_loop_without_wrapping",
+          "sha256": "e982342c477425d2ebec2a6a2551a8612237acb86baf14e14f6586766607c9e7"
+        },
+        {
+          "path": "rust/agent-services/src/graph_tests.rs",
+          "language": "rust",
+          "symbol": "exhausted_effect_identity_closes_graph_without_wrapping",
+          "sha256": "309351531a66145e32aed19a13c7c9230c42601a3707d1a070c40d66aca5cea1"
+        },
+        {
+          "path": "rust/agent-services/src/graph_tests.rs",
+          "language": "rust",
+          "symbol": "completed_graph_is_stable_until_close_or_invalid_accept",
+          "sha256": "309351531a66145e32aed19a13c7c9230c42601a3707d1a070c40d66aca5cea1"
+        }
+      ],
+      "models": [
+        {
+          "id": "builtin_loop_sequencing",
+          "module": "formal/agent_execution/LoopSequencing.tla",
+          "config": "formal/agent_execution/LoopSequencing.cfg",
+          "invariants": [
+            "SettlementCorrelated",
+            "ToolRequiresCallRecord",
+            "ResultBeforeContinuation",
+            "CompleteRequiresRecord",
+            "TypeOK",
+            "PendingIdentity",
+            "CachedHasNoNewWork",
+            "SingleToolNeverModels",
+            "IssuedEffectNotReplayed",
+            "CompleteNextStable"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 1,
+            "tools": 1,
+            "tool_results": 2,
+            "effects": 14,
+            "modes": 2
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "graph_sequencing",
+          "module": "formal/agent_execution/GraphSequencing.tla",
+          "config": "formal/agent_execution/GraphSequencing.cfg",
+          "invariants": [
+            "SettlementCorrelated",
+            "DeclaredRouteOnly",
+            "IssuedEffectNotReplayed",
+            "CompleteNextStable",
+            "TypeOK",
+            "PendingIdentity"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 1,
+            "nodes": 2,
+            "self_loops": 1,
+            "effects": 3,
+            "result_id_max": 4
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "loop_correlation_negative",
+          "module": "formal/agent_execution/LoopSequencing.tla",
+          "config": "formal/agent_execution/LoopCorrelationNegative.cfg",
+          "expected_invariant": "SettlementCorrelated",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "loop_call_record_negative",
+          "module": "formal/agent_execution/LoopSequencing.tla",
+          "config": "formal/agent_execution/LoopCallRecordNegative.cfg",
+          "expected_invariant": "ToolRequiresCallRecord",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "loop_result_record_negative",
+          "module": "formal/agent_execution/LoopSequencing.tla",
+          "config": "formal/agent_execution/LoopResultRecordNegative.cfg",
+          "expected_invariant": "CompleteRequiresRecord",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "graph_correlation_negative",
+          "module": "formal/agent_execution/GraphSequencing.tla",
+          "config": "formal/agent_execution/GraphCorrelationNegative.cfg",
+          "expected_invariant": "SettlementCorrelated",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "graph_route_negative",
+          "module": "formal/agent_execution/GraphSequencing.tla",
+          "config": "formal/agent_execution/GraphRouteNegative.cfg",
+          "expected_invariant": "DeclaredRouteOnly",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "graph_pending_negative",
+          "module": "formal/agent_execution/GraphSequencing.tla",
+          "config": "formal/agent_execution/GraphPendingNegative.cfg",
+          "expected_invariant": "IssuedEffectNotReplayed",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Arbitrary custom LoopProgram implementations; multiple handles, capacity and handle-ID exhaustion.",
+        "Unbounded tool turns and graph topologies, concrete JSON content, Python callback scheduling and persistence."
+      ]
+    }
+  ]
+}

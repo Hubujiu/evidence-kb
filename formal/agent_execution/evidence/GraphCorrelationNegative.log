@@ -1,0 +1,42 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 27 and seed 8997621465123607277 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 168] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/formal/agent_execution/GraphSequencing.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module GraphSequencing
+Starting... (2026-11-02 09:16:35)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 09:16:35.
+Error: Invariant SettlementCorrelated is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ correlated = TRUE
+/\ noReplay = TRUE
+/\ declaredRoute = TRUE
+/\ s = [node |-> "calculate", pending |-> 0, sequence |-> 0]
+/\ terminalStable = TRUE
+
+State 2: <Issue line 20, col 5 to line 30, col 46 of module GraphSequencing>
+/\ correlated = TRUE
+/\ noReplay = TRUE
+/\ declaredRoute = TRUE
+/\ s = [node |-> "calculate", pending |-> 1, sequence |-> 1]
+/\ terminalStable = TRUE
+
+State 3: <Accept line 32, col 5 to line 42, col 45 of module GraphSequencing>
+/\ correlated = FALSE
+/\ noReplay = TRUE
+/\ declaredRoute = TRUE
+/\ s = [node |-> "calculate", pending |-> 0, sequence |-> 1]
+/\ terminalStable = TRUE
+
+22 states generated, 5 distinct states found, 2 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 2 (minimum is 2, the maximum 2 and the 95th percentile is 2).
+Finished in 01s at (2026-11-02 09:16:35)

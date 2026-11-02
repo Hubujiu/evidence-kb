@@ -1,0 +1,65 @@
+[
+  {
+    "config": "KernelCorrelationNegative",
+    "model": "KernelExecution",
+    "expected_invariant": "SettlementCorrelated",
+    "exit_code": 12,
+    "passed": true
+  },
+  {
+    "config": "KernelTerminalNegative",
+    "model": "KernelExecution",
+    "expected_invariant": "TerminalAbsorbing",
+    "exit_code": 12,
+    "passed": true
+  },
+  {
+    "config": "KernelDeadlineNegative",
+    "model": "KernelExecution",
+    "expected_invariant": "DeadlineEnforced",
+    "exit_code": 12,
+    "passed": true
+  },
+  {
+    "config": "LoopCorrelationNegative",
+    "model": "LoopSequencing",
+    "expected_invariant": "SettlementCorrelated",
+    "exit_code": 12,
+    "passed": true
+  },
+  {
+    "config": "LoopCallRecordNegative",
+    "model": "LoopSequencing",
+    "expected_invariant": "ToolRequiresCallRecord",
+    "exit_code": 12,
+    "passed": true
+  },
+  {
+    "config": "LoopResultRecordNegative",
+    "model": "LoopSequencing",
+    "expected_invariant": "CompleteRequiresRecord",
+    "exit_code": 12,
+    "passed": true
+  },
+  {
+    "config": "GraphCorrelationNegative",
+    "model": "GraphSequencing",
+    "expected_invariant": "SettlementCorrelated",
+    "exit_code": 12,
+    "passed": true
+  },
+  {
+    "config": "GraphRouteNegative",
+    "model": "GraphSequencing",
+    "expected_invariant": "DeclaredRouteOnly",
+    "exit_code": 12,
+    "passed": true
+  },
+  {
+    "config": "GraphPendingNegative",
+    "model": "GraphSequencing",
+    "expected_invariant": "IssuedEffectNotReplayed",
+    "exit_code": 12,
+    "passed": true
+  }
+]

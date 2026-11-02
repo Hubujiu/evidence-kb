@@ -1,0 +1,61 @@
+   Compiling agent-kernel v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/rust/agent-kernel)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.54s
+     Running unittests src/lib.rs (/tmp/evidence-agent-formal-target/debug/deps/agent_kernel-c358a319684b067a)
+
+running 14 tests
+test tests::cancellation_discards_pending_and_never_accepts_late_success ... ok
+test tests::corrupted_value_snapshots_are_rejected_without_repair_or_dispatch ... ok
+test tests::deadline_blocks_dispatch_and_settlement_at_exact_boundary ... ok
+test tests::exhausted_u64_counter_does_not_overflow_or_admit_dispatch ... ok
+test tests::failure_and_completion_are_terminal_even_for_control_events ... ok
+test tests::invalid_configuration_and_untrusted_numeric_tags_are_rejected ... ok
+test tests::invalid_receipt_after_deadline_does_not_expire_or_settle_pending_work ... ok
+test tests::pending_operation_excludes_another_dispatch_and_finish ... ok
+test tests::regressing_host_clock_does_not_change_snapshot ... ok
+test tests::model_tool_and_host_operations_can_complete_one_run ... ok
+test tests::operation_limit_allows_completion_but_forbids_more_work ... ok
+test tests::independent_snapshots_cannot_share_pending_work ... ok
+test tests::wrong_duplicate_or_reordered_receipts_cannot_advance_run ... ok
+test tests::bounded_event_exploration_preserves_kernel_safety_invariants ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/lib.rs (/tmp/evidence-agent-formal-target/debug/deps/agent_services-7fb7475c1763f054)
+
+running 21 tests
+test agent_loop::tests::an_issued_effect_cannot_be_replayed_and_protocol_failure_closes_the_loop ... ok
+test agent_loop::tests::direct_tool_delivery_is_recorded_before_completion_without_model_rewrite ... ok
+test agent_loop::tests::answer_decision_preserves_a_null_value ... ok
+test agent_loop::tests::a_late_result_cannot_complete_a_different_effect_or_a_closed_loop ... ok
+test agent_loop::tests::exhausted_effect_identity_closes_loop_without_wrapping ... ok
+test agent_loop::tests::malformed_context_does_not_reach_the_model ... ok
+test agent_loop::tests::profile_tool_selection_and_manifest_are_validated_before_start ... ok
+test agent_loop::tests::a_loop_plugin_can_replace_the_policy_without_changing_the_host ... ok
+test agent_loop::tests::result_append_acknowledgment_precedes_direct_completion ... ok
+test graph::tests::completed_graph_is_stable_until_close_or_invalid_accept ... ok
+test agent_loop::tests::session_and_context_services_own_history_and_render_each_model_request ... ok
+test agent_loop::tests::session_cache_short_circuits_all_new_model_tool_and_append_effects ... ok
+test graph::tests::exhausted_effect_identity_closes_graph_without_wrapping ... ok
+test agent_loop::tests::single_tool_policy_requires_no_model_or_context_service ... ok
+test graph::tests::graph_routes_cycles_and_terminal_without_domain_data ... ok
+test graph::tests::independent_graphs_keep_separate_cursors_and_nonreused_handles ... ok
+test agent_loop::tests::unavailable_tools_and_malformed_model_decisions_fail_closed ... ok
+test graph::tests::unknown_route_and_unsettled_next_close_graph ... ok
+test graph::tests::invalid_graph_rejects_before_registration ... ok
+test graph::tests::stale_or_duplicate_result_closes_graph_without_replay ... ok
+test graph::tests::graph_bounds_configuration ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests agent_kernel
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests agent_services
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

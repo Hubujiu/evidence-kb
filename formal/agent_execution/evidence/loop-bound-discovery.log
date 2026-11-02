@@ -1,0 +1,470 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 36 and seed -6004146251619636325 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 10] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/formal/agent_execution/LoopSequencing.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module LoopSequencing
+Starting... (2026-11-02 09:14:28)
+Computing initial states...
+Computed 2 initial states...
+Finished computing initial states: 4 distinct states generated at 2026-11-02 09:14:29.
+Error: Invariant TypeOK is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "start",
+  pending |-> 0,
+  sequence |-> 0,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 2: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "start",
+  pending |-> 1,
+  sequence |-> 1,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 3: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "context",
+  pending |-> 0,
+  sequence |-> 1,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 4: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "context",
+  pending |-> 2,
+  sequence |-> 2,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 5: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "model",
+  pending |-> 0,
+  sequence |-> 2,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 6: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "model",
+  pending |-> 3,
+  sequence |-> 3,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 7: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-call",
+  pending |-> 0,
+  sequence |-> 3,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 8: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-call",
+  pending |-> 4,
+  sequence |-> 4,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 9: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "tool",
+  pending |-> 0,
+  sequence |-> 4,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 10: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "tool",
+  pending |-> 5,
+  sequence |-> 5,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 11: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-result",
+  pending |-> 0,
+  sequence |-> 5,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 12: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-result",
+  pending |-> 6,
+  sequence |-> 6,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 13: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "context",
+  pending |-> 0,
+  sequence |-> 6,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 14: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "context",
+  pending |-> 7,
+  sequence |-> 7,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 15: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "model",
+  pending |-> 0,
+  sequence |-> 7,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 16: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "model",
+  pending |-> 8,
+  sequence |-> 8,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 17: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-call",
+  pending |-> 0,
+  sequence |-> 8,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 18: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-call",
+  pending |-> 9,
+  sequence |-> 9,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 19: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "tool",
+  pending |-> 0,
+  sequence |-> 9,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 20: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "tool",
+  pending |-> 10,
+  sequence |-> 10,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 1 ]
+/\ terminalStable = TRUE
+
+State 21: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-result",
+  pending |-> 0,
+  sequence |-> 10,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 2 ]
+/\ terminalStable = TRUE
+
+State 22: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-result",
+  pending |-> 11,
+  sequence |-> 11,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 2 ]
+/\ terminalStable = TRUE
+
+State 23: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "context",
+  pending |-> 0,
+  sequence |-> 11,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 2 ]
+/\ terminalStable = TRUE
+
+State 24: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "context",
+  pending |-> 12,
+  sequence |-> 12,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 2 ]
+/\ terminalStable = TRUE
+
+State 25: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "model",
+  pending |-> 0,
+  sequence |-> 12,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 2 ]
+/\ terminalStable = TRUE
+
+State 26: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "model",
+  pending |-> 13,
+  sequence |-> 13,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 2 ]
+/\ terminalStable = TRUE
+
+State 27: <Accept line 68, col 5 to line 75, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-answer",
+  pending |-> 0,
+  sequence |-> 13,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 2 ]
+/\ terminalStable = TRUE
+
+State 28: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "append-answer",
+  pending |-> 14,
+  sequence |-> 14,
+  mode |-> "model-tools",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> TRUE,
+  resultRecorded |-> TRUE,
+  answerRecorded |-> FALSE,
+  tools |-> 2 ]
+/\ terminalStable = TRUE
+
+7005 states generated, 127 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 28.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 01s at (2026-11-02 09:14:29)
