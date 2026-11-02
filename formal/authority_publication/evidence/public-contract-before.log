@@ -1,0 +1,70 @@
+test_cancelled_worker_is_unknown_not_unsent_or_blindly_replayed (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_cancelled_worker_is_unknown_not_unsent_or_blindly_replayed) ... ok
+test_job_and_attempt_persistence_roll_back_together (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_job_and_attempt_persistence_roll_back_together) ... ok
+test_late_completion_cannot_settle_successor_request (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_late_completion_cannot_settle_successor_request) ... ok
+test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) ... 
+  test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='durable', change='revision') ... FAIL
+  test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='durable', change='manifest') ... FAIL
+  test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='durable', change='membership') ... FAIL
+  test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='file', change='revision') ... FAIL
+  test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='file', change='manifest') ... FAIL
+  test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='file', change='membership') ... FAIL
+test_recovery_requires_exact_observation_and_never_resends (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_recovery_requires_exact_observation_and_never_resends) ... ok
+
+======================================================================
+FAIL: test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='durable', change='revision')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-publication-embedding/kb_platform/rag_testing/publication_embedding_contracts.py", line 119, in test_public_semantic_manifest_rechecks_authority_after_storage_read
+    with self.assertRaises(PlatformError) as rejected:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PlatformError not raised
+
+======================================================================
+FAIL: test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='durable', change='manifest')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-publication-embedding/kb_platform/rag_testing/publication_embedding_contracts.py", line 119, in test_public_semantic_manifest_rechecks_authority_after_storage_read
+    with self.assertRaises(PlatformError) as rejected:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PlatformError not raised
+
+======================================================================
+FAIL: test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='durable', change='membership')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-publication-embedding/kb_platform/rag_testing/publication_embedding_contracts.py", line 119, in test_public_semantic_manifest_rechecks_authority_after_storage_read
+    with self.assertRaises(PlatformError) as rejected:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PlatformError not raised
+
+======================================================================
+FAIL: test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='file', change='revision')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-publication-embedding/kb_platform/rag_testing/publication_embedding_contracts.py", line 119, in test_public_semantic_manifest_rechecks_authority_after_storage_read
+    with self.assertRaises(PlatformError) as rejected:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PlatformError not raised
+
+======================================================================
+FAIL: test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='file', change='manifest')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-publication-embedding/kb_platform/rag_testing/publication_embedding_contracts.py", line 119, in test_public_semantic_manifest_rechecks_authority_after_storage_read
+    with self.assertRaises(PlatformError) as rejected:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PlatformError not raised
+
+======================================================================
+FAIL: test_public_semantic_manifest_rechecks_authority_after_storage_read (kb_platform.rag_testing.publication_embedding_contracts.PublicationEmbeddingContracts.test_public_semantic_manifest_rechecks_authority_after_storage_read) (mode='file', change='membership')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-publication-embedding/kb_platform/rag_testing/publication_embedding_contracts.py", line 119, in test_public_semantic_manifest_rechecks_authority_after_storage_read
+    with self.assertRaises(PlatformError) as rejected:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PlatformError not raised
+
+----------------------------------------------------------------------
+Ran 5 tests in 5.117s
+
+FAILED (failures=6)

@@ -14,6 +14,8 @@ import sys
 import time
 import unittest
 
+from scripts.semantic_manifest_checks import semantic_manifest_violations
+
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'formal/registry-v1.json'
 LOCK = 'formal/toolchain-v1.json'
@@ -133,6 +135,11 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
         registry = registry if registry is not None else json.loads(local_file(root, REGISTRY).read_text('utf-8'))
         if registry.get('schema_version') != 1 or not registry.get('machines'):
             raise ValueError('Registry v1 requires a nonempty machine inventory')
+        semantic_owner = 'kb_platform/semantic_pages_v2.py'
+        if (root / semantic_owner).exists() or any(machine.get('id') == 'authority_publication'
+                                                 for machine in registry['machines']):
+            source = local_file(root, semantic_owner).read_text('utf-8')
+            errors.extend('authority_publication: ' + error for error in semantic_manifest_violations(source))
         ids = set()
         bindings = set()
         model_files = {spec[key] for spec in control_specs() for key in ('module', 'config')}
