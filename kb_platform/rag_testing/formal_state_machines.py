@@ -217,13 +217,14 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
         receipt_owner = root / 'kb_platform/knowledge_contracts.py'
         if receipt_owner.is_file():
             from scripts.check_project import (
-                model_capacity_outcome_violations, model_receipt_cleanup_violations, model_receipt_violations,
+                model_capacity_outcome_violations, model_error_projection_violations,
+                model_receipt_cleanup_violations, model_receipt_violations,
             )
 
             tree = ast.parse(receipt_owner.read_text('utf-8'))
             errors.extend(f'model receipts: {error}' for check in
                           (model_receipt_violations, model_capacity_outcome_violations,
-                           model_receipt_cleanup_violations) for error in check(tree))
+                           model_receipt_cleanup_violations, model_error_projection_violations) for error in check(tree))
     except (KeyError, TypeError, ValueError, OSError, SyntaxError) as exc:
         errors.append(f'Invalid formal registry: {exc}')
     return sorted(set(errors))

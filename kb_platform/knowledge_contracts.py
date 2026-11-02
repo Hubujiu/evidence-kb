@@ -376,12 +376,16 @@ class ModelEndpoint:
         except BaseException as error:
             with self._lock:
                 self._pending.pop(token, None)
-            if not isinstance(error, Exception) or not hasattr(error, 'code'):
+            if not isinstance(error, Exception):
                 raise
             from .model_errors import error_details
 
-            details = {'kind': 'model', **error_details(error)}
-            raise ContractError(error.code, str(error), status_code=502, details=details) from error
+            details = error_details(error)
+            if not hasattr(error, 'code'):
+                raise ContractError('CONTRACT_IMPLEMENTATION_FAILED', 'Service implementation failed',
+                    details={**details, 'code': 'CONTRACT_IMPLEMENTATION_FAILED'}) from error
+            raise ContractError(error.code, str(error), status_code=502,
+                                details={'kind': 'model', **details}) from error
 
     def settle(self, request):
         with self._lock:

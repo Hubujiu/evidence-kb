@@ -1,0 +1,44 @@
+test_business_rejection_keeps_physical_cost_and_prevents_cache_write (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_business_rejection_keeps_physical_cost_and_prevents_cache_write) ... ok
+test_business_validation_acknowledges_exact_completion_before_caching (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_business_validation_acknowledges_exact_completion_before_caching) ... ok
+test_foreign_model_metadata_missing_required_fields_fails_at_service_boundary (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_foreign_model_metadata_missing_required_fields_fails_at_service_boundary) ... ok
+test_foreign_prepared_context_validates_consumed_fields_before_workflow (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_foreign_prepared_context_validates_consumed_fields_before_workflow) ... ok
+test_rerank_resume_checks_actor_then_current_authority (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_rerank_resume_checks_actor_then_current_authority) ... ok
+test_reranking_crosses_json_without_repeating_retrieval_or_embedding (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_reranking_crosses_json_without_repeating_retrieval_or_embedding) ... ok
+test_semantic_query_keeps_physical_receipt_and_missing_index_distinction (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_semantic_query_keeps_physical_receipt_and_missing_index_distinction) ... ok
+test_session_json_boundary_preserves_owner_revision_and_idempotency (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_session_json_boundary_preserves_owner_revision_and_idempotency) ... ok
+test_unknown_validation_ack_keeps_received_usage_without_repeating_model_or_settlement (kb_platform.rag_testing.knowledge_capability_contracts.KnowledgeCapabilityContracts.test_unknown_validation_ack_keeps_received_usage_without_repeating_model_or_settlement) ... ok
+test_actual_turn_trace_and_failed_event_retain_known_usage (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_actual_turn_trace_and_failed_event_retain_known_usage) ... FAIL
+test_coded_model_failure_retains_existing_model_error_projection (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_coded_model_failure_retains_existing_model_error_projection) ... ok
+test_direct_and_actual_host_public_errors_preserve_observed_usage_without_private_diagnostics (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_direct_and_actual_host_public_errors_preserve_observed_usage_without_private_diagnostics) ... 
+  test_direct_and_actual_host_public_errors_preserve_observed_usage_without_private_diagnostics (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_direct_and_actual_host_public_errors_preserve_observed_usage_without_private_diagnostics) (public=True) ... FAIL
+test_unknown_provider_failure_keeps_unknown_usage_without_inventing_send_certainty (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_unknown_provider_failure_keeps_unknown_usage_without_inventing_send_certainty) ... FAIL
+test_unobserved_early_failure_does_not_fabricate_model_outcome (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_unobserved_early_failure_does_not_fabricate_model_outcome) ... ok
+
+======================================================================
+FAIL: test_actual_turn_trace_and_failed_event_retain_known_usage (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_actual_turn_trace_and_failed_event_retain_known_usage)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-model-error-observation/kb_platform/rag_testing/model_error_projection_contracts.py", line 158, in test_actual_turn_trace_and_failed_event_retain_known_usage
+    self.assertEqual(calls[0].get('attempts'), 1)
+AssertionError: None != 1
+
+======================================================================
+FAIL: test_direct_and_actual_host_public_errors_preserve_observed_usage_without_private_diagnostics (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_direct_and_actual_host_public_errors_preserve_observed_usage_without_private_diagnostics) (public=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-model-error-observation/kb_platform/rag_testing/model_error_projection_contracts.py", line 86, in test_direct_and_actual_host_public_errors_preserve_observed_usage_without_private_diagnostics
+    self.assertEqual(record.get('attempts'), 1)
+AssertionError: None != 1
+
+======================================================================
+FAIL: test_unknown_provider_failure_keeps_unknown_usage_without_inventing_send_certainty (kb_platform.rag_testing.model_error_projection_contracts.ModelErrorProjectionContracts.test_unknown_provider_failure_keeps_unknown_usage_without_inventing_send_certainty)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-model-error-observation/kb_platform/rag_testing/model_error_projection_contracts.py", line 108, in test_unknown_provider_failure_keeps_unknown_usage_without_inventing_send_certainty
+    self.assertEqual(record.get('attempts'), 1)
+AssertionError: None != 1
+
+----------------------------------------------------------------------
+Ran 14 tests in 3.162s
+
+FAILED (failures=3)

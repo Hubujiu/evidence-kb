@@ -1798,7 +1798,8 @@
         "cache authorization admission / index snapshot / payload verification",
         "actor-bound retrieval nonce pending/claimed/disposed",
         "model receipt absent/reserved/ready/consumed",
-        "pre-model capacity refusal / known-zero failure observation"
+        "pre-model capacity refusal / known-zero failure observation",
+        "generic/coded/cancellation failure -> safe public facts -> model_failed event"
       ],
       "transitions": [
         "StageCache.put",
@@ -1817,7 +1818,8 @@
         "Expiry is the existing strict deadline < monotonic boundary; an active completion may exceed receipt TTL. Individual provider timeouts are not a universal bound.",
         "StageCache has two whole exact dependency keys and two content hashes; index commits are atomic/immutable, hashes collision-free; volatile payload and index are separate effects.",
         "Cache authorization is checked at read admission, not response delivery. Payload TTL/loss/outage is abstracted as absence.",
-        "Evidence continuation has three unique nonces and three actor/tenant tuples, at most one currently claimed finish; host close waits for all calls to drain."
+        "Evidence continuation has three unique nonces and three actor/tenant tuples, at most one currently claimed finish; host close waits for all calls to drain.",
+        "ErrorProjection: one invocation, three error classes and five canonical observed-fact classes; ledger settlement completes before endpoint error projection."
       ],
       "exclusions": [
         "No proof of real clocks, hash/nonce entropy, external stores, network transport, provider deadlines, host lease implementation or Python-to-TLA refinement.",
@@ -1852,7 +1854,7 @@
           "path": "kb_platform/knowledge_contracts.py",
           "language": "python",
           "symbol": "ModelEndpoint.complete",
-          "sha256": "7211835e86dac8f1334751fb8179a2d1b158501e133583046be53eba5f2a7e01"
+          "sha256": "513f7dbad32e993c6b2ef1782a402d66ec80f47075ffee779da2df5822399de2"
         },
         {
           "path": "kb_platform/knowledge_contracts.py",
@@ -1954,19 +1956,61 @@
           "path": "kb_platform/rag_testing/model_receipt_contracts.py",
           "language": "python",
           "symbol": "ModelReceiptFormalGateContracts",
-          "sha256": "6508d87094d32a7a44cb0a17b8d98e3f9a7b04da0df3409c62f6b14881a7bf10"
+          "sha256": "4b3dc6171e7a5be7506d1a1cef5996b4a7b285c258975e3d26864981f3511d89"
         },
         {
           "path": "scripts/check_project.py",
           "language": "python",
           "symbol": "model_receipt_cleanup_violations",
-          "sha256": "37e59c4a8df7faa096f1c0b98bd1462a097bcbd8eb716bfcc986dd82161d65f9"
+          "sha256": "55adbff78b656c7c7369e15cedfaa0644787ad5d1035e41a50756ef0d86c454f"
         },
         {
           "path": "kb_platform/rag_testing/model_receipt_contracts.py",
           "language": "python",
           "symbol": "ModelReceiptCancellationContracts",
-          "sha256": "137727575f9ffd6472f6d9bf1945c33638864614725228d069d88528b13994b3"
+          "sha256": "cf8675b8610ae658ac41d19c8f1dc3dccae41046141310c253bccbabb12b2d65"
+        },
+        {
+          "path": "scripts/check_project.py",
+          "language": "python",
+          "symbol": "model_error_projection_violations",
+          "sha256": "45eb951288794ef62bceac17be61e48ae830aaa90db4cf6d51af372526497fb8"
+        },
+        {
+          "path": "kb_platform/rag_testing/model_error_projection_contracts.py",
+          "language": "python",
+          "symbol": "ModelErrorProjectionContracts",
+          "sha256": "521f24645b941ee504ac48bd89ced1d77eca1c5e1d7c363ee26d780af0aea6b1"
+        },
+        {
+          "path": "kb_platform/rag_testing/model_error_projection_contracts.py",
+          "language": "python",
+          "symbol": "ModelErrorProjectionLintContracts",
+          "sha256": "621a4fec2478d86c5a91b11b84e43b1fcc99025a3c58113999d574df532b2133"
+        },
+        {
+          "path": "kb_platform/model_errors.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "a73f6a45159f6c0f92f02c9f521778470dbee7f530b9cace64e728e50a7384ec"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "domain_call",
+          "sha256": "cfb698ebc10ee0e7aabbe5fad07d260e21e21d1088a478004da9d0e885ac9099"
+        },
+        {
+          "path": "kb_platform/plugin_contracts.py",
+          "language": "python",
+          "symbol": "ServiceEndpoint.__getattr__",
+          "sha256": "553ad62b5a0bc09d99872bae30b28144d168d2f3508195ee7e887ea30643a414"
+        },
+        {
+          "path": "kb_platform/knowledge_model.py",
+          "language": "python",
+          "symbol": "KnowledgeModelCalls._call_once",
+          "sha256": "22e1a722197e34a4cb80ab61f97fd3748bfbe27df562221639b00673deab9ce7"
         }
       ],
       "models": [
@@ -2054,6 +2098,29 @@
           },
           "timeout_seconds": 60,
           "heap_mb": 256
+        },
+        {
+          "id": "model_error_projection",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjection.cfg",
+          "invariants": [
+            "TypeOK",
+            "ObservedFactsRetained",
+            "GenericDiagnosticsSafe",
+            "UnknownStaysUnknown",
+            "LedgerCostRetained",
+            "FailedSlotReleased",
+            "CancellationIdentity"
+          ],
+          "properties": [],
+          "bounds": {
+            "invocations": 1,
+            "error_classes": 3,
+            "fact_classes": 5,
+            "cost_classes": 2
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
         }
       ],
       "negative_controls": [
@@ -2112,6 +2179,30 @@
           "expected_invariant": "NoAbandonedReservation",
           "timeout_seconds": 60,
           "heap_mb": 256
+        },
+        {
+          "id": "model_error_projection_facts",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionFactsNegative.cfg",
+          "expected_invariant": "ObservedFactsRetained",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "model_error_projection_privacy",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionPrivacyNegative.cfg",
+          "expected_invariant": "GenericDiagnosticsSafe",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "model_error_projection_unknown",
+          "module": "formal/cache_evidence/ErrorProjection.tla",
+          "config": "formal/cache_evidence/ErrorProjectionUnknownNegative.cfg",
+          "expected_invariant": "UnknownStaysUnknown",
+          "timeout_seconds": 30,
+          "heap_mb": 128
         }
       ],
       "remaining_obligations": [
@@ -2120,7 +2211,8 @@
         "At-most-once cache side effects across response loss/cache commit failures; receipt consumption is checked, durable cache commit is not.",
         "Real cache-key builders include all dependencies/tenant scope; cryptographic collision resistance and external storage linearizability.",
         "Evidence staged generator internals, multiple simultaneously claimed finishes, payload serialization and authority changes inside downstream retrieval.",
-        "Cache/budget composition is backed by deterministic existing tests, not a shared formal budget model."
+        "Cache/budget composition is backed by deterministic existing tests, not a shared formal budget model.",
+        "ErrorProjection trusts canonical structured facts and models no arbitrary hostile call_record payload, logging transport, distributed response loss or Python refinement; unobserved facts remain unknown."
       ]
     },
     {

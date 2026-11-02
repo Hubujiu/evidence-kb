@@ -1,0 +1,428 @@
+{
+  "decision": "FAIL",
+  "violations": [],
+  "new_provider_calls": 0,
+  "scope": "Finite TLC abstractions plus source review-drift lint; not implementation refinement or all-state-machine proof.",
+  "registry_sha256": "6f276b760f2e74439a07bb90075ae9f731bb743944b9b292a79f1984c76edee9",
+  "toolchain_sha256": "64e5c1ffd1918624fff881a1c38eb6fcc53e3a4c8a53e44c900dc127b289daa8",
+  "coverage": {
+    "physical_budget": "unmodeled",
+    "budget_batches": "unmodeled",
+    "provider_receipts": "unmodeled",
+    "turn_budget": "unmodeled",
+    "session_commit": "unmodeled",
+    "plugin_lifecycle": "partial",
+    "host_process": "unmodeled",
+    "llm_registry": "unmodeled",
+    "llm_stream": "unmodeled",
+    "kernel_execution": "unmodeled",
+    "loop_graph": "unmodeled",
+    "knowledge_workflow": "unmodeled",
+    "storage_registry": "unmodeled",
+    "storage_transaction": "unmodeled",
+    "storage_value_call": "unmodeled",
+    "transfer_protocol": "unmodeled",
+    "auth_session": "partial",
+    "authority_publication": "unmodeled",
+    "search_generation": "unmodeled",
+    "embedding_jobs": "unmodeled",
+    "provider_admission": "unmodeled",
+    "circuit_tool_retry": "unmodeled",
+    "cache_evidence": "partial",
+    "ingestion_migration": "unmodeled",
+    "acceptance_workflow": "unmodeled"
+  },
+  "java_version": "openjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)\n",
+  "expected_runs": {
+    "gate-control-positive": "positive",
+    "gate-control-seeded-bug": "negative",
+    "gate-control-invalid-spec": "invalid",
+    "gate-control-liveness-positive": "positive",
+    "gate-control-liveness-bug": "liveness-negative",
+    "plugin_lifecycle": "positive",
+    "plugin_lifecycle_legacy_superseded_failure": "negative",
+    "auth_session": "positive",
+    "auth_session_expiry_bypass": "negative",
+    "model_receipt_slots": "positive",
+    "model_capacity_refusal": "positive",
+    "stage_cache": "positive",
+    "evidence_continuation": "positive",
+    "model_error_projection": "positive",
+    "model_receipt_expired_inflight": "negative",
+    "model_capacity_unknown_refusal": "negative",
+    "stage_cache_auth_bypass": "negative",
+    "stage_cache_key_bypass": "negative",
+    "stage_cache_integrity_bypass": "negative",
+    "evidence_other_actor_consumes": "negative",
+    "model_receipt_cancelled_slot": "negative",
+    "model_error_projection_facts": "negative",
+    "model_error_projection_privacy": "negative",
+    "model_error_projection_unknown": "negative"
+  },
+  "evidence_contracts": {
+    "tests": 2,
+    "failures": 4,
+    "errors": 0,
+    "skipped": 0
+  },
+  "schema": "historical-formal-verification-summary/1",
+  "original_artifact": "/workspace/scratch/75c2273f6a80/evidence-kb-model-error-observation/.local/model-error-projection-formal-20261102-2039/formal",
+  "results": [
+    {
+      "id": "gate-control-positive",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.2754899229912553,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 3,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-seeded-bug",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.791670194012113,
+      "expected_invariant": "NoPrematureRelease",
+      "expected_property": null,
+      "states": {
+        "generated": 2,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-invalid-spec",
+      "kind": "invalid",
+      "decision": "PASS",
+      "returncode": 151,
+      "timeout": false,
+      "seconds": 0.7199070969945751,
+      "expected_invariant": "NoPrematureRelease",
+      "expected_property": null,
+      "states": null
+    },
+    {
+      "id": "gate-control-liveness-positive",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.16772647498874,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 3,
+        "distinct": 2,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "gate-control-liveness-bug",
+      "kind": "liveness-negative",
+      "decision": "PASS",
+      "returncode": 13,
+      "timeout": false,
+      "seconds": 1.1677480729995295,
+      "expected_invariant": null,
+      "expected_property": "EventuallyActive",
+      "states": {
+        "generated": 2,
+        "distinct": 1,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "plugin_lifecycle",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 2.5596923349949066,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 10307,
+        "distinct": 4821,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "plugin_lifecycle_legacy_superseded_failure",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.227395952999359,
+      "expected_invariant": "NoSupersededFailure",
+      "expected_property": null,
+      "states": {
+        "generated": 11,
+        "distinct": 10,
+        "remaining": 7
+      }
+    },
+    {
+      "id": "auth_session",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 2.0369186619936954,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 62836,
+        "distinct": 21788,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "auth_session_expiry_bypass",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.4320223839895334,
+      "expected_invariant": "OwnExpiryEnforced",
+      "expected_property": null,
+      "states": {
+        "generated": 4200,
+        "distinct": 2184,
+        "remaining": 1521
+      }
+    },
+    {
+      "id": "model_receipt_slots",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.322872824006481,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 3672,
+        "distinct": 790,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "model_capacity_refusal",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.0850336650037207,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 7,
+        "distinct": 7,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "stage_cache",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.4305825020128395,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 7764,
+        "distinct": 1146,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "evidence_continuation",
+      "kind": "positive",
+      "decision": "PASS",
+      "returncode": 0,
+      "timeout": false,
+      "seconds": 1.7425169439811725,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 24590,
+        "distinct": 5303,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "model_error_projection",
+      "kind": "positive",
+      "decision": "FAIL",
+      "returncode": 75,
+      "timeout": false,
+      "seconds": 1.0698208550165873,
+      "expected_invariant": null,
+      "expected_property": null,
+      "states": {
+        "generated": 0,
+        "distinct": 0,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "model_receipt_expired_inflight",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.319188674009638,
+      "expected_invariant": "CapacityBound",
+      "expected_property": null,
+      "states": {
+        "generated": 480,
+        "distinct": 205,
+        "remaining": 120
+      }
+    },
+    {
+      "id": "model_capacity_unknown_refusal",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.0715559500094969,
+      "expected_invariant": "RefusalReportsNoAttempt",
+      "expected_property": null,
+      "states": {
+        "generated": 7,
+        "distinct": 7,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "stage_cache_auth_bypass",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.1692567360005341,
+      "expected_invariant": "AdmissionAuthorized",
+      "expected_property": null,
+      "states": {
+        "generated": 2576,
+        "distinct": 659,
+        "remaining": 254
+      }
+    },
+    {
+      "id": "stage_cache_key_bypass",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2222370899980888,
+      "expected_invariant": "ExactDependencyKey",
+      "expected_property": null,
+      "states": {
+        "generated": 1240,
+        "distinct": 410,
+        "remaining": 213
+      }
+    },
+    {
+      "id": "stage_cache_integrity_bypass",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.2686367570131551,
+      "expected_invariant": "ContentIntegrity",
+      "expected_property": null,
+      "states": {
+        "generated": 2374,
+        "distinct": 591,
+        "remaining": 218
+      }
+    },
+    {
+      "id": "evidence_other_actor_consumes",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.1190104589913972,
+      "expected_invariant": "ActorBoundConsumption",
+      "expected_property": null,
+      "states": {
+        "generated": 15,
+        "distinct": 15,
+        "remaining": 12
+      }
+    },
+    {
+      "id": "model_receipt_cancelled_slot",
+      "kind": "negative",
+      "decision": "PASS",
+      "returncode": 12,
+      "timeout": false,
+      "seconds": 1.218363802996464,
+      "expected_invariant": "NoAbandonedReservation",
+      "expected_property": null,
+      "states": {
+        "generated": 8,
+        "distinct": 8,
+        "remaining": 5
+      }
+    },
+    {
+      "id": "model_error_projection_facts",
+      "kind": "negative",
+      "decision": "FAIL",
+      "returncode": 75,
+      "timeout": false,
+      "seconds": 1.1692682360007893,
+      "expected_invariant": "ObservedFactsRetained",
+      "expected_property": null,
+      "states": {
+        "generated": 0,
+        "distinct": 0,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "model_error_projection_privacy",
+      "kind": "negative",
+      "decision": "FAIL",
+      "returncode": 75,
+      "timeout": false,
+      "seconds": 1.0685564349987544,
+      "expected_invariant": "GenericDiagnosticsSafe",
+      "expected_property": null,
+      "states": {
+        "generated": 0,
+        "distinct": 0,
+        "remaining": 0
+      }
+    },
+    {
+      "id": "model_error_projection_unknown",
+      "kind": "negative",
+      "decision": "FAIL",
+      "returncode": 75,
+      "timeout": false,
+      "seconds": 1.0682792119914666,
+      "expected_invariant": "UnknownStaysUnknown",
+      "expected_property": null,
+      "states": {
+        "generated": 0,
+        "distinct": 0,
+        "remaining": 0
+      }
+    }
+  ]
+}

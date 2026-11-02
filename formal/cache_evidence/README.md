@@ -194,3 +194,10 @@ Ruff and scorer passed, but Rust commands could not find `cargo` on that process
 PATH and dependent stages were blocked. It was not a product or permission
 failure. The final candidate is checked separately with the existing Rust 1.99.0
 toolchain explicitly selected; this does not erase or reinterpret the old FAIL.
+
+## Generic model error projection
+
+[Error projection](error-projection.md) documents the later public-observation
+fix, its bounded model, privacy boundary, actual-host/event regressions and
+remaining obligations. Evidence is under `evidence/error-projection/`; the
+original receipt and cleanup histories remain unchanged.

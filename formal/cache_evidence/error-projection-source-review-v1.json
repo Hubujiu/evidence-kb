@@ -1,0 +1,87 @@
+{
+  "base_commit": "c7b93504e7a92514bbdf5dcef8874170ac1d8e89",
+  "scope": "Only ModelEndpoint generic Exception projection changes. Existing canonical model_errors and generic ServiceEndpoint implementation remain unchanged.",
+  "bindings": [
+    {
+      "path": "kb_platform/knowledge_contracts.py",
+      "language": "python",
+      "symbol": "ModelEndpoint.complete",
+      "sha256": "513f7dbad32e993c6b2ef1782a402d66ec80f47075ffee779da2df5822399de2",
+      "old_sha256": "7211835e86dac8f1334751fb8179a2d1b158501e133583046be53eba5f2a7e01"
+    },
+    {
+      "path": "kb_platform/rag_testing/model_receipt_contracts.py",
+      "language": "python",
+      "symbol": "ModelReceiptFormalGateContracts",
+      "sha256": "4b3dc6171e7a5be7506d1a1cef5996b4a7b285c258975e3d26864981f3511d89",
+      "old_sha256": "6508d87094d32a7a44cb0a17b8d98e3f9a7b04da0df3409c62f6b14881a7bf10"
+    },
+    {
+      "path": "scripts/check_project.py",
+      "language": "python",
+      "symbol": "model_receipt_cleanup_violations",
+      "sha256": "55adbff78b656c7c7369e15cedfaa0644787ad5d1035e41a50756ef0d86c454f",
+      "old_sha256": "37e59c4a8df7faa096f1c0b98bd1462a097bcbd8eb716bfcc986dd82161d65f9"
+    },
+    {
+      "path": "kb_platform/rag_testing/model_receipt_contracts.py",
+      "language": "python",
+      "symbol": "ModelReceiptCancellationContracts",
+      "sha256": "cf8675b8610ae658ac41d19c8f1dc3dccae41046141310c253bccbabb12b2d65",
+      "old_sha256": "137727575f9ffd6472f6d9bf1945c33638864614725228d069d88528b13994b3"
+    },
+    {
+      "path": "scripts/check_project.py",
+      "language": "python",
+      "symbol": "model_error_projection_violations",
+      "sha256": "45eb951288794ef62bceac17be61e48ae830aaa90db4cf6d51af372526497fb8"
+    },
+    {
+      "path": "kb_platform/rag_testing/model_error_projection_contracts.py",
+      "language": "python",
+      "symbol": "ModelErrorProjectionContracts",
+      "sha256": "521f24645b941ee504ac48bd89ced1d77eca1c5e1d7c363ee26d780af0aea6b1"
+    },
+    {
+      "path": "kb_platform/rag_testing/model_error_projection_contracts.py",
+      "language": "python",
+      "symbol": "ModelErrorProjectionLintContracts",
+      "sha256": "621a4fec2478d86c5a91b11b84e43b1fcc99025a3c58113999d574df532b2133"
+    },
+    {
+      "path": "kb_platform/model_errors.py",
+      "language": "python",
+      "symbol": "<module>",
+      "sha256": "a73f6a45159f6c0f92f02c9f521778470dbee7f530b9cace64e728e50a7384ec"
+    },
+    {
+      "path": "kb_platform/knowledge_contracts.py",
+      "language": "python",
+      "symbol": "domain_call",
+      "sha256": "cfb698ebc10ee0e7aabbe5fad07d260e21e21d1088a478004da9d0e885ac9099"
+    },
+    {
+      "path": "kb_platform/plugin_contracts.py",
+      "language": "python",
+      "symbol": "ServiceEndpoint.__getattr__",
+      "sha256": "553ad62b5a0bc09d99872bae30b28144d168d2f3508195ee7e887ea30643a414"
+    },
+    {
+      "path": "kb_platform/knowledge_model.py",
+      "language": "python",
+      "symbol": "KnowledgeModelCalls._call_once",
+      "sha256": "22e1a722197e34a4cb80ab61f97fd3748bfbe27df562221639b00673deab9ce7"
+    }
+  ],
+  "review": [
+    "Cleanup releases this receipt slot before the non-Exception bare raise; cancellation identity and unknown ledger charge remain unchanged.",
+    "Generic Exception now uses canonical allowlisted facts but always retains CONTRACT_IMPLEMENTATION_FAILED, HTTP500, fixed safe message and non-model domain classification.",
+    "No raw exception text, traceback, arbitrary attributes or cause text is added to public payloads. Trusted structured fact fields remain the existing schema boundary, not a generic sanitizer.",
+    "Coded exceptions keep kind=model, existing code/message/status502 and canonical facts.",
+    "domain_call copies call_record/model_sent to the existing generic PlatformError; knowledge model_failed event copies those same facts.",
+    "Mandatory AST checks run in ordinary source quality and formal registry lint; mutants with refreshed source digests still fail."
+  ],
+  "remaining_obligations": [
+    "ErrorProjection trusts canonical structured facts and models no arbitrary hostile call_record payload, logging transport, distributed response loss or Python refinement; unobserved facts remain unknown."
+  ]
+}

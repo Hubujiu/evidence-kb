@@ -193,8 +193,13 @@ class ModelReceiptFormalGateContracts(unittest.TestCase):
                   '        except BaseException as error:\n'
                   '            with self._lock:\n'
                   '                self._pending.pop(token, None)\n'
-                  "            if not isinstance(error, Exception) or not hasattr(error, 'code'):\n"
-                  '                raise\n')
+                  '            if not isinstance(error, Exception):\n'
+                  '                raise\n'
+                  '            from .model_errors import error_details\n'
+                  '            details = error_details(error)\n'
+                  "            if not hasattr(error, 'code'):\n"
+                  "                raise ContractError('CONTRACT_IMPLEMENTATION_FAILED', 'Service implementation failed',\n"
+                  "                    details={**details, 'code': 'CONTRACT_IMPLEMENTATION_FAILED'}) from error\n")
         for mutation in (None, 'expiry', 'unknown', 'cancellation'):
             with self.subTest(mutation=mutation), TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -227,8 +232,8 @@ class ModelReceiptCancellationContracts(unittest.TestCase):
         self.assertEqual(model_receipt_cleanup_violations(ast.parse(source)), [])
         for old, new in (('except BaseException as error:', 'except Exception as error:'),
                          ('self._pending.pop(token, None)', 'self._pending.get(token, None)'),
-                         ('not isinstance(error, Exception) or ', ''),
-                         ('not isinstance(error, Exception) or ', 'not isinstance(error, Exception) and ')):
+                         ('if not isinstance(error, Exception):', 'if False:'),
+                         ('if not isinstance(error, Exception):', "if not hasattr(error, 'code'):")):
             with self.subTest(mutation=new):
                 self.assertIn(old, source)
                 self.assertTrue(model_receipt_cleanup_violations(ast.parse(source.replace(old, new))))

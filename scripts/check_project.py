@@ -282,6 +282,7 @@ def source_quality_violations(root: Path) -> list[str]:
                 errors.extend(f'{relative}: {error}' for error in model_receipt_violations(tree))
                 errors.extend(f'{relative}: {error}' for error in model_capacity_outcome_violations(tree))
                 errors.extend(f'{relative}: {error}' for error in model_receipt_cleanup_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_error_projection_violations(tree))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -358,13 +359,32 @@ def model_receipt_cleanup_violations(tree: ast.AST) -> list[str]:
     if len(blocks) == 1 and len(blocks[0].handlers) == 1:
         handler = blocks[0].handlers[0]
         expected = ast.parse('with self._lock:\n    self._pending.pop(token, None)\n'
-                             "if not isinstance(error, Exception) or not hasattr(error, 'code'):\n    raise\n").body
+                             'if not isinstance(error, Exception):\n    raise\n').body
         if (handler.type is not None and ast.unparse(handler.type) == 'BaseException'
                 and handler.name == 'error' and len(handler.body) >= 2
                 and all(ast.dump(actual, include_attributes=False) == ast.dump(required, include_attributes=False)
                         for actual, required in zip(handler.body[:2], expected, strict=True))):
             return []
     return ['model receipt failures must clean BaseException placeholders then bare-raise cancellation identity']
+
+
+def model_error_projection_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    blocks = [node for method in methods for node in method.body if isinstance(node, ast.Try)]
+    expected = ast.parse('from .model_errors import error_details\n'
+        'details = error_details(error)\n'
+        "if not hasattr(error, 'code'):\n"
+        "    raise ContractError('CONTRACT_IMPLEMENTATION_FAILED', 'Service implementation failed',\n"
+        "        details={**details, 'code': 'CONTRACT_IMPLEMENTATION_FAILED'}) from error\n").body
+    if len(blocks) == 1 and len(blocks[0].handlers) == 1:
+        handler = blocks[0].handlers[0]
+        if (len(handler.body) >= 5
+                and all(ast.dump(actual, include_attributes=False) == ast.dump(required, include_attributes=False)
+                        for actual, required in zip(handler.body[2:5], expected, strict=True))):
+            return []
+    return ['generic model failures must preserve canonical facts with fixed safe public code and message']
 
 
 def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
