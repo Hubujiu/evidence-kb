@@ -198,6 +198,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                         errors.append(f'{identity}: liveness negative control must isolate its named property')
                 elif model['expected_invariant'] not in configured:
                     errors.append(f'{identity}: negative control must target a configured invariant')
+        if 'ingestion_migration' in ids:
+            from .ingestion_migration_rules import ingestion_migration_violations
+            errors.extend(ingestion_migration_violations(root))
         exclusions = registry['discovery']['exclusions']
         excluded = {(row['path'], row['symbol']) for row in exclusions if row.get('reason', '').strip()}
         if len(excluded) != len(exclusions):

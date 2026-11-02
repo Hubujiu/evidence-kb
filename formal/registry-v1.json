@@ -1741,34 +1741,49 @@
     },
     {
       "id": "ingestion_migration",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/documents.py",
         "kb_platform/core.py",
         "kb_platform/knowledge_transfer.py",
         "kb_platform/ocr.py",
         "kb_platform/page_parsing.py",
-        "kb_platform/parsing_backends.py"
+        "kb_platform/parsing_backends.py",
+        "kb_platform/storage_reset.py",
+        "kb_platform/storage_adapters/structured_transfer.py",
+        "kb_platform/database_migrations.py"
       ],
       "states": [
-        "parsed READY/PARTIAL/BLOCKED"
+        "Original stored / parse READY, PARTIAL, BLOCKED or FAILED / stale or unauthorized rejected / metadata committed / lexical build admitted",
+        "Transfer identity validation / transaction-local domain rows and receipt / atomic commit or rollback / exact idempotent readback",
+        "Reset planned / partial new-space initialization / temporary config written and flushed / exclusive publication or failure"
       ],
       "transitions": [
         "_Bundle.missing",
         "parse_native_document",
         "Platform.ingest",
-        "Platform.bind_source"
+        "Platform.stage (parse admission only)",
+        "import_knowledge",
+        "import_structured_snapshot",
+        "plan_business_reset",
+        "initialize_business_reset",
+        "reset_to_file"
       ],
       "invariants": [
-        "No READY index on partial/blocked parse; immutable original hash/offset identity; object copy and DB reference switch are separate effects; migrations/reset must not silently erase budgets or accept wrong dataset identity."
+        "Only READY parses may enter build creation; stored original hash/version and current source policy are checked before ingestion metadata commits.",
+        "Transfer rows and receipt are committed in one identity-checked transaction; source is unchanged, target dataset differs, publication must be rebuilt, exact repeat does not overwrite later work.",
+        "Reset publishes at most one fully initialized configuration without overwriting a contender; old business and protected ledger/identity bindings remain intact."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Each finite model has explicit small bounds and crash points; source-level correspondence is reviewed, not a refinement proof.",
+        "SQLite/SQL migration transactions and the initialized structured target enforce identity and atomic commit; target_offline and source_frozen are explicit operator preconditions, not distributed leases.",
+        "Original object publication precedes metadata; content-addressed object correctness is delegated to the existing blob contract. Unreferenced stored originals/new spaces after failure are allowed.",
+        "Reset publication uses same-filesystem exclusive os.link and successful file fsync. Process failure is modeled; OS/power-loss directory persistence is not claimed.",
+        "Ingestion model covers one in-flight source update and one policy revision/revocation before commit. PR43 authority/publication/search generation is not duplicated."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No model of parser quality, arbitrary documents, OCR model correctness, provider settlement, or live external calls.",
+        "No generalized DB/OS correctness theorem, power-loss guarantee, unbounded concurrency or all-state-machine/no-bugs claim."
       ],
       "source_bindings": [
         {
@@ -1818,10 +1833,242 @@
           "language": "python",
           "symbol": "routed_document",
           "sha256": "3b8310c8ed9dcf27688e58ea292ab19802b2e5cc7afcff00bf6909b3030345da"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.stage",
+          "sha256": "39551f39e957e9c216065d08b1a56bab3b623b64eda471c5d250a19a4d69cb3d"
+        },
+        {
+          "path": "kb_platform/storage_reset.py",
+          "language": "python",
+          "symbol": "_validate",
+          "sha256": "9bee0530e852e29a6ac5ed8926b4cfb77d3669a5484228fd486a37bae72af64b"
+        },
+        {
+          "path": "kb_platform/storage_reset.py",
+          "language": "python",
+          "symbol": "plan_business_reset",
+          "sha256": "fd8337e6e4b337d2ed1781a853ae7ca8856be6e893cadba63b038a9e17080caa"
+        },
+        {
+          "path": "kb_platform/storage_reset.py",
+          "language": "python",
+          "symbol": "initialize_business_reset",
+          "sha256": "22d918c039a0091a65b79de701d6fd21a138a38f152a5cfd821b30a22b350eb8"
+        },
+        {
+          "path": "kb_platform/storage_reset.py",
+          "language": "python",
+          "symbol": "reset_to_file",
+          "sha256": "e09af13af89a769a19bfcf6f42305b2aa44c2e965709f7d27bab1cd50b5166b2"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured_transfer.py",
+          "language": "python",
+          "symbol": "_identity",
+          "sha256": "d5c2894cfe37a616b60d3b69ab088f74892a600a4ce92d23caf21cb6c1b5b47b"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured_transfer.py",
+          "language": "python",
+          "symbol": "_source_connection",
+          "sha256": "88f967cf987171bfe1548700008800a7e78ad5333f30db42e4819aaca49db3ea"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured_transfer.py",
+          "language": "python",
+          "symbol": "read_sql_snapshot",
+          "sha256": "33723e3c21a12f12a3f10c716b28cb103e3e227ce36886f9d9265771eade820e"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured_transfer.py",
+          "language": "python",
+          "symbol": "import_structured_snapshot",
+          "sha256": "4610f93391fd31a6f8d57d0a18c999b120512f6ed3d6a1e9b528bf4476020070"
+        },
+        {
+          "path": "kb_platform/database_migrations.py",
+          "language": "python",
+          "symbol": "migration_connection",
+          "sha256": "f11fc50d7a4c2d67c418b5e6cbf26c16b53d9b391ff8c39bf16e5556f2519484"
+        },
+        {
+          "path": "kb_platform/knowledge_transfer.py",
+          "language": "python",
+          "symbol": "validate_export",
+          "sha256": "15155d5648b049b47cb3a479859b30d23c6fca9361857eeae7c2cb5793cd4dc4"
+        },
+        {
+          "path": "kb_platform/knowledge_transfer.py",
+          "language": "python",
+          "symbol": "export_legacy_knowledge",
+          "sha256": "ca703255780344ad9f7a8b5caf764fb1a3fe1e44158a7230e3b9cbd9977b76e6"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/ingestion_migration/ParseAdmission.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "parse-admission",
+          "config": "formal/ingestion_migration/ParseAdmission.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoIncompleteBuild",
+            "NoEmptyBuild",
+            "ImmutableOriginalIdentity",
+            "CurrentPolicyAtCommit"
+          ],
+          "properties": [],
+          "bounds": {
+            "outcomes": 4,
+            "policy_changes": 1,
+            "inflight_ingestions": 1,
+            "originals": 1,
+            "nonempty_evidence": 2
+          }
+        },
+        {
+          "module": "formal/ingestion_migration/KnowledgeTransfer.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "knowledge-transfer",
+          "config": "formal/ingestion_migration/KnowledgeTransfer.cfg",
+          "invariants": [
+            "TypeOK",
+            "AtomicDataAndReceipt",
+            "PublicationReset",
+            "ImmutableDatasetIdentity",
+            "OneFreshImport"
+          ],
+          "properties": [],
+          "bounds": {
+            "importers": 2,
+            "snapshots": 1,
+            "domain_row_sets": 1,
+            "datasets": 2
+          }
+        },
+        {
+          "module": "formal/ingestion_migration/StorageReset.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "storage-reset",
+          "config": "formal/ingestion_migration/StorageReset.cfg",
+          "invariants": [
+            "TypeOK",
+            "CompleteConfiguration",
+            "NeverOverwrite",
+            "ProtectedIdentities"
+          ],
+          "properties": [],
+          "bounds": {
+            "writers": 2,
+            "business_roles": 2,
+            "protected_identity_sets": 1,
+            "output_paths": 1
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/ingestion_migration/ParseAdmission.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "parse-admission-noready",
+          "config": "formal/ingestion_migration/ParseAdmissionNoReady.cfg",
+          "expected_invariant": "NoIncompleteBuild"
+        },
+        {
+          "module": "formal/ingestion_migration/ParseAdmission.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "parse-admission-wrongidentity",
+          "config": "formal/ingestion_migration/ParseAdmissionWrongIdentity.cfg",
+          "expected_invariant": "ImmutableOriginalIdentity"
+        },
+        {
+          "module": "formal/ingestion_migration/ParseAdmission.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "parse-admission-stalerevision",
+          "config": "formal/ingestion_migration/ParseAdmissionStaleRevision.cfg",
+          "expected_invariant": "CurrentPolicyAtCommit"
+        },
+        {
+          "module": "formal/ingestion_migration/ParseAdmission.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "parse-admission-success",
+          "config": "formal/ingestion_migration/ParseAdmissionSuccess.cfg",
+          "expected_invariant": "SuccessUnreachable"
+        },
+        {
+          "module": "formal/ingestion_migration/KnowledgeTransfer.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "knowledge-transfer-splitcommit",
+          "config": "formal/ingestion_migration/KnowledgeTransferSplitCommit.cfg",
+          "expected_invariant": "AtomicDataAndReceipt"
+        },
+        {
+          "module": "formal/ingestion_migration/KnowledgeTransfer.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "knowledge-transfer-keeppublication",
+          "config": "formal/ingestion_migration/KnowledgeTransferKeepPublication.cfg",
+          "expected_invariant": "PublicationReset"
+        },
+        {
+          "module": "formal/ingestion_migration/KnowledgeTransfer.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "knowledge-transfer-success",
+          "config": "formal/ingestion_migration/KnowledgeTransferSuccess.cfg",
+          "expected_invariant": "SuccessUnreachable"
+        },
+        {
+          "module": "formal/ingestion_migration/StorageReset.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "storage-reset-earlypublish",
+          "config": "formal/ingestion_migration/StorageResetEarlyPublish.cfg",
+          "expected_invariant": "CompleteConfiguration"
+        },
+        {
+          "module": "formal/ingestion_migration/StorageReset.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "storage-reset-overwrite",
+          "config": "formal/ingestion_migration/StorageResetOverwrite.cfg",
+          "expected_invariant": "NeverOverwrite"
+        },
+        {
+          "module": "formal/ingestion_migration/StorageReset.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "storage-reset-resetledger",
+          "config": "formal/ingestion_migration/StorageResetResetLedger.cfg",
+          "expected_invariant": "ProtectedIdentities"
+        },
+        {
+          "module": "formal/ingestion_migration/StorageReset.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "id": "storage-reset-success",
+          "config": "formal/ingestion_migration/StorageResetSuccess.cfg",
+          "expected_invariant": "SuccessUnreachable"
+        }
+      ],
+      "purpose": "Three independently bounded commit boundaries: parse admission, structured knowledge import, and reset configuration publication. No new production defect is asserted.",
+      "remaining_obligations": [
+        "Parser-page ensemble and OCR partial-recovery states remain source-bound inventory rather than full page-level models.",
+        "Object transfer and distributed online migration orchestration remain separate; import_ledger sealing/recovery belongs to the budget worker.",
+        "Cross-model composition with authority/search generation (PR43), independent storage providers and arbitrary numbers of rows/writers is unproved.",
+        "KnowledgeTransfer models one unchanged package/target content; detection of later target edits is exercised by SQL contracts and lint, not a modeled external-edit transition."
+      ]
     },
     {
       "id": "acceptance_workflow",
