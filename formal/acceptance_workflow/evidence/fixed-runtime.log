@@ -1,0 +1,8 @@
+test_process_death_after_scope_commit_does_not_replay_after_restart (__main__.AcceptanceWorkflowIntegration.test_process_death_after_scope_commit_does_not_replay_after_restart) ... ok
+test_two_process_preparers_cannot_create_two_scopes_for_one_operation (__main__.AcceptanceWorkflowIntegration.test_two_process_preparers_cannot_create_two_scopes_for_one_operation) ... {"scenario": "concurrent-preparers", "scope_count": 1, "contender_exit": 73, "contender_output": "{\"error\": \"DatabaseError\", \"code\": \"DATABASE_GUARD_BUSY\"}\n", "scope_ids": ["434cebbb-8e03-4da3-8c0e-ec94c2258bae"]}
+ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 19.200s
+
+OK

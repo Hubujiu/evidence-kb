@@ -1,0 +1,16 @@
+test_process_death_after_scope_commit_does_not_replay_after_restart (__main__.AcceptanceWorkflowIntegration.test_process_death_after_scope_commit_does_not_replay_after_restart) ... ok
+test_two_process_preparers_cannot_create_two_scopes_for_one_operation (__main__.AcceptanceWorkflowIntegration.test_two_process_preparers_cannot_create_two_scopes_for_one_operation) ... {"scenario": "concurrent-preparers", "scope_count": 2, "contender_exit": 72, "contender_output": "", "scope_ids": ["7f647bc7-dc1b-4759-9b88-7da66f4cb181", "9f93e91d-2696-4ee5-9c68-e4988dce177b"]}
+FAIL
+
+======================================================================
+FAIL: test_two_process_preparers_cannot_create_two_scopes_for_one_operation (__main__.AcceptanceWorkflowIntegration.test_two_process_preparers_cannot_create_two_scopes_for_one_operation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/kb_platform/rag_testing/acceptance_workflow_integration.py", line 161, in test_two_process_preparers_cannot_create_two_scopes_for_one_operation
+    self.assertEqual(len(rows), 1, 'One durable operation created multiple actual SQLite scopes')
+AssertionError: 2 != 1 : One durable operation created multiple actual SQLite scopes
+
+----------------------------------------------------------------------
+Ran 2 tests in 12.203s
+
+FAILED (failures=1)

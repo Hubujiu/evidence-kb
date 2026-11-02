@@ -50,6 +50,16 @@
         "path": "kb_platform/rag_testing/storage_integration.py",
         "symbol": "run",
         "reason": "Storage integration test runner aggregates test PASS/FAIL and cleanup evidence, not a product state machine."
+      },
+      {
+        "path": "kb_platform/rag_testing/acceptance_workflow_integration.py",
+        "symbol": "AcceptanceWorkflowIntegration.test_process_death_after_scope_commit_does_not_replay_after_restart",
+        "reason": "Controlled real loopback/SQLite regression observes or seeds test-owned receipt state; not a production lifecycle owner. Production ownership is acceptance_workflow."
+      },
+      {
+        "path": "kb_platform/rag_testing/acceptance_workflow_integration.py",
+        "symbol": "AcceptanceWorkflowIntegration.test_two_process_preparers_cannot_create_two_scopes_for_one_operation",
+        "reason": "Controlled real loopback/SQLite regression observes or seeds test-owned receipt state; not a production lifecycle owner. Production ownership is acceptance_workflow."
       }
     ]
   },
@@ -1877,34 +1887,38 @@
     },
     {
       "id": "acceptance_workflow",
-      "status": "unmodeled",
+      "status": "partial",
       "purpose": "Durable HTTP preparation/rebinding and acceptance execution receipts; STARTED/UNKNOWN operations cannot silently replay; publication and authority binding phases are separately persisted.",
       "owners": [
         "kb_platform/rag_testing/delivery_http.py"
       ],
       "states": [
-        "unprepared",
-        "prepared",
-        "bound",
-        "STARTED",
-        "COMPLETE",
-        "ERROR",
-        "UNKNOWN"
+        "prepare owner idle/acquired/read/claimed/sent/observed/released/crashed; one process restart",
+        "durable operation ABSENT/STARTED/COMPLETE/ERROR/UNKNOWN; binding phases remain explicit"
       ],
       "transitions": [
         "prepare_http",
+        "_prepare_http_locked",
+        "_prepare_http_locked.once",
         "rebind_http",
+        "_atomic_json",
         "DeliveryHTTPAdapter.run"
       ],
       "invariants": [
-        "A durable STARTED/UNKNOWN request is not silently replayed; authority/request bindings are explicit before physical execution."
+        "For one output directory and operation, at most one HTTP effect; owner guard spans reload, durable STARTED, send, receipt and binding.",
+        "Process death releases the SQLite guard but cannot clear STARTED/UNKNOWN/ERROR; only COMPLETE operation receipts may be reused.",
+        "A competing rebind never overwrites an existing output; source receipts remain read-only."
       ],
       "assumptions": [
-        "Inventory only; durable state updates and external HTTP completion are separate failure domains."
+        "Finite model: two producer identities, one operation, at most one restart each; no liveness/fairness claim.",
+        "SQLite BEGIN IMMEDIATE supplies process-exclusion and releases its lock after process death. The guard file is never deleted by the protocol.",
+        "A successful file fsync and atomic rename survive process death; OS/power-loss directory persistence, malicious filesystem changes, network shares and SQLite/filesystem correctness are not proved.",
+        "HTTP send and receipt persistence are separate atomicity domains. A completed remote operation may lack a local COMPLETE receipt.",
+        "Physical capture and budget-ledger settlement are separate authorities; the preparation guard does not establish cross-ledger settlement or replace provider admission."
       ],
       "exclusions": [
-        "No finite TLA+ model exists for this family yet.",
-        "Provider, database and operating-system correctness are outside this inventory."
+        "No Python-to-TLA+ refinement proof or all-state-machine completeness claim.",
+        "Binding artifacts/authority drift, model request settlement, arbitrary operation sequences and DeliveryHTTPAdapter.run outcomes are outside this finite model."
       ],
       "source_bindings": [
         {
@@ -1923,17 +1937,73 @@
           "path": "kb_platform/rag_testing/delivery_http.py",
           "language": "python",
           "symbol": "prepare_http",
-          "sha256": "61c745c7ace11a28ad94bc0169db43f46a805a4f6062801711dc459c00da133a"
+          "sha256": "2135d590a79b24606329496c836ba47ed0b9efb00ec62663c65982b637a2b917"
         },
         {
           "path": "kb_platform/rag_testing/delivery_http.py",
           "language": "python",
           "symbol": "rebind_http",
-          "sha256": "37a781b2791496d09f7da162918c72dac46897232e4e98bd96a8b0fe5b283456"
+          "sha256": "fedb88dd8c474125aa4572f154e155f3ebf93f48f3a8ce03750c399886d46e9f"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_prepare_http_locked",
+          "sha256": "58d3f789489a69da81e61e3b354443f95d7faf3e2e11f7c8d84282bdb2aa7fbb"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_atomic_json",
+          "sha256": "9b352af2332b5a5bd83a95bb9c88c70df826ef79f89078790a182234ac70b82b"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "acceptance-owner-positive",
+          "module": "formal/acceptance_workflow/AcceptanceWorkflow.tla",
+          "config": "formal/acceptance_workflow/AcceptanceWorkflow.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoDuplicateEffect",
+            "MarkerBeforeEffect",
+            "ExclusiveOwner",
+            "CompleteHasEffect"
+          ],
+          "properties": [],
+          "bounds": {
+            "owners": 2,
+            "operations": 1,
+            "restarts_per_owner": 1,
+            "effect_bound": 4
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "acceptance-owner-no-guard",
+          "module": "formal/acceptance_workflow/AcceptanceWorkflow.tla",
+          "config": "formal/acceptance_workflow/AcceptanceWorkflowNoGuard.cfg",
+          "expected_invariant": "NoDuplicateEffect",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "acceptance-owner-forget-pending",
+          "module": "formal/acceptance_workflow/AcceptanceWorkflow.tla",
+          "config": "formal/acceptance_workflow/AcceptanceWorkflowForgetPending.cfg",
+          "expected_invariant": "NoDuplicateEffect",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Model authority binding/rebind artifact publication and acceptance execution receipts beyond exclusive output ownership.",
+        "Compose provider/physical-budget admission and settlement models; capture status alone is not cross-ledger confirmation.",
+        "OS crash durability (including directory fsync), remote filesystems, arbitrary input sizes and adversarial modifications remain unproved."
+      ]
     }
   ]
 }

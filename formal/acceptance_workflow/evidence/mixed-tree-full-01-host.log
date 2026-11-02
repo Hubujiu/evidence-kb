@@ -1,0 +1,12 @@
+test_agent_tool_history_and_idempotent_session_replay (__main__.HostIntegration.test_agent_tool_history_and_idempotent_session_replay) ... ok
+test_auxiliary_plugins_share_llm_route_and_physical_request_ledger (__main__.HostIntegration.test_auxiliary_plugins_share_llm_route_and_physical_request_ledger) ... ok
+test_cleanup_failure_cannot_publish_success (__main__.HostIntegration.test_cleanup_failure_cannot_publish_success) ... ok
+test_completed_worker_cannot_leave_descendants (__main__.HostIntegration.test_completed_worker_cannot_leave_descendants) ... ok
+test_contract_application_boots_without_python_factory_or_local_runtime (__main__.HostIntegration.test_contract_application_boots_without_python_factory_or_local_runtime) ... ok
+test_contract_application_http_integrations (__main__.HostIntegration.test_contract_application_http_integrations) ... /workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+FAIL
+test_failed_mount_rolls_back_parent_owned_plugin_resources (__main__.HostIntegration.test_failed_mount_rolls_back_parent_owned_plugin_resources) ... ok
+test_generic_concurrent_nested_calls_and_scopes_need_no_library (__main__.HostIntegration.test_generic_concurrent_nested_calls_and_scopes_need_no_library) ... FAIL
+test_generic_storage_process_transfers_large_index_and_document_values (__main__.HostIntegration.test_generic_storage_process_transfers_large_index_and_document_values) ... 
+TimeoutExpired: Command '['/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.venv/bin/python', '-B', '-m', 'kb_platform.rag_testing.host_integration', '--output', '/workspace/scratch/75c2273f6a80/evidence-kb-acceptance-formal/.local/acceptance-stacked-full-01/host-integration']' timed out after 179.99988162599038 seconds

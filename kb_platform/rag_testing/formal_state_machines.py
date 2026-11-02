@@ -204,6 +204,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                         errors.append(f'{identity}: liveness negative control must isolate its named property')
                 elif model['expected_invariant'] not in configured:
                     errors.append(f'{identity}: negative control must target a configured invariant')
+        if 'acceptance_workflow' in ids:
+            from .acceptance_workflow_rules import acceptance_workflow_violations
+            errors.extend(acceptance_workflow_violations(root))
         exclusions = registry['discovery']['exclusions']
         excluded = {(row['path'], row['symbol']) for row in exclusions if row.get('reason', '').strip()}
         if len(excluded) != len(exclusions):
