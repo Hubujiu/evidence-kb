@@ -142,7 +142,7 @@ class ProviderAdmission:
         if self._read('provider.json') != {
                 'schema': 'provider-admission/1', 'scope_hash': self.scope_hash, **self.identity}:
             raise ValueError('PROVIDER_ADMISSION_IDENTITY_MISMATCH')
-        events, acknowledged, files = set(self._ephemeral), set(), {}
+        events, persisted, acknowledged, files = set(self._ephemeral), set(), set(), {}
         for key, raw in self._items('events'):
             row = json.loads(raw)
             if (row.get('schema') != 'provider-permission-error/1' or
@@ -150,6 +150,7 @@ class ProviderAdmission:
                     Path(key).stem != _physical_id(row.get('physical_request_id'))):
                 raise ValueError('INVALID_PROVIDER_PERMISSION_RECEIPT')
             events.add(row['physical_request_id'])
+            persisted.add(row['physical_request_id'])
             files[key] = sha256(raw).hexdigest()
         for key, raw in self._items('acknowledgements'):
             row = json.loads(raw)
@@ -163,7 +164,7 @@ class ProviderAdmission:
                     row.get('budget_or_error_rows_modified') is not False):
                 raise ValueError('INVALID_PROVIDER_ACKNOWLEDGEMENT')
             ids = {_physical_id(value) for value in row['observed_error_ids']}
-            if not ids.issubset(events):
+            if not ids.issubset(persisted):
                 raise ValueError('ACKNOWLEDGEMENT_WITHOUT_PERMISSION_ERROR')
             acknowledged.update(ids)
             files[key] = sha256(raw).hexdigest()
@@ -174,7 +175,8 @@ class ProviderAdmission:
                   'unacknowledged_errors': len(blocked), 'automatic_probe': False}
         if not public:
             result.update(scope_hash=self.scope_hash, observed_error_ids=sorted(events),
-                          unacknowledged_error_ids=blocked, checkpoint=digest(files))
+                          unacknowledged_error_ids=blocked, unpersisted_error_ids=sorted(events - persisted),
+                          checkpoint=digest({'files': files, 'observed_error_ids': sorted(events)}))
         return result
 
     def acknowledge(self, *, expected_checkpoint, evidence_reference):
@@ -183,6 +185,8 @@ class ProviderAdmission:
         current = self.snapshot()
         if current['checkpoint'] != expected_checkpoint:
             raise ValueError('PROVIDER_ADMISSION_CHECKPOINT_CHANGED')
+        if current['unpersisted_error_ids']:
+            raise ValueError('PROVIDER_PERMISSION_RECEIPT_UNPERSISTED')
         if not current['unacknowledged_error_ids']:
             raise ValueError('NO_BLOCKED_PROVIDER_TO_ACKNOWLEDGE')
         receipt = {'schema': 'provider-permission-acknowledgement/1', 'scope_hash': self.scope_hash,
