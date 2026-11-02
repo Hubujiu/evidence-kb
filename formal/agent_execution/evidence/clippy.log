@@ -1,0 +1,17 @@
+    Checking serde_core v1.0.228
+    Checking zmij v1.0.23
+    Checking memchr v2.8.3
+    Checking itoa v1.0.18
+    Checking pin-project-lite v0.2.17
+    Checking libc v0.2.186
+    Checking tokio v1.48.0
+    Checking serde_json v1.0.150
+    Checking serde v1.0.228
+    Checking plugin-runtime v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/rust/plugin-runtime)
+    Checking agent-services v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/rust/agent-services)
+    Checking storage-service v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/rust/storage-service)
+    Checking llm-service v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/rust/llm-service)
+    Checking plugin-host v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/rust/plugin-host)
+    Checking agent-harness v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/rust/agent-harness)
+    Checking agent-kernel v0.1.0 (/workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/rust/agent-kernel)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.41s

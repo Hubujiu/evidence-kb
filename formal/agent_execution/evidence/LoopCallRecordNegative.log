@@ -1,0 +1,86 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 14 and seed -6216752602920991330 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 114] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-agent-formal/formal/agent_execution/LoopSequencing.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module LoopSequencing
+Starting... (2026-11-02 09:16:32)
+Computing initial states...
+Computed 2 initial states...
+Finished computing initial states: 4 distinct states generated at 2026-11-02 09:16:32.
+Error: Invariant ToolRequiresCallRecord is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "start",
+  pending |-> 0,
+  sequence |-> 0,
+  mode |-> "single-tool",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 2: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "start",
+  pending |-> 1,
+  sequence |-> 1,
+  mode |-> "single-tool",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 3: <Accept line 68, col 5 to line 76, col 60 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = TRUE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "tool",
+  pending |-> 0,
+  sequence |-> 1,
+  mode |-> "single-tool",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+State 4: <Issue line 56, col 5 to line 65, col 27 of module LoopSequencing>
+/\ correlated = TRUE
+/\ toolHadRecord = FALSE
+/\ noReplay = TRUE
+/\ s = [ phase |-> "tool",
+  pending |-> 2,
+  sequence |-> 2,
+  mode |-> "single-tool",
+  direct |-> FALSE,
+  cached |-> FALSE,
+  callRecorded |-> FALSE,
+  resultRecorded |-> FALSE,
+  answerRecorded |-> FALSE,
+  tools |-> 0 ]
+/\ terminalStable = TRUE
+
+1396 states generated, 30 distinct states found, 8 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-11-02 09:16:32)
