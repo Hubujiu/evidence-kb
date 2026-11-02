@@ -962,3 +962,83 @@ fn exited_notice_uses_full_incarnation_identity_after_remove_and_readd() {
         );
     }
 }
+
+#[test]
+fn diagnostic_global_capacity_rejects_foreign_identity_without_eviction_and_collects_by_host() {
+    let mut runtime = Coordinator::default();
+    let root = create(&mut runtime, vec![plugin("root", &["service"], &[])], None);
+    let root_init = poll(&mut runtime, root).remove(0);
+    complete(&mut runtime, &root_init, "ok", &["service"]);
+    let child = create(&mut runtime, vec![], Some(root));
+    let foreign = create(&mut runtime, vec![plugin("foreign", &["other"], &[])], None);
+    let foreign_init = poll(&mut runtime, foreign).remove(0);
+    complete(&mut runtime, &foreign_init, "ok", &["other"]);
+    for n in 0..1023 {
+        call(&mut runtime, "diagnostic", json!({"host":root,"code":"event","message":n.to_string(),"operation":root_init["operation"]})).unwrap();
+    }
+    call(&mut runtime, "diagnostic", json!({"host":child,"code":"event","message":"child-one","operation":root_init["operation"]})).unwrap();
+    let before =
+        call(&mut runtime, "inspect", json!({"host":root})).unwrap()["diagnostics"].clone();
+    assert_eq!(before.as_array().unwrap().len(), 1024);
+    for invalid in [
+        json!({"host":root,"code":"event","message":"foreign","operation":foreign_init["operation"]}),
+        json!({"host":foreign,"code":"event","message":"foreign","operation":root_init["operation"]}),
+        json!({"host":root,"code":"event","message":"unknown","instance":u64::MAX}),
+    ] {
+        assert_eq!(
+            call(&mut runtime, "diagnostic", invalid).unwrap_err().code,
+            "diagnostic_identity"
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":root})).unwrap()["diagnostics"],
+            before
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":foreign})).unwrap()["diagnostics"],
+            json!([])
+        );
+    }
+    for invalid in [
+        json!({"host":root,"code":"bad code","message":"x"}),
+        json!({"host":root,"code":"event","message":"x".repeat(4097)}),
+    ] {
+        assert_eq!(
+            call(&mut runtime, "diagnostic", invalid).unwrap_err().code,
+            "invalid_diagnostic"
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":root})).unwrap()["diagnostics"],
+            before
+        );
+    }
+    call(&mut runtime, "diagnostic", json!({"host":child,"code":"event","message":"child-two","instance":root_init["instance"],"operation":root_init["operation"]})).unwrap();
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":root})).unwrap()["diagnostics"][0]["message"],
+        "1"
+    );
+    call(&mut runtime, "diagnostic", json!({"host":foreign,"code":"event","message":"foreign-valid","operation":foreign_init["operation"]})).unwrap();
+    let root_events =
+        call(&mut runtime, "inspect", json!({"host":root})).unwrap()["diagnostics"].clone();
+    assert_eq!(root_events.as_array().unwrap().len(), 1023);
+    assert_eq!(root_events[0]["message"], "2");
+    let foreign_events =
+        call(&mut runtime, "inspect", json!({"host":foreign})).unwrap()["diagnostics"].clone();
+    assert_eq!(foreign_events.as_array().unwrap().len(), 1);
+    assert_eq!(foreign_events[0]["message"], "foreign-valid");
+    call(&mut runtime, "drain", json!({"host":child})).unwrap();
+    call(&mut runtime, "collect", json!({"host":child})).unwrap();
+    let remaining =
+        call(&mut runtime, "inspect", json!({"host":root})).unwrap()["diagnostics"].clone();
+    assert_eq!(remaining.as_array().unwrap().len(), 1021);
+    assert!(
+        remaining
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| event["host"] == root)
+    );
+    assert_eq!(
+        call(&mut runtime, "inspect", json!({"host":foreign})).unwrap()["diagnostics"],
+        foreign_events
+    );
+}

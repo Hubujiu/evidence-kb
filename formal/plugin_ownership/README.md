@@ -280,16 +280,47 @@ the current owner. All 57 native contracts, 20 targeted methods / 50 refreshed-h
 mutants, and 64 unified formal runs plus two evidence contracts pass. No new
 production defect was reproduced in this owner. Ordinary full remains NOT_RUN.
 
+## Stage 8: bounded diagnostic ownership and retention (model-only)
+
+[Tokio 1.47.1 broadcast](https://github.com/tokio-rs/tokio/blob/tokio-1.47.1/tokio/src/sync/broadcast.rs)
+was read first for its documented bounded-buffer policy: a new item at capacity
+releases the oldest retained item. This protocol is not a broadcast receiver or
+audit log and has no lag notification guarantee; only that bounded FIFO reference
+is applicable. Rust deliberately caps diagnostics **globally**, not per runtime.
+A valid event from another runtime can evict an older root event. Inspection still
+filters runtime identity, while subtree collection removes concrete-host events.
+
+`DiagnosticRetention` bounds three hosts/two runtimes, capacity two and five
+immutable event identities. `Emit`, `Inspect`, and `Collect` map to `diagnostic`,
+`inspect` and the diagnostic arm of `collect`. Payload/identity validation occurs
+before mutation; a rejected event must not evict a prior event at capacity. An
+independent correct-policy queue makes oldest-versus-newest eviction observable.
+Six named negatives cover identity, reject-time mutation, capacity, FIFO,
+inspection isolation and child collection. Two reached witnesses combine a
+foreign valid eviction, invalid rejection at capacity, both runtime projections,
+child collection and successful subsequent root append. Capacity is not a proof
+of durable logging or of preserving all historical failure facts indefinitely.
+
+The positive graph has 88 states. The real contract fills the actual 1024 limit,
+rejects foreign/unknown identities and invalid payloads without changing either
+projection, accepts same-runtime child references to root operations, verifies
+cross-runtime oldest eviction, then collects only the child's records. All 58
+native tests, 20 targeted methods / 56 refreshed-hash mutants and 73 unified
+formal runs plus two evidence contracts pass. The mandatory token lint now also
+checks identity validation precedes the **first** eviction, with an actual early-
+eviction mutation; merely finding both code fragments is insufficient. No new
+production defect was found, and ordinary full remains NOT_RUN.
+
 ## Explicit remaining work and boundaries
 
 This feature is still WIP. Concrete next owners, not merely external assumptions:
 
-- bounded diagnostic retention;
-- explicit failed-initialization retry (distinct from already modeled cleanup retry).
+- explicit failed-initialization retry (distinct from already modeled cleanup retry);
+- initialization-bound lease lifetime and current cleanup/consumer resolve authority.
 
 Their source bindings are inventory/review anchors only until separate registered
 models and actual contracts cover their transitions. Remaining work is not
-silently declared covered by the seven existing slices.
+silently declared covered by the eight existing slices.
 
 Unbounded scopes/plugins/calls and arbitrary recursive intercept payloads,
 arbitrary callback effects, process transport, allocation exhaustion, OS failure,

@@ -52,8 +52,18 @@ RULES = {
     'exit enabled guard': ('instance_exited', 'current.desired != Desired::Enabled'),
     'exit live phase': ('instance_exited', '!matches!(current.phase, Phase::Starting | Phase::Active)'),
     'exit disables target': ('instance_exited', 'enabled: Some(false)'),
+    'diagnostic payload validation': ('diagnostic', '!manifest::valid_name(&code) || message.len() > 4096'),
+    'diagnostic instance runtime': ('diagnostic', '.is_none_or(|instance| self.scopes[&instance.host].runtime != runtime)'),
+    'diagnostic operation runtime': ('diagnostic', '.is_none_or(|operation| operation.action.runtime != runtime)'),
+    'diagnostic bounded FIFO': ('diagnostic', 'if self.diagnostics.len() == 1024 { self.diagnostics.remove(0); }'),
+    'diagnostic runtime projection': ('inspect', '.filter(|diagnostic| diagnostic["runtime"] == scope.runtime)'),
     'deadline minimum': ('acquire', '(Some(a), Some(b)) => Some(a.min(b))'),
     'expired admission': ('acquire', 'if deadline.is_some_and(|deadline| deadline <= self.now) { return Err(Error::new("deadline", "deadline already elapsed")); }'),
+}
+
+
+ORDER_RULES = {
+    'diagnostic validation before eviction': ('diagnostic', 'if instance.is_some_and', 'if self.diagnostics.len() == 1024'),
 }
 
 
@@ -83,4 +93,10 @@ def ownership_violations(root: Path) -> list[str]:
         body, expected = method(source, name), tokens(fragment)
         if not any(body[i:i + len(expected)] == expected for i in range(len(body) - len(expected) + 1)):
             errors.append(f'plugin ownership: {label} guard requires reviewed shape in {name}')
+    for label, (name, first, second) in ORDER_RULES.items():
+        body, left, right = method(source, name), tokens(first), tokens(second)
+        before = next((i for i in range(len(body)) if body[i:i + len(left)] == left), -1)
+        after = next((i for i in range(len(body)) if body[i:i + len(right)] == right), -1)
+        if before < 0 or after <= before:
+            errors.append(f'plugin ownership: {label} guard requires reviewed order in {name}')
     return errors

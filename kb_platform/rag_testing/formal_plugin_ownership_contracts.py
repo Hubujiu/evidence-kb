@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import unittest
 
-from .formal_plugin_ownership import RULES, SOURCE, ownership_violations
+from .formal_plugin_ownership import ORDER_RULES, RULES, SOURCE, ownership_violations
 from .formal_state_machines import ROOT, registry_violations, source_digest
 
 
@@ -63,10 +63,16 @@ class PluginOwnershipLintContracts(unittest.TestCase):
             'exit enabled guard': ('current.desired != Desired::Enabled', 'current.desired == Desired::Enabled'),
             'exit live phase': ('!matches!(current.phase, Phase::Starting | Phase::Active)', 'matches!(current.phase, Phase::Starting | Phase::Active)'),
             'exit disables target': ('enabled: Some(false)', 'enabled: Some(true)'),
+            'diagnostic payload validation': ('message.len() > 4096', 'message.len() > 8192'),
+            'diagnostic instance runtime': ('self.scopes[&instance.host].runtime != runtime', 'self.scopes[&instance.host].runtime == runtime'),
+            'diagnostic operation runtime': ('operation.action.runtime != runtime', 'operation.action.runtime == runtime'),
+            'diagnostic bounded FIFO': ('self.diagnostics.remove(0);', 'self.diagnostics.pop();'),
+            'diagnostic runtime projection': ('diagnostic["runtime"] == scope.runtime', 'diagnostic["runtime"] != scope.runtime'),
+            'diagnostic validation before eviction': ('if instance.is_some_and(|instance| {', 'if self.diagnostics.len() == 1024 { self.diagnostics.remove(0); } if instance.is_some_and(|instance| {'),
             'deadline minimum': ('Some(a.min(b))', 'Some(a.max(b))'),
             'expired admission': ('deadline <= self.now', 'deadline < self.now'),
         }
-        self.assertEqual(set(RULES), set(replacements))
+        self.assertEqual(set(RULES) | set(ORDER_RULES), set(replacements))
         registered = json.loads((ROOT / 'formal/registry-v1.json').read_text('utf-8'))
         baseline = {'schema_version': 1, 'discovery': {'roots': ['rust/plugin-runtime'], 'exclusions': []},
                     'machines': [next(machine for machine in registered['machines']
