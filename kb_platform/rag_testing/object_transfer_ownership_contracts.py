@@ -252,7 +252,10 @@ class ObjectTransferOwnershipContracts(unittest.TestCase):
                 shutdown = pool.submit(close)
                 self.assertTrue(close_started.wait(5))
                 self.assertFalse(close_finished.is_set())
-                self.assertFalse(self.endpoint._lock.acquire(blocking=False))
+                acquired = self.endpoint._lock.acquire(blocking=False)
+                if acquired:
+                    self.endpoint._lock.release()
+                self.assertFalse(acquired)
                 self.assertFalse(self.streams[0].closed)
             finally:
                 release.set()
