@@ -6,6 +6,7 @@ from .knowledge_policy import VERSION, RECOMMENDED, CONFIGS, _active_evidence_li
 from .knowledge_plugin_tools import KnowledgeToolPlugins
 
 from .knowledge_turn import KnowledgeTurn
+from .knowledge_context import KnowledgeContext, LocalEvidenceSource, LocalHistorySource
 
 
 
@@ -27,9 +28,12 @@ class KnowledgeService:
         context_manager,
         runtime,
         workflow_factory,
+        context_service=None,
     ):
         self.store, self.gateway, self.model = store, gateway, model
-        self.context_policy, self.context = context_policy, context_manager
+        self.context_policy = context_policy
+        self.context = context_service if context_service is not None else KnowledgeContext(
+            LocalHistorySource(store), LocalEvidenceSource(gateway), assembler=context_manager)
         self.plugins = KnowledgeToolPlugins(tool_plugins)
         self.runtime, self.workflow_factory = runtime, workflow_factory
         self.retrieval_config = retrieval_config

@@ -39,6 +39,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
         self.session_id = session_id
         self.message = message
         self.request_id = request_id
+        self.context_revision = expected_revision
         if not isinstance(self.message, str) or not self.message.strip() or len(self.message) > 20000:
             raise PlatformError("INVALID_MESSAGE", "Message must contain 1 to 20000 characters", 422)
         if not isinstance(self.request_id, str) or not 1 <= len(self.request_id) <= 100:
@@ -219,20 +220,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                     self.event("context_invalidated", {"reason": "evidence_revalidation_failed"})
             if not self.config["reuse"]:
                 self.state["evidence"], self.state["last_answer"] = ({}, None)
-            self.historical = self.service.store.events(self.actor, self.session_id)
-            if auth_changed or policy_changed:
-                self.historical = []
-            else:
-                self.historical = [
-                    e
-                    for e in self.historical
-                    if e["kind"] in {"user", "assistant"}
-                    and e["payload"].get("source_epoch") == self.state["source_epoch"]
-                ]
-            if not self.config["reuse"]:
-                self.historical = [
-                    e for e in self.historical if e["kind"] == "user" or not e["payload"].get("evidence_ids")
-                ]
+            self.history_invalidated = bool(auth_changed or policy_changed)
             self.seq = self.event("user", {"text": self.message, "source_epoch": self.state["source_epoch"]})
             self.trace["source_policy"] = deepcopy(self.state["source_policy"])
             self.state["turn_number"] += 1
