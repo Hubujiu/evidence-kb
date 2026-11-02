@@ -1,0 +1,5 @@
+rustc 1.99.0 (b940084d7 2026-09-28)
+cargo 1.99.0 (5f94df478 2026-08-27)
+source 779a1ca9294cfa89d7711a16a9932183abb209fd
+Filesystem      Size  Used Avail Use% Mounted on
+overlay          63G   55G  5.0G  92% /workspace/scratch/75c2273f6a80

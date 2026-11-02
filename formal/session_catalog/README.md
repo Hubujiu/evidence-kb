@@ -54,3 +54,10 @@ Seven new actual SQLite/NativeLoop contracts pass: direct and public finish ACK 
 Mandatory AST-shape guards preserve the reviewed adapter error/copy/close/admission operations even after source hashes are refreshed. Seventeen adapter mutants plus fifteen catalog mutants are rejected. Full source-mapping lint runs through both existing project modes. These narrow shapes require deliberate review when implementation changes; they are not a parser or a refinement proof.
 
 Preliminary combined checks: 34 expected formal outcomes + 2 separately observed limitations + 3 evidence contracts PASS; 38 actual/lint/existing session contracts PASS. Two explicit composed witnesses were then added with no behavior change, yielding 36 expected formal outcomes. The original stage 1 summaries/hashes/logs and the initial fixture error remain unchanged. Final ordinary gate status is reported separately after the final source tree is frozen.
+
+
+## Frozen-tree ordinary required gate
+
+One actual ordinary run on frozen source 779a1ca (tree 826f66770c4a71409754870fc01929cd98334b6a) exited 1: **FAIL**, not overridden by targeted/formal successes. Ten of twelve gates passed. The host child printed 25 tests OK in 178.762 seconds but did not exit within the required 180-second deadline, so the host gate correctly remains FAIL. Contracts discovered all 118 nonempty modules / 1,091 tests: zero assertion failures, 18 errors, zero skipped/expected failures. All 18 original tracebacks end with the HTTPX missing-socksio ImportError; all 17 added catalog/durable actual and semantic-lint contracts passed inside the sealed ordinary workers.
+
+The original driver/host logs, exact error identities, compact summary and original-output SHA256SUMS are retained. No proxy changes, dependency installation, threshold relaxation or retry was performed. This evidence-only append changes no source/model/config/registry/gate file from the tested tree. The first-stage PR58 CI passed and was fully audited, but does not substitute for fresh final-head CI.

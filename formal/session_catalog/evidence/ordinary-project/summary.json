@@ -1,0 +1,281 @@
+{
+  "decision": "FAIL",
+  "source_commit": "779a1ca9294cfa89d7711a16a9932183abb209fd",
+  "source_tree": "826f66770c4a71409754870fc01929cd98334b6a",
+  "exit_code": 1,
+  "ordinary_required_entry": "uv run --no-sync python scripts/check_project.py --output .local/session-ordinary-full-20261102-2258",
+  "checks": [
+    {
+      "name": "architecture",
+      "exit_code": 0,
+      "log": "architecture.json"
+    },
+    {
+      "name": "formal-lint",
+      "exit_code": 0,
+      "log": "formal-lint.log"
+    },
+    {
+      "name": "rust-format",
+      "exit_code": 0,
+      "log": "rust-format.log"
+    },
+    {
+      "name": "rust-clippy",
+      "exit_code": 0,
+      "log": "rust-clippy.log"
+    },
+    {
+      "name": "rust-build",
+      "exit_code": 0,
+      "log": "rust-build.log"
+    },
+    {
+      "name": "rust-tests",
+      "exit_code": 0,
+      "log": "rust-tests.log"
+    },
+    {
+      "name": "plugin-process-integration",
+      "exit_code": 0,
+      "log": "plugin-process-integration.log"
+    },
+    {
+      "name": "foundation-integration",
+      "exit_code": 0,
+      "log": "foundation-integration.log"
+    },
+    {
+      "name": "host-integration",
+      "exit_code": 2,
+      "log": "host-integration.log"
+    },
+    {
+      "name": "lint",
+      "exit_code": 0,
+      "log": "lint.log"
+    },
+    {
+      "name": "contracts",
+      "exit_code": 1,
+      "log": "contracts.log"
+    },
+    {
+      "name": "scorer",
+      "exit_code": 0,
+      "log": "scorer.log"
+    }
+  ],
+  "contracts": {
+    "decision": "FAIL",
+    "total": 1091,
+    "failures": 0,
+    "errors": 18,
+    "skipped": 0,
+    "expected_failures": 0,
+    "discovery_complete": true,
+    "scope": "offline component contracts; no production RAG quality claim"
+  },
+  "contract_modules": 118,
+  "new_contracts": {
+    "total": 17,
+    "failures": 0,
+    "errors": 0,
+    "statuses": [
+      {
+        "test": "kb_platform.rag_testing.durable_session_lint_contracts.DurableSessionLintContracts.test_hash_refreshed_adapter_and_witness_regressions_are_rejected",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_public_finish_ack_loss_preserves_completed_turn_and_cached_replay_runs_no_tool",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.session_catalog_lint_contracts.SessionCatalogLintContracts.test_hash_refreshed_owner_content_commit_and_reachability_mutants_are_rejected",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_concurrent_artifact_dedup_is_session_scoped_and_uses_canonical_utf8_content",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_direct_final_buffer_and_messages_are_copied_and_close_only_after_commit",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_public_tool_record_ack_loss_is_unknown_even_with_zero_actual_tool_effects",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_appendonly_rejects_mutation_and_seeded_malformed_content_fails_integrity",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_create_failure_before_commit_and_lost_ack_are_distinct_after_reopen",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_direct_finish_ack_loss_leaves_durable_result_and_cleanup_cannot_rewrite_it",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_public_unknown_tool_effect_is_neither_replayed_nor_reclassified_as_zero",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_artifact_expired_writer_rejection_preserves_tables",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_each_wrong_owner_read_or_mutation_rejects_without_changing_real_tables",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.durable_session_lint_contracts.DurableSessionLintContracts.test_actual_adapter_source_and_terminal_witnesses_are_accepted",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_initialization_baseexception_is_preserved_after_real_failure_cleanup",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.durable_session_transition_contracts.DurableSessionTransitionContracts.test_public_user_record_ack_loss_settles_failure_without_any_model_call",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.session_catalog_lint_contracts.SessionCatalogLintContracts.test_actual_catalog_source_model_and_required_witnesses_are_accepted",
+        "status": "PASS"
+      },
+      {
+        "test": "kb_platform.rag_testing.session_catalog_transition_contracts.SessionCatalogTransitionContracts.test_artifact_sqlite_failure_rolls_back_and_lost_ack_deduplicates_durable_content",
+        "status": "PASS"
+      }
+    ]
+  },
+  "contract_errors": [
+    {
+      "test": "test_observed_embedding_uses_json_authorization_and_recovers_the_original_request (kb_platform.rag_testing.knowledge_model_ports_contracts.KnowledgeModelPortsContracts.test_observed_embedding_uses_json_authorization_and_recovers_the_original_request)",
+      "log": "contracts-1/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_pre_send_revocation_uses_original_bound_and_callable_authorizers (kb_platform.rag_testing.model_embedding_review_contracts.ModelEmbeddingReviewContracts.test_observed_pre_send_revocation_uses_original_bound_and_callable_authorizers)",
+      "log": "contracts-1/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_query_keeps_explicit_request_context (kb_platform.rag_testing.model_review_contracts.ModelReviewContracts.test_observed_query_keeps_explicit_request_context)",
+      "log": "contracts-1/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_embedding_provider_rechecks_public_authorization_after_reservation (kb_platform.rag_testing.knowledge_model_ports_contracts.KnowledgeModelPortsContracts.test_embedding_provider_rechecks_public_authorization_after_reservation)",
+      "log": "contracts-2/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_query_keeps_explicit_request_context (kb_platform.rag_testing.model_embedding_review_contracts.ModelEmbeddingReviewContracts.test_observed_query_keeps_explicit_request_context)",
+      "log": "contracts-2/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_documents_keep_raw_identity_audit_authorization_and_manifest (kb_platform.rag_testing.model_review_contracts.ModelReviewContracts.test_observed_documents_keep_raw_identity_audit_authorization_and_manifest)",
+      "log": "contracts-2/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_recovery_uses_settled_capture_without_resend_and_rejects_stale_route (kb_platform.rag_testing.model_review_contracts.ModelReviewContracts.test_observed_recovery_uses_settled_capture_without_resend_and_rejects_stale_route)",
+      "log": "contracts-2/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_recovery_keeps_capture_and_physical_state_without_resend (kb_platform.rag_testing.model_embedding_review_contracts.ModelEmbeddingReviewContracts.test_observed_recovery_keeps_capture_and_physical_state_without_resend)",
+      "log": "contracts-3/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_port_retains_producer_preflight_classification (kb_platform.rag_testing.model_review_contracts.ModelReviewContracts.test_observed_port_retains_producer_preflight_classification)",
+      "log": "contracts-3/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_captured_google_refusal_preserves_zero_send_classification (kb_platform.rag_testing.embedding_jobs_contracts.EmbeddingJobsContracts.test_captured_google_refusal_preserves_zero_send_classification) (platform='gemini_api', scenario='budget')",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_captured_google_refusal_preserves_zero_send_classification (kb_platform.rag_testing.embedding_jobs_contracts.EmbeddingJobsContracts.test_captured_google_refusal_preserves_zero_send_classification) (platform='gemini_api', scenario='pending')",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_captured_google_refusal_preserves_zero_send_classification (kb_platform.rag_testing.embedding_jobs_contracts.EmbeddingJobsContracts.test_captured_google_refusal_preserves_zero_send_classification) (platform='vertex_ai', scenario='budget')",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_captured_google_refusal_preserves_zero_send_classification (kb_platform.rag_testing.embedding_jobs_contracts.EmbeddingJobsContracts.test_captured_google_refusal_preserves_zero_send_classification) (platform='vertex_ai', scenario='pending')",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_documents_keep_raw_identity_audit_authorization_and_manifest (kb_platform.rag_testing.model_embedding_review_contracts.ModelEmbeddingReviewContracts.test_observed_documents_keep_raw_identity_audit_authorization_and_manifest)",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_plain_google_texts_only_adapter_stays_supported (kb_platform.rag_testing.model_embedding_review_contracts.ModelEmbeddingReviewContracts.test_plain_google_texts_only_adapter_stays_supported)",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_observed_pre_send_revocation_uses_original_bound_and_callable_authorizers (kb_platform.rag_testing.model_review_contracts.ModelReviewContracts.test_observed_pre_send_revocation_uses_original_bound_and_callable_authorizers)",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_plain_google_texts_only_adapter_stays_supported (kb_platform.rag_testing.model_review_contracts.ModelReviewContracts.test_plain_google_texts_only_adapter_stays_supported)",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    },
+    {
+      "test": "test_invalid_referenced_remote_provider_does_not_close_existing_clients (kb_platform.rag_testing.plugin_configuration_contracts.PluginConfigurationContracts.test_invalid_referenced_remote_provider_does_not_close_existing_clients)",
+      "log": "contracts-0/contracts.log",
+      "missing_socksio": true,
+      "terminal": "ImportError: Using SOCKS proxy, but the 'socksio' package is not installed. Make sure to install httpx using `pip install httpx[socks]`."
+    }
+  ],
+  "host_gate": {
+    "exit_code": 2,
+    "timeout_seconds": 180,
+    "inner_test_runner": {
+      "tests": 25,
+      "seconds": 178.762,
+      "printed_result": "OK"
+    },
+    "interpretation": "The subprocess did not exit before the required timeout. Inner test OK does not turn the host gate into PASS."
+  },
+  "new_model_calls": 0,
+  "new_embedding_calls": 0,
+  "new_judge_calls": 0,
+  "raw_artifact": ".local/session-ordinary-full-20261102-2258",
+  "raw_output_hashes": "SHA256SUMS",
+  "evidence_policy": "Original logs and artifact remain untouched. No retry, proxy changes, dependency installation or timeout relaxation. Exact remote final-head CI is still required; stage-1 CI success does not cover this source tree."
+}
