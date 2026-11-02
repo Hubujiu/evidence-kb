@@ -103,3 +103,45 @@ remains byte-for-byte in the published evidence snapshot, including its trailing
 blank line. Current validation records are produced independently rather than
 rewriting that artifact; the historical log does not establish CI success for the
 final PR head.
+
+## PR #39: phase-controlled idle-expiry regression
+
+[CI run 41502706899](https://github.com/Hubujiu/evidence-kb/actions/runs/41502706899)
+finished **FAIL**: all four quality jobs and formal checks passed, but the
+integration contract gate failed the existing idle-expiry test. Its exact expected
+error was `STORAGE_TRANSACTION_ROLLED_BACK`; actual was `DATABASE_QUERY_TIMEOUT`.
+The failed test lasted 0.267537463 seconds. Its 0.2-second query budget and worker
+lease started before the insert, so it did not establish the successful-write
+phase before waiting for idle expiry. This remains a recorded CI failure, not an
+accepted alternative result or a run relabeled as flaky.
+
+The local base `896d61f9ed17a70823748eee657e74ed169977ca` has tree
+`883dfc8b65b594241a73d0274dd99418d36d0cab`, identical to that failed CI tree.
+`evidence/idle-expiry/ci-failure.json` preserves the raw failure excerpt, log hash
+and timing. A separate deterministic local diagnostic advances the driver clock
+only after a real SQLite INSERT returns rowcount 1. It reproduces the exact
+`DATABASE_QUERY_TIMEOUT`, then verifies a cached rollback and zero persisted rows.
+It is not a rerun of the old CI, and does not infer that the original failure was
+unrelated to the tested change.
+
+The corrected test keeps `max_seconds=.2`, real SQLite and the exact rollback,
+repeated-receipt and zero-row assertions. Imported query/worker clocks are fixed
+for this fixture. A test queue waits for the actual insert command without a
+competing wall timer; only after the original `StructuredTransaction.insert`
+returns rowcount 1 may its next **timed** get raise ordinary `queue.Empty`.
+The production worker handles that exception through its existing idle-expiry
+and rollback path. No rollback receipt, SQL result or production error is faked.
+The handle is captured before confirming the insert because expiry can now finish
+before the caller regains its thread. The existing join bound remains unchanged.
+
+This fixture isolates idle-expiry behavior; it does not measure wall-clock query
+latency or replace production deadline enforcement. Production code and limits
+are unchanged. `storage_idle_expiry_fixture_contracts` adds structural guardrails
+for real insert confirmation, timed-queue gating, untimed pre-insert waiting,
+clock isolation, the unchanged budget and exact terminal assertion. Six seeded
+mutants are rejected, including restoring the initial wall-clock queue race.
+These AST checks are narrow review guardrails, not a Python refinement proof.
+
+Local focused checks and lint use a freshly built native library, temporary local
+SQLite and no external provider calls. Full-project and new-head CI validation
+remain parent-owned; the failed original CI run has not been rerun or overwritten.

@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 import json
 from pathlib import Path
+from queue import Empty, Queue
 from tempfile import TemporaryDirectory
 from threading import Event
 import unittest
@@ -21,6 +22,7 @@ from kb_platform.session_identity import Actor, PlatformError
 from kb_platform.session_storage import session_schema
 from kb_platform.session_store import SessionStore
 from kb_platform.storage_adapters.sql import SqlStorageProvider
+from kb_platform.storage_adapters.structured import StructuredTransaction
 from kb_platform.storage_catalog import initialize_configuration
 from kb_platform.storage_sdk import ExistingDataset
 from kb_platform.storage_sdk.relational import StructuredSchema
@@ -179,13 +181,38 @@ class StructuredWireContracts(unittest.TestCase):
         with TemporaryDirectory() as directory, structured(directory, budget_schema('budget')) as (client, endpoint, _):
             client.prepare(budget_schema('budget'))
             client.seal()
-            with self.assertRaisesRegex(DatabaseError, 'STORAGE_TRANSACTION_ROLLED_BACK'):
-                with client.transaction(limits=QueryLimits(max_seconds=.2), operation_id='expired') as transaction:
-                    transaction.insert(budget_calls, {'id': 'expired', 'status': 'UNKNOWN', 'reserved': '{}',
-                        'usage': None, 'category': 'fixture', 'diagnostic': None})
-                    handle = endpoint._handles[transaction._token]
-                    handle._thread.join(timeout=2)
-                    self.assertFalse(handle._thread.is_alive())
+            inserted, expired = Event(), []
+            original_insert = StructuredTransaction.insert
+
+            def confirm_insert(tx, *args, **kwargs):
+                result = original_insert(tx, *args, **kwargs)
+                self.assertEqual(result.rowcount, 1)
+                inserted.set()
+                return result
+
+            class IdleExpiryQueue(Queue):
+                def get(self, block=True, timeout=None):
+                    if block and timeout is not None:
+                        if inserted.is_set():
+                            expired.append(timeout)
+                            raise Empty
+                        return super().get()
+                    return super().get(block=block, timeout=timeout)
+
+            with patch('kb_platform.database_providers.base.monotonic', return_value=0.0), \
+                    patch('kb_platform.storage_structured_wire.monotonic', return_value=0.0), \
+                    patch('kb_platform.storage_structured_wire.Queue', IdleExpiryQueue), \
+                    patch.object(StructuredTransaction, 'insert', confirm_insert):
+                with self.assertRaisesRegex(DatabaseError, 'STORAGE_TRANSACTION_ROLLED_BACK'):
+                    with client.transaction(limits=QueryLimits(max_seconds=.2), operation_id='expired') as transaction:
+                        handle = endpoint._handles[transaction._token]
+                        result = transaction.insert(budget_calls, {'id': 'expired', 'status': 'UNKNOWN', 'reserved': '{}',
+                            'usage': None, 'category': 'fixture', 'diagnostic': None})
+                        self.assertEqual(result.rowcount, 1)
+                        handle._thread.join(timeout=2)
+                        self.assertFalse(handle._thread.is_alive())
+            self.assertTrue(inserted.is_set())
+            self.assertEqual(expired, [.2])
             repeated = endpoint.execute({'version': 1, 'op': 'finish', 'handle': transaction._token, 'commit': True})
             self.assertEqual(repeated, {'status': 'ROLLED_BACK', 'operation_id': 'expired'})
             with client.transaction(write=False) as transaction:

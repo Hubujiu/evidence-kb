@@ -1,0 +1,7 @@
+test_idle_expiry_fixture_preserves_success_before_timeout_boundary (kb_platform.rag_testing.storage_idle_expiry_fixture_contracts.StorageIdleExpiryFixtureContracts.test_idle_expiry_fixture_preserves_success_before_timeout_boundary) ... ok
+test_seeded_early_expiry_wall_clock_and_budget_mutants_are_rejected (kb_platform.rag_testing.storage_idle_expiry_fixture_contracts.StorageIdleExpiryFixtureContracts.test_seeded_early_expiry_wall_clock_and_budget_mutants_are_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.037s
+
+OK
