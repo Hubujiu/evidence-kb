@@ -63,8 +63,12 @@ def source_digest(root: Path, binding: dict) -> str:
             raise ValueError(f'Missing Python symbol: {binding["symbol"]}')
         options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
         return digest(ast.dump(symbols[binding['symbol']], include_attributes=False, **options).encode())
+    if binding['language'] == 'javascript-module':
+        if path.suffix != '.mjs' or binding['symbol'] != '<module>':
+            raise ValueError('JavaScript bindings require a complete .mjs module')
+        return digest(path.read_bytes().replace(b'\r\n', b'\n'))
     if binding['language'] != 'rust':
-        raise ValueError('Source binding language must be python or rust')
+        raise ValueError('Source binding language must be python, rust or javascript-module')
     leaf = binding['symbol'].replace('::', '.').rsplit('.', 1)[-1]
     if leaf != '<module>' and not re.search(r'\b(?:fn|enum|struct)\s+' + re.escape(leaf) + r'\b', source):
         raise ValueError(f'Missing Rust declaration: {binding["symbol"]}')
@@ -106,6 +110,8 @@ def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
             for name in re.findall(r'\benum\s+([A-Za-z_][A-Za-z_0-9]*)', path.read_text('utf-8')):
                 if re.search(r'(State|Status|Phase)$', name):
                     found.add((path.relative_to(root).as_posix(), name))
+        for path in sorted(base.rglob('*.mjs')):
+            found.add((path.relative_to(root).as_posix(), '<module>'))
     return found
 
 

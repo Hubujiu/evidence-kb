@@ -38,15 +38,31 @@ def checked_native(summary_path):
     return tuple(selected)
 
 
-def browser_verdict(path):
+def browser_verdict(path, *, expected=CASES, classname='knowledge.e2e.js'):
     document = ET.parse(path).getroot()
     cases = list(document.iter('testcase'))
-    if (len(cases) != len(CASES) or {case.get('name') for case in cases} != CASES
-            or any(case.get('classname') != 'knowledge.e2e.js' for case in cases)
+    if (len(cases) != len(expected) or {case.get('name') for case in cases} != expected
+            or any(case.get('classname') != classname for case in cases)
             or any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
             or any((case.findtext('system-out') or '').startswith('flaky:') for case in cases)):
-        raise ValueError('Both browser cases must pass without skips or retries')
+        raise ValueError('Every expected browser case must pass without skips or retries')
     return {'tests': len(cases), 'failures': 0, 'errors': 0, 'skipped': 0}
+
+
+def checked_browser_assets(client, url):
+    observed = {}
+    for path, name, media_type in (('/', 'console.html', 'text/html'),
+                                   ('/console.mjs', 'console.mjs', 'text/javascript')):
+        response = client.get(url + path)
+        expected = (ROOT / 'kb_platform' / name).read_bytes()
+        if (response.status_code != 200 or response.content != expected
+                or response.headers.get('content-type', '').split(';')[0] != media_type
+                or response.headers.get('cache-control') != 'no-store'
+                or response.headers.get('x-content-type-options') != 'nosniff'):
+            raise ValueError(f'Browser asset {path} must expose the exact current source and expected response headers')
+        observed[path] = {'status': response.status_code, 'sha256': sha256(response.content).hexdigest(),
+                          'bytes': len(response.content), 'content_type': response.headers['content-type']}
+    return observed
 
 
 def run(summary, output, dsn, migration_dsn=None):
@@ -111,6 +127,7 @@ def run(summary, output, dsn, migration_dsn=None):
                         if time.monotonic() >= deadline:
                             raise TimeoutError('Rust host HTTP readiness deadline exceeded')
                         time.sleep(0.1)
+                    report['browser_assets'] = checked_browser_assets(client, url)
                 with (output / 'browser.log').open('w', encoding='utf-8') as log:
                     result = subprocess.run([node, str(cli), 'run', '--output', str(browser_output),
                         '--no-cache', '--retries', '0'], cwd=ROOT / 'e2e', env=env,
@@ -125,6 +142,9 @@ def run(summary, output, dsn, migration_dsn=None):
                         or browser_run['usage']['modelTokens'] != 0
                         or browser_run['usage']['maxModelCallsInStep'] != 0):
                     raise RuntimeError('Browser acceptance requires deterministic steps without model calls')
+                from .console_browser_integration import run_cases
+
+                report['console_state'] = run_cases(output / 'console-state', env)
             finally:
                 stop.touch()
                 try:

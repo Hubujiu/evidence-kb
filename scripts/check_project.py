@@ -803,6 +803,8 @@ def main() -> int:
         results.append(run_check('formal-lint', [sys.executable, '-B', '-m',
             'kb_platform.rag_testing.formal_state_machines', '--lint-only',
             '--output', str(output / 'formal-lint')], output, env))
+        results.append(run_check('browser-source-lint', [sys.executable, '-B', '-m',
+            'kb_platform.rag_testing.browser_sources'], output, env))
         target = ROOT / "target/checks" / uuid4().hex
         cargo = ["cargo", "--color", "never"]
         results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))
