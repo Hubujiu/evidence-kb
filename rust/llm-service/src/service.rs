@@ -287,6 +287,7 @@ impl PreparedCall {
             done: false,
             cleanup_error: None,
             observed_usage,
+            terminal_usage: None,
         })
     }
 
@@ -311,6 +312,7 @@ pub struct LlmStream {
     done: bool,
     cleanup_error: Option<LlmError>,
     observed_usage: Arc<Mutex<Option<TokenUsage>>>,
+    terminal_usage: Option<TokenUsage>,
 }
 
 impl LlmStream {
@@ -329,12 +331,6 @@ impl LlmStream {
             event = self.receiver.recv() => event.unwrap_or_else(|| StreamEvent::Finish {
                 reason: FinishReason::Error { failure: LlmError::new("LLM_STREAM_MISSING_FINISH", "provider stream ended") }, replay_state: None }),
         };
-        if matches!(event, StreamEvent::Finish { .. })
-            && let Ok(observed) = self.observed_usage.lock()
-            && let Some(usage) = observed.clone()
-        {
-            let _ = self.assembler.push(StreamEvent::Usage { usage });
-        }
         let event = match self.assembler.push(event.clone()) {
             Ok(()) => event,
             Err(error) => {
@@ -343,6 +339,9 @@ impl LlmStream {
             }
         };
         if self.assembler.finished() {
+            if let Ok(observed) = self.observed_usage.lock() {
+                self.terminal_usage = observed.clone();
+            }
             self.done = true;
             self.receiver.close();
         }
@@ -374,6 +373,9 @@ impl LlmStream {
         self.assembler
             .response(&self.provider, &self.model)
             .map(|mut response| {
+                if let Some(usage) = &self.terminal_usage {
+                    response.usage = Some(usage.clone());
+                }
                 response.adapter_identity = Some(self.identity.clone());
                 response
             })

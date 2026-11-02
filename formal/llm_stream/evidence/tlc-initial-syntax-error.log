@@ -1,0 +1,28 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 122 and seed 3864300176552641525 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 28] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-llm-stream-formal/formal/llm_stream/LlmStreamKnowledge.tla
+***Parse Error***
+
+  Precedence conflict between ops \land in block line 67, col 30 to line 67, col 31 of module LlmStreamKnowledge and \lor.
+
+Residual stack trace follows:
+ExtendableExpr starting at line 67, column 33.
+ExtendableExpr starting at line 67, column 21.
+Expression starting at line 67, column 20.
+Junction Item starting at line 67, column 17.
+AND-OR Junction starting at line 67, column 17.
+
+
+Fatal errors while parsing TLA+ spec in file LlmStreamKnowledge
+
+tla2sany.semantic.AbortException
+*** Abort messages: 1
+
+In module LlmStreamKnowledge
+
+Could not parse module LlmStreamKnowledge from file LlmStreamKnowledge.tla
+
+
+Starting... (2026-11-02 11:37:06)
+Error: Parsing or semantic analysis failed.
+Finished in 00s at (2026-11-02 11:37:06)

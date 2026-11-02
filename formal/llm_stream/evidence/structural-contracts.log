@@ -1,0 +1,8 @@
+test_common_terminal_snapshot_and_real_task_ownership_structure (kb_platform.rag_testing.llm_stream_formal_contracts.LlmStreamFormalContracts.test_common_terminal_snapshot_and_real_task_ownership_structure) ... ok
+test_mandatory_registry_lint_rejects_regression_even_with_refreshed_source_hash (kb_platform.rag_testing.llm_stream_formal_contracts.LlmStreamFormalContracts.test_mandatory_registry_lint_rejects_regression_even_with_refreshed_source_hash) ... ok
+test_seeded_snapshot_sum_early_release_and_content_limit_mutants (kb_platform.rag_testing.llm_stream_formal_contracts.LlmStreamFormalContracts.test_seeded_snapshot_sum_early_release_and_content_limit_mutants) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.064s
+
+OK

@@ -1,0 +1,71 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 22 and seed -6320846736433808652 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 37] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-llm-stream-formal/formal/llm_stream/LlmStreamKnowledge.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module LlmStreamKnowledge
+Starting... (2026-11-02 11:49:27)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 11:49:28.
+Error: Invariant NoPrematureRelease is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ terminalCount = 0
+/\ cancelled = FALSE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 0
+/\ published = 0
+/\ dispatched = FALSE
+/\ closed = FALSE
+/\ produced = 0
+/\ terminal = "none"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<>>
+/\ knownAtTerminal = 0
+/\ lease = TRUE
+
+State 2: <Cancel line 57, col 11 to line 60, col 55 of module LlmStreamKnowledge>
+/\ terminalCount = 0
+/\ cancelled = TRUE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 0
+/\ published = 0
+/\ dispatched = FALSE
+/\ closed = FALSE
+/\ produced = 0
+/\ terminal = "none"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<>>
+/\ knownAtTerminal = 0
+/\ lease = TRUE
+
+State 3: <SyntheticFinish line 61, col 20 to line 68, col 83 of module LlmStreamKnowledge>
+/\ terminalCount = 1
+/\ cancelled = TRUE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 0
+/\ published = 0
+/\ dispatched = FALSE
+/\ closed = FALSE
+/\ produced = 0
+/\ terminal = "aborted"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<>>
+/\ knownAtTerminal = 0
+/\ lease = FALSE
+
+15 states generated, 13 distinct states found, 9 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 6 (minimum is 2, the maximum 9 and the 95th percentile is 9).
+Finished in 01s at (2026-11-02 11:49:28)

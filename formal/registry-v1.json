@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -181,7 +181,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -242,7 +242,7 @@
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation → consumed/released"
+        "pending reservation \u2192 consumed/released"
       ],
       "transitions": [
         "BudgetLedger.reserve",
@@ -603,7 +603,7 @@
         "rust/llm-service/src/registry.rs"
       ],
       "states": [
-        "route Active→Draining→Cleaning→removed/CleanupFailed"
+        "route Active\u2192Draining\u2192Cleaning\u2192removed/CleanupFailed"
       ],
       "transitions": [
         "RoutePhase",
@@ -681,15 +681,19 @@
     },
     {
       "id": "llm_stream",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "rust/llm-service/src/assembler.rs",
         "rust/llm-service/src/service.rs"
       ],
       "states": [
-        "block start/delta/end"
+        "admitted/dispatching/task completed independent of observed terminal and cleanup acknowledgement",
+        "one abstract block; finite content room; queued events; latest observed and terminal-published usage snapshots"
       ],
       "transitions": [
+        "EventSink::send",
+        "LlmStream::next",
+        "Assembler::push",
         "Assembler::push_checked",
         "Assembler::fail",
         "Assembler::end",
@@ -697,17 +701,26 @@
         "LlmStream::drop"
       ],
       "invariants": [
-        "One terminal; no events after finish; unfinished tool never executable; usage snapshots replace rather than sum; cancellation/close waits actual task completion."
+        "The latest validated usage known at the common terminal publication boundary survives ordinary and synthesized error terminals. Snapshots replace rather than add; unknown remains unknown.",
+        "Terminal publication never releases the provider admission; close cannot claim completion while the provider task is unfinished.",
+        "Only a complete tool may be executable; content byte admission remains clone-validate-commit."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "One admitted call, at most one adapter dispatch; bounded queue capacity two and four emitted frames, one abstract block and three content-room levels.",
+        "Validated usage snapshots are abstracted as unknown/first/second identities, including downward counter corrections; snapshot identity is not a token estimate or bill.",
+        "Mutex and serialized EventSink acceptance are atomic boundaries. The model assumes no mutex poison and abstracts provider dispatch completion with admission release; wrapper bookkeeping after provider return is not a provider side effect."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No live provider compatibility, HTTP SSE, tokenizer, accounting ledger, cost or provider billing proof.",
+        "No OS or host process model, unbounded events, multiblock/replay alignment or numeric overflow proof."
       ],
       "source_bindings": [
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::push",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        },
         {
           "path": "rust/llm-service/src/assembler.rs",
           "language": "rust",
@@ -729,18 +742,85 @@
         {
           "path": "rust/llm-service/src/service.rs",
           "language": "rust",
+          "symbol": "EventSink::send",
+          "sha256": "11735c9fc87beb29044bda8963f95beed6169de6ba65fb5abf08cd5ca319b790"
+        },
+        {
+          "path": "rust/llm-service/src/service.rs",
+          "language": "rust",
+          "symbol": "LlmStream::next",
+          "sha256": "11735c9fc87beb29044bda8963f95beed6169de6ba65fb5abf08cd5ca319b790"
+        },
+        {
+          "path": "rust/llm-service/src/service.rs",
+          "language": "rust",
           "symbol": "LlmStream::close",
-          "sha256": "d5752427512911df2690a8377fa6bd05bbb64c823ea73891cd04ac82b8d02726"
+          "sha256": "11735c9fc87beb29044bda8963f95beed6169de6ba65fb5abf08cd5ca319b790"
         },
         {
           "path": "rust/llm-service/src/service.rs",
           "language": "rust",
           "symbol": "LlmStream::drop",
-          "sha256": "d5752427512911df2690a8377fa6bd05bbb64c823ea73891cd04ac82b8d02726"
+          "sha256": "11735c9fc87beb29044bda8963f95beed6169de6ba65fb5abf08cd5ca319b790"
+        },
+        {
+          "path": "rust/llm-service/src/service.rs",
+          "language": "rust",
+          "symbol": "LlmStream::response",
+          "sha256": "11735c9fc87beb29044bda8963f95beed6169de6ba65fb5abf08cd5ca319b790"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/llm_stream/LlmStreamKnowledge.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "llm-stream-knowledge",
+          "config": "formal/llm_stream/LlmStreamKnowledge.cfg",
+          "bounds": {
+            "admitted_calls": 1,
+            "dispatches": 1,
+            "queued_frames": 2,
+            "emitted_frames": 4,
+            "blocks": 1,
+            "content_room_levels": 3,
+            "usage_snapshots": 2
+          },
+          "invariants": [
+            "TypeOK",
+            "NoLostKnownUsage",
+            "NoPrematureRelease",
+            "NoFalseCleanup",
+            "NoExecutablePartialTool",
+            "NoFabricatedUsage",
+            "OneTerminal"
+          ],
+          "properties": []
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/llm_stream/LlmStreamKnowledge.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "llm-stream-legacy-usage",
+          "config": "formal/llm_stream/LlmStreamKnowledgeLegacy.cfg",
+          "expected_invariant": "NoLostKnownUsage"
+        },
+        {
+          "module": "formal/llm_stream/LlmStreamKnowledge.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "llm-stream-early-release",
+          "config": "formal/llm_stream/LlmStreamKnowledgeEarlyRelease.cfg",
+          "expected_invariant": "NoPrematureRelease"
+        }
+      ],
+      "remaining_obligations": [
+        "Usage reported after the terminal-boundary snapshot is not claimed to be included; genuine unreported provider cost remains unknown.",
+        "Assembler block indexes, replay metadata projection, UTF-8 bytes and malformed DTO domains require existing/native contracts beyond this one-block abstraction.",
+        "Task completion has no fairness assumption; noncooperative providers can leave close pending indefinitely. Registry generations and concurrent route adoption remain in llm_registry."
+      ]
     },
     {
       "id": "kernel_execution",
@@ -750,7 +830,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY↔WAITING"
+        "READY\u2194WAITING"
       ],
       "transitions": [
         "transition",
@@ -887,7 +967,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1080,7 +1160,7 @@
         "rust/storage-service/src/transaction.rs"
       ],
       "states": [
-        "begin→held→executing→commit/rollback"
+        "begin\u2192held\u2192executing\u2192commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1151,7 +1231,7 @@
         "kb_platform/storage_adapters/values.py"
       ],
       "states": [
-        "Input→Executing→Result→Values / Failed"
+        "Input\u2192Executing\u2192Result\u2192Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1217,7 +1297,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1279,7 +1359,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent→issued→expired/revoked"
+        "absent\u2192issued\u2192expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1404,7 +1484,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1494,7 +1574,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1543,7 +1623,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1616,7 +1696,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",

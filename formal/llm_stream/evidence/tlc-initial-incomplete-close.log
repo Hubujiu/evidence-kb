@@ -1,0 +1,51 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 127 and seed -8271554616971759716 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 27] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/75c2273f6a80/evidence-kb-llm-stream-formal/formal/llm_stream/LlmStreamKnowledge.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module LlmStreamKnowledge
+Starting... (2026-11-02 11:38:28)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-02 11:38:28.
+Error: Successor state is not completely specified by action Close of the next-state relation. The following variable is not assigned: cancelled.
+
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ cancelled = FALSE
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 0
+/\ published = 0
+/\ dispatched = FALSE
+/\ closed = FALSE
+/\ produced = 0
+/\ terminal = "none"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<>>
+/\ knownAtTerminal = 0
+/\ lease = TRUE
+
+State 2: <Close line 72, col 10 to line 77, col 43 of module LlmStreamKnowledge>
+/\ cancelled = null
+/\ room = 2
+/\ taskDone = FALSE
+/\ observed = 0
+/\ published = 0
+/\ dispatched = FALSE
+/\ closed = FALSE
+/\ produced = 0
+/\ terminal = "none"
+/\ providerFinished = FALSE
+/\ block = "none"
+/\ assembled = 0
+/\ queue = <<>>
+/\ knownAtTerminal = 0
+/\ lease = TRUE
+
+5 states generated, 3 distinct states found, 2 states left on queue.
+The depth of the complete state graph search is 2.
+Finished in 01s at (2026-11-02 11:38:28)
