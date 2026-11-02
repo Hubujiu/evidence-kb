@@ -46,6 +46,12 @@ RULES = {
     'collect affected cleanup': ('collect', 'scope.affected.retain(|id| !retired.contains(id));'),
     'collect diagnostic cleanup': ('collect', '.is_none_or(|host| !hosts.contains(&host))'),
     'monotonic handle allocation': ('allocate', '.checked_add(1)'),
+    'exit scope lookup': ('instance_exited', '.get(&host).and_then(|scope| scope.instances.get(&plugin)).and_then(|id| self.instances.get(id))'),
+    'exit instance identity': ('instance_exited', 'current.id != instance'),
+    'exit generation identity': ('instance_exited', 'current.generation != generation'),
+    'exit enabled guard': ('instance_exited', 'current.desired != Desired::Enabled'),
+    'exit live phase': ('instance_exited', '!matches!(current.phase, Phase::Starting | Phase::Active)'),
+    'exit disables target': ('instance_exited', 'enabled: Some(false)'),
     'deadline minimum': ('acquire', '(Some(a), Some(b)) => Some(a.min(b))'),
     'expired admission': ('acquire', 'if deadline.is_some_and(|deadline| deadline <= self.now) { return Err(Error::new("deadline", "deadline already elapsed")); }'),
 }

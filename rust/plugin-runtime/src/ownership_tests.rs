@@ -872,3 +872,93 @@ fn subtree_collection_follows_detached_parent_links_and_call_scope_ownership() {
         assert_ne!(new_host, grandchild);
     }
 }
+
+#[test]
+fn exited_notice_uses_full_incarnation_identity_after_remove_and_readd() {
+    for publish in [false, true] {
+        let mut runtime = Coordinator::default();
+        let manifest = plugin("process", &["service"], &[]);
+        let host = create(&mut runtime, vec![manifest.clone()], None);
+        let old = poll(&mut runtime, host).remove(0);
+        complete(&mut runtime, &old, "ok", &["service"]);
+        call(&mut runtime, "apply", json!({"host":host,"plugins":[]})).unwrap();
+        for action in poll(&mut runtime, host) {
+            if action["kind"] == "cleanup" {
+                complete(&mut runtime, &action, "ok", &[]);
+            }
+        }
+        call(
+            &mut runtime,
+            "apply",
+            json!({"host":host,"plugins":[manifest]}),
+        )
+        .unwrap();
+        let current = poll(&mut runtime, host).remove(0);
+        assert_ne!(old["instance"], current["instance"]);
+        assert_eq!(old["generation"], current["generation"]);
+        if publish {
+            complete(&mut runtime, &current, "ok", &["service"]);
+        }
+        let foreign = create(&mut runtime, vec![plugin("process", &["other"], &[])], None);
+        let foreign_init = poll(&mut runtime, foreign).remove(0);
+        complete(&mut runtime, &foreign_init, "ok", &["other"]);
+        let before = call(&mut runtime, "inspect", json!({"host":host})).unwrap();
+        let other = call(&mut runtime, "inspect", json!({"host":foreign})).unwrap();
+        for notice in [
+            json!({"host":host,"plugin":"process","instance":old["instance"],"generation":old["generation"]}),
+            json!({"host":foreign,"plugin":"process","instance":current["instance"],"generation":current["generation"]}),
+            json!({"host":host,"plugin":"other","instance":current["instance"],"generation":current["generation"]}),
+            json!({"host":host,"plugin":"process","instance":foreign_init["instance"],"generation":foreign_init["generation"]}),
+            json!({"host":host,"plugin":"process","instance":current["instance"],"generation":99}),
+        ] {
+            assert_eq!(
+                call(&mut runtime, "instance_exited", notice).unwrap()["accepted"],
+                false
+            );
+            assert_eq!(
+                call(&mut runtime, "inspect", json!({"host":host})).unwrap(),
+                before
+            );
+            assert_eq!(
+                call(&mut runtime, "inspect", json!({"host":foreign})).unwrap(),
+                other
+            );
+        }
+        let notice = json!({"host":host,"plugin":"process","instance":current["instance"],"generation":current["generation"]});
+        assert_eq!(
+            call(&mut runtime, "instance_exited", notice.clone()).unwrap()["accepted"],
+            true
+        );
+        assert_eq!(
+            call(&mut runtime, "instance_exited", notice).unwrap()["accepted"],
+            false
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":host})).unwrap()["instances"][0]["desired"],
+            "disabled"
+        );
+        if !publish {
+            complete(&mut runtime, &current, "ok", &["service"]);
+        }
+        loop {
+            let actions = poll(&mut runtime, host);
+            if actions.is_empty() {
+                break;
+            }
+            for action in actions {
+                assert_ne!(action["kind"], "init");
+                if action["kind"] == "cleanup" {
+                    complete(&mut runtime, &action, "ok", &[]);
+                }
+            }
+        }
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":host})).unwrap()["instances"][0]["desired"],
+            "disabled"
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":foreign})).unwrap(),
+            other
+        );
+    }
+}

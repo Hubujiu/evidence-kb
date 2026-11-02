@@ -251,16 +251,45 @@ After correction, 20 targeted methods / 44 refreshed-hash mutants and all 56
 unified formal runs plus two evidence contracts pass. This stage changes no
 production source and establishes no new implementation defect.
 
+## Stage 7: exit-notice incarnation identity (model-only)
+
+Pinned Cordis `_reload` checks the captured epoch before assigning a late error;
+its structural disposer also joins actual teardown. That mature identity pattern
+was reviewed before this separate Rust notice model, not treated as a port.
+`ExitIdentity` maps `Publish`, `Update`, `Remove`, `Finish`, `Readd` and `Notice`
+to completion, reconfiguration, removal/cleanup, apply's fresh instance allocation,
+and `instance_exited`. Two never-reused instance identities can each have generation
+1; generation alone therefore cannot identify an incarnation. A replacement also
+retains the first instance while advancing to generation 2. Wrong scope/plugin
+probes address the modeled target, not arbitrary foreign-owner exit processing.
+
+Four seeded negatives remove scope/plugin lookup, instance identity, generation,
+or live-phase matching. Three reached witnesses require a stale-generation notice
+ignored before valid successor exit, and stale old-instance/namespace notices
+ignored before valid **readded** Starting or Active exit plus duplicate rejection.
+The Starting/Active flags explicitly belong to the readded identity, preventing
+an earlier successful branch from satisfying a later witness. Enabled-state
+checking remains a mandatory source guard; in this bounded graph it is redundant
+with phase eligibility rather than a claimed independently reachable negative.
+Cleanup and dependent convergence are composed assumptions from earlier slices.
+
+The additional real test runs both Starting and Active cases after remove/readd,
+checks equal generation but unequal instance ID, rejects wrong host/plugin/instance/
+generation without mutating either runtime, and confirms valid exit disables only
+the current owner. All 57 native contracts, 20 targeted methods / 50 refreshed-hash
+mutants, and 64 unified formal runs plus two evidence contracts pass. No new
+production defect was reproduced in this owner. Ordinary full remains NOT_RUN.
+
 ## Explicit remaining work and boundaries
 
 This feature is still WIP. Concrete next owners, not merely external assumptions:
 
-- stale/current `instance_exited` events and bounded diagnostic retention;
+- bounded diagnostic retention;
 - explicit failed-initialization retry (distinct from already modeled cleanup retry).
 
 Their source bindings are inventory/review anchors only until separate registered
 models and actual contracts cover their transitions. Remaining work is not
-silently declared covered by the six existing slices.
+silently declared covered by the seven existing slices.
 
 Unbounded scopes/plugins/calls and arbitrary recursive intercept payloads,
 arbitrary callback effects, process transport, allocation exhaustion, OS failure,

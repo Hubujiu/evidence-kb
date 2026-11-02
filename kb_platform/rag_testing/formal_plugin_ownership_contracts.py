@@ -57,6 +57,12 @@ class PluginOwnershipLintContracts(unittest.TestCase):
             'collect affected cleanup': ('scope.affected.retain(|id| !retired.contains(id));', 'scope.affected.retain(|id| retired.contains(id));'),
             'collect diagnostic cleanup': ('.is_none_or(|host| !hosts.contains(&host))', '.is_none_or(|host| hosts.contains(&host))'),
             'monotonic handle allocation': ('.checked_add(1)', '.checked_add(0)'),
+            'exit scope lookup': ('.get(&host)\n            .and_then(|scope| scope.instances.get(&plugin))', '.values().next()\n            .and_then(|scope| scope.instances.get(&plugin))'),
+            'exit instance identity': ('current.id != instance', 'current.id == instance'),
+            'exit generation identity': ('current.generation != generation', 'current.generation == generation'),
+            'exit enabled guard': ('current.desired != Desired::Enabled', 'current.desired == Desired::Enabled'),
+            'exit live phase': ('!matches!(current.phase, Phase::Starting | Phase::Active)', 'matches!(current.phase, Phase::Starting | Phase::Active)'),
+            'exit disables target': ('enabled: Some(false)', 'enabled: Some(true)'),
             'deadline minimum': ('Some(a.min(b))', 'Some(a.max(b))'),
             'expired admission': ('deadline <= self.now', 'deadline < self.now'),
         }
