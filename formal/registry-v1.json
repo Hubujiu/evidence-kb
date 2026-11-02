@@ -341,7 +341,7 @@
           "path": "kb_platform/knowledge_turn.py",
           "language": "python",
           "symbol": "KnowledgeTurn.run",
-          "sha256": "e8a194d7ca5e7ccb93c0994de82cb60a3755cc99a4b38afd751a345f60fb4a3d"
+          "sha256": "141be74f7de48bac30c7e82b4ef81a2a6ad11d05acc2d02efae6955863bda5ea"
         },
         {
           "path": "kb_platform/harness_sessions.py",
@@ -876,7 +876,7 @@
     },
     {
       "id": "knowledge_workflow",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/knowledge_workflow.py",
         "kb_platform/knowledge_turn.py",
@@ -884,27 +884,36 @@
         "kb_platform/agent_builtin_tools.py",
         "kb_platform/agent_work_state.py",
         "kb_platform/knowledge_answer.py",
-        "kb_platform/rag_testing/context_decisions.py"
+        "kb_platform/rag_testing/context_decisions.py",
+        "kb_platform/knowledge_planning.py",
+        "kb_platform/harness_graph.py",
+        "rust/agent-services/src/graph.rs"
       ],
       "states": [
         "plan↔tool→compose→verify→repair→verify→deliver→complete"
       ],
       "transitions": [
-        "KnowledgeWorkflow.__init__",
-        "KnowledgeWorkflow._choose_route",
-        "KnowledgeTurn.check_execution",
-        "initial_state"
+        "KnowledgeTurn.run source-policy/authority invalidation and post-runtime result classification",
+        "KnowledgePlanning.plan_node/tool_node bounded exploration and durable tool receipts",
+        "KnowledgeWorkflow._choose_route plan/tool/compose/verify/repair/deliver",
+        "KnowledgeAnswer.compose_node/verify_node/repair_node/deliver_node domain outcomes",
+        "GraphProgram.next/execute/accept and Rust Graph.next/accept operation settlement"
       ],
       "invariants": [
         "Repair at most once; step budget honored; source switch invalidates stale evidence; answer success distinct from run terminality; failure emits no answer/claims/evidence."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "One serialized turn; MaxSteps=2 represents bounded tool exploration, not all supported configurations.",
+        "Model environment supplies finite outcome/permission/cancellation/budget observations at explicitly identified execution checkpoints.",
+        "Authority checks and evidence validation are not atomic with external database commit or HTTP delivery; no revocation-after-check guarantee.",
+        "Successful persistence is an abstract interface; external transactions, acknowledgement uncertainty, concurrent session ownership and physical provider accounting belong to other owners.",
+        "Only revalidated pinned evidence may survive an auth-only reset; policy changes and failed revalidation discard prior evidence and derived context."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No source-to-TLA refinement proof or semantic answer-quality proof; AST source bindings require review but do not establish correctness.",
+        "No external database isolation, network/filesystem durability, provider billing, arbitrary callbacks or unbounded data proof.",
+        "No liveness/fairness property; interruption does not prove a tool was unsent or rolled back.",
+        "Semantic verification repair count excludes independent local schema/citation-format repair and abstention review."
       ],
       "source_bindings": [
         {
@@ -978,10 +987,120 @@
           "language": "python",
           "symbol": "CanonicalRetentionAdapter.run",
           "sha256": "1c95f08ea31b4f7688b6a73d8af00025e91b2134c5c6fdcd67a74485dda423e9"
+        },
+        {
+          "path": "kb_platform/knowledge_turn.py",
+          "language": "python",
+          "symbol": "KnowledgeTurn.run",
+          "sha256": "141be74f7de48bac30c7e82b4ef81a2a6ad11d05acc2d02efae6955863bda5ea"
+        },
+        {
+          "path": "kb_platform/knowledge_turn.py",
+          "language": "python",
+          "symbol": "KnowledgeTurn.before_node",
+          "sha256": "a4ee81615bff0630367acbcc2242fc809372bfcce7d8027bf3f01f9adddf314e"
+        },
+        {
+          "path": "kb_platform/knowledge_planning.py",
+          "language": "python",
+          "symbol": "KnowledgePlanning.plan_node",
+          "sha256": "88bf8d88e80ec7502c007c3d33b2a02bfc5449fbbfdfcd0635ebbe759eb7b82b"
+        },
+        {
+          "path": "kb_platform/knowledge_planning.py",
+          "language": "python",
+          "symbol": "KnowledgePlanning.tool_node",
+          "sha256": "2d0340718a634514472a7a2b8f04779aba63162e9a2733f04c4d6e636307b39c"
+        },
+        {
+          "path": "kb_platform/knowledge_answer.py",
+          "language": "python",
+          "symbol": "KnowledgeAnswer.verify_node",
+          "sha256": "9246ec6260006e637300b756d8b4a96e11d6fc9c4c885ae331d28f82e7eb4a41"
+        },
+        {
+          "path": "kb_platform/harness_graph.py",
+          "language": "python",
+          "symbol": "GraphProgram",
+          "sha256": "26f6a8f98551ba950a174ce485c4e5b59caa880311c7cb50528942614c852a0e"
+        },
+        {
+          "path": "rust/agent-services/src/graph.rs",
+          "language": "rust",
+          "symbol": "<module>",
+          "sha256": "df4541263d852746244b0c6575e2f9c4c5bd394df33caf294d53c6969dbe23c6"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/knowledge_workflow/KnowledgeWorkflow.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "knowledge-workflow",
+          "config": "formal/knowledge_workflow/KnowledgeWorkflow.cfg",
+          "invariants": [
+            "TypeOK",
+            "TerminalCommitConsistent",
+            "FailedBusinessUsesRedactedFail",
+            "NoFailedAnswerPromotion",
+            "SingleSemanticRepair",
+            "SourceEpochClearsDerivedContext",
+            "CurrentWorkEpoch",
+            "UnsupportedDoesNotAnswer",
+            "ExplorationBound",
+            "ReceiptsSurviveFailure",
+            "ObservedStopCannotFinish"
+          ],
+          "properties": [],
+          "bounds": {
+            "turns": 1,
+            "MaxSteps": 2,
+            "source_epochs": [
+              0,
+              1,
+              2
+            ],
+            "semantic_repairs_for_negative_control": [
+              0,
+              1,
+              2
+            ],
+            "outcomes": "finite status/verdict/stop classes; payload and authority-check observations abstracted"
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/knowledge_workflow/KnowledgeWorkflow.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "knowledge-workflow-legacy-error",
+          "config": "formal/knowledge_workflow/LegacyBusinessErrorCommitNegative.cfg",
+          "expected_invariant": "FailedBusinessUsesRedactedFail"
+        },
+        {
+          "module": "formal/knowledge_workflow/KnowledgeWorkflow.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "knowledge-workflow-repair-bound",
+          "config": "formal/knowledge_workflow/UnboundedSemanticRepairNegative.cfg",
+          "expected_invariant": "SingleSemanticRepair"
+        },
+        {
+          "module": "formal/knowledge_workflow/KnowledgeWorkflow.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "id": "knowledge-workflow-source-reset",
+          "config": "formal/knowledge_workflow/StaleSourceCheckpointNegative.cfg",
+          "expected_invariant": "SourceEpochClearsDerivedContext"
+        }
+      ],
+      "remaining_obligations": [
+        "Generic kernel operation identities, plugin/provider retries, physical budget settlement and session writer/persistence protocols remain separate models and contracts.",
+        "Cross-process interruption/unknown outcomes, external authority changes between final check and commit/delivery, and commit acknowledgement loss are not atomically modeled.",
+        "Full original evidence content, semantic verifier correctness, arbitrary tool/plugin implementations, model stochastic behavior and all configuration sizes are not covered.",
+        "ingestion_migration remains separately inventoried and unmodeled."
+      ]
     },
     {
       "id": "storage_registry",

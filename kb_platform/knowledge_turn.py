@@ -360,6 +360,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
 
 
             self.check_execution()
+            if response["status"] == "error":
+                raise PlatformError(response["stop_reason"], "Knowledge workflow failed", 503)
             if self.service.gateway.authorize(self.actor, self.scope) != self.authority:
                 raise PlatformError("SCOPE_CHANGED", "Authority changed before answer commit", 409)
             self.service.gateway.revalidate(
