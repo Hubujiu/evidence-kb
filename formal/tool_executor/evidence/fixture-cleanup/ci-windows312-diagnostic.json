@@ -1,0 +1,20 @@
+{
+  "head": "c88d64374a337124eab5c0cde7b5708d0c158769",
+  "merge": "09f65d56d9c270790b1b436baf9c561125e1d014",
+  "run": 41533447595,
+  "job": 125579233541,
+  "artifact": 13184140556,
+  "contracts": {
+    "total": 1076,
+    "failures": 0,
+    "errors": 2,
+    "skipped": 0,
+    "discovery_complete": true
+  },
+  "errors": [
+    "test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry)",
+    "test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy)"
+  ],
+  "diagnosis": "Owned SQLite fixture connections remain open after transaction context exit; Windows TemporaryDirectory cleanup raises WinError 32. Product retry assertions completed before cleanup. Same fixture bug as Python 3.13, not Tantivy PR51.",
+  "archive_digest_source": "ARCHIVE_SHA256SUMS; compared with GitHub artifact metadata and upload job log"
+}

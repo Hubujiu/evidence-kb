@@ -1,0 +1,41 @@
+{
+  "base_commit": "ab7decca16d3ac80a87ea4ebb283f53b4edfdc92",
+  "original_ci": {
+    "run": 41533447595,
+    "conclusion": "FAIL",
+    "head": "c88d64374a337124eab5c0cde7b5708d0c158769",
+    "tree": "2d064cc85d64891ff0bf841da1e2e150cdd20f63"
+  },
+  "legacy_close_observer_exit": 1,
+  "legacy_close_observer_failure": "ProgrammingError not raised: a connection remained usable before directory cleanup",
+  "initial_fixed_command_exit": 1,
+  "initial_fixed_command_error": "Requested nonexistent provider_runtime_contracts module; actual fixture/formal contracts passed. Invocation corrected without source change.",
+  "fixed_targeted_exit": 0,
+  "fixed_targeted_tests": 38,
+  "new_paid_calls": 0,
+  "product_retry_source_unchanged": true,
+  "tla_models_unchanged": true,
+  "original_local_full": {
+    "commit": "bf39dfa1dbe435dc8277ccfc97ff881b849d74c7",
+    "tree": "a7cfcea114b019f6e9e36600b50a0e9e3638cdd4",
+    "formal_exit": 0,
+    "formal_runs": 12,
+    "ordinary_exit": 1,
+    "contracts": 1077,
+    "assertion_failures": 0,
+    "errors": 18,
+    "all_errors": "missing socksio",
+    "failed_gates": [
+      "host-integration:180s timeout",
+      "contracts"
+    ],
+    "new_tool_contracts_passed": 12
+  },
+  "evidence_normalization": {
+    "reason": "Official exact-ancestry scan matched an already public artifact checksum in a JSON field named archive_api_upload_sha256. This is not a credential.",
+    "original_scan_exit": 1,
+    "original_scan_retained": "original-public-digest-scan.json",
+    "replacement": "Same public checksums represented in standard ARCHIVE_SHA256SUMS; no scanner, allowlist, source, test, registry or TLA change.",
+    "validation_scope": "Original full belongs only to bf39dfa; revised evidence tree receives targeted/mandatory lint, exact ancestry scan and a new precise CI. No duplicate local full for evidence-only formatting."
+  }
+}

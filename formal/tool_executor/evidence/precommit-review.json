@@ -1,0 +1,10 @@
+{
+  "base": "c8ef7582f226c07f1c06d3874dba159708ca7fad",
+  "production_change_confined_to": "ToolExecutor.execute",
+  "other_provider_runtime_ast_unchanged": true,
+  "formal_registry_violations": [],
+  "architecture_violations": [],
+  "new_model_calls": 0,
+  "new_embedding_calls": 0,
+  "new_judge_calls": 0
+}

@@ -1,0 +1,98 @@
+test_binary_upload_and_download_above_transport_limit_use_bounded_chunks (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_binary_upload_and_download_above_transport_limit_use_bounded_chunks) ... ok
+test_domain_errors_and_provider_status_survive_the_boundary (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_domain_errors_and_provider_status_survive_the_boundary) ... ok
+test_download_detects_source_change_between_chunks (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_download_detects_source_change_between_chunks) ... ok
+test_download_expiry_capacity_and_close_release_all_snapshots (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_download_expiry_capacity_and_close_release_all_snapshots) ... ok
+test_download_rechecks_revocation_before_each_chunk_and_discards_snapshot (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_download_rechecks_revocation_before_each_chunk_and_discards_snapshot) ... ok
+test_download_ticket_binds_actor_kind_offset_and_hash (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_download_ticket_binds_actor_kind_offset_and_hash) ... ok
+test_ingest_reserves_result_capacity_before_dispatching_write (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_ingest_reserves_result_capacity_before_dispatching_write) ... ok
+test_large_ingest_result_preserves_document_without_repeating_the_write (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_large_ingest_result_preserves_document_without_repeating_the_write) ... ok
+test_large_ingest_result_revocation_and_failed_reads_do_not_repeat_committed_ingest (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_large_ingest_result_revocation_and_failed_reads_do_not_repeat_committed_ingest) ... ok
+test_provider_capabilities_contain_json_metadata_without_provider_handles (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_provider_capabilities_contain_json_metadata_without_provider_handles) ... ok
+test_public_methods_roundtrip_actor_and_keep_internal_storage_private (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_public_methods_roundtrip_actor_and_keep_internal_storage_private) ... ok
+test_real_authority_revocation_stops_snapshot_without_another_original_read (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_real_authority_revocation_stops_snapshot_without_another_original_read) ... ok
+test_unknown_fields_and_invalid_binary_values_fail_before_platform_dispatch (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_unknown_fields_and_invalid_binary_values_fail_before_platform_dispatch) ... ok
+test_upload_tokens_are_actor_bound_and_require_exact_order_and_content_hash (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_upload_tokens_are_actor_bound_and_require_exact_order_and_content_hash) ... ok
+test_uploads_expire_and_close_releases_pending_content (kb_platform.rag_testing.knowledge_platform_contracts.KnowledgePlatformContracts.test_uploads_expire_and_close_releases_pending_content) ... ok
+test_claim_is_exclusive_and_terminal_reuse_returns_an_isolated_snapshot (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_claim_is_exclusive_and_terminal_reuse_returns_an_isolated_snapshot) ... ok
+test_invalid_public_hints_do_not_create_invalid_waits (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_invalid_public_hints_do_not_create_invalid_waits) ... ok
+test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep) ... 
+  test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep) (deadline=None) ... FAIL
+  test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep) (deadline=0.6) ... FAIL
+test_public_platform_error_retry_hint_blocks_retry_beyond_wait_budget (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_platform_error_retry_hint_blocks_retry_beyond_wait_budget) ... FAIL
+test_real_planning_caller_namespaces_receipts_by_session_turn_and_identity (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_real_planning_caller_namespaces_receipts_by_session_turn_and_identity) ... ok
+test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy) ... FAIL
+test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry) ... FAIL
+
+======================================================================
+FAIL: test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep) (deadline=None)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 76, in test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep
+    self.assertEqual((result.attempts, operation.call_count), (expected_calls, expected_calls))
+AssertionError: Tuples differ: (3, 3) != (2, 2)
+
+First differing element 0:
+3
+2
+
+- (3, 3)
++ (2, 2)
+
+======================================================================
+FAIL: test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep) (deadline=0.6)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 76, in test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep
+    self.assertEqual((result.attempts, operation.call_count), (expected_calls, expected_calls))
+AssertionError: Tuples differ: (3, 3) != (1, 1)
+
+First differing element 0:
+3
+1
+
+- (3, 3)
++ (1, 1)
+
+======================================================================
+FAIL: test_public_platform_error_retry_hint_blocks_retry_beyond_wait_budget (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_platform_error_retry_hint_blocks_retry_beyond_wait_budget)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 65, in test_public_platform_error_retry_hint_blocks_retry_beyond_wait_budget
+    self.assertEqual((result.status, result.attempts, case.platform.search.call_count), ('ERROR', 1, 1))
+AssertionError: Tuples differ: ('ERROR', 2, 2) != ('ERROR', 1, 1)
+
+First differing element 1:
+2
+1
+
+- ('ERROR', 2, 2)
+?           ^  ^
+
++ ('ERROR', 1, 1)
+?           ^  ^
+
+
+======================================================================
+FAIL: test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 51, in test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy
+    self.sqlite_case(read_only=False, unknown=False)
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 41, in sqlite_case
+    self.assertEqual(connection.execute('SELECT COUNT(*) FROM effects').fetchone()[0], 1)
+AssertionError: 2 != 1
+
+======================================================================
+FAIL: test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 54, in test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry
+    self.sqlite_case(read_only=True, unknown=True)
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 41, in sqlite_case
+    self.assertEqual(connection.execute('SELECT COUNT(*) FROM effects').fetchone()[0], 1)
+AssertionError: 2 != 1
+
+----------------------------------------------------------------------
+Ran 22 tests in 2.248s
+
+FAILED (failures=5)

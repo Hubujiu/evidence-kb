@@ -1,0 +1,23 @@
+[
+ {
+  "RuleID": "generic-api-key",
+  "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "StartLine": 7,
+  "EndLine": 7,
+  "StartColumn": 5,
+  "EndColumn": 98,
+  "Match": "archive_api_upload_sha256\": \"REDACTED\"",
+  "Secret": "REDACTED",
+  "File": "formal/tool_executor/evidence/fixture-cleanup/ci-windows312-diagnostic.json",
+  "SymlinkFile": "",
+  "Commit": "bf39dfa1dbe435dc8277ccfc97ff881b849d74c7",
+  "Link": "https://github.com/Hubujiu/evidence-kb/blob/bf39dfa1dbe435dc8277ccfc97ff881b849d74c7/formal/tool_executor/evidence/fixture-cleanup/ci-windows312-diagnostic.json#L7",
+  "Entropy": 3.8191564,
+  "Author": "Codex",
+  "Email": "codex@openai.com",
+  "Date": "2026-11-02T22:31:10Z",
+  "Message": "test(tools): close SQLite fixture connections before directory cleanup",
+  "Tags": [],
+  "Fingerprint": "bf39dfa1dbe435dc8277ccfc97ff881b849d74c7:formal/tool_executor/evidence/fixture-cleanup/ci-windows312-diagnostic.json:generic-api-key:7"
+ }
+]

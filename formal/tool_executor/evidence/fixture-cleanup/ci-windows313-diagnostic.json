@@ -1,0 +1,25 @@
+{
+  "head": "c88d64374a337124eab5c0cde7b5708d0c158769",
+  "tree": "2d064cc85d64891ff0bf841da1e2e150cdd20f63",
+  "run_id": 41533447595,
+  "job_id": 125579233543,
+  "artifact_id": 13184480108,
+  "failed_gates": [
+    {
+      "name": "contracts",
+      "exit_code": 1,
+      "log": "contracts.log"
+    }
+  ],
+  "contracts": {
+    "total": 1076,
+    "failures": 0,
+    "errors": 2,
+    "skipped": 0,
+    "discovery_complete": true
+  },
+  "confirmed_cause": "New sqlite_case fixture uses Connection as transaction context but never closes the live connections before TemporaryDirectory deletion; Windows WinError32 at effects.sqlite3 cleanup. Real new fixture defect, not unrelated native Tantivy error.",
+  "production_retry_assertions": "Reached directory cleanup after prior assertions; no assertion failures in artifact.",
+  "proposed_fix": "Explicit closing context for every real connection, preserving transaction exit/commit before TryAgain; regression verifies closed handles before directory cleanup and rejects old context-only mutant.",
+  "reruns": 0
+}

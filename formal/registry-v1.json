@@ -1651,7 +1651,7 @@
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "ToolExecutor.execute",
-          "sha256": "54de6c4d4282f26a91d6c9e5b86a066569b9a38d9a8725b667a44098ca9eec4c"
+          "sha256": "ca6023c888a3a65e9f668bfc6ec064f8795598ab62b110de012d2ae3f0658e8b"
         },
         {
           "path": "kb_platform/provider_runtime.py",
@@ -1882,6 +1882,167 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "tool_executor",
+      "status": "partial",
+      "owners": [
+        "kb_platform/provider_runtime.py",
+        "kb_platform/knowledge_planning.py",
+        "kb_platform/knowledge_contracts.py",
+        "kb_platform/knowledge_platform_contract.py"
+      ],
+      "states": [
+        "absent -> claimed/ready -> actual running -> retry assessment/wait -> terminal receipt -> isolated reuse"
+      ],
+      "transitions": [
+        "ToolExecutor.execute claim/invoke/wait/stop/sleep/finally",
+        "KnowledgePlanning.invoke_tool namespace",
+        "knowledge_contracts.domain_call public error conversion"
+      ],
+      "invariants": [
+        "No retry of declared mutable or UNKNOWN operation, including explicit TryAgain; no terminal replay; actual attempt and planned wait caps; public retry hint is a lower bound before budget admission. ERROR never proves absence of effects."
+      ],
+      "assumptions": [
+        "Pinned Tenacity 9.2.1 executes explicit TryAgain retry without its retry predicate but still evaluates wait then stop.",
+        "One executor, one request identity, two fingerprint classes, one secondary observation, three actual invocations, quarter-second abstract time units; lock actions and final receipt publication are atomic abstractions.",
+        "Readonly is a caller declaration, not a proof of external purity. Clock steps are monotonic. No fairness or hard real-time cancellation is assumed."
+      ],
+      "exclusions": [
+        "No durable restart idempotency, backend rollback inference or arbitrary function termination proof.",
+        "ProviderCircuit, durable receipts, remote transport/auth/format policies and provider/OS correctness are separate owners, not proved by this entry."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ToolExecutor.__init__",
+          "sha256": "c4f49e7836e16e2503c0753d691fd6c794c58f4db9d5ad17001e4cb58b98547e"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ToolExecutor.execute",
+          "sha256": "ca6023c888a3a65e9f668bfc6ec064f8795598ab62b110de012d2ae3f0658e8b"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "ToolOutcome",
+          "sha256": "8a6dfd586c7b05a2d632e7c1a7302b6a9d7934cb19b1a92c9e1a281caf04472a"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "classify_failure",
+          "sha256": "3c2f067657f416d0625091df29d3ebf9858af75c4aab2f189fb4ddbeb0195273"
+        },
+        {
+          "path": "kb_platform/provider_runtime.py",
+          "language": "python",
+          "symbol": "retry_after_seconds",
+          "sha256": "4a76ae50a9cabbeecf4053de1943723e1d4b4cc6004e8b82eb473c539661df79"
+        },
+        {
+          "path": "kb_platform/knowledge_planning.py",
+          "language": "python",
+          "symbol": "KnowledgePlanning.invoke_tool",
+          "sha256": "3b8c340f434df376c2669117861dadf669e0b0dfb2f3ae3d68e7e3eafe490b56"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "domain_call",
+          "sha256": "0fb863c0c8a1071f827cf3d1bcacf878ad67163a247fda9568119a48fdf90000"
+        },
+        {
+          "path": "kb_platform/knowledge_platform_contract.py",
+          "language": "python",
+          "symbol": "_call",
+          "sha256": "cfe141b79638fa80880f45e2d357ea71424dbf70eb2c11cb334209cb098ddf09"
+        },
+        {
+          "path": "kb_platform/rag_testing/tool_retry_ownership_contracts.py",
+          "language": "python",
+          "symbol": "ToolRetryOwnershipContracts.sqlite_case",
+          "sha256": "55da6e887b8a72445e9826473097572c1e737be2e93154bb7af51997adc5936c"
+        }
+      ],
+      "models": [
+        {
+          "id": "tool_executor_ownership",
+          "module": "formal/tool_executor/ToolExecutorOwnership.tla",
+          "config": "formal/tool_executor/ToolExecutorOwnership.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoMutatingReplay",
+            "NoUnknownReplay",
+            "RetryAfterRespected",
+            "TerminalDoesNotExecute",
+            "ReceiptKnowledge",
+            "ActualAttemptBound",
+            "WaitBudget"
+          ],
+          "properties": [],
+          "bounds": {
+            "executors": 1,
+            "request_ids": 1,
+            "fingerprint_classes": 2,
+            "secondary_observations": 1,
+            "actual_attempts": 3,
+            "planned_wait_units": 4,
+            "deadline_units": 8,
+            "hint_units": [
+              0,
+              2,
+              8
+            ],
+            "effects_per_attempt": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "tool_legacy_explicit_mutation",
+          "module": "formal/tool_executor/ToolExecutorOwnership.tla",
+          "config": "formal/tool_executor/LegacyExplicitMutation.cfg",
+          "expected_invariant": "NoMutatingReplay",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "tool_legacy_explicit_unknown",
+          "module": "formal/tool_executor/ToolExecutorOwnership.tla",
+          "config": "formal/tool_executor/LegacyExplicitUnknown.cfg",
+          "expected_invariant": "NoUnknownReplay",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "tool_legacy_public_hint",
+          "module": "formal/tool_executor/ToolExecutorOwnership.tla",
+          "config": "formal/tool_executor/LegacyPublicHint.cfg",
+          "expected_invariant": "RetryAfterRespected",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "tool_seeded_terminal_replay",
+          "module": "formal/tool_executor/ToolExecutorOwnership.tla",
+          "config": "formal/tool_executor/SeededTerminalReplay.cfg",
+          "expected_invariant": "TerminalDoesNotExecute",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Multiple executors/processes and durable restart behavior; request namespace remains caller responsibility.",
+        "Unbounded arguments/fingerprint collision resistance, arbitrary deepcopy failure and interruption between final Python operations.",
+        "Arbitrary operation duration, scheduler oversleep, clock precision, HTTP-date wall-clock drift and prompt cancellation during sleep.",
+        "Model-to-source mapping plus mandatory structural mutation checks are not compiler-level refinement or absence-of-bugs proof."
+      ]
     }
   ]
 }
