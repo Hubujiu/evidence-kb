@@ -1,5 +1,5 @@
 from concurrent.futures import Future
-from contextlib import nullcontext
+from contextlib import closing, nullcontext
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -21,13 +21,13 @@ class ToolRetryOwnershipContracts(unittest.TestCase):
     def sqlite_case(self, *, read_only, unknown):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'effects.sqlite3'
-            with sqlite3.connect(path) as connection:
+            with closing(sqlite3.connect(path)) as connection, connection:
                 connection.execute('CREATE TABLE effects (value INTEGER)')
             sleeps = []
             executor = ToolExecutor(max_attempts=2, max_wait_seconds=2, sleep=sleeps.append)
 
             def operation():
-                with sqlite3.connect(path) as connection:
+                with closing(sqlite3.connect(path)) as connection, connection:
                     connection.execute('INSERT INTO effects VALUES (1)')
                     count = connection.execute('SELECT COUNT(*) FROM effects').fetchone()[0]
                 if count == 1:
@@ -37,7 +37,7 @@ class ToolRetryOwnershipContracts(unittest.TestCase):
                 return {'count': count}
 
             result = executor.execute('session:turn:identity', 'mutating-fixture', {}, operation, read_only=read_only)
-            with sqlite3.connect(path) as connection:
+            with closing(sqlite3.connect(path)) as connection, connection:
                 self.assertEqual(connection.execute('SELECT COUNT(*) FROM effects').fetchone()[0], 1)
             self.assertEqual((result.status, result.attempts), ('UNKNOWN' if unknown else 'ERROR', 1))
             self.assertEqual(sleeps, [])
@@ -46,6 +46,32 @@ class ToolRetryOwnershipContracts(unittest.TestCase):
             self.assertTrue(reused.reused)
             self.assertEqual((reused.status, reused.attempts), (result.status, 1))
             denied.assert_not_called()
+
+    def test_sqlite_connections_are_closed_before_temporary_directory_cleanup(self):
+        connections, checked = [], []
+        connect, directory_type, owner = sqlite3.connect, tempfile.TemporaryDirectory, self
+
+        def recording_connect(*args, **kwargs):
+            connection = connect(*args, **kwargs)
+            connections.append(connection)
+            return connection
+
+        class CheckedDirectory(directory_type):
+            def __exit__(self, exc_type, exc_value, traceback):
+                try:
+                    for connection in connections:
+                        with owner.assertRaisesRegex(sqlite3.ProgrammingError, 'closed'):
+                            connection.execute('SELECT 1')
+                    checked.append(len(connections))
+                finally:
+                    for connection in connections:
+                        connection.close()
+                    super().__exit__(exc_type, exc_value, traceback)
+
+        with patch('kb_platform.rag_testing.tool_retry_ownership_contracts.sqlite3.connect', recording_connect), \
+                patch('kb_platform.rag_testing.tool_retry_ownership_contracts.tempfile.TemporaryDirectory', CheckedDirectory):
+            self.sqlite_case(read_only=False, unknown=False)
+        self.assertEqual(checked, [3])
 
     def test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy(self):
         self.sqlite_case(read_only=False, unknown=False)

@@ -134,3 +134,30 @@ not accepted negative controls. Corrected source is checked in later runs.
   this saved candidate does not claim their acceptance before those runs finish.
 - `evidence/SHA256SUMS` binds reviewed source/model inputs and retained execution
   artifacts. Evidence is offline component/model verification, not RAG quality.
+
+## PR54 Windows fixture cleanup follow-up
+
+The first exact-head CI run `41533447595` remains **FAIL**. Both Windows
+Python 3.12 and 3.13 quality artifacts contain two `WinError 32` errors deleting
+`effects.sqlite3` during TemporaryDirectory exit; all product retry assertions
+had completed. A sqlite3 Connection context manager controls transaction
+commit/rollback but does not close the connection. POSIX unlink had hidden this
+test-fixture ownership error. It is not a regression in the product retry fix,
+and is unrelated to the PR51 Tantivy commit failure.
+
+All three fixture connections now use `closing(connection)` outside their
+unchanged transaction context. The write commits before TryAgain is raised,
+then the connection closes before directory removal. There is no cleanup
+suppression, GC retry, sleep, relaxed assertion or production/TLA change.
+A real connection observer retains all three references and checks that each
+rejects SQL before TemporaryDirectory cleanup; the old fixture fails that
+check, while the fixed fixture passes. Its safety-finally closes references
+even when this deliberately challenged assertion fails.
+
+Mandatory formal-lint now checks the three close/transaction contexts and
+operation exception boundary, with a source binding for the real fixture.
+Restoring the old connection context and refreshing all registry hashes still
+fails this guard. Evidence in `evidence/fixture-cleanup/` retains the original
+Windows diagnoses, old behavioral failure, an initial mistyped test-module
+invocation, and the corrected 38-test PASS. The earlier evidence SHA256SUMS
+continues to describe the earlier frozen candidate, not these changed sources.

@@ -3,6 +3,7 @@ import ast
 
 OWNER = 'kb_platform/provider_runtime.py'
 CALLER = 'kb_platform/knowledge_planning.py'
+FIXTURE = 'kb_platform/rag_testing/tool_retry_ownership_contracts.py'
 
 
 def tool_retry_source_violations(source, caller):
@@ -61,3 +62,27 @@ def tool_retry_source_violations(source, caller):
     if "self.session_id + ':' + self.request_id + ':' + identity" not in ast.unparse(invoke_tool):
         errors.append('the real planning caller must retain session/turn/tool identity namespacing')
     return errors
+
+
+def tool_fixture_source_violations(source):
+    tree = ast.parse(source)
+    fixture = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ToolRetryOwnershipContracts')
+    case = next(node for node in fixture.body if isinstance(node, ast.FunctionDef) and node.name == 'sqlite_case')
+    connections = [node for node in ast.walk(case) if isinstance(node, ast.Call)
+                   and ast.unparse(node.func) == 'sqlite3.connect']
+    owned = [node for node in ast.walk(case) if isinstance(node, ast.With)
+             and len(node.items) == 2
+             and ast.unparse(node.items[0].context_expr) == 'closing(sqlite3.connect(path))'
+             and isinstance(node.items[0].optional_vars, ast.Name)
+             and node.items[0].optional_vars.id == 'connection'
+             and ast.unparse(node.items[1].context_expr) == 'connection'
+             and node.items[1].optional_vars is None]
+    imported = any(isinstance(node, ast.ImportFrom) and node.module == 'contextlib'
+                   and any(item.name == 'closing' and item.asname is None for item in node.names) for node in tree.body)
+    operation = next(node for node in ast.walk(case) if isinstance(node, ast.FunctionDef) and node.name == 'operation')
+    if (not imported or len(connections) != 3 or len(owned) != 3
+            or len(operation.body) != 3 or operation.body[0] not in owned
+            or not isinstance(operation.body[1], ast.If)
+            or any(isinstance(node, ast.Raise) for node in ast.walk(operation.body[0]))):
+        return ['SQLite fixture connections must close after their transaction exits and before temporary-directory cleanup']
+    return []

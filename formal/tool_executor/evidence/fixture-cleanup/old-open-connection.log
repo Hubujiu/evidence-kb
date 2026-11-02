@@ -1,0 +1,20 @@
+test_sqlite_connections_are_closed_before_temporary_directory_cleanup (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_connections_are_closed_before_temporary_directory_cleanup) ... FAIL
+
+======================================================================
+FAIL: test_sqlite_connections_are_closed_before_temporary_directory_cleanup (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_connections_are_closed_before_temporary_directory_cleanup)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 73, in test_sqlite_connections_are_closed_before_temporary_directory_cleanup
+    self.sqlite_case(read_only=False, unknown=False)
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 22, in sqlite_case
+    with tempfile.TemporaryDirectory() as directory:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-tool-retry-formal/kb_platform/rag_testing/tool_retry_ownership_contracts.py", line 63, in __exit__
+    with owner.assertRaisesRegex(sqlite3.ProgrammingError, 'closed'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ProgrammingError not raised
+
+----------------------------------------------------------------------
+Ran 1 test in 0.007s
+
+FAILED (failures=1)

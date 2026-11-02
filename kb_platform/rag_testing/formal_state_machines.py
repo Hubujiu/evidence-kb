@@ -155,9 +155,11 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                 if not re.fullmatch('[0-9a-f]{64}', binding['sha256']) or actual != binding['sha256']:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
             if identity == 'tool_executor':
-                from kb_platform.rag_testing.tool_retry_lint import OWNER, CALLER, tool_retry_source_violations
+                from kb_platform.rag_testing.tool_retry_lint import OWNER, CALLER, FIXTURE, tool_retry_source_violations, tool_fixture_source_violations
                 errors.extend(f'tool_executor: {error}' for error in tool_retry_source_violations(
                     local_file(root, OWNER).read_text('utf-8'), local_file(root, CALLER).read_text('utf-8')))
+                errors.extend(f'tool_executor: {error}' for error in tool_fixture_source_violations(
+                    local_file(root, FIXTURE).read_text('utf-8')))
             models = machine['models']
             controls = machine['negative_controls']
             if (machine['status'] == 'partial') != bool(models):

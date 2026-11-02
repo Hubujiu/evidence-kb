@@ -1960,6 +1960,12 @@
           "language": "python",
           "symbol": "_call",
           "sha256": "cfe141b79638fa80880f45e2d357ea71424dbf70eb2c11cb334209cb098ddf09"
+        },
+        {
+          "path": "kb_platform/rag_testing/tool_retry_ownership_contracts.py",
+          "language": "python",
+          "symbol": "ToolRetryOwnershipContracts.sqlite_case",
+          "sha256": "55da6e887b8a72445e9826473097572c1e737be2e93154bb7af51997adc5936c"
         }
       ],
       "models": [

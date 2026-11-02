@@ -1,0 +1,47 @@
+test_claim_is_exclusive_and_terminal_reuse_returns_an_isolated_snapshot (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_claim_is_exclusive_and_terminal_reuse_returns_an_isolated_snapshot) ... ok
+test_explicit_retry_of_confirmed_not_sent_read_only_work_still_respects_attempt_cap (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_explicit_retry_of_confirmed_not_sent_read_only_work_still_respects_attempt_cap) ... ok
+test_invalid_public_hints_do_not_create_invalid_waits (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_invalid_public_hints_do_not_create_invalid_waits) ... ok
+test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_hint_cumulative_wait_and_deadline_are_checked_before_sleep) ... ok
+test_public_platform_error_retry_hint_blocks_retry_beyond_wait_budget (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_public_platform_error_retry_hint_blocks_retry_beyond_wait_budget) ... ok
+test_real_planning_caller_namespaces_receipts_by_session_turn_and_identity (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_real_planning_caller_namespaces_receipts_by_session_turn_and_identity) ... ok
+test_sqlite_connections_are_closed_before_temporary_directory_cleanup (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_connections_are_closed_before_temporary_directory_cleanup) ... ok
+test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_mutation_cannot_use_explicit_retry_to_bypass_nonreadonly_policy) ... ok
+test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry (kb_platform.rag_testing.tool_retry_ownership_contracts.ToolRetryOwnershipContracts.test_sqlite_unknown_effect_is_not_replayed_even_by_explicit_retry) ... ok
+test_actual_tool_retry_owner_matches_reviewed_structure (kb_platform.rag_testing.tool_retry_formal_contracts.ToolRetryFormalContracts.test_actual_tool_retry_owner_matches_reviewed_structure) ... ok
+test_mandatory_semantic_guard_rejects_legacy_faults_and_leaked_fixture_after_hash_refresh (kb_platform.rag_testing.tool_retry_formal_contracts.ToolRetryFormalContracts.test_mandatory_semantic_guard_rejects_legacy_faults_and_leaked_fixture_after_hash_refresh) ... ok
+test_seeded_policy_budget_receipt_and_namespace_mutants_are_rejected (kb_platform.rag_testing.tool_retry_formal_contracts.ToolRetryFormalContracts.test_seeded_policy_budget_receipt_and_namespace_mutants_are_rejected) ... ok
+provider_runtime_contracts (unittest.loader._FailedTest.provider_runtime_contracts) ... ERROR
+test_cfg_invariants_and_temporal_properties_are_not_confused (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_cfg_invariants_and_temporal_properties_are_not_confused) ... ok
+test_discovery_exclusions_require_specific_reasons_and_cannot_go_stale (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_discovery_exclusions_require_specific_reasons_and_cannot_go_stale) ... ok
+test_formatting_does_not_change_python_semantic_digest (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_formatting_does_not_change_python_semantic_digest) ... ok
+test_missing_source_and_escaping_source_are_rejected (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_missing_source_and_escaping_source_are_rejected) ... ok
+test_model_operator_lists_bounds_and_limits_require_explicit_types (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_model_operator_lists_bounds_and_limits_require_explicit_types) ... ok
+test_modeled_without_model_and_unregistered_model_are_rejected (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_modeled_without_model_and_unregistered_model_are_rejected) ... ok
+test_negative_control_cannot_be_relabelled_as_a_positive_run (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_negative_control_cannot_be_relabelled_as_a_positive_run) ... ok
+test_new_transition_owner_requires_registration (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_new_transition_owner_requires_registration) ... ok
+test_positive_model_cannot_drop_every_check_and_refresh_the_manifest (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_positive_model_cannot_drop_every_check_and_refresh_the_manifest) ... ok
+test_python_fingerprint_is_identical_across_supported_ast_dump_versions (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_python_fingerprint_is_identical_across_supported_ast_dump_versions) ... ok
+test_reviewed_symbol_is_accepted_without_claiming_model_coverage (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_reviewed_symbol_is_accepted_without_claiming_model_coverage) ... ok
+test_rust_fingerprint_normalizes_checkout_crlf_but_retains_source_mutations (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_rust_fingerprint_normalizes_checkout_crlf_but_retains_source_mutations) ... ok
+test_seeded_guard_and_state_mutations_are_rejected (kb_platform.rag_testing.formal_state_machine_contracts.FormalRegistryContracts.test_seeded_guard_and_state_mutations_are_rejected) ... ok
+test_liveness_requires_temporal_violation_not_shared_exit_code (kb_platform.rag_testing.formal_state_machine_contracts.FormalVerdictContracts.test_liveness_requires_temporal_violation_not_shared_exit_code) ... ok
+test_negative_requires_named_invariant_violation_not_any_error (kb_platform.rag_testing.formal_state_machine_contracts.FormalVerdictContracts.test_negative_requires_named_invariant_violation_not_any_error) ... ok
+test_parse_failure_and_unframed_success_text_cannot_pass (kb_platform.rag_testing.formal_state_machine_contracts.FormalVerdictContracts.test_parse_failure_and_unframed_success_text_cannot_pass) ... ok
+test_positive_requires_complete_success_and_exhausted_reachable_states (kb_platform.rag_testing.formal_state_machine_contracts.FormalVerdictContracts.test_positive_requires_complete_success_and_exhausted_reachable_states) ... ok
+test_truncation_and_unrelated_error_frames_cannot_pass (kb_platform.rag_testing.formal_state_machine_contracts.FormalVerdictContracts.test_truncation_and_unrelated_error_frames_cannot_pass) ... ok
+
+======================================================================
+ERROR: provider_runtime_contracts (unittest.loader._FailedTest.provider_runtime_contracts)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: provider_runtime_contracts
+Traceback (most recent call last):
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/unittest/loader.py", line 137, in loadTestsFromName
+    module = __import__(module_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'kb_platform.rag_testing.provider_runtime_contracts'
+
+
+----------------------------------------------------------------------
+Ran 31 tests in 5.492s
+
+FAILED (errors=1)
