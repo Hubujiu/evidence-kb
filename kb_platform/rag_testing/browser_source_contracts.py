@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
-from .browser_integration import browser_verdict, checked_browser_assets
+from .browser_integration import BROWSER_ASSETS, browser_verdict, checked_browser_assets
 from .browser_sources import ENTRIES, main, markup_violations, placement_violations
 from .console_browser_integration import CASES, DRAFT_CASES, SCOPE_CASES, run_additional_cases, run_cases
 from .formal_state_machines import digest, source_digest, state_candidates
@@ -21,21 +21,31 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class BrowserSourceContracts(unittest.TestCase):
-    def test_browser_baseline_snapshot_preserves_existing_and_new_sources(self):
-        snapshot = json.loads((ROOT / 'docs/browser-state-baseline-v1.json').read_text('utf-8'))
-        expected = {'kb_platform/agent_console.html', 'kb_platform/console.html', 'kb_platform/console.mjs',
-                    'e2e/knowledge.e2e.js', 'e2e/console-state.e2e.js'}
-        self.assertEqual({row['path'] for row in snapshot['production_files_and_existing_cases']}, expected)
-        for row in snapshot['production_files_and_existing_cases']:
-            content = (ROOT / row['path']).read_text('utf-8').encode('utf-8')
-            self.assertEqual(sha256(content).hexdigest(), row['sha256'], row['path'])
-            self.assertEqual(len(content), row['bytes'], row['path'])
-            self.assertTrue(row['byte_identical_to_combination_base'])
-        self.assertEqual(set(snapshot['new_suites']), {'agent-draft-state.e2e.js', 'console-scope-state.e2e.js'})
+    def test_browser_baseline_and_fixed_source_review_snapshots_are_distinct(self):
+        baseline = json.loads((ROOT / 'docs/browser-state-baseline-v1.json').read_text('utf-8'))
+        review = json.loads((ROOT / 'docs/browser-state-fix-v1.json').read_text('utf-8'))
+        originals = {row['path']: row['sha256'] for row in baseline['production_files_and_existing_cases']}
+        originals.update({'e2e/' + name: row['source_sha256'] for name, row in baseline['new_suites'].items()})
+        self.assertEqual(set(originals), {'kb_platform/agent_console.html', 'kb_platform/console.html',
+            'kb_platform/console.mjs', 'e2e/knowledge.e2e.js', 'e2e/console-state.e2e.js',
+            'e2e/agent-draft-state.e2e.js', 'e2e/console-scope-state.e2e.js'})
+        changed = {row['path']: row for row in review['source_reviews']}
+        self.assertEqual(set(changed), {'kb_platform/agent_console.html', 'kb_platform/console.mjs',
+                                       'e2e/agent-draft-state.e2e.js'})
+        for path, old_hash in originals.items():
+            current = sha256((ROOT / path).read_text('utf-8').encode('utf-8')).hexdigest()
+            if path in changed:
+                self.assertEqual(changed[path]['baseline_sha256'], old_hash)
+                self.assertEqual(changed[path]['current_sha256'], current)
+                self.assertTrue(changed[path]['review'])
+            else:
+                self.assertEqual(current, old_hash, path)
+        self.assertEqual(set(review['added_sources']), {'kb_platform/agent_console.mjs'})
+        for path, fingerprint in review['added_sources'].items():
+            self.assertEqual(sha256((ROOT / path).read_text('utf-8').encode('utf-8')).hexdigest(), fingerprint)
+        self.assertEqual(baseline['new_suites']['agent-draft-state.e2e.js']['cases'], 5)
         for name, cases in (('agent-draft-state.e2e.js', DRAFT_CASES), ('console-scope-state.e2e.js', SCOPE_CASES)):
-            content = (ROOT / 'e2e' / name).read_text('utf-8').encode('utf-8')
-            self.assertEqual(snapshot['new_suites'][name]['cases'], len(cases))
-            self.assertEqual(snapshot['new_suites'][name]['source_sha256'], sha256(content).hexdigest())
+            self.assertEqual(review['current_suite_counts'][name], len(cases))
 
     def test_budget_disclosure_has_one_real_summary_for_visible_fixture_checks(self):
         class Disclosure(HTMLParser):
@@ -73,7 +83,30 @@ class BrowserSourceContracts(unittest.TestCase):
         self.assertEqual(parser.stack, [])
 
     def test_current_markup_has_one_explicit_mapped_owner(self):
+        self.assertEqual(ENTRIES, {
+            'kb_platform/console.html': ('kb_platform/console.mjs', '/console.mjs'),
+            'kb_platform/agent_console.html': ('kb_platform/agent_console.mjs', '/agent_console.mjs'),
+        })
         self.assertEqual([], placement_violations(ROOT))
+
+    def test_both_entrypoints_reject_execution_bypasses_after_module_hash_refresh(self):
+        for entrypoint, (module, url) in ENTRIES.items():
+            for extra in ('<script>void 0</script>', '<button onclick="void 0">Run</button>',
+                          '<iframe srcdoc="x"></iframe>', '<a href="javascript:void 0">Run</a>'):
+                with self.subTest(entrypoint=entrypoint, extra=extra), TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    for page, (script, _) in ENTRIES.items():
+                        for name in (page, script):
+                            target = root / name
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_text((ROOT / name).read_text('utf-8'), encoding='utf-8')
+                    path = root / entrypoint
+                    path.write_text(path.read_text('utf-8') + extra, encoding='utf-8')
+                    binding = {'path': module, 'language': 'javascript-module', 'symbol': '<module>'}
+                    binding['sha256'] = source_digest(root, binding)
+                    self.assertEqual(binding['sha256'], source_digest(root, binding))
+                    self.assertTrue(any(error.startswith(entrypoint + ':')
+                                        for error in placement_violations(root)))
 
     def test_html_parser_accepts_equivalent_attribute_quoting_and_nonexecuting_text(self):
         source = "<p>script onclick javascript: are plain text</p><script src='/console.mjs' type=module></script>"
@@ -164,8 +197,8 @@ class BrowserSourceContracts(unittest.TestCase):
 
             def get(url):
                 calls.append(url)
-                name = 'agent_console.html' if url.endswith('/agent') else (
-                    'console.mjs' if url.endswith('.mjs') else 'console.html')
+                name, _ = next((name, media) for path, name, media in BROWSER_ASSETS
+                               if url == 'http://fixture' + path)
                 module = name.endswith('.mjs')
                 content = (ROOT / 'kb_platform' / name).read_bytes()
                 headers = {'content-type': 'text/javascript; charset=utf-8' if module else 'text/html; charset=utf-8',
@@ -184,8 +217,8 @@ class BrowserSourceContracts(unittest.TestCase):
                 else:
                     with self.assertRaisesRegex(ValueError, 'Browser asset /console.mjs'):
                         checked_browser_assets(client, 'http://fixture')
-                self.assertEqual(['http://fixture/', 'http://fixture/console.mjs'] + (
-                    ['http://fixture/agent'] if broken == 'none' else []), calls)
+                self.assertEqual(['http://fixture' + path for path, _, _ in BROWSER_ASSETS]
+                                 if broken == 'none' else ['http://fixture/', 'http://fixture/console.mjs'], calls)
 
 
     def test_console_runner_uses_project_output_and_preserves_failed_run_artifacts(self):
@@ -267,8 +300,8 @@ class BrowserSourceContracts(unittest.TestCase):
     def test_agent_asset_preflight_requires_exact_current_public_page(self):
         for broken in ('status', 'content', 'content-type'):
             def get(url):
-                name = 'agent_console.html' if url.endswith('/agent') else (
-                    'console.mjs' if url.endswith('.mjs') else 'console.html')
+                name, _ = next((name, media) for path, name, media in BROWSER_ASSETS
+                               if url == 'http://fixture' + path)
                 agent = name == 'agent_console.html'
                 content = (ROOT / 'kb_platform' / name).read_bytes()
                 media_type = 'text/javascript' if name.endswith('.mjs') else 'text/html'

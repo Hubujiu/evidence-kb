@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -44,6 +44,11 @@ def install_agent_routes(app, platform, research, identity, *, service_factory=N
     @app.get('/agent', response_class=HTMLResponse)
     def console():
         return Path(__file__).with_name('agent_console.html').read_text(encoding='utf-8')
+
+    @app.get('/agent_console.mjs')
+    def console_module():
+        return Response(Path(__file__).with_name('agent_console.mjs').read_text(encoding='utf-8'),
+                        media_type='text/javascript')
 
     @app.get('/agent/capabilities')
     def capabilities(actor: principal):

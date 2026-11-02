@@ -1960,7 +1960,7 @@
           "path": "kb_platform/console.mjs",
           "language": "javascript-module",
           "symbol": "<module>",
-          "sha256": "30d5447a8f77d1224ce554cc6504af4e0a00f747ff315b08c86676d05f408a38"
+          "sha256": "5520272272aaceabecfd3c5ef873fbfdc261cb89c40894cd9a0cc6cb388fba08"
         }
       ],
       "models": [
@@ -2024,9 +2024,211 @@
         }
       ],
       "remaining_obligations": [
-        "Actual exact-source browser baseline and fixed outcome are NOT_RUN locally because Chromium process-singleton socket creation was denied; awaiting normal CI browser runner.",
+        "Actual PR52 legacy baseline run 41533302556 retains all seven passing citation regressions; the upload-only module change is reviewed separately in docs/browser-state-fix-v1.json. Fixed-head browser outcome remains NOT_RUN locally and requires normal CI.",
         "Review manually maintained source correspondence when any asynchronous boundary or object URL owner changes.",
         "Extend bounds and resource/DOM failure behavior before claiming broader coverage."
+      ]
+    },
+    {
+      "id": "agent_console_draft",
+      "status": "partial",
+      "owners": [
+        "kb_platform/agent_console.mjs",
+        "kb_platform/agent_console.html"
+      ],
+      "states": [
+        "idle",
+        "create-await",
+        "create-refresh-await",
+        "turn-await",
+        "session-await",
+        "clear-ready",
+        "complete",
+        "discarded",
+        "failed"
+      ],
+      "transitions": [
+        "capture submitted draft before implicit create",
+        "input allocates fresh owner",
+        "complete create and list refresh",
+        "complete turn and session refresh",
+        "owned final clear",
+        "reset invalidates draft",
+        "reject awaited operation"
+      ],
+      "invariants": [
+        "TypeOK",
+        "NoStaleDraftClear",
+        "NoFailureClear",
+        "CurrentDraftClears",
+        "NewerDraftPreserved"
+      ],
+      "assumptions": [
+        "One serialized send with explicit or implicit session; at most two input events and one reset; opaque draft identities are never reused.",
+        "Each input event has fresh ownership even when the final text is unchanged; programmatic clearing explicitly invalidates ownership.",
+        "User tasks occur at pending awaits, not between a Promise continuation and its immediate synchronous clear; no fairness assumed."
+      ],
+      "exclusions": [
+        "Manual source abstraction, not JavaScript AST equivalence or automatic refinement.",
+        "No backend execution, DB/transaction, authorization, server cancellation or delivery guarantee; discarding UI results does not undo a request.",
+        "No repeated-send, IME, third-party programmatic input, DOM-exception or other session/status/export/citation async-state proof."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/agent_console.mjs",
+          "language": "javascript-module",
+          "symbol": "<module>",
+          "sha256": "accfb524680ebd4d058d9775d24e2c8c070132d0ce7688c43ce6a5f56047f472"
+        }
+      ],
+      "models": [
+        {
+          "id": "agent-console-draft",
+          "module": "formal/agent_console_draft/AgentConsoleDraft.tla",
+          "config": "formal/agent_console_draft/AgentConsoleDraft.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoStaleDraftClear",
+            "NoFailureClear",
+            "CurrentDraftClears",
+            "NewerDraftPreserved"
+          ],
+          "properties": [],
+          "bounds": {
+            "serialized_sends": 1,
+            "input_events": 2,
+            "scope_resets": 1,
+            "pending_awaited_phases": 4,
+            "text_representatives": 3,
+            "draft_identity_names": 5
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "agent-draft-legacy-unconditional",
+          "module": "formal/agent_console_draft/AgentConsoleDraft.tla",
+          "config": "formal/agent_console_draft/LegacyUnconditionalClearNegative.cfg",
+          "expected_invariant": "NoStaleDraftClear",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "agent-draft-text-equality",
+          "module": "formal/agent_console_draft/AgentConsoleDraft.tla",
+          "config": "formal/agent_console_draft/TextEqualityOwnershipNegative.cfg",
+          "expected_invariant": "NoStaleDraftClear",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "agent-draft-late-capture",
+          "module": "formal/agent_console_draft/AgentConsoleDraft.tla",
+          "config": "formal/agent_console_draft/LateDraftCaptureNegative.cfg",
+          "expected_invariant": "NoStaleDraftClear",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "Fixed actual browser regressions require normal CI; local browser remains NOT_RUN.",
+        "Extend one-shot input/reset bounds and review future draft mutation paths before claiming broader coverage."
+      ]
+    },
+    {
+      "id": "console_upload_commit",
+      "status": "partial",
+      "owners": [
+        "kb_platform/console.mjs",
+        "kb_platform/console.html"
+      ],
+      "states": [
+        "idle",
+        "fetch-await",
+        "body-await",
+        "body-complete",
+        "commit-queued",
+        "complete",
+        "discarded",
+        "failed",
+        "create-await",
+        "refresh-await",
+        "select-queued",
+        "clear-queued"
+      ],
+      "transitions": [
+        "capture complete upload scope",
+        "receive upload headers",
+        "fulfill pending bodies into FIFO queue",
+        "inner JSON scope check",
+        "normal Create refresh selects new scope",
+        "final upload scope check and synchronous DOM commit",
+        "Create clear",
+        "reject upload"
+      ],
+      "invariants": [
+        "TypeOK",
+        "NoStaleUploadCommit",
+        "CurrentUploadRenders",
+        "NoRejectedUploadWrite"
+      ],
+      "assumptions": [
+        "One upload and one Create/refresh, two kb identities, revisions 0/1, one token representative and at most two queued microtasks.",
+        "Ordinary tasks require an empty microtask queue; same-task list/upload promise resolution permits the browser-confirmed FIFO order.",
+        "Final full-scope check and ingest/status writes execute synchronously with no intervening await; no fairness or revision overflow within this bound."
+      ],
+      "exclusions": [
+        "Manual source abstraction, not JavaScript AST equivalence or automatic refinement.",
+        "Does not establish correctness of other refresh/search/connect/publish/download/status callbacks, multi-operation schedules or independent token changes.",
+        "No upload/backend authorization, DB transaction or external-effect guarantee; suppressing a stale UI write does not roll back ingestion."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/console.mjs",
+          "language": "javascript-module",
+          "symbol": "<module>",
+          "sha256": "5520272272aaceabecfd3c5ef873fbfdc261cb89c40894cd9a0cc6cb388fba08"
+        }
+      ],
+      "models": [
+        {
+          "id": "console-upload-commit",
+          "module": "formal/console_upload_commit/ConsoleUploadCommit.tla",
+          "config": "formal/console_upload_commit/ConsoleUploadCommit.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoStaleUploadCommit",
+            "CurrentUploadRenders",
+            "NoRejectedUploadWrite"
+          ],
+          "properties": [],
+          "bounds": {
+            "uploads": 1,
+            "creates": 1,
+            "knowledge_bases": 2,
+            "revision_values": 2,
+            "token_representatives": 1,
+            "queued_microtasks": 2
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "console-upload-missing-final-guard",
+          "module": "formal/console_upload_commit/ConsoleUploadCommit.tla",
+          "config": "formal/console_upload_commit/MissingFinalUploadGuardNegative.cfg",
+          "expected_invariant": "NoStaleUploadCommit",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "Fixed actual browser regressions require normal CI; local browser remains NOT_RUN.",
+        "Review other final success-mutation owners independently; the passing search control is not an all-callback proof."
       ]
     }
   ]

@@ -1,5 +1,10 @@
 # Browser draft and final-mutation ownership: reproduction only
 
+This document describes the immutable reproduction stage, not the current fixed
+source. The actual corrected baseline and subsequent implementation boundaries
+are recorded in [browser-draft-scope-fix.md](browser-draft-scope-fix.md). The
+baseline JSON remains unchanged as historical source evidence.
+
 This baseline adds deterministic browser regressions, not a production fix.
 Neither candidate is claimed as browser-confirmed before normal CI produces
 the actual assertions. No local Chromium run or download is attempted.

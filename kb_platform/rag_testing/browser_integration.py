@@ -19,6 +19,9 @@ from .runtime_integration import acceptance_dsn as acceptance_dsn
 
 
 ROOT = Path(__file__).resolve().parents[2]
+BROWSER_ASSETS = (('/', 'console.html', 'text/html'), ('/console.mjs', 'console.mjs', 'text/javascript'),
+                  ('/agent', 'agent_console.html', 'text/html'),
+                  ('/agent_console.mjs', 'agent_console.mjs', 'text/javascript'))
 CASES = frozenset({
     'source upload, BM25 publication, citation and original download [chromium]',
     'switching tenants clears and isolates knowledge bases [chromium]',
@@ -51,9 +54,7 @@ def browser_verdict(path, *, expected=CASES, classname='knowledge.e2e.js'):
 
 def checked_browser_assets(client, url):
     observed = {}
-    for path, name, media_type in (('/', 'console.html', 'text/html'),
-                                   ('/console.mjs', 'console.mjs', 'text/javascript'),
-                                   ('/agent', 'agent_console.html', 'text/html')):
+    for path, name, media_type in BROWSER_ASSETS:
         response = client.get(url + path)
         expected = (ROOT / 'kb_platform' / name).read_bytes()
         if (response.status_code != 200 or response.content != expected

@@ -31,6 +31,7 @@ DRAFT_CASES = frozenset(name + ' [chromium]' for name in (
     'new draft typed during the session refresh survives the older turn',
     'new draft typed during implicit session creation is not owned by the first turn',
     'unchanged submitted draft clears while unavailable budget stays explicitly unknown',
+    'unchanged draft submitted through implicit session creation still clears',
 ))
 SCOPE_CASES = frozenset(name + ' [chromium]' for name in (
     'concurrent create cannot publish an old upload result under the newly selected scope',
@@ -107,7 +108,7 @@ def run_cases(output, env, *, tests='console-state.e2e.js', expected=CASES,
 def run_additional_cases(output, env):
     output.mkdir(parents=True, exist_ok=False)
     suites = (
-        ('agent-draft', 'agent-draft-state.e2e.js', DRAFT_CASES, ('agent_console.html',)),
+        ('agent-draft', 'agent-draft-state.e2e.js', DRAFT_CASES, ('agent_console.html', 'agent_console.mjs')),
         ('console-scope', 'console-scope-state.e2e.js', SCOPE_CASES, ('console.html', 'console.mjs')),
     )
     report = {'status': 'PASS', 'suites': {}, 'new_model_calls': None, 'usage_observed': False,

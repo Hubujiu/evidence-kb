@@ -8,7 +8,8 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[2]
-ENTRIES = {'kb_platform/console.html': ('kb_platform/console.mjs', '/console.mjs')}
+ENTRIES = {'kb_platform/console.html': ('kb_platform/console.mjs', '/console.mjs'),
+           'kb_platform/agent_console.html': ('kb_platform/agent_console.mjs', '/agent_console.mjs')}
 
 
 class BrowserMarkup(HTMLParser):

@@ -132,3 +132,13 @@ test('unchanged submitted draft clears while unavailable budget stays explicitly
   await expect(browser.locator('#runtimeStatus')).toContainText('预算账本暂不可读取');
   expect(await browser.evaluate(() => window.__draftFixture.turns.length)).toBe(1);
 });
+
+
+test('unchanged draft submitted through implicit session creation still clears', async ({app, screen, browser}) => {
+  await fixture(app, screen, browser, false);
+  await send(screen, browser);
+  await finishTurn(browser);
+  await finishSession(screen, browser);
+  expect(await browser.evaluate(() => document.querySelector('#question').value)).toBe('');
+  expect(await browser.evaluate(() => window.__draftFixture.turns.length)).toBe(1);
+});

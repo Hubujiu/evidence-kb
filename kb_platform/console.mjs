@@ -76,7 +76,7 @@ $('connect').onclick=()=>action($('connect'),async()=>{clearView();const id=awai
 $('create').onclick=()=>action($('create'),async()=>{const kb=await json('/knowledge-bases',{method:'POST',body:JSON.stringify({name:$('name').value})});await refresh(kb.kb_id);clearView();message('已创建知识库。');});
 $('kb').onchange=()=>{clearView();$('ingest').textContent='已切换知识库，当前视图已清空。';};
 $('token').oninput=()=>{clearView();$('identity').textContent='身份已更改，请重新连接。';$('kb').replaceChildren();};
-$('upload').onclick=()=>action($('upload'),async()=>{const file=$('file').files[0];if(!file)throw new Error('请选择文件。');const data=new FormData();data.append('file',file);const result=await json(scope()+'/sources',{method:'POST',body:data});$('ingest').textContent=file.name+' · '+result.document.status+' · '+result.document.elements.length+' 个结构元素';message('文件已解析。构建并发布后可检索。');});
+$('upload').onclick=()=>action($('upload'),async()=>{const file=$('file').files[0];if(!file)throw new Error('请选择文件。');const data=new FormData();data.append('file',file);const stamp=currentScope();const result=await json(scope()+'/sources',{method:'POST',body:data});current(stamp);$('ingest').textContent=file.name+' · '+result.document.status+' · '+result.document.elements.length+' 个结构元素';message('文件已解析。构建并发布后可检索。');});
 $('publish').onclick=()=>action($('publish'),async()=>{const prefix=scope();const build=await json(prefix+'/builds',{method:'POST'});const manifest=await json(prefix+'/builds/'+build.build_id+'/publish',{method:'POST'});message('索引已发布。版本 '+manifest.manifest_id);});
 async function showCitation(id){
   const owner={scope:currentScope(),selection:{}};
