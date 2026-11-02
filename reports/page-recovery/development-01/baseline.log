@@ -1,0 +1,19 @@
+page_recovery_contracts (unittest.loader._FailedTest.page_recovery_contracts) ... ERROR
+
+======================================================================
+ERROR: page_recovery_contracts (unittest.loader._FailedTest.page_recovery_contracts)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: page_recovery_contracts
+Traceback (most recent call last):
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/unittest/loader.py", line 137, in loadTestsFromName
+    module = __import__(module_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-page-recovery-formal/kb_platform/rag_testing/page_recovery_contracts.py", line 12, in <module>
+    from reportlab.pdfgen import canvas
+ModuleNotFoundError: No module named 'reportlab'
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+FAILED (errors=1)

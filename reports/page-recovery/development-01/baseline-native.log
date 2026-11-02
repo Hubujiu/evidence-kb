@@ -1,0 +1,35 @@
+test_cached_partial_conversion_cannot_be_promoted_to_ready (kb_platform.rag_testing.page_recovery_contracts.PageRecoveryContracts.test_cached_partial_conversion_cannot_be_promoted_to_ready) ... FAIL
+test_explicit_ocr_recovery_does_not_repeat_successful_image_frames (kb_platform.rag_testing.page_recovery_contracts.PageRecoveryContracts.test_explicit_ocr_recovery_does_not_repeat_successful_image_frames) ... FAIL
+test_failed_fallback_does_not_prevent_later_page_recovery (kb_platform.rag_testing.page_recovery_contracts.PageRecoveryContracts.test_failed_fallback_does_not_prevent_later_page_recovery) ... FAIL
+
+======================================================================
+FAIL: test_cached_partial_conversion_cannot_be_promoted_to_ready (kb_platform.rag_testing.page_recovery_contracts.PageRecoveryContracts.test_cached_partial_conversion_cannot_be_promoted_to_ready)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-page-recovery-formal/kb_platform/rag_testing/page_recovery_contracts.py", line 69, in test_cached_partial_conversion_cannot_be_promoted_to_ready
+    self.assertEqual(warm['status'], 'PARTIAL')
+AssertionError: 'READY' != 'PARTIAL'
+- READY
++ PARTIAL
+
+
+======================================================================
+FAIL: test_explicit_ocr_recovery_does_not_repeat_successful_image_frames (kb_platform.rag_testing.page_recovery_contracts.PageRecoveryContracts.test_explicit_ocr_recovery_does_not_repeat_successful_image_frames)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-page-recovery-formal/kb_platform/rag_testing/page_recovery_contracts.py", line 125, in test_explicit_ocr_recovery_does_not_repeat_successful_image_frames
+    self.assertEqual(len(calls), 3)
+AssertionError: 6 != 3
+
+======================================================================
+FAIL: test_failed_fallback_does_not_prevent_later_page_recovery (kb_platform.rag_testing.page_recovery_contracts.PageRecoveryContracts.test_failed_fallback_does_not_prevent_later_page_recovery)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-page-recovery-formal/kb_platform/rag_testing/page_recovery_contracts.py", line 95, in test_failed_fallback_does_not_prevent_later_page_recovery
+    self.assertEqual(len(attempts), 2)
+AssertionError: 1 != 2
+
+----------------------------------------------------------------------
+Ran 3 tests in 1.244s
+
+FAILED (failures=3)
