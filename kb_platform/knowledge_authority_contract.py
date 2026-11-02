@@ -26,17 +26,17 @@ def authority_schema_descriptor(owner=None):
 
 
 class AuthorityStorageEndpoint:
-    def __init__(self, storage):
-        self._storage = storage
+    def __init__(self, storage, *, binding='repository.primary'):
+        self._storage, self._binding = storage, binding
 
     def describe(self, request):
-        selected = self._storage.describe({'binding': 'repository.primary'})
+        selected = self._storage.describe({'binding': self._binding})
         owner = selected['identity']['space']['owner_id']
         return {'identity': selected['identity'], 'methods': ['describe', 'relational'],
                 'schema': authority_schema_descriptor(owner)}
 
     def relational(self, request):
-        return self._storage.relational({'binding': 'repository.primary', 'request': request})
+        return self._storage.relational({'binding': self._binding, 'request': request})
 
 
 def authority_database(dependency):

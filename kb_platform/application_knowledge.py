@@ -3,12 +3,13 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from .application_storage import ApplicationStorage, StorageClient, storage_methods
+from .application_storage import StorageClient, storage_methods
+from .foundation_services import SCHEMAS as FOUNDATION_SCHEMAS, foundation_mounts
 from .authentication import StaticAuthentication
 from .knowledge_capabilities import build_knowledge_application
 from .knowledge_contracts import ModelClient, domain_call
 from .knowledge_authority_contract import authority_database
-from .knowledge_model_ports import (AuxiliaryModelEndpoint, EmbeddingClient, METHODS as MODEL_METHODS,
+from .knowledge_model_ports import (EmbeddingClient, METHODS as MODEL_METHODS,
                                     OCRClient, TextClient)
 from .plugin_configuration import CONTEXT_PROPERTIES, POSITIVE, TEXT, config_schema
 from .session_identity import Actor, PlatformError
@@ -31,12 +32,12 @@ def load_knowledge_application(profile=None, *, settings, environment):
         configs['access']['identities_file'] = str(settings.identities_file)
         for key, name in (('config_path', 'KB_MODELS_CONFIG'), ('providers_config', 'KB_PROVIDERS_CONFIG')):
             if environment.get(name):
-                configs['model'][key] = environment[name]
+                configs['llm'][key] = environment[name]
         if environment.get('KB_MODELS_CONFIG'):
-            configs['model'].pop('providers_config', None)
-            configs['model'].setdefault('budget_binding', 'provider.primary')
-        if not set(configs['model']) & {'config_path', 'providers_config'}:
-            configs['model']['providers_config'] = '.local/providers.json'
+            configs['llm'].pop('providers_config', None)
+            configs['llm'].setdefault('budget_binding', 'provider.primary')
+        if not set(configs['llm']) & {'config_path', 'providers_config'}:
+            configs['llm']['providers_config'] = '.local/providers.json'
         if environment.get('KB_RESEARCH_ROOT'):
             configs['data']['research_root'] = environment['KB_RESEARCH_ROOT']
         if environment.get('KB_SEMANTIC_PAGE_CONFIG'):
@@ -61,11 +62,11 @@ def application_schemas():
     retrieval = next(spec.config_schema['properties']['retrieval_config']
                      for spec in knowledge_plugins(None, None) if spec.key == 'knowledge.service')
     schemas = {
-        'storage': config_schema({'path': TEXT}, required=('path',)),
+        'authority': config_schema({'binding': TEXT}, required=('binding',)),
+        'model_policy': config_schema(),
         'sessions': config_schema({'binding': TEXT}, required=('binding',)),
         'data': config_schema({'research_root': TEXT, 'rerank': {'type': 'boolean'}, 'semantic_config': TEXT}),
-        'model': config_schema({'config_path': TEXT, 'providers_config': TEXT,
-            'audit_root': TEXT, 'budget_binding': TEXT,
+        'model': config_schema({'routes': config_schema({'generation': TEXT, 'embedding': TEXT, 'ocr': TEXT}),
             'policy': config_schema(CONTEXT_PROPERTIES),
             'budget': config_schema({'max_calls': POSITIVE, 'max_tokens': POSITIVE})}),
         'context': config_schema({**CONTEXT_PROPERTIES,
@@ -76,7 +77,7 @@ def application_schemas():
         'access': config_schema({'identities_file': TEXT}, required=('identities_file',)),
         'entry': config_schema(),
     }
-    return {('knowledge.' + key, '1'): value for key, value in schemas.items()}
+    return {**FOUNDATION_SCHEMAS, **{('knowledge.' + key, '1'): value for key, value in schemas.items()}}
 
 
 def create_contract_knowledge(settings, *, profile=None, environment=None, storage_configuration=None,
@@ -90,7 +91,7 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
     selected = load_knowledge_application(profile, settings=settings, environment=environment or {})
     if profile is None and models is not None and not any((environment or {}).get(name)
             for name in ('KB_MODELS_CONFIG', 'KB_PROVIDERS_CONFIG')):
-        selected['plugins']['model']['config'].pop('providers_config', None)
+        selected['plugins']['llm']['config'].pop('providers_config', None)
     configured_schemas = application_schemas()
     configured_schemas.update(schemas or {})
     from .agent_context import ContextPolicy
@@ -103,18 +104,8 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
             ContextPolicy(**config)
         elif row['implementation'] == 'knowledge.model':
             ContextBudget(**config.get('policy', {}))
-            if config.get('config_path') and ('providers_config' in config or 'budget_binding' not in config):
-                raise ValueError('MODEL_BUDGET_BINDING_REQUIRED')
         elif row['implementation'] == 'knowledge.workflow':
             PipelineConfig.parse(config['retrieval_config'])
-
-    def storage_factory(ctx, config):
-        configuration = storage_configuration
-        if configuration is None:
-            configuration = json.loads(Path(config['path']).read_text('utf-8'))
-        service = ApplicationStorage(configuration, provider_catalog=provider_catalog)
-        ctx.defer(service.close)
-        return service
 
     def session_factory(ctx, config):
         from .knowledge_sessions import KnowledgeSessions
@@ -125,68 +116,9 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
         return KnowledgeSessions(store)
 
     def model_factory(ctx, config):
-        from .agent_model import BudgetLedger
-        from .context_budget import ContextBudget
-        from .model_configuration import EmbeddingView, OCRView, configured_adapter, configured_budget, read_model_config
-        from .model_service import Capability, ModelService
+        from .knowledge_model_service import knowledge_model
 
-        if models is not None and set(config) & {'config_path', 'providers_config'}:
-            raise ValueError('MODEL_SERVICE_ALREADY_CONFIGURED')
-        registry = models
-        dimension, embedding_manifest, ocr_manifest, stats = None, None, None, None
-        if registry is None:
-            registry = ModelService()
-            ctx.defer(registry.close)
-            if config.get('config_path'):
-                if config.get('providers_config'):
-                    raise ValueError('INVALID_MODELS_CONFIG')
-                value = read_model_config(config['config_path'])
-                database = StorageClient(ctx.require('storage'), config['budget_binding']).relational()
-                ledger = configured_budget(value, database=database)
-                ctx.defer(ledger.close)
-                for name in value['models']:
-                    adapter = configured_adapter(value, name, ledger, audit_root=config.get('audit_root'))
-                    ctx.defer(adapter.close)
-                    ctx.defer(registry.register(name, adapter))
-                dimension = value['models'].get('embedding', {}).get('dimension')
-            else:
-                from .model_adapters import EmbeddingAdapter, LunaAdapter
-                from .platform_plugins import OwnedModelClients
-                from .remote import GoogleEmbeddingProvider, LunaClient
-
-                if model_clients is None:
-                    if not config.get('providers_config'):
-                        raise ValueError('MODEL_CONFIGURATION_REQUIRED')
-                    generation = LunaClient(config['providers_config'])
-                    ctx.defer(generation.close)
-                    embedding = GoogleEmbeddingProvider(config['providers_config'])
-                    ctx.defer(embedding.close)
-                elif isinstance(model_clients, OwnedModelClients):
-                    generation, embedding = model_clients.claim(ctx)
-                else:
-                    generation, embedding = model_clients
-                ctx.defer(registry.register('generation', LunaAdapter(generation)))
-                if embedding is not None:
-                    ctx.defer(registry.register('embedding', EmbeddingAdapter(embedding)))
-                    dimension, embedding_manifest = embedding.dimension, embedding.manifest
-                ocr_manifest, stats = generation.manifest, generation.snapshot_stats
-        selected = registry.structured('generation', policy=ContextBudget(**config.get('policy', {})),
-                                       ledger=BudgetLedger(**config.get('budget', {})))
-        catalog = registry.catalog()
-        embedding_view = None
-        if 'embedding' in catalog:
-            if dimension is None:
-                with registry.lease('embedding', Capability.EMBEDDING) as adapter:
-                    dimension = getattr(adapter, 'dimension', None)
-            if dimension is None:
-                raise ValueError('MODEL_EMBEDDING_DIMENSION_REQUIRED')
-            embedding_view = EmbeddingView(registry, dimension=dimension, manifest=embedding_manifest)
-        ocr_route = 'ocr' if 'ocr' in catalog else 'generation'
-        ocr_view = (OCRView(registry, ocr_route, manifest=ocr_manifest, stats=stats)
-                    if Capability.OCR in catalog[ocr_route].capabilities else None)
-        selected.capability_endpoint = AuxiliaryModelEndpoint(embedding=embedding_view, ocr=ocr_view,
-                                                              authorization=ctx.require('access'))
-        return selected
+        return knowledge_model(ctx.require('llm'), config, ctx.require('access'))
 
     def data_factory(ctx, config):
         from .agent_tools import EvidenceGateway
@@ -247,8 +179,12 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
         repository = KnowledgeRepository(database=authority_database(ctx.require('authority')))
         return KnowledgeAccess(repository)
 
+    from .knowledge_storage_configuration import REQUIREMENTS, SCHEMAS
+
+    foundation = foundation_mounts(storage_configuration=storage_configuration, provider_catalog=provider_catalog,
+        models=models, model_clients=model_clients, storage_requirements=REQUIREMENTS, storage_schemas=SCHEMAS)
     composed, application = build_knowledge_application(selected,
-        storage_factory=storage_factory, session_factory=session_factory, data_factory=data_factory,
+        foundation=foundation, session_factory=session_factory, data_factory=data_factory,
         model_factory=model_factory, authenticate=authenticate,
         access_factory=access_factory,
         registry_extensions={('storage.service', 1): storage_methods(),

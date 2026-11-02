@@ -8,6 +8,8 @@ class ProviderCompletion:
     finish_reason: str | None
     usage: dict | None
     diagnostic: object = None
+    request_id: str | None = None
+    physical_request_id: str | None = None
 
 
 class ModelProvider(Protocol):

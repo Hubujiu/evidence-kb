@@ -378,6 +378,9 @@ class ModelEndpoint:
                 raise
             details = {'kind': 'model', 'status': getattr(error, 'status', None),
                        'retry_after_seconds': getattr(error, 'retry_after_seconds', None)}
+            for field in ('model_sent', 'physical_request_id', 'preflight_code'):
+                if getattr(error, field, None) is not None:
+                    details[field] = getattr(error, field)
             if hasattr(error, 'call_record'):
                 details['call_record'] = error.call_record
             raise ContractError(error.code, str(error), status_code=502, details=details) from error

@@ -1,23 +1,13 @@
-from dataclasses import asdict
 from contextlib import contextmanager
 from threading import RLock
 
 from .database_contracts import CommitUnknown, DatabaseError
 from .plugin_contracts import ContractError, Method
 from .storage_process import decode_value, encode_value
-from .storage_protocol import WRITE_METHODS, validate_binding, validate_identity, validate_invocation, validate_values
-from .storage_sdk import (DOCUMENT_V1, EphemeralCacheSpace, ExistingDataset,
-                          LEXICAL_BM25_V1, OBJECT_V1, SpaceKey, StorageError, VECTOR_V1)
-from .storage_sdk.relational import GUARDED_RELATIONAL_V1
+from .storage_protocol import prepare, result_failure, validate_descriptor
+from .storage_sdk import EphemeralCacheSpace, ExistingDataset, OBJECT_V1, SpaceKey, StorageError
 
 
-REQUIREMENTS = {
-    'repository': {'primary': GUARDED_RELATIONAL_V1},
-    'store': {'primary': GUARDED_RELATIONAL_V1},
-    'provider': {'primary': GUARDED_RELATIONAL_V1},
-    'search': {'bm25': LEXICAL_BM25_V1, 'dense': VECTOR_V1, 'source': DOCUMENT_V1},
-    'originals': {'objects': OBJECT_V1},
-}
 MAX_INVOKE_NODES = 250000
 
 
@@ -34,8 +24,15 @@ def storage_methods():
     }
 
 
+def database_failure(error):
+    details = {'kind': 'database'}
+    if isinstance(error, CommitUnknown):
+        details['operation_id'] = error.operation_id
+    return ContractError(error.code, str(error), status_code=503, details=details)
+
+
 class ApplicationStorage:
-    def __init__(self, configuration, *, provider_catalog=None):
+    def __init__(self, configuration, *, provider_catalog=None, requirements=None, schemas=None):
         from .plugin_host import PluginSpec
         from .storage_catalog import default_storage_providers
         from .storage_plugins import compile_storage_plugins
@@ -44,10 +41,24 @@ class ApplicationStorage:
 
         providers = default_storage_providers() if provider_catalog is None else provider_catalog
         consumers = configuration.get('bindings', {})
-        if set(consumers) - set(REQUIREMENTS):
+        if requirements is None:
+            requirements = {}
+            for consumer, bindings in consumers.items():
+                requirements[consumer] = {}
+                for alias, binding in bindings.items():
+                    service = configuration['services'][binding['service']]
+                    instance = configuration['instances'][service['instance']]
+                    contracts = providers[instance['provider']].exports[service['export']]
+                    candidates = [contract for contract in contracts
+                                  if all(contract.satisfies(parent) for parent in contracts)]
+                    if len(candidates) != 1:
+                        raise ValueError('STORAGE_BINDING_CONTRACT_REQUIRED')
+                    requirements[consumer][alias] = candidates[0]
+        if set(consumers) - set(requirements):
             raise ValueError('UNKNOWN_APPLICATION_STORAGE_CONSUMER')
+        self._schemas = dict(schemas or {})
         specs = tuple(PluginSpec(name, (), tuple(StorageSlot(slot, contract)
-            for slot, contract in REQUIREMENTS[name].items()), lambda ctx, config: None)
+            for slot, contract in requirements[name].items()), lambda ctx, config: None)
             for name in consumers)
         compile_storage_plugins({'version': 1, 'plugins': [{'id': name, 'use': name} for name in consumers]},
             specs, configuration, provider_catalog=providers)
@@ -60,10 +71,7 @@ class ApplicationStorage:
                 provider = providers[definition['provider']]
                 instance = provider.factory(definition['config'])
                 self._instances.append(instance)
-                actual = {item.name: item for item in instance.exports()}
-                if set(actual) != set(provider.exports) or any(
-                        actual[key].contracts != tuple(value) for key, value in provider.exports.items()):
-                    raise StorageError('STORAGE_PROVIDER_EXPORT_MISMATCH')
+                actual = provider.validate_exports(instance)
                 exports[name] = actual
             for name, definition in configuration['services'].items():
                 self._registry.register(name, exports[definition['instance']][definition['export']])
@@ -73,10 +81,9 @@ class ApplicationStorage:
                                      binding['owner'], binding['space'])
                     target = (ExistingDataset(binding['dataset_id']) if 'dataset_id' in binding
                               else EphemeralCacheSpace(binding['cache_id']))
-                    grant = self._registry.grant(binding['service'], REQUIREMENTS[consumer][alias],
+                    grant = self._registry.grant(binding['service'], requirements[consumer][alias],
                                                  space, consumer, target=target)
                     bound = self._registry.bind(grant)
-                    validate_binding(bound)
                     self._bound[consumer + '.' + alias] = bound
         except BaseException:
             self.close()
@@ -102,7 +109,7 @@ class ApplicationStorage:
     def describe(self, request):
         with self._operation():
             bound = self._binding(request['binding'])
-            return {'identity': asdict(bound.identity), 'methods': sorted(bound._methods)}
+            return bound.describe()
 
     def invoke(self, request):
         from .storage_json_wire import StorageJsonEndpoint
@@ -113,7 +120,8 @@ class ApplicationStorage:
                 if name not in self._generic:
                     bound = self._binding(name)
                     self._generic[name] = StorageJsonEndpoint(
-                        lambda logical: self._invoke(bound, logical), operations=('invoke',))
+                        lambda logical: self._invoke(bound, logical), operations=('invoke',),
+                        result_error=lambda request, value, error: result_failure(bound.describe(), request['method'], error))
                 endpoint = self._generic[name]
             return endpoint.execute(request['request'])
 
@@ -126,54 +134,35 @@ class ApplicationStorage:
                 or type(request['kwargs']) is not dict or len(request['args']) > 64 or len(request['kwargs']) > 64
                 or any(type(key) is not str for key in request['kwargs'])):
             raise StorageError('STORAGE_INVALID_PROCESS_REQUEST')
-        method = request['method']
-        if method.startswith('_') or method not in bound._methods or method in {'prepare', 'transaction', 'guard'}:
-            raise StorageError('STORAGE_PROCESS_METHOD_REJECTED')
-        validate_invocation(bound, method, request['args'], request['kwargs'])
-        validate_values([*request['args'], *request['kwargs'].values()], max_nodes=MAX_INVOKE_NODES)
-        budget = [MAX_INVOKE_NODES]
-        args = [decode_value(item, _budget=budget) for item in request['args']]
-        kwargs = {key: decode_value(item, _budget=budget) for key, item in request['kwargs'].items()}
         try:
-            result = getattr(bound, method)(*args, **kwargs)
+            return bound._invoke_values(request['method'], request['args'], request['kwargs'],
+                max_nodes=MAX_INVOKE_NODES, request_bytes=64 * 1024 * 1024, result_bytes=64 * 1024 * 1024)
+        except DatabaseError as error:
+            raise database_failure(error) from error
         except (SearchUnavailable, FileNotFoundError) as error:
             kind = ('incomplete' if isinstance(error, SearchGenerationIncomplete) else
                     'search' if isinstance(error, SearchUnavailable) else 'missing')
             raise ContractError('STORAGE_OPERATION_FAILED', str(error), status_code=503,
                                 details={'kind': kind}) from error
-        try:
-            return encode_value(result, _budget=[MAX_INVOKE_NODES])
-        except StorageError:
-            if method in WRITE_METHODS:
-                raise StorageError('STORAGE_WRITE_RESULT_UNAVAILABLE', method=method, outcome='COMPLETED') from None
-            raise
 
     def relational(self, request):
         try:
             return self._relational(request)
         except DatabaseError as error:
-            details = {'kind': 'database'}
-            if isinstance(error, CommitUnknown):
-                details['operation_id'] = error.operation_id
-            raise ContractError(error.code, str(error), status_code=503, details=details) from error
+            raise database_failure(error) from error
 
     def _relational(self, request):
-        from .knowledge_schema import knowledge_schema
-        from .persistence_schema import budget_schema
-        from .session_storage import session_schema
         from .storage_structured_wire import PortableStructuredEndpoint
 
         with self._operation():
             name = request['binding']
-            schemas = {'repository.primary': knowledge_schema, 'store.primary': session_schema,
-                       'provider.primary': budget_schema}
-            if name not in schemas:
+            if name not in self._schemas:
                 raise StorageError('STORAGE_RELATIONAL_BINDING_REQUIRED')
             with self._lock:
                 if name not in self._structured:
                     bound = self._binding(name)
                     self._structured[name] = PortableStructuredEndpoint(bound,
-                        schemas=(schemas[name](bound.identity.space.owner_id),))
+                        schemas=(self._schemas[name](bound.identity.space.owner_id),))
                 endpoint = self._structured[name]
             return endpoint.execute(request['request'])
 
@@ -213,9 +202,9 @@ class StorageClient:
         from .storage_sdk import StorageIdentity
 
         self._dependency, self._binding = dependency, binding
-        metadata = self._call('describe', {'binding': binding})
+        metadata = validate_descriptor(self._call('describe', {'binding': binding}))
+        self._descriptor = metadata
         identity = metadata['identity']
-        validate_identity(identity)
         self.identity = StorageIdentity(SpaceKey(**identity['space']), identity['dataset_id'])
         self._methods = frozenset(metadata['methods'])
         self._values = StorageJsonClient(lambda request: self._call('invoke',
@@ -247,7 +236,10 @@ class StorageClient:
     def __getattr__(self, method):
         if method.startswith('_') or method not in self._methods:
             raise AttributeError(method)
-        if method in {'put', 'read'} and {'reference', 'stat', 'read', 'put'} <= self._methods:
+        operation = self._descriptor['operations'].get(method)
+        if operation is None or operation['channel'] == 'structured':
+            raise AttributeError(method)
+        if operation['channel'] == 'object':
             from .storage_object_wire import ObjectTransferClient
 
             client = ObjectTransferClient(lambda request: self._call('objects',
@@ -256,14 +248,15 @@ class StorageClient:
         def invoke(*args, **kwargs):
             budget = [MAX_INVOKE_NODES]
             request = {'version': 1, 'op': 'invoke', 'method': method,
-                'args': [encode_value(item, _budget=budget) for item in args],
-                'kwargs': {key: encode_value(item, _budget=budget) for key, item in kwargs.items()}}
-            result = self._values.call(request)
-            try:
-                validate_values([result], max_nodes=MAX_INVOKE_NODES)
-                return decode_value(result, _budget=[MAX_INVOKE_NODES])
-            except StorageError:
-                if method in WRITE_METHODS:
-                    raise StorageError('STORAGE_WRITE_RESULT_UNAVAILABLE', method=method, outcome='COMPLETED') from None
-                raise
+                'args': [encode_value(item, _budget=budget, _max_bytes=64 * 1024 * 1024) for item in args],
+                'kwargs': {key: encode_value(item, _budget=budget, _max_bytes=64 * 1024 * 1024)
+                           for key, item in kwargs.items()}}
+            with prepare(self._descriptor, method, request['args'], request['kwargs'], max_nodes=MAX_INVOKE_NODES,
+                         request_bytes=64 * 1024 * 1024, result_bytes=64 * 1024 * 1024) as call:
+                result = self._values.call(request)
+                validated = call.complete(lambda: result)
+                try:
+                    return decode_value(validated, _budget=[MAX_INVOKE_NODES], _validated=True)
+                except Exception as error:
+                    result_failure(self._descriptor, method, error)
         return invoke

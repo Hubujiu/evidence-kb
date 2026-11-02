@@ -1,6 +1,6 @@
 use crate::contracts::{Contract, FAMILIES, StorageIdentity};
 use crate::transaction::{CommitOutcome, resolve_commit};
-use crate::values::{StorageValue, validate_node};
+use crate::values::{CodecLimits, StorageValue, ValueCodec};
 use crate::{PROTOCOL, dispatch};
 use serde_json::{Value, json};
 
@@ -224,26 +224,132 @@ fn portable_values_preserve_literal_tags_documents_and_binary() {
 }
 
 #[test]
-fn value_node_validation_is_bounded_and_base64_chunks_cannot_hide_padding() {
+fn streamed_codec_validates_full_structure_and_actual_scalar_values() {
+    let mut codec = ValueCodec::new(CodecLimits::default()).unwrap();
+    for event in [
+        json!({"event":"open","type":"mapping","length":1}),
+        json!({"event":"key","value":"payload"}),
+        json!({"event":"open","type":"bytes"}),
+        json!({"event":"chunk","value":"AP8="}),
+        json!({"event":"close"}),
+        json!({"event":"close"}),
+    ] {
+        codec.push(&event).unwrap();
+    }
+    assert_eq!(codec.finish().unwrap()[0].length, 1);
+    let mut codec = ValueCodec::new(CodecLimits::default()).unwrap();
+    codec.push(&json!({"event":"open","type":"bytes"})).unwrap();
+    codec
+        .push(&json!({"event":"chunk","value":"AP8="}))
+        .unwrap();
     assert!(
-        validate_node(&json!({"type":"byte_chunk","depth":1,"value":{"data":"AP8=","last":true}}))
-            .is_ok()
-    );
-    assert!(
-        validate_node(&json!({"type":"byte_chunk","depth":1,"value":{"data":"AP8=","last":false}}))
+        codec
+            .push(&json!({"event":"chunk","value":"AAAA"}))
             .is_err()
     );
-    assert_eq!(
-        validate_node(&json!({"type":"json","depth":33,"value":null}))
-            .unwrap_err()
-            .code,
-        "STORAGE_PROCESS_LIMIT"
-    );
+    let mut codec = ValueCodec::new(CodecLimits::default()).unwrap();
+    codec
+        .push(&json!({"event":"open","type":"sequence","length":1}))
+        .unwrap();
+    assert!(codec.push(&json!({"event":"close"})).is_err());
+    let mut codec = ValueCodec::new(CodecLimits::default()).unwrap();
     assert!(
-        validate_node(
-            &json!({"type":"document","depth":0,"value":{"id":"x","revision":true,
-        "value_kind":"mapping"}})
-        )
-        .is_err()
+        codec
+            .push(&json!({"event":"scalar","type":"integer","value":"00"}))
+            .is_err()
     );
+    for value in [
+        json!({"type":"json","value":"正文\nquoted\""}),
+        json!({"type":"document","value":{"id":"one","revision":2,"value":{"type":"mapping","value":{"data":{"type":"bytes","value":"AP8="}}}}}),
+    ] {
+        let typed: StorageValue = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(
+            typed.inspect(CodecLimits::default()).unwrap().encoded_bytes,
+            serde_json::to_vec(&value).unwrap().len()
+        );
+    }
+}
+
+#[test]
+fn operation_catalogue_is_shared_by_native_admission_and_independent_rust_drivers() {
+    use crate::service::{Descriptor, Driver, Service};
+    use std::cell::Cell;
+    use std::collections::BTreeMap;
+    use std::rc::Rc;
+    struct Kv {
+        calls: Rc<Cell<usize>>,
+        result: StorageValue,
+    }
+    impl Driver for Kv {
+        fn descriptor(&self) -> Descriptor {
+            Descriptor {
+                identity: StorageIdentity::parse(&identity("dataset")).unwrap(),
+                contract: Contract::parse(&json!({"id":"storage.kv","major":1})).unwrap(),
+                methods: vec!["get".into(), "set".into(), "delete".into()],
+            }
+        }
+        fn invoke(
+            &mut self,
+            _: &str,
+            _: Vec<StorageValue>,
+            _: BTreeMap<String, StorageValue>,
+        ) -> Result<StorageValue, crate::StorageError> {
+            self.calls.set(self.calls.get() + 1);
+            Ok(self.result.clone())
+        }
+    }
+    let calls = Rc::new(Cell::new(0));
+    let mut service = Service::new(Kv {
+        calls: calls.clone(),
+        result: StorageValue::Json(Value::Null),
+    })
+    .unwrap();
+    assert!(
+        service
+            .invoke(
+                "set",
+                vec![
+                    StorageValue::Json(json!("key")),
+                    StorageValue::Json(json!("not binary"))
+                ],
+                BTreeMap::new()
+            )
+            .is_err()
+    );
+    assert_eq!(calls.get(), 0);
+    service
+        .invoke(
+            "set",
+            vec![],
+            BTreeMap::from([
+                ("key".into(), StorageValue::Json(json!("key"))),
+                ("value".into(), StorageValue::Bytes("AP8=".into())),
+            ]),
+        )
+        .unwrap();
+    assert_eq!(calls.get(), 1);
+    let calls = Rc::new(Cell::new(0));
+    let mut bad = Service::new(Kv {
+        calls: calls.clone(),
+        result: StorageValue::Json(json!("invalid receipt")),
+    })
+    .unwrap();
+    let error = bad
+        .invoke(
+            "set",
+            vec![
+                StorageValue::Json(json!("key")),
+                StorageValue::Bytes("AP8=".into()),
+            ],
+            BTreeMap::new(),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "STORAGE_WRITE_RESULT_UNAVAILABLE");
+    assert_eq!(error.details["outcome"], "COMPLETED");
+    assert_eq!(calls.get(), 1);
+    let descriptor = service.descriptor().clone();
+    let reply = call("storage_service", json!({"action":"open","descriptor":descriptor,"method":"set","argc":1,"keywords":[],
+        "limits":{"request":{"max_nodes":100,"max_bytes":4096},"response":{"max_nodes":100,"max_bytes":4096}}})).unwrap();
+    assert_eq!(reply["ok"], false);
+    assert_eq!(reply["error"]["code"], "STORAGE_INVALID_PROCESS_REQUEST");
 }

@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from sqlalchemy import select
 
 from kb_platform.application_storage import ApplicationStorage, StorageClient, storage_methods
+from kb_platform.knowledge_storage_configuration import SCHEMAS as KNOWLEDGE_SCHEMAS
 from kb_platform.database_contracts import CommitUnknown, DatabaseError, QueryLimits, SpaceKey
 from kb_platform.database_providers import SQLiteProvider
 from kb_platform.knowledge_schema import knowledge_schema
@@ -245,7 +246,7 @@ class StructuredWireContracts(unittest.TestCase):
                 'instances': {'records': {'provider': 'sqlite', 'config': {'root': str(Path(directory) / 'records')}}},
                 'services': {'sessions': {'instance': 'records', 'export': 'structured'}},
                 'bindings': {'store': {'primary': {'service': 'sessions', 'owner': 'sessions', 'space': 'history'}}}})
-            service = ApplicationStorage(configuration)
+            service = ApplicationStorage(configuration, schemas=KNOWLEDGE_SCHEMAS)
             try:
                 dependency = JsonDependency(ServiceEndpoint(service, storage_methods()))
                 client = StorageClient(dependency, 'store.primary').relational()

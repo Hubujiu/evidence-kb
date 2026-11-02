@@ -27,7 +27,7 @@
 | `llm-service` | 公共请求与流协议、适配器注册、准备调用与响应组装 | RAG、实际费用估算、自动重发、具体 HTTP SDK |
 | `storage-service` | 存储能力与方法准入、类型值、身份和事务协议 | 某个数据库 SQL 编译器、领域仓储、跨库分布式事务 |
 | Provider 插件 | 模型 SDK、HTTP/SSE、数据库驱动和后端方言等具体实现 | 创建与应用既有会话/预算冲突的另一份权威 |
-| 知识库应用组合 | workflow、context、access、sessions、model、data/retrieval、storage、entry 的业务协作 | 在通用内核硬编码知识库能力 |
+| 知识库应用组合 | workflow、context、access、sessions、model、data、authority、model_policy、entry 的业务协作 | 在通用内核硬编码知识库能力 |
 
 `plugin-runtime` 和 `plugin-host` 不依赖 LLM、存储或应用 crate。`llm-service`、`storage-service` 的公共 Rust API 不要求启动本项目宿主，也不依赖 Python 知识库。聚合层可以同时使用它们；这种聚合不允许服务反向依赖聚合层。
 
@@ -81,9 +81,9 @@ flowchart TB
 
 原生异步 Service 的调用与现有 Python 供应商桥需要分开报告。对同步 `complete()` 的规范化可以复用这些语义，但它本身不等于供应商实时 SSE、HTTP 前端增量输出或完整 DSH AsyncIterable 兼容。验收必须检查实际使用的入口，不能由类型定义或一个独立示例推断整条业务链已具备实时流式能力。
 
-生产 Python 桥位于 `kb_platform/llm_protocol.py`。`ModelService._invoke` 的 CHAT 调用在发送前验证请求、收到结果后规范化响应；`ModelService.structured` 通过 `CompletionBridge` 包装公开 completion port，使实际 `provider.complete` 使用同一 Rust 合同。规范化用量和结束状态作为 `ModelResult` 的附加信息保留，原 Provider usage 不被覆盖。大请求仅把所需角色、类型和字段元数据送入 ABI，不重新复制全文。
+生产 Python 桥位于 `kb_platform/llm_protocol.py`。Rust `Registry<T>` 同时服务原生异步 SDK 与 Python executor：绑定、准备、准入、活跃调用、排空和清理使用同一算法。Python `ModelService` 只保留执行对象与资源清理函数，不再维护另一套 route phase、active counter 或已发注册 ID 集合。CHAT 与 completion port 都经过原生 call ticket；原始 usage 保留，额外返回规范化 usage/finish。大请求只向调用准入发送必要元数据，不复制全文进入 ABI。
 
-默认知识库 profile 的 `knowledge.model` 当前仍作为一个装配包，在内部创建或借用 Python `ModelService` 并管理 Provider 注册。它消费 Rust LLM 协议，但尚未把注册表拆成默认应用图中的独立 `llm` 依赖节点。旧的通用 Agent profile 已有 `models.service` 与 Provider 生命周期节点；两种入口各自只保留一个注册 owner。这里交付的是可独立复用的 Rust 服务基座和现有调用路径接线，不能把默认知识库的内部 Provider 注册描述为已全部迁入 Rust `Service`。
+默认应用图现在显式包含 `foundation.llm` 和 `foundation.storage`。`knowledge.model` 通过公开 `llm.service/1` 消费通用模型服务；提供者配置归底座服务，结构化输出、轮次预算和验证回执归应用模型层。`knowledge.authority` 消费通用存储并发布领域结构；`knowledge.model_policy` 通过可选公共合同提供发送许可和 OCR validator。完整职责、操作算法和可运行入口见 [当前底座与应用架构](foundation-architecture.md)。
 
 内置 Luna/HTTP Provider 仍声明 `streaming=False`，本轮未把它们改成 SSE Provider。原生异步流式能力由 Rust `Adapter`、`Service`、`PreparedCall` 和有界通道提供，独立消费者测试只依赖 `llm-service`。原生 SDK 的流式验收和默认同步供应商的业务验收分别报告。
 
@@ -128,7 +128,7 @@ Rust `storage-service` 复用现有 relational/document/kv/vector/lexical/object
 
 结构化存储的调用身份需要保留 runtime、instance、generation 和 registration 等完整绑定；过期句柄不能因字符串 ID 复用而恢复有效。事务写入超时或 commit 响应丢失不能推导为回滚，必须保留原 operation_id 与 UNKNOWN，不能因此自动重放；读缓存不能冒充持久账本。已完成写入之后的编码或结果校验失败保留 `STORAGE_WRITE_RESULT_UNAVAILABLE`、`outcome=COMPLETED` 和 method，避免把结果不可用误报为没有发生写入。
 
-4 MiB 是单条 wire 消息限制。大值继续走既有有界分块，不为调用 Rust 校验重新塞入整块大文档。新的控制头保持小型化，typed-value 节点分批验证，每批最多 512 KiB 或 1024 个节点；文本内容仍由原 codec 处理。SQL 结构、COUNT(*)、Numeric 精度与 scale 需要保留原有合同；通用协议不能通过丢信息来制造后端一致。SQLAlchemy AST 解释器和各后端驱动继续工作，本轮没有把 SQL 引擎整体重写为 Rust。
+4 MiB 是单条 wire 消息限制。大值继续走既有有界分块，不为调用 Rust 校验重新塞入整块大文档。新的控制头保持小型化，typed-value 采用完整有界事件流：真实标量、文本和 bytes 分块进入同一个 Rust 校验栈，容器结构与累计预算不会在批次边界丢失。SQL 结构、COUNT(*)、Numeric 精度与 scale 需要保留原有合同；通用协议不能通过丢信息来制造后端一致。SQLAlchemy AST 解释器和各后端驱动继续工作，本轮没有把 SQL 引擎整体重写为 Rust。
 
 更换 Provider 是否完成，以消费者业务代码不改、配置绑定生效、合同要求确实满足且故障语义保持为准。Milvus、Elasticsearch、OpenSearch 等未实现的驱动不因存在通用合同就被宣称可用。
 
@@ -138,7 +138,7 @@ Rust `storage-service` 复用现有 relational/document/kv/vector/lexical/object
 | --- | --- |
 | 插件实例、代次、依赖与租约 | Rust plugin runtime |
 | 子进程、管道与进程树 | 创建它们的 Rust host/process owner |
-| 模型 route 与 prepared call | LLM 注册 owner；身份贯穿实际调用 |
+| 模型 route、prepared call 与活跃调用 | Rust `llm-service::Registry<T>`；Native/Python 共用，身份贯穿实际调用 |
 | 会话 revision、请求幂等、结果持久化 | 应用选择的 session service 和既有持久仓储 |
 | 物理发送、费用和 UNKNOWN 预留 | 既有唯一计量/预算账本 |
 | 原文版本、hash、ACL 和发布代际 | 知识库数据与权限服务 |

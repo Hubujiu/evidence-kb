@@ -5,6 +5,7 @@
 //! it never retries a write or maintains a second transaction/accounting ledger.
 
 pub mod contracts;
+pub mod operations;
 pub mod service;
 pub mod transaction;
 pub mod values;
@@ -82,6 +83,7 @@ pub fn dispatch(command: &str, mut arguments: Map<String, Value>) -> Result<Valu
         return Err(StorageError::new("STORAGE_PROTOCOL_VERSION_INVALID"));
     }
     match command {
+        "storage_service" => Ok(service::reply(&arguments)),
         "storage_contract_validate" => {
             fields(
                 &arguments,
@@ -157,13 +159,12 @@ pub fn dispatch(command: &str, mut arguments: Map<String, Value>) -> Result<Valu
             let entries = arguments["values"]
                 .as_array()
                 .ok_or_else(|| StorageError::new("STORAGE_INVALID_PROCESS_VALUE"))?;
-            if entries.len() > 2048 {
-                return Err(StorageError::new("STORAGE_PROCESS_LIMIT"));
-            }
             for entry in entries {
-                values::validate_node(entry)?;
+                let value: values::StorageValue = serde_json::from_value(entry.clone())
+                    .map_err(|_| StorageError::new("STORAGE_INVALID_PROCESS_VALUE"))?;
+                value.validate()?;
             }
-            Ok(json!({"valid":true, "nodes":entries.len()}))
+            Ok(json!({"valid":true,"nodes":entries.len()}))
         }
         _ => Err(StorageError::new("STORAGE_PROTOCOL_COMMAND_UNKNOWN")),
     }

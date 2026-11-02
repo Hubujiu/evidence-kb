@@ -3,6 +3,7 @@ from dataclasses import asdict
 from .agent_context import ContextManager, ContextPolicy
 from .provider_runtime import ToolExecutor
 from .agent_engine import Runtime
+from .foundation_services import CATALOG as FOUNDATION_CATALOG, registry_extensions as foundation_contracts
 from .knowledge_application import KnowledgeApplication, KnowledgeGraphDriver, KnowledgeTools
 from .knowledge_context import KnowledgeContext, LocalEvidenceSource, LocalHistorySource, PREPARE_REQUEST, SOURCE_REQUEST
 from .knowledge_contracts import (
@@ -33,9 +34,11 @@ def definition(name, provides, requires):
 
 
 CATALOG = [
-    definition('storage', {'storage': 'storage.service', 'authority': 'knowledge.authority.storage'}, {}),
+    *FOUNDATION_CATALOG,
+    definition('authority', {'authority': 'knowledge.authority.storage'}, {'storage': 'storage.service'}),
+    definition('model_policy', {'policy': 'llm.policy'}, {'access': 'knowledge.access'}),
     definition('model', {'model': 'knowledge.model', 'capabilities': 'knowledge.model.capabilities'},
-               {'storage': 'storage.service', 'access': 'knowledge.access'}),
+               {'llm': 'llm.service', 'access': 'knowledge.access'}),
     definition('sessions', {'sessions': 'knowledge.sessions'}, {'storage': 'storage.service'}),
     definition('data', {'evidence': 'knowledge.evidence', 'platform': 'knowledge.platform',
                         'semantic': 'knowledge.semantic'},
@@ -101,24 +104,26 @@ def registry(extensions):
             'validate_embedding': Method(object_schema({'audit_context': OBJECT,
                 'task': {'enum': ['document', 'query']}, 'provider_id': TEXT}),
                 object_schema({'authorized': {'type': 'boolean'}}))},
-        **extensions,
+        **foundation_contracts(), **extensions,
     })
 
 
-def build_knowledge_application(application, *, storage_factory, session_factory, data_factory,
+def build_knowledge_application(application, *, foundation, session_factory, data_factory,
                                 model_factory, authenticate, registry_extensions, access_factory=None, schemas=None,
                                 workflow_options=None, extra_catalog=(), extra_mounts=None,
                                 process_root=None):
     from .knowledge_platform_contract import METHODS as PLATFORM_METHODS, PlatformEndpoint
     from .knowledge_semantic_contract import METHODS as SEMANTIC_METHODS, SemanticClient, SemanticEndpoint
     from .knowledge_authority_contract import AuthorityStorageEndpoint, validate_authority_bindings
+    from .knowledge_model_service import KnowledgeModelPolicy
 
     validate_authority_bindings(application)
 
-    def storage(ctx, config):
-        selected = storage_factory(ctx, config)
-        ctx.provide('storage', selected)
-        ctx.provide('authority', AuthorityStorageEndpoint(selected))
+    def authority(ctx, config):
+        ctx.provide('authority', AuthorityStorageEndpoint(ctx.require('storage'), binding=config['binding']))
+
+    def model_policy(ctx, config):
+        ctx.provide('policy', KnowledgeModelPolicy(ctx.require('access')))
 
     def model(ctx, config):
         selected = model_factory(ctx, config)
@@ -211,8 +216,9 @@ def build_knowledge_application(application, *, storage_factory, session_factory
         ctx.provide('application', Entry())
 
     mounts = {('knowledge.' + name, '1'): factory for name, factory in {
-        'storage': storage, 'model': model, 'sessions': sessions, 'data': data,
+        'authority': authority, 'model_policy': model_policy, 'model': model, 'sessions': sessions, 'data': data,
         'access': access, 'context': context, 'workflow': workflow, 'entry': entry}.items()}
+    mounts.update(foundation)
     mounts.update(extra_mounts or {})
     selected_schemas = {(item['implementation'], item['version']): OBJECT for item in CATALOG}
     selected_schemas.update(schemas or {})

@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 from kb_platform.application_knowledge import DEFAULT_APPLICATION, create_contract_knowledge
 from kb_platform.application_storage import ApplicationStorage
+from kb_platform.knowledge_storage_configuration import SCHEMAS as KNOWLEDGE_SCHEMAS
 from kb_platform.core import Platform
 from kb_platform.database_contracts import DatabaseError
 from kb_platform.knowledge_access import KnowledgeAccess
@@ -31,7 +32,7 @@ class KnowledgeAuthorityContracts(unittest.TestCase):
                 'services': {'records': {'instance': 'records', 'export': 'structured'}},
                 'bindings': {'repository': {'primary': {
                     'service': 'records', 'owner': 'authority-owner', 'space': 'authority'}}}})
-            storage = ApplicationStorage(configuration)
+            storage = ApplicationStorage(configuration, schemas=KNOWLEDGE_SCHEMAS)
             try:
                 endpoint = ServiceEndpoint(AuthorityStorageEndpoint(storage), METHODS)
                 original_digest = endpoint.describe({})['schema']['digest']
@@ -79,7 +80,7 @@ class KnowledgeAuthorityContracts(unittest.TestCase):
                 'bindings': {'repository': {'primary': {
                     'service': 'records', 'owner': 'authority-owner', 'space': 'authority'}},
                     'store': {'primary': {'service': 'records', 'owner': 'sessions', 'space': 'history'}}}})
-            storage = ApplicationStorage(configuration)
+            storage = ApplicationStorage(configuration, schemas=KNOWLEDGE_SCHEMAS)
             try:
                 endpoint = ServiceEndpoint(AuthorityStorageEndpoint(storage), METHODS)
                 described = endpoint.describe({})
@@ -120,7 +121,7 @@ class KnowledgeAuthorityContracts(unittest.TestCase):
         profile = json.loads(DEFAULT_APPLICATION.read_text('utf-8'))
         profile['plugins']['other-storage'] = deepcopy(profile['plugins']['storage'])
         profile['bindings']['access']['authority']['plugin'] = 'other-storage'
-        with patch('kb_platform.application_knowledge.ApplicationStorage') as factory:
+        with patch('kb_platform.foundation_services.ApplicationStorage') as factory:
             with self.assertRaises(PluginError) as caught:
                 create_contract_knowledge(Settings(Path('unused'), Path('unused')), profile=profile)
         self.assertEqual(caught.exception.code, 'KNOWLEDGE_AUTHORITY_BINDING_MISMATCH')

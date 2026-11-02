@@ -130,6 +130,9 @@ class OpenAICompatibleAdapter:
 
         try:
             request = validate_request(request)
+            authorize = request.call_context.get('authorize')
+            if authorize is not None and authorize() is not True:
+                raise ModelPreflightError('MODEL_AUTHORIZATION_FAILED')
             if request.capability not in self.info.capabilities:
                 raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
             path, wire = self._wire(request)
@@ -182,6 +185,8 @@ class OpenAICompatibleAdapter:
         try:
             record['status'] = 'STARTED'
             save()
+            if authorize is not None and authorize() is not True:
+                raise ModelPreflightError('MODEL_AUTHORIZATION_FAILED')
             outbound.extensions['timeout'] = httpx.Timeout(remaining_timeout()).as_dict()
             sending = True
             response = self.client.send(outbound, follow_redirects=False)
@@ -211,6 +216,7 @@ class OpenAICompatibleAdapter:
             else:
                 if not sending:
                     exc.model_sent = False
+                    exc.physical_request_id = identity
                     raise
             error = RemoteModelError(code)
             error.model_sent = not known_unsent
@@ -236,7 +242,8 @@ class OpenAICompatibleAdapter:
             except BaseException as exc:
                 exc.model_sent = True
                 raise
-        return ModelResult(self.info.provider, self.info.model, request.capability, data, usage, identity)
+        return ModelResult(self.info.provider, self.info.model, request.capability, data, usage, identity,
+                           physical_request_id=identity)
 
     def _decode(self, request, response):
         kind = request.capability

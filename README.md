@@ -56,7 +56,7 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 ## 配置远程提供者
 
 多提供商及 OCR、Embedding、语音、生图接入使用新的 [公共模型服务](docs/model-services.md)，
-配置示例为 `config/models.example.json`。设置 `KB_MODELS_CONFIG` 后，模型插件拥有提供者、物理请求账本及路由；其他插件通过公共模型合同调用。也可选用下面的 Luna/Google 提供者实现。
+配置示例为 `config/models.example.json`。设置 `KB_MODELS_CONFIG` 后，`foundation.llm` 装配提供者和既有物理账本；Rust 统一拥有模型注册与调用状态，知识库通过公开 `llm.service` 合同调用。也可选用下面的 Luna/Google 提供者实现。
 
 将 `config/remote-providers.example.json` 或 `config/vertex-providers.example.json` 复制到 `.local/providers.json`，替换端点、模型和凭据。示例中的模型名称需要你的提供者实际支持，仓库不提供模型账户或额度。
 
@@ -69,7 +69,7 @@ $env:KB_PROVIDERS_CONFIG = '.local/providers.json'
 uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
-知识库默认使用 [`config/applications/knowledge.json`](config/applications/knowledge.json) 的八类插件：入口、工作流、上下文、会话、认证授权、模型、知识库数据与检索、存储。Rust 根据合同版本、能力及显式 `bindings` 编译依赖图并管理生命周期。上下文负责读取会话与授权证据；内部策略和工具适配器不再单独配置为业务插件。设置 `KB_APPLICATION_PROFILE` 可选择另一份应用配置。配置、公开 JSON 接口和语言执行方式见 [插件架构](docs/plugin-architecture-v4.md)。
+知识库默认使用 [`config/applications/knowledge.json`](config/applications/knowledge.json) 的 11 个显式节点：通用 LLM 与存储底座，加上知识库入口、工作流、上下文、会话、权限、权威数据、模型策略、模型领域视图、文档与检索。Rust 根据合同版本、能力及 `bindings` 编译依赖图并管理生命周期。提供者配置位于 `plugins.llm.config`；知识库模型节点只配置路由、策略与应用预算。设置 `KB_APPLICATION_PROFILE` 可选择另一份应用图。职责与适配算法见 [底座与应用架构](docs/foundation-architecture.md)，公开 JSON 和跨语言执行见 [插件合同](docs/plugin-architecture-v4.md)，独立消费者与真实本地 wire 检查见 [验收说明](docs/foundation-acceptance.md)。
 
 默认知识库数据配置为 `.local/storage-knowledge.json`；`KB_STORAGE_CONFIG` 可显式覆盖。初始化命令不会复制旧知识库、索引或会话。没有发生自动迁移，也不会因连接错误清空数据。
 

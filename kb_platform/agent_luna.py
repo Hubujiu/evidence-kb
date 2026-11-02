@@ -25,7 +25,9 @@ class LunaModelProvider:
         choice = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], dict) else {}
         message = choice.get('message')
         return ProviderCompletion(message.get('content') if isinstance(message, dict) else None,
-                                  choice.get('finish_reason'), raw.get('usage'), raw)
+                                  choice.get('finish_reason'), raw.get('usage'), raw,
+                                  request_id=trace.get('request_id'),
+                                  physical_request_id=trace.get('last_physical_request_id'))
 
     def cache_get(self, key):
         return self.client._cache_get(key)

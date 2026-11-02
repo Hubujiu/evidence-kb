@@ -13,6 +13,7 @@ from kb_platform.knowledge_capabilities import CATALOG, registry
 from kb_platform.knowledge_model_ports import METHODS as MODEL_METHODS
 from kb_platform.knowledge_platform_contract import METHODS as PLATFORM_METHODS
 from kb_platform.knowledge_semantic_contract import METHODS as SEMANTIC_METHODS
+from kb_platform.llm_contract import OPERATION_SCHEMAS
 
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / 'config/contracts/knowledge-v1.json'
@@ -33,6 +34,7 @@ def contract_document():
     return {'format': 'evidence-plugin-contracts/1', 'catalog': deepcopy(CATALOG),
         'contracts': [{'id': identity, 'major': major,
             **({'dataset_schema': authority_schema_descriptor()} if identity == 'knowledge.authority.storage' else {}),
+            **({'operations': deepcopy(OPERATION_SCHEMAS)} if identity == 'llm.service' else {}),
             'methods': {
             name: {'request': method.request, 'response': method.response}
             for name, method in sorted(methods.items())}}

@@ -75,6 +75,7 @@ class ModelResult:
     request_id: str | None = None
     normalized_usage: dict | None = None
     normalized_finish: dict | None = None
+    physical_request_id: str | None = None
 
 
 class ModelAdapter(Protocol):
@@ -161,7 +162,25 @@ def validate_request(request):
     return ModelRequest(kind, deepcopy(body, references), deepcopy(request.call_context, references))
 
 
-def validate_result(request, result):
+def preserve_result_failure(error, usage, *, result=None, physical_request_id=None):
+    error.model_sent = True
+    if isinstance(usage, dict):
+        error.observed_usage = dict(usage)
+    request_id = getattr(result, 'request_id', None)
+    if isinstance(request_id, str) and request_id:
+        error.request_id = request_id
+    physical_request_id = getattr(result, 'physical_request_id', None) or physical_request_id
+    if isinstance(physical_request_id, str) and physical_request_id:
+        error.physical_request_id = physical_request_id
+
+
+def validate_result(request, result, *, info=None):
+    if (not isinstance(result, ModelResult) or result.capability != request.capability
+            or info is not None and (result.provider != info.provider or result.model != info.model)):
+        raise RemoteModelError('INVALID_MODEL_RESULT_IDENTITY')
+    if any(value is not None and (not isinstance(value, str) or not value)
+           for value in (result.request_id, result.physical_request_id)):
+        raise RemoteModelError('INVALID_MODEL_RESULT')
     data, kind = result.data, request.capability
     if not isinstance(data, dict) or result.usage is not None and not isinstance(result.usage, dict):
         raise RemoteModelError('INVALID_MODEL_RESULT')

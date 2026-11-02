@@ -2,7 +2,7 @@
 
 Rust 核心及公共服务的当前分层见 [DSH / Cordis 架构基础](dsh-rust-foundation.md)。`plugin-runtime` 是生命周期内核，`plugin-host` 是进程监督，`agent-harness` 是装配与协议入口；默认 loop/graph、LLM、存储分别位于独立的 `agent-services`、`llm-service`、`storage-service`。各公共服务不依赖生命周期内核，内核也不依赖公共服务或知识库。
 
-当前知识库应用的八类插件、公共 JSON 合同及配置见 [插件架构](plugin-architecture-v4.md)。[低层组件目录](plugin-catalog.md) 列出可独立复用和测试的内部适配器，不代表知识库用户需要装配这些细粒度节点。公共存储提供 relational、document、kv、vector、lexical、object 合同；内置 PostgreSQL、MySQL、SQLite 实现相同的领域持久化语义。
+当前知识库应用的 11 个显式节点、公共 JSON 合同及配置见 [插件架构](plugin-architecture-v4.md)。[低层组件目录](plugin-catalog.md) 列出可独立复用和测试的内部适配器，不代表知识库用户需要装配这些细粒度节点。公共存储提供 relational、document、kv、vector、lexical、object 合同；内置 PostgreSQL、MySQL、SQLite 实现相同的领域持久化语义。
 
 整体装配与调用关系见 [当前插件架构图](plugin-architecture.md)。
 
@@ -12,11 +12,11 @@ HTTP 身份解析已通过 `authentication` 服务访问。[认证会话](authen
 
 当前内置实现、服务依赖和公开 profile 见 [插件目录](plugin-catalog.md)。公共存储按 relational、document、kv、vector、lexical、object 六类合同连接消费插件与提供商，结构见 [存储插件设计](storage-plugins-design.md)，执行、验收和搬迁步骤见 [执行方案](storage-plugins-execution-plan.md)。知识库领域仓储、会话、预算、缓存索引和请求回执均消费 structured 关系合同；内置 PostgreSQL、MySQL、SQLite 实现同一业务协议。第三轮边界见 [改造方案](plugin-boundaries-v3-plan.md)。
 
-共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由由 Rust 生命周期管理。
+共享模型配置和文档专用组合见 [模型服务](model-services.md)。模型路由、prepared call 和活跃调用由 Rust LLM 注册表管理，插件实例及依赖仍由 Rust 生命周期核心管理。通用底座独立消费、完整应用图和适配层算法见 [底座与应用架构](foundation-architecture.md)。
 
 默认入口现为 [Rust 主宿主](rust-main-host.md)：`evidence-host` 持有生命周期 coordinator、loop 和 graph，启动执行环境并监督退出。Python worker 保存业务对象，按同一 Rust 命令协议执行并回报效果；断开主宿主后不会回退到本地生命周期。`plugin-host` 是与 Agent 无关的进程监督库，业务 dispatcher 由可执行入口注入。
 
-知识库 API 默认加载 `config/applications/knowledge.json`，经 `application_knowledge` 和 `knowledge_capabilities` 创建入口、工作流、上下文、会话、认证授权、模型、知识库数据与检索、存储八类实例。Rust 编译具名出口与显式绑定，拥有依赖解析、作用域、生命周期和图节点推进；执行器负责运行实现。通用运行时不导入知识库。未启用远程模型的独立文档工作台仍使用 `config/application-profiles/bm25.json`。
+知识库 API 默认加载 `config/applications/knowledge.json`，经 `application_knowledge`、`foundation_services` 和 `knowledge_capabilities` 装配 11 个显式节点：通用 LLM 与存储，以及知识库入口、工作流、上下文、会话、权限、权威数据、模型策略、模型领域视图、文档与检索。Rust 编译具名出口与显式绑定，拥有依赖解析、作用域、生命周期和图节点推进；执行器负责运行实现。通用运行时不导入知识库。未启用远程模型的独立文档工作台仍使用 `config/application-profiles/bm25.json`。
 
 默认本地检索由 embedded 提供；通过存储配置可选择 pg_textsearch BM25 和 pgvector 精确检索。`platform.search.storage` 分别声明 lexical BM25、vector 和 document source 三个槽位，`search_router.SplitSearch` 核对三方身份、内容、封存和发布。BM25 与 dense 可以使用同一实例、不同 PG 数据库或 PG 与 embedded 的组合；通用 PG 搜索分别要求 pg_textsearch 或 pgvector，使用独立搜索 schema；旧知识库专用 PG 搜索代码仅供显式历史数据工具读取，不再出现在运行时 catalog。`KB_SEARCH_CHANNELS_CONFIG` 已移除。知识库正文、权限、发布状态和 Embedding 任务通过 structured 关系合同访问所绑定提供商；`search.py` 保留共有排序与绑定合同。`semantic_pages_v2.py` 通过读回、封存和页向量接口访问后端。原件通过 files 或 S3 对象接口用于下载、PDF 和图片预览；证据以不可变解析快照为准。当前配置边界见 [存储设计](storage-plugins-design.md)，检索协议见 [检索存储](search-storage.md)。
 

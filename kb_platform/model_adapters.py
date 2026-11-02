@@ -37,7 +37,8 @@ class LunaAdapter:
         response = port.complete(body['messages'], limit, purpose='model_chat', key=digest(identity), trace=trace)
         return ModelResult(self.info.provider, self.info.model, request.capability,
                            {'text': response.content, 'finish_reason': response.finish_reason},
-                           response.usage, trace['request_id'])
+                           response.usage, trace['request_id'],
+                           physical_request_id=trace.get('last_physical_request_id'))
 
 
 class ObservedEmbeddingPort(Protocol):

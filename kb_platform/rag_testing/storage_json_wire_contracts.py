@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 from sqlalchemy import Column, Integer, MetaData, Numeric, Table, func, select
 
 from kb_platform.application_storage import ApplicationStorage
+from kb_platform.knowledge_storage_configuration import SCHEMAS as KNOWLEDGE_SCHEMAS
 from kb_platform.database_contracts import CommitUnknown, DatabaseError
 from kb_platform.documents import parse_native_document
 from kb_platform.knowledge_authority_contract import METHODS, AuthorityStorageEndpoint, authority_database
@@ -54,7 +55,7 @@ class StorageJsonWireContracts(unittest.TestCase):
                 'services': {'records': {'instance': 'records', 'export': 'structured'}},
                 'bindings': {'repository': {'primary': {
                     'service': 'records', 'owner': 'knowledge', 'space': 'authority'}}}})
-            storage = ApplicationStorage(configuration)
+            storage = ApplicationStorage(configuration, schemas=KNOWLEDGE_SCHEMAS)
             try:
                 dependency = JsonDependency(ServiceEndpoint(AuthorityStorageEndpoint(storage), METHODS))
                 database = authority_database(dependency)
@@ -143,7 +144,7 @@ class StorageJsonWireContracts(unittest.TestCase):
     def test_response_capacity_failure_rolls_back_mutation_inside_transaction_worker(self):
         with payload_store() as (client, endpoint, table, _):
             body = {'text': 'x' * MAX_MESSAGE_BYTES}
-            with patch('kb_platform.storage_json_wire.MAX_TRANSFERS', 1):
+            with patch('kb_platform.contract_transfer.MAX_TRANSFERS', 1):
                 with self.assertRaisesRegex(DatabaseError, 'STORAGE_WIRE_TRANSFER_LIMIT'):
                     with client.transaction() as transaction:
                         transaction.insert(table, {'id': 1, 'payload': body}, returning=(table.c.payload,))
@@ -186,7 +187,7 @@ class StorageJsonWireContracts(unittest.TestCase):
             with self.assertRaisesRegex(DatabaseError, 'STORAGE_WIRE_MESSAGE_LIMIT'):
                 endpoint.execute(request)
             send = Mock(side_effect=AssertionError('oversized logical request was sent'))
-            with patch('kb_platform.storage_json_wire.MAX_VALUE_BYTES', 1024), patch.object(client, '_send', send):
+            with patch('kb_platform.contract_transfer.MAX_VALUE_BYTES', 1024), patch.object(client, '_send', send):
                 with self.assertRaisesRegex(DatabaseError, 'STORAGE_WIRE_MESSAGE_LIMIT'):
                     client._call(request)
             send.assert_not_called()
@@ -222,8 +223,8 @@ class StorageJsonWireContracts(unittest.TestCase):
                  'sha256': sha256(data).hexdigest(), 'transaction': 'transaction'}
         with self.assertRaisesRegex(DatabaseError, 'STORAGE_WIRE_TRANSFER_INVALID'):
             endpoint.execute({**begin, 'bytes': MAX_VALUE_BYTES + 1})
-        with patch('kb_platform.storage_json_wire.MAX_TRANSFER_BYTES', len(data)), \
-                patch('kb_platform.storage_json_wire.monotonic', return_value=0):
+        with patch('kb_platform.contract_transfer.MAX_TRANSFER_BYTES', len(data)), \
+                patch('kb_platform.contract_transfer.monotonic', return_value=0):
             opened = endpoint.execute(begin)
             handle = opened['handle']
             stream = endpoint._transfers[handle].stream
@@ -235,7 +236,7 @@ class StorageJsonWireContracts(unittest.TestCase):
             with self.assertRaisesRegex(DatabaseError, 'STORAGE_WIRE_TRANSFER_LIMIT'):
                 endpoint.execute({'version': 1, 'op': 'wire_write', 'handle': handle,
                     'offset': 0, 'data_base64': base64.b64encode(b'x' * (CHUNK_BYTES + 1)).decode()})
-        with patch('kb_platform.storage_json_wire.monotonic', return_value=301):
+        with patch('kb_platform.contract_transfer.monotonic', return_value=301):
             with self.assertRaisesRegex(DatabaseError, 'STORAGE_WIRE_TRANSFER_CLOSED'):
                 endpoint.execute({'version': 1, 'op': 'wire_dispatch', 'handle': handle})
         self.assertTrue(stream.closed)

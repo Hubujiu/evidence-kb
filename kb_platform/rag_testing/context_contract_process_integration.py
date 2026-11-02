@@ -34,7 +34,7 @@ def verify_context_contract_process(root):
         plan = application.composition.plan
         transport = composition.host.service(plan['exports']['context']['context'])._implementation.transport
         fixture.assertEqual(transport.runtime_info['language'], 'python')
-        fixture.assertEqual(len(plan['plugins']), 8)
+        fixture.assertEqual(len(plan['plugins']), 11)
         fixture.assertEqual(next(item for item in plan['plugins'] if item['id'] == 'context')['implementation'],
                             replacement['implementation'])
         scope, _ = fixture.publish(composition)
@@ -77,7 +77,7 @@ def verify_context_contract_process(root):
         fixture.assertFalse(any(row['status'] in {'ERROR', 'UNKNOWN'} for row in rows))
         fixture.assertEqual(sum(row['request']['kind'] == 'shutdown' and row['status'] == 'COMPLETE'
                                 for row in rows), 1)
-        return {'status': result['status'], 'answer': result['answer'], 'plugins': 8,
+        return {'status': result['status'], 'answer': result['answer'], 'plugins': len(plan['plugins']),
                 'context': replacement['implementation'], 'model_calls': len(fixture.physical),
                 'configured_via': ['KB_APPLICATION_PROFILE', 'KB_PLUGIN_CATALOG'],
                 'external_model_calls': 0,

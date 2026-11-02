@@ -1,6 +1,6 @@
 from .agent_provider import ModelProvider, ProviderCompletion
 from .protocol_validation import valid_callable
-from .model_sdk import Capability, MODEL_PROTOCOL, ModelRequest
+from .model_sdk import Capability, MODEL_PROTOCOL, ModelRequest, ModelResult, preserve_result_failure, validate_result
 
 
 def validate_completion_port(port):
@@ -26,14 +26,15 @@ class CompletionPort:
 
     max_attempts = 1
 
-    def __init__(self, adapter, *, invoke=None):
+    def __init__(self, adapter, *, invoke=None, info=None):
         self.adapter = adapter
+        self.info = adapter.info if info is None else info
         self._invoke = invoke if invoke is not None else adapter.invoke
 
     def identity(self, messages, output_limit):
-        return {'protocol': MODEL_PROTOCOL, 'provider': self.adapter.info.provider,
-                'model': self.adapter.info.model, 'endpoint': getattr(self.adapter, 'endpoint', None),
-                'revision': self.adapter.info.revision,
+        return {'protocol': MODEL_PROTOCOL, 'provider': self.info.provider,
+                'model': self.info.model, 'endpoint': getattr(self.adapter, 'endpoint', None),
+                'revision': self.info.revision,
                 'messages': messages, 'output_limit': output_limit}
 
     def complete(self, messages, output_limit, *, purpose, key, trace):
@@ -41,11 +42,20 @@ class CompletionPort:
                                {**trace, 'purpose': purpose})
         try:
             result = self._invoke(request)
+            if (isinstance(result, ModelResult) and isinstance(result.physical_request_id, str)
+                    and result.physical_request_id):
+                trace['last_physical_request_id'] = result.physical_request_id
+            try:
+                validate_result(request, result, info=self.info)
+            except Exception as error:
+                preserve_result_failure(error, getattr(result, 'usage', None), result=result)
+                raise
         except BaseException as exc:
             trace['attempt'] += int(getattr(exc, 'model_sent', None) is not False)
             raise
         trace['attempt'] += 1
-        return ProviderCompletion(result.data['text'], result.data.get('finish_reason'), result.usage)
+        return ProviderCompletion(result.data['text'], result.data.get('finish_reason'), result.usage,
+                                  request_id=result.request_id, physical_request_id=result.physical_request_id)
 
     def cache_get(self, key):
         return None

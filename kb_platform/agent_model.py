@@ -286,8 +286,8 @@ class AgentModel:
                 self.provider.cache_put(key, {"value": value, "usage": usage, "finish_reason": finish})
             return CompletionEnvelope(value, request_id, usage, trace["attempt"], finish, "none", key)
         except Exception as exc:
-
-
+            if usage is None and isinstance(getattr(exc, 'observed_usage', None), dict):
+                usage = _usage(exc.observed_usage)
             exc.call_record = {"request_id": request_id, "usage": usage or _usage(None),
                                "attempts": trace["attempt"], "finish_reason": finish,
                                "cache_kind": "none", "request_hash": key,

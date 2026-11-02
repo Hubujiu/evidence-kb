@@ -1,12 +1,12 @@
 use crate::{
-    Assembler, FinishReason, LlmError, ModelInfo, Request, Response, StreamEvent, TokenUsage,
+    Assembler, FinishReason, LlmError, ModelInfo, Prepared, Registry, Request, Response,
+    StreamEvent, TokenUsage,
 };
-use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
 use tokio::sync::{Notify, mpsc};
@@ -143,123 +143,48 @@ pub trait Adapter: Send + Sync + 'static {
     }
 }
 
-struct Registration {
-    generation: u64,
-    live: AtomicBool,
-    adapter: Arc<dyn Adapter>,
-}
-
 #[derive(Default)]
-struct Routes {
-    generation: u64,
-    registrations: BTreeMap<String, Arc<Registration>>,
-}
-
 pub struct Service {
-    routes: Mutex<Routes>,
-    identity: u64,
-}
-
-impl Default for Service {
-    fn default() -> Self {
-        static IDENTITIES: AtomicU64 = AtomicU64::new(1);
-        Self {
-            routes: Mutex::new(Routes::default()),
-            identity: IDENTITIES.fetch_add(1, Ordering::SeqCst),
-        }
-    }
+    routes: Registry<dyn Adapter>,
 }
 
 impl Service {
     pub fn register(&self, provider: &str, adapter: Arc<dyn Adapter>) -> Result<u64, LlmError> {
-        if provider.is_empty() {
-            return Err(LlmError::new(
-                "INVALID_LLM_PROVIDER",
-                "empty provider route",
-            ));
-        }
-        let mut routes = self
-            .routes
-            .lock()
-            .map_err(|_| LlmError::new("LLM_SERVICE_UNAVAILABLE", "route lock poisoned"))?;
-        if routes.registrations.contains_key(provider) {
-            return Err(LlmError::new("LLM_PROVIDER_ALREADY_REGISTERED", provider));
-        }
-        routes.generation = routes
-            .generation
-            .checked_add(1)
-            .ok_or_else(|| LlmError::new("LLM_GENERATION_EXHAUSTED", "generation exhausted"))?;
-        let generation = routes.generation;
-        routes.registrations.insert(
-            provider.into(),
-            Arc::new(Registration {
-                generation,
-                live: AtomicBool::new(true),
-                adapter,
-            }),
-        );
-        Ok(generation)
+        Ok(self.routes.register(provider, adapter, None)?.generation)
     }
 
     pub fn unregister(&self, provider: &str, generation: u64) -> Result<(), LlmError> {
-        let mut routes = self
-            .routes
-            .lock()
-            .map_err(|_| LlmError::new("LLM_SERVICE_UNAVAILABLE", "route lock poisoned"))?;
-        let registration = routes
-            .registrations
-            .get(provider)
-            .ok_or_else(|| LlmError::new("LLM_PROVIDER_UNAVAILABLE", provider))?;
-        if registration.generation != generation {
-            return Err(LlmError::new(
-                "LLM_BINDING_CHANGED",
-                "stale registration cannot dispose its replacement",
-            ));
-        }
-        registration.live.store(false, Ordering::SeqCst);
-        routes.registrations.remove(provider);
-        Ok(())
+        self.routes.detach(provider, generation)
     }
 
     pub fn providers(&self) -> Result<Vec<String>, LlmError> {
-        Ok(self
+        let mut names: Vec<_> = self
             .routes
-            .lock()
-            .map_err(|_| LlmError::new("LLM_SERVICE_UNAVAILABLE", "route lock poisoned"))?
-            .registrations
-            .keys()
-            .cloned()
-            .collect())
+            .inspect()?
+            .into_iter()
+            .map(|row| row.name)
+            .collect();
+        names.sort();
+        Ok(names)
     }
 
     pub async fn prepare(&self, provider: &str, model: &str) -> Result<PreparedCall, LlmError> {
-        let registration = self
-            .routes
-            .lock()
-            .map_err(|_| LlmError::new("LLM_SERVICE_UNAVAILABLE", "route lock poisoned"))?
-            .registrations
-            .get(provider)
-            .cloned()
-            .ok_or_else(|| LlmError::new("LLM_PROVIDER_UNAVAILABLE", provider))?;
+        let registration = self.routes.prepare(provider, None)?;
         let prepared = registration
-            .adapter
+            .snapshot()
+            .payload
             .clone()
             .prepare_call(provider.into(), model.into())
             .await?;
         let info = prepared.info();
-        if !registration.live.load(Ordering::SeqCst) {
-            return Err(LlmError::new(
-                "LLM_BINDING_CHANGED",
-                "route changed while preparing",
-            ));
-        }
+        registration.ensure_current()?;
         if info.provider != provider || info.id != model {
             return Err(LlmError::new(
                 "INVALID_LLM_MODEL_IDENTITY",
                 "adapter resolved a different route",
             ));
         }
-        let identity = format!("{}:{}", self.identity, registration.generation);
+        let identity = registration.snapshot().binding.replay_identity();
         Ok(PreparedCall {
             registration,
             prepared,
@@ -276,7 +201,7 @@ impl Service {
 }
 
 pub struct PreparedCall {
-    registration: Arc<Registration>,
+    registration: Prepared<dyn Adapter>,
     prepared: PreparedAdapter,
     identity: String,
 }
@@ -301,12 +226,7 @@ impl PreparedCall {
                 "complete-only route cannot provide a stream",
             ));
         }
-        if !self.registration.live.load(Ordering::SeqCst) {
-            return Err(LlmError::new(
-                "LLM_BINDING_CHANGED",
-                "prepared route was disposed",
-            ));
-        }
+        self.registration.ensure_current()?;
         let runtime = tokio::runtime::Handle::try_current().map_err(|_| {
             LlmError::new("LLM_RUNTIME_REQUIRED", "stream requires a Tokio runtime")
         })?;
@@ -324,11 +244,11 @@ impl PreparedCall {
         let model = request.model.clone();
         let identity = self.identity.clone();
         let call_cancellation = cancellation.clone();
+        let owner = self.registration.admit()?;
         let task = runtime.spawn(async move {
             if call_cancellation.is_cancelled() {
                 return Ok(());
             }
-            let owner = self.registration;
             let result = (self.prepared.dispatch)(
                 request.for_adapter(&self.identity),
                 sink.clone(),

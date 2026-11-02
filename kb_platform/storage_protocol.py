@@ -1,3 +1,4 @@
+from contextlib import contextmanager, suppress
 from dataclasses import asdict
 from functools import lru_cache
 import json
@@ -9,9 +10,10 @@ from .storage_sdk import StorageError
 
 PROTOCOL = 'storage-service/1'
 NATIVE_BATCH_BYTES = 512 * 1024
-NATIVE_BATCH_NODES = 1024
-BYTE_CHUNK = 256 * 1024
-WRITE_METHODS = frozenset({'put', 'set', 'delete', 'put_expiring', 'stage', 'seal', 'batch_json'})
+NATIVE_BATCH_EVENTS = 1024
+TEXT_CHUNK = 32 * 1024
+MAX_VALUE_BYTES = 96 * 1024 * 1024
+MAX_VALUE_NODES = 250000
 
 
 def _call(command, **arguments):
@@ -21,22 +23,40 @@ def _call(command, **arguments):
         raise StorageError(error.code) from error
 
 
+def _service(action, **arguments):
+    response = _call('storage_service', action=action, **arguments)
+    if not response['ok']:
+        error = response['error']
+        raise StorageError(error['code'], **error.get('details', {}))
+    return response['result']
+
+
 def contract_descriptor(contract):
     return {'id': contract.id, 'major': contract.major,
             'extends': [contract_descriptor(parent) for parent in contract.extends]}
 
 
 @lru_cache(maxsize=256)
-def _contract(raw, methods):
-    return _call('storage_contract_validate', contract=json.loads(raw), methods=list(methods))
+def _describe(raw):
+    return _service('describe', descriptor=json.loads(raw))
+
+
+def describe(identity, contract, methods):
+    selected = {'identity': asdict(identity), 'contract': contract_descriptor(contract),
+                'methods': sorted(methods)}
+    return json.loads(json.dumps(_describe(json.dumps(selected, sort_keys=True))))
+
+
+def validate_descriptor(descriptor):
+    selected = {key: descriptor[key] for key in ('identity', 'contract', 'methods')}
+    return json.loads(json.dumps(_describe(json.dumps(selected, sort_keys=True))))
 
 
 def validate_binding(bound):
-    contract = contract_descriptor(bound._grant.contract)
-    _contract(json.dumps(contract, sort_keys=True), tuple(sorted(bound._methods)))
     expected = {'space': asdict(bound._grant.space), 'dataset_id':
         getattr(bound._grant.target, 'dataset_id', getattr(bound._grant.target, 'cache_id', None))}
     validate_identity(asdict(bound.identity), expected=expected)
+    return describe(bound.identity, bound._grant.contract, bound._methods)
 
 
 def validate_identity(identity, *, expected=None):
@@ -46,76 +66,133 @@ def validate_identity(identity, *, expected=None):
     _call('storage_identity_validate', **arguments)
 
 
-def validate_invocation(bound, method, args, kwargs):
-    _call('storage_invocation_validate', contract=contract_descriptor(bound._grant.contract),
-          methods=sorted(bound._methods), method=method, argc=len(args), keywords=list(kwargs))
+def _text_events(value, kind='string'):
+    if type(value) is not str:
+        yield {'event': 'invalid'}
+        return
+    yield {'event': 'open', 'type': kind}
+    for offset in range(0, len(value), TEXT_CHUNK):
+        yield {'event': 'chunk', 'value': value[offset:offset + TEXT_CHUNK]}
+    yield {'event': 'close'}
 
 
-def _scalar_shape(value):
-    if type(value) is str:
-        return ''
-    if type(value) is int:
-        return 0
-    return value
-
-
-def _nodes(values):
-    stack = [(item, 0) for item in reversed(values)]
-    while stack:
-        item, depth = stack.pop()
-        if (type(item) is not dict or set(item) != {'type', 'value'}
-                or type(item['type']) is not str):
-            yield {'depth': depth, 'type': 'invalid', 'value': None}, 1
-            continue
-        kind, value = item['type'], item['value']
-        if kind == 'mapping' and type(value) is dict and all(type(key) is str for key in value):
-            raw = len(value)
-            stack.extend((child, depth + 1) for child in reversed(tuple(value.values())))
-        elif kind == 'sequence' and type(value) is list:
-            raw = len(value)
-            stack.extend((child, depth + 1) for child in reversed(value))
-        elif kind == 'document' and type(value) is dict and set(value) == {'id', 'revision', 'value'}:
-            body = value['value']
-            revision = value['revision']
-            raw = {'id': '' if type(value['id']) is str else value['id'],
-                   'revision': 1 if type(revision) is int and revision > 0 else revision,
-                   'value_kind': body.get('type') if type(body) is dict else None}
-            stack.append((body, depth + 1))
-        elif kind in {'mapping', 'sequence', 'document'}:
-            kind, raw = 'invalid', None
-        elif kind == 'json':
-            raw = _scalar_shape(value)
-        elif kind == 'bytes' and type(value) is str and len(value) > BYTE_CHUNK:
-            for offset in range(0, len(value), BYTE_CHUNK):
-                yield {'depth': depth, 'type': 'byte_chunk', 'value': {
-                    'data': value[offset:offset + BYTE_CHUNK], 'last': offset + BYTE_CHUNK >= len(value)}}, int(offset == 0)
-            continue
+def _events(item):
+    if type(item) is not dict or set(item) != {'type', 'value'} or type(item['type']) is not str:
+        yield {'event': 'invalid'}
+        return
+    kind, value = item['type'], item['value']
+    if kind == 'json':
+        if type(value) is str:
+            yield from _text_events(value)
+        elif type(value) is int:
+            yield {'event': 'scalar', 'type': 'integer', 'value': str(value)}
         else:
-            raw = value
-        yield {'depth': depth, 'type': kind, 'value': raw}, 1
+            yield {'event': 'scalar', 'type': 'json', 'value': value}
+    elif kind == 'bytes':
+        yield from _text_events(value, 'bytes')
+    elif kind == 'object_reference':
+        yield {'event': 'scalar', 'type': kind, 'value': value}
+    elif kind == 'mapping' and type(value) is dict:
+        yield {'event': 'open', 'type': kind, 'length': len(value)}
+        for key, child in value.items():
+            yield from _text_events(key, 'key')
+            yield from _events(child)
+        yield {'event': 'close'}
+    elif kind == 'sequence' and type(value) is list:
+        yield {'event': 'open', 'type': kind, 'length': len(value)}
+        for child in value:
+            yield from _events(child)
+        yield {'event': 'close'}
+    elif kind == 'document' and type(value) is dict and set(value) == {'id', 'revision', 'value'}:
+        revision = value['revision']
+        yield {'event': 'open', 'type': kind, 'revision': str(revision) if type(revision) is int else revision}
+        yield from _text_events(value['id'])
+        yield from _events(value['value'])
+        yield {'event': 'close'}
+    else:
+        yield {'event': 'invalid'}
 
 
-def validate_values(values, *, max_nodes=20000):
-    batch, size, count = [], 0, 0
-    for node, weight in _nodes(values):
-        count += weight
-        if count > max_nodes:
-            raise StorageError('STORAGE_PROCESS_LIMIT')
-        if node['type'] not in {'mapping', 'sequence', 'document', 'byte_chunk'} and isinstance(node['value'], (list, dict)):
-            node = {'depth': node['depth'], 'type': 'invalid', 'value': None}
+def _feed(handle, values):
+    batch, size = [], 0
+    try:
+        for item in values:
+            for event in _events(item):
+                length = len(json.dumps(event, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode())
+                if length > NATIVE_BATCH_BYTES:
+                    raise StorageError('STORAGE_PROCESS_LIMIT')
+                if batch and (size + length > NATIVE_BATCH_BYTES or len(batch) >= NATIVE_BATCH_EVENTS):
+                    _service('feed', handle=handle, events=batch)
+                    batch, size = [], 0
+                batch.append(event)
+                size += length
+        if batch:
+            _service('feed', handle=handle, events=batch)
+    except (ValueError, TypeError, RecursionError, UnicodeError):
+        raise StorageError('STORAGE_INVALID_PROCESS_VALUE') from None
+
+
+def _limits(max_nodes, max_bytes):
+    return {'max_nodes': max_nodes, 'max_bytes': max_bytes}
+
+
+def validate_values(values, *, max_nodes=20000, max_bytes=MAX_VALUE_BYTES):
+    handle = _service('values', limits=_limits(max_nodes, max_bytes))['handle']
+    try:
+        _feed(handle, values)
+        _service('finish', handle=handle)
+    finally:
+        with suppress(StorageError):
+            _service('close', handle=handle)
+
+
+def result_failure(descriptor, method, error):
+    code = getattr(error, 'code', 'STORAGE_PROCESS_RESULT_UNSUPPORTED')
+    try:
+        _service('result_error', descriptor={key: descriptor[key] for key in ('identity', 'contract', 'methods')},
+                 method=method, code=code)
+    except StorageError as classified:
+        if classified.code == 'STORAGE_WRITE_RESULT_UNAVAILABLE':
+            raise classified from error
+        if descriptor['operations'][method]['effect'] == 'write':
+            raise StorageError('STORAGE_WRITE_RESULT_UNAVAILABLE', method=method, outcome='COMPLETED') from error
+        raise classified from error
+
+
+class PreparedCall:
+    def __init__(self, handle, descriptor, method, operation):
+        self._handle, self._descriptor, self._method = handle, descriptor, method
+        self.operation, self._completed = operation, False
+
+    def complete(self, encode):
+        if self._completed:
+            raise StorageError('STORAGE_CALL_STATE_INVALID')
+        self._completed = True
         try:
-            length = len(json.dumps(node, ensure_ascii=False, allow_nan=False, separators=(',', ':')).encode())
-        except (ValueError, TypeError, RecursionError, UnicodeError):
-            raise StorageError('STORAGE_INVALID_PROCESS_VALUE') from None
-        if length > NATIVE_BATCH_BYTES:
-            raise StorageError('STORAGE_PROCESS_LIMIT')
-        if batch and (size + length > NATIVE_BATCH_BYTES or len(batch) >= NATIVE_BATCH_NODES):
-            _call('storage_value_validate', values=batch)
-            batch, size = [], 0
-        batch.append(node)
-        size += length
-    if batch:
-        _call('storage_value_validate', values=batch)
+            _service('result', handle=self._handle)
+            result = encode()
+            _feed(self._handle, [result])
+            _service('finish', handle=self._handle)
+            return result
+        except Exception as error:
+            if getattr(error, 'code', None) == 'STORAGE_WRITE_RESULT_UNAVAILABLE':
+                raise
+            result_failure(self._descriptor, self._method, error)
+
+
+@contextmanager
+def prepare(descriptor, method, args, kwargs, *, max_nodes=MAX_VALUE_NODES,
+            request_bytes=MAX_VALUE_BYTES, result_bytes=MAX_VALUE_BYTES):
+    handle = _service('open', descriptor={key: descriptor[key] for key in ('identity', 'contract', 'methods')},
+        method=method, argc=len(args), keywords=list(kwargs),
+        limits={'request': _limits(max_nodes, request_bytes), 'response': _limits(max_nodes, result_bytes)})['handle']
+    try:
+        _feed(handle, [*args, *kwargs.values()])
+        operation = _service('admit', handle=handle)['operation']
+        yield PreparedCall(handle, descriptor, method, operation)
+    finally:
+        with suppress(StorageError):
+            _service('close', handle=handle)
 
 
 def validate_structured(request):

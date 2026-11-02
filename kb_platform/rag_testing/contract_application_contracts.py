@@ -50,7 +50,7 @@ class ContractApplicationContracts(unittest.TestCase):
         self.models.register('generation', LunaAdapter(self.client))
         self.addCleanup(self.models.close)
         self.profile = json.loads(DEFAULT_APPLICATION.read_text('utf-8'))
-        self.profile['plugins']['model']['config'].pop('providers_config')
+        self.profile['plugins']['llm']['config'].pop('providers_config')
         self.profile['plugins']['access']['config']['identities_file'] = str(self.identities)
         self.profile['plugins']['data']['config'].update(research_root=str(self.root / 'research'), rerank=False)
         self.profile['plugins']['workflow']['config']['retrieval_config'] = {
@@ -96,11 +96,11 @@ class ContractApplicationContracts(unittest.TestCase):
         self.addCleanup(composition.close)
         self.assertEqual(composition.authenticate(self.token), self.actor)
         self.assertEqual(composition.application.model_status()['budget']['calls'], 0)
-        self.assertEqual(len(composition.application.composition.plan['plugins']), 8)
+        self.assertEqual(len(composition.application.composition.plan['plugins']), 11)
 
-    def test_actual_eight_plugin_graph_ingests_retrieves_answers_and_reuses_turn(self):
+    def test_actual_foundation_and_knowledge_graph_ingests_retrieves_answers_and_reuses_turn(self):
         composition = self.compose()
-        self.assertEqual(len(composition.application.composition.plan['plugins']), 8)
+        self.assertEqual(len(composition.application.composition.plan['plugins']), 11)
         self.assertEqual(composition.authenticate(self.token), self.actor)
         with self.assertRaises(PlatformError) as caught:
             composition.authenticate('wrong-token')

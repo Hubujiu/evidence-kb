@@ -13,6 +13,7 @@ specification.loader.exec_module(module)
 
 storage_module = importlib.import_module('kb_platform.application_storage')
 contracts_module = importlib.import_module('kb_platform.plugin_contracts')
+schemas_module = importlib.import_module('kb_platform.knowledge_storage_configuration')
 ApplicationStorage, storage_methods = storage_module.ApplicationStorage, storage_module.storage_methods
 ContractError, ServiceEndpoint = contracts_module.ContractError, contracts_module.ServiceEndpoint
 
@@ -32,7 +33,8 @@ try:
         try:
             result = None
             if kind == 'handshake':
-                storage = ApplicationStorage(request['configuration'])
+                storage = ApplicationStorage(request['configuration'], requirements=schemas_module.REQUIREMENTS,
+                                             schemas=schemas_module.SCHEMAS)
                 methods = storage_methods()
                 endpoint = ServiceEndpoint(storage, methods)
                 result = {'protocol': PROTOCOL, 'services': {'storage': sorted(methods)},

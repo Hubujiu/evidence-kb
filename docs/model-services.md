@@ -1,14 +1,24 @@
 # 公共模型服务与提供商插件
 
-`model_service.ModelService` 是提供商无关的能力注册表。知识库、通用 Agent 和辅助插件依赖
+`model_service.ModelService` 是 Rust 注册表的 Python 执行桥，路由、代次与调用状态唯一位于 `llm-service::Registry<T>`。知识库、通用 Agent 和辅助插件依赖
 `models` 或结构化文本服务 `llm`；供应商 SDK、HTTP 格式和认证停留在适配器中。内部协议
 为 `model-service/1`，采用同步请求/响应。模型能力是显式声明，不因接口兼容而推定支持。
 
-Rust 公共层位于 `rust/llm-service`，参考 DSH 固定提交 [ce7073d 的 LLM 协议](https://github.com/deepseek-ai/deepseek-harness/tree/ce7073d51254c26cd63b22a60835b8f948deb447/packages/llm/llm)。它提供独立异步 Adapter、注册表、准备调用、七类流事件与响应组装，不依赖生命周期内核或知识库。Python 的 CHAT 调用和结构化 completion port 通过 `llm_protocol` 复用 Rust 请求检查与结果规范化，保留原始 usage，并增加规范化 usage/finish 信息。SDK 的原生异步能力与内置同步 Provider 分别验收；固定语义、上游差异和参考合同见 [Rust 服务基础](dsh-rust-foundation.md)。
+Rust 公共层位于 `rust/llm-service`，参考 DSH 固定提交 [ce7073d 的 LLM 协议](https://github.com/deepseek-ai/deepseek-harness/tree/ce7073d51254c26cd63b22a60835b8f948deb447/packages/llm/llm)。它提供独立异步 Adapter、注册表、准备调用、七类流事件与响应组装，不依赖生命周期内核或知识库。Python 的 CHAT 调用和结构化 completion port 通过 `llm_protocol` 使用同一 Rust prepare/admit/complete/release 算法、请求检查与结果规范化，保留原始 usage，并增加规范化 usage/finish 信息。SDK 的原生异步能力与内置同步 Provider 分别验收；固定语义、上游差异和参考合同见 [Rust 服务基础](dsh-rust-foundation.md)。
+
+## 默认知识库与公共服务
+
+默认 `foundation.llm` 发布 `llm.service/1`，`knowledge.model` 以 `LlmClient` 消费，提供者配置与资源装配不再放在知识库模型工厂里。`plugins.llm.config` 支持 `config_path` / `providers_config`，`plugins.model.config` 只接受 routes、policy、budget。模型层的公共操作与请求 schema 随 `config/contracts/knowledge-v1.json` 生成。
+
+`LlmEndpoint`/`LlmClient` 负责跨插件的数据投影；媒体与大消息复用 `contract_transfer`，不传 Python 对象或回调。可选 `llm.policy` 服务将发送许可与领域校验带回声明的策略插件。所有操作绑定相同注册身份；旧端点不能在热替换后继续向新提供者发送。
+
+结构化输出先产生 completion 和验证回执，消费方执行引用/业务校验后调用 settle。应用缓存只有确认后才写入。错误穿过 JSON 仍保留 model_sent、physical_request_id、preflight_code、trace 和 call_record，UNKNOWN 不变成未发送或零消耗。
+
+独立构造入口为 `foundation_services.build_foundation_application`；底座不要求知识库 schema、权限或 workflow。完整依赖方向和验收见 [底座与应用架构](foundation-architecture.md)。
 
 ## 实例与生命周期
 
-`compile_model_plugins` 在启动前把模型配置展开为普通 Rust 插件节点。`models.service` 只提供中立注册表，`models.budget` 拥有唯一共享物理账本，每个配置的提供商 endpoint 对应一个实例插件，拥有自己的 HTTP 客户端和多个模型路由。消费方通过路由标记声明真实依赖，提供商替换会重建受影响的消费方，其他提供商和预算资源保持原代次。提供商的路由注册使用自身 Rust 身份与租约；卸载先排空调用，再移除路由和关闭客户端。
+低层通用 Agent 的列表式 profile 继续通过 `compile_model_plugins` 在启动前把模型配置展开为普通 Rust 插件节点。此入口与默认应用 JSON 合同入口共用同一 `ModelService` / Rust 注册表算法。`models.service` 只提供中立注册表，`models.budget` 拥有唯一共享物理账本，每个配置的提供商 endpoint 对应一个实例插件，拥有自己的 HTTP 客户端和多个模型路由。消费方通过路由标记声明真实依赖，提供商替换会重建受影响的消费方，其他提供商和预算资源保持原代次。提供商的路由注册使用自身 Rust 身份与租约；卸载先排空调用，再移除路由和关闭客户端。
 
 原配置中的服务实例 ID 留给预算节点，因此现有 `KB_STORAGE_CONFIG` 的预算消费绑定不变；注册表使用派生 ID。独立使用 `PluginHost` 时，先调用 `compile_model_plugins(profile, catalog)` 再构造宿主。直接注入借用服务或客户端仍受支持。`from_config` 和 `from_clients` 是显式独立构造入口，不再由已托管的公共服务内部调用。`from_config` 返回的服务拥有内部创建的预算账本，先关闭全部模型适配器再关闭账本；适配器清理失败时保留账本，沿用现有关闭重试。
 

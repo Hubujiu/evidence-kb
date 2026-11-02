@@ -84,41 +84,11 @@ process 使用 `evidence-plugin-process/1` JSON-lines 协议，command 直接执
 
 `rust/plugin-host/examples/contract_provider.rs` 是实际 Rust 提供者。`examples/contract-application/` 包含 Python、Node 消费者和 Python 提供者。统一检查构建并复制本次 Rust 示例二进制，再执行跨进程合同验收，二进制缺失不会跳过该检查。
 
-## 知识库的八个业务插件
+## 底座与知识库的应用组合
 
-应用配置为 `config/applications/knowledge.json`，可信目录位于 `knowledge_capabilities.CATALOG`。内置实现声明 executor=local；外部替换实现声明 executor=process 并提供对应方法合同。
+应用配置为 `config/applications/knowledge.json`，可信目录合并 `foundation_services.CATALOG` 与 `knowledge_capabilities.CATALOG`。默认有 11 个显式节点：通用 llm、storage；领域 authority、access、model_policy、model、sessions、data、context、workflow、entry。每个节点的合同、责任和依赖见 [底座与应用架构](foundation-architecture.md)。
 
-| 实例 | 拥有的职责 | 公开依赖 |
-| --- | --- | --- |
-| entry | 统一应用与文档操作入口 | workflow、access、data.platform |
-| workflow | 知识库工作流、轮次与工具调度 | context、sessions、data、model、access |
-| context | 获取授权历史和证据，组装最终模型上下文 | sessions、data、access |
-| sessions | 会话、完整历史、轮次状态与产物 | storage |
-| access | 身份认证、知识库权限和发送前授权 | storage.authority |
-| model | 生成、Embedding、OCR、预算及提供商适配 | storage、access |
-| data | 原文、文档管理、索引、检索和证据操作 | storage、storage.authority、model |
-| storage | 关系、对象、搜索存储和数据空间 | 无业务插件依赖 |
-
-```mermaid
-flowchart TD
-  entry --> workflow
-  entry --> access
-  entry --> data
-  workflow --> context
-  workflow --> sessions
-  workflow --> data
-  workflow --> model
-  workflow --> access
-  context --> sessions
-  context --> data
-  context --> access
-  access --> storage
-  data --> model
-  data --> storage
-  sessions --> storage
-  model --> storage
-  model --> access
-```
+通用 LLM 与存储是独立服务。`knowledge.model` 消费 `llm.service`，不创建供应商或注册表；`knowledge.authority` 消费 `storage.service`，不把业务表写进底座。模型发送前授权和 OCR 校验通过可选 `llm.policy` 服务连接知识库策略，领域回调不以 Python 对象跨越边界。内置实现声明 executor=local；外部实现可以声明 executor=process，以对应公开合同替换。
 
 context 决定本次模型看到什么：读取会话完整历史并校验 revision，通过知识库合同重新校验来源和授权，输出 prepared 请求和证据。会话持久化和知识库内容分别由各自领域拥有，context 不读它们的私有表。模型之前的最终裁剪与来源绑定继续使用现有上下文实现。
 

@@ -11,31 +11,22 @@ from sqlalchemy.exc import SQLAlchemyError
 from .database_contracts import CommitUnknown, DatabaseError, QueryLimits, QueryResult
 from .database_process import encode_value
 from .storage_expression_wire import (
-    Decoder, decoded_value, expression, fields, schema_descriptor, schema_semantics, statement,
+    Decoder, decoded_value, expression, schema_descriptor, schema_semantics, statement,
 )
 from .storage_sdk.relational import StructuredSchema
 from .storage_protocol import resolve_commit, validate_identity, validate_structured
 from .storage_json_wire import (
-    MAX_MESSAGE_BYTES as MAX_MESSAGE_BYTES, MAX_VALUE_BYTES, StorageJsonClient, StorageJsonEndpoint,
+    MAX_MESSAGE_BYTES as MAX_MESSAGE_BYTES, StorageJsonClient, StorageJsonEndpoint,
     wire as _wire,
 )
 
 
 MAX_HANDLES = 64
-MAX_STATEMENTS = 20000
 GUARD_LEASE_SECONDS = 60
 
 
 def _limits(value):
-    fields(value, {'max_rows', 'max_bytes', 'max_statements', 'max_seconds'}, ())
-    try:
-        limits = QueryLimits(**value)
-    except (ValueError, TypeError):
-        raise DatabaseError('INVALID_DATABASE_LIMITS') from None
-    if (limits.max_rows > 10000 or limits.max_bytes > 8 * 1024 * 1024
-            or limits.max_statements > MAX_STATEMENTS):
-        raise DatabaseError('DATABASE_QUERY_LIMIT')
-    return limits
+    return QueryLimits(**value)
 
 
 def _result(value):
@@ -206,22 +197,14 @@ class PortableStructuredEndpoint:
         return self._transport.execute(request)
 
     def _execute(self, request):
-        request = _wire(request, maximum=MAX_VALUE_BYTES)
-        if type(request) is not dict or request.get('version') != 1 or type(request.get('version')) is not int:
-            raise DatabaseError('STORAGE_WIRE_VERSION_INVALID')
         validate_structured(request)
         with self._lock:
             if self._closed:
                 raise DatabaseError('STORAGE_WIRE_CLOSED')
             operation = request.get('op')
             if operation == 'schemas':
-                fields(request, {'version', 'op'})
                 return _wire({'schemas': [schema_descriptor(item) for item in self._schemas]})
             if operation == 'prepare':
-                fields(request, {'version', 'op', 'owner', 'schema_version', 'digest'})
-                if (type(request['owner']) is not str or type(request['schema_version']) is not int
-                        or type(request['digest']) is not str):
-                    raise DatabaseError('STORAGE_WIRE_SCHEMA_UNDECLARED')
                 selected = next((item for item in self._schemas if item.owner == request['owner']
                                  and item.version == request['schema_version'] and item.digest == request['digest']), None)
                 if selected is None:
@@ -238,37 +221,22 @@ class PortableStructuredEndpoint:
             if self._package is None:
                 raise DatabaseError('STORAGE_STRUCTURED_SCHEMA_REQUIRED')
             if operation == 'seal':
-                fields(request, {'version', 'op'})
                 self._store.seal()
                 self._sealed = True
                 return {'status': 'SEALED'}
         if operation == 'begin':
-            fields(request, {'version', 'op', 'write', 'scope', 'limits', 'operation_id'})
             limits = _limits(request['limits'])
             scope, write, operation_id = request['scope'], request['write'], request['operation_id']
-            if (type(write) is not bool or type(scope) is not dict or type(operation_id) is not str
-                    or not operation_id or len(operation_id) > 200):
-                raise DatabaseError('STORAGE_WIRE_TRANSACTION_INVALID')
             return self._open(lambda: self._store.transaction(write=write, scope=scope, limits=limits,
                               operation_id=operation_id), kind='transaction', seconds=limits.max_seconds,
                               operation_id=operation_id)
         if operation == 'guard':
-            fields(request, {'version', 'op', 'name', 'nowait'})
-            if type(request['name']) is not str or type(request['nowait']) is not bool:
-                raise DatabaseError('INVALID_STORAGE_GUARD')
             return self._open(lambda: self._store.guard(request['name'], nowait=request['nowait']),
                               kind='guard', seconds=GUARD_LEASE_SECONDS)
-        fields(request, {'version', 'op', 'handle', 'statement', 'table', 'values', 'conflict_keys', 'updates',
-                         'returning', 'commit'}, {'version', 'op', 'handle'})
         token = request['handle']
-        if type(token) is not str:
-            raise DatabaseError('STORAGE_HANDLE_INVALID')
         with self._lock:
             handle, outcome = self._handles.get(token), self._outcomes.get(token)
         if operation == 'finish':
-            fields(request, {'version', 'op', 'handle', 'commit'})
-            if type(request['commit']) is not bool:
-                raise DatabaseError('STORAGE_WIRE_TRANSACTION_INVALID')
             if handle is None and outcome is not None:
                 if outcome['status'] == 'UNKNOWN':
                     if outcome['operation_id'] is None:
@@ -280,7 +248,6 @@ class PortableStructuredEndpoint:
         if operation == 'finish':
             return _wire(handle.call('commit' if request['commit'] else 'rollback'))
         if operation == 'ping':
-            fields(request, {'version', 'op', 'handle'})
             return handle.call('ping')
         if handle.kind != 'transaction':
             raise DatabaseError('STORAGE_HANDLE_KIND_INVALID')
@@ -290,13 +257,11 @@ class PortableStructuredEndpoint:
         def run(tx):
             decoder = Decoder(self._package.metadata)
             if operation == 'execute':
-                fields(request, {'version', 'op', 'handle', 'statement'})
                 result = _result(tx.execute(decoder.statement(request['statement'])))
                 return self._transport.result(result, transaction=token)
-            fields(request, {'version', 'op', 'handle', 'table', 'values', 'conflict_keys', 'updates', 'returning'})
             table = decoder.table(request['table'])
             keys = request['conflict_keys']
-            if type(keys) is not list or any(type(key) is not str or key not in table.c for key in keys):
+            if any(key not in table.c for key in keys):
                 raise DatabaseError('INVALID_STRUCTURED_CONFLICT_KEYS')
             updates = None if request['updates'] is None else decoder.values(table, request['updates'])
             returning = tuple(decoder.expression(item) for item in decoder.items(request['returning']))
@@ -391,11 +356,10 @@ class PortableStructuredClient:
             try:
                 result = self._call({'op': 'finish', 'handle': token, 'commit': True})
             except Exception as error:
-                if getattr(error, 'code', None) in {
-                        'PROCESS_RESULT_UNKNOWN', 'PROCESS_EXITED_UNKNOWN', 'CONTRACT_RESPONSE_INVALID',
-                        'STORAGE_WIRE_JSON_REQUIRED', 'STORAGE_WIRE_MESSAGE_LIMIT', 'STORAGE_WIRE_STRUCTURE_LIMIT'}:
-                    raise CommitUnknown(opened['operation_id']) from error
-                raise
+                try:
+                    resolve_commit(opened['operation_id'], None)
+                except CommitUnknown as unknown:
+                    raise unknown from error
             resolve_commit(opened['operation_id'], result)
 
     @contextmanager

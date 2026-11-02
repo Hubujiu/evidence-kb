@@ -114,49 +114,13 @@ impl Contract {
             || self.extends.iter().any(|parent| parent.satisfies(required))
     }
 
-    fn required_methods(&self) -> &'static [&'static str] {
-        if self.major != 1 {
-            return &[];
-        }
-        match self.id.as_str() {
-            "storage.relational" => &[
-                "prepare",
-                "seal",
-                "transaction",
-                "batch",
-                "query_json",
-                "batch_json",
-            ],
-            "storage.relational.structured" => &["prepare", "seal", "transaction"],
-            "storage.relational.guarded" => &["prepare", "seal", "transaction", "guard"],
-            "storage.document" => &["dependency_manifest", "get", "get_many", "put", "delete"],
-            "storage.kv" => &["get", "set", "delete"],
-            "storage.kv.expiring" => &["get", "set", "delete", "put_expiring"],
-            "storage.vector" | "storage.lexical" => &[
-                "dependency_manifest",
-                "stage",
-                "verify",
-                "seal",
-                "is_sealed",
-                "read_records",
-                "query",
-            ],
-            "storage.object" => &["put", "reference", "read", "stat"],
-            _ => &[],
-        }
-    }
-
     pub fn validate_methods(&self, methods: &Value) -> Result<(), StorageError> {
         let entries = method_names(methods)?;
-        if self
-            .required_methods()
-            .iter()
-            .any(|method| !entries.contains(*method))
+        if crate::operations::catalogue(self)
+            .keys()
+            .any(|method| !entries.contains(method.as_str()))
         {
             return Err(StorageError::new("STORAGE_IMPLEMENTATION_INVALID"));
-        }
-        for parent in &self.extends {
-            parent.validate_methods(methods)?;
         }
         Ok(())
     }
@@ -183,34 +147,20 @@ pub fn validate_invocation(arguments: &Map<String, Value>) -> Result<(), Storage
     let name = arguments["method"]
         .as_str()
         .ok_or_else(|| StorageError::new("STORAGE_INVALID_PROCESS_REQUEST"))?;
-    if name.starts_with('_')
-        || matches!(
-            name,
-            "prepare" | "transaction" | "guard" | "close" | "call_json"
-        )
-    {
+    let operation = crate::operations::catalogue(&contract)
+        .remove(name)
+        .ok_or_else(|| StorageError::new("STORAGE_PROCESS_METHOD_REJECTED"))?;
+    let methods = method_names(&arguments["methods"])?;
+    if !methods.contains(name) {
         return Err(StorageError::new("STORAGE_PROCESS_METHOD_REJECTED"));
     }
-    let methods = method_names(&arguments["methods"])?;
     let argc = arguments["argc"]
         .as_u64()
-        .filter(|count| *count <= 64)
-        .ok_or_else(|| StorageError::new("STORAGE_INVALID_PROCESS_REQUEST"))?;
-    let _ = argc;
-    let keywords = arguments["keywords"]
-        .as_array()
-        .filter(|items| items.len() <= 64 && items.iter().all(Value::is_string))
-        .ok_or_else(|| StorageError::new("STORAGE_INVALID_PROCESS_REQUEST"))?;
-    let _ = keywords;
-    if !methods.contains(name)
-        || (contract.satisfies(&Contract {
-            id: "storage.relational".into(),
-            major: 1,
-            extends: vec![],
-        }) && !matches!(name, "query_json" | "batch_json"))
-    {
-        return Err(StorageError::new("STORAGE_PROCESS_METHOD_REJECTED"));
-    }
+        .ok_or_else(|| StorageError::new("STORAGE_INVALID_PROCESS_REQUEST"))?
+        as usize;
+    let keywords: Vec<String> = serde_json::from_value(arguments["keywords"].clone())
+        .map_err(|_| StorageError::new("STORAGE_INVALID_PROCESS_REQUEST"))?;
+    operation.bind(argc, &keywords)?;
     Ok(())
 }
 

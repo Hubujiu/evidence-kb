@@ -2,18 +2,79 @@
   "catalog": [
     {
       "executor": "local",
-      "implementation": "knowledge.storage",
+      "implementation": "foundation.storage",
       "provides": {
-        "authority": {
-          "id": "knowledge.authority.storage",
-          "major": 1
-        },
         "storage": {
           "id": "storage.service",
           "major": 1
         }
       },
       "requires": {},
+      "version": "1"
+    },
+    {
+      "executor": "local",
+      "implementation": "foundation.llm",
+      "provides": {
+        "llm": {
+          "id": "llm.service",
+          "major": 1
+        }
+      },
+      "requires": {
+        "policy": {
+          "contract": {
+            "id": "llm.policy",
+            "major": 1
+          },
+          "optional": true
+        },
+        "storage": {
+          "contract": {
+            "id": "storage.service",
+            "major": 1
+          },
+          "optional": true
+        }
+      },
+      "version": "1"
+    },
+    {
+      "executor": "local",
+      "implementation": "knowledge.authority",
+      "provides": {
+        "authority": {
+          "id": "knowledge.authority.storage",
+          "major": 1
+        }
+      },
+      "requires": {
+        "storage": {
+          "contract": {
+            "id": "storage.service",
+            "major": 1
+          }
+        }
+      },
+      "version": "1"
+    },
+    {
+      "executor": "local",
+      "implementation": "knowledge.model_policy",
+      "provides": {
+        "policy": {
+          "id": "llm.policy",
+          "major": 1
+        }
+      },
+      "requires": {
+        "access": {
+          "contract": {
+            "id": "knowledge.access",
+            "major": 1
+          }
+        }
+      },
       "version": "1"
     },
     {
@@ -36,9 +97,9 @@
             "major": 1
           }
         },
-        "storage": {
+        "llm": {
           "contract": {
-            "id": "storage.service",
+            "id": "llm.service",
             "major": 1
           }
         }
@@ -7353,6 +7414,591 @@
       }
     },
     {
+      "id": "llm.policy",
+      "major": 1,
+      "methods": {
+        "admit": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "capability": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "context": {
+                "type": "object"
+              },
+              "model": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "provider": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "model",
+              "capability",
+              "context"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "allowed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "allowed"
+            ],
+            "type": "object"
+          }
+        },
+        "validate": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "contract": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "contract",
+              "value"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {},
+            "required": [],
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "id": "llm.service",
+      "major": 1,
+      "methods": {
+        "catalog": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {},
+            "required": [],
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "protocol": {
+                "const": "llm.service/1"
+              },
+              "routes": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "info": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "capabilities": {
+                          "items": {
+                            "enum": [
+                              "chat",
+                              "embedding",
+                              "ocr",
+                              "transcription",
+                              "speech",
+                              "image"
+                            ]
+                          },
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "input_modalities": {
+                          "items": {
+                            "enum": [
+                              "text",
+                              "image",
+                              "audio"
+                            ]
+                          },
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "model": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "preferred_batch_size": {
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "protocol": {
+                          "const": "model-service/1"
+                        },
+                        "provider": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "revision": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "streaming": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "model",
+                        "capabilities",
+                        "input_modalities",
+                        "streaming",
+                        "revision",
+                        "preferred_batch_size",
+                        "protocol"
+                      ],
+                      "type": "object"
+                    },
+                    "max_attempts": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "metadata": {
+                      "type": "object"
+                    },
+                    "registration": {},
+                    "statistics": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "info",
+                    "registration",
+                    "metadata",
+                    "max_attempts",
+                    "statistics"
+                  ],
+                  "type": "object"
+                },
+                "propertyNames": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "protocol",
+              "routes"
+            ],
+            "type": "object"
+          }
+        },
+        "exchange": {
+          "request": {
+            "type": "object"
+          },
+          "response": {
+            "type": "object"
+          }
+        }
+      },
+      "operations": {
+        "cache_get": {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "op": {
+              "const": "cache_get"
+            },
+            "registration": {},
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "key"
+          ],
+          "type": "object"
+        },
+        "cache_put": {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "op": {
+              "const": "cache_put"
+            },
+            "registration": {},
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "value": {
+              "type": "object"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "key",
+            "value"
+          ],
+          "type": "object"
+        },
+        "complete": {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "messages": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "op": {
+              "const": "complete"
+            },
+            "output_limit": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "purpose": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "registration": {},
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "trace": {
+              "type": "object"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "messages",
+            "output_limit",
+            "purpose",
+            "key",
+            "trace"
+          ],
+          "type": "object"
+        },
+        "diagnostic": {
+          "additionalProperties": false,
+          "properties": {
+            "metadata": {
+              "type": "object"
+            },
+            "op": {
+              "const": "diagnostic"
+            },
+            "registration": {},
+            "result": {
+              "type": "object"
+            },
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "result",
+            "metadata"
+          ],
+          "type": "object"
+        },
+        "identity": {
+          "additionalProperties": false,
+          "properties": {
+            "messages": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "op": {
+              "const": "identity"
+            },
+            "output_limit": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "registration": {},
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "messages",
+            "output_limit"
+          ],
+          "type": "object"
+        },
+        "invoke": {
+          "additionalProperties": false,
+          "properties": {
+            "capability": {
+              "enum": [
+                "chat",
+                "embedding",
+                "ocr",
+                "transcription",
+                "speech",
+                "image"
+              ]
+            },
+            "context": {
+              "type": "object"
+            },
+            "op": {
+              "const": "invoke"
+            },
+            "payload": {
+              "type": "object"
+            },
+            "registration": {},
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "validation": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "capability",
+            "payload",
+            "context",
+            "validation"
+          ],
+          "type": "object"
+        },
+        "preflight": {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "type": "object"
+            },
+            "op": {
+              "const": "preflight"
+            },
+            "registration": {},
+            "request_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "request_id",
+            "error"
+          ],
+          "type": "object"
+        },
+        "record": {
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            },
+            "op": {
+              "const": "record"
+            },
+            "purpose": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "registration": {},
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "purpose",
+            "key",
+            "metadata"
+          ],
+          "type": "object"
+        },
+        "recover": {
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "recover"
+            },
+            "registration": {},
+            "request_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration",
+            "request_id"
+          ],
+          "type": "object"
+        },
+        "statistics": {
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "const": "statistics"
+            },
+            "registration": {},
+            "route": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "version": {
+              "const": 1
+            }
+          },
+          "required": [
+            "version",
+            "op",
+            "route",
+            "registration"
+          ],
+          "type": "object"
+        }
+      }
+    },
+    {
       "id": "storage.service",
       "major": 1,
       "methods": {
@@ -7473,6 +8119,50 @@
   "format": "evidence-plugin-contracts/1",
   "schemas": [
     {
+      "implementation": "foundation.llm",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "audit_root": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "budget_binding": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "config_path": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "providers_config": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "version": "1"
+    },
+    {
+      "implementation": "foundation.storage",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "version": "1"
+    },
+    {
       "implementation": "knowledge.access",
       "schema": {
         "additionalProperties": false,
@@ -7484,6 +8174,23 @@
         },
         "required": [
           "identities_file"
+        ],
+        "type": "object"
+      },
+      "version": "1"
+    },
+    {
+      "implementation": "knowledge.authority",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "binding": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding"
         ],
         "type": "object"
       },
@@ -7563,10 +8270,6 @@
       "schema": {
         "additionalProperties": false,
         "properties": {
-          "audit_root": {
-            "minLength": 1,
-            "type": "string"
-          },
           "budget": {
             "additionalProperties": false,
             "properties": {
@@ -7581,14 +8284,6 @@
             },
             "required": [],
             "type": "object"
-          },
-          "budget_binding": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "config_path": {
-            "minLength": 1,
-            "type": "string"
           },
           "policy": {
             "additionalProperties": false,
@@ -7616,11 +8311,36 @@
             "required": [],
             "type": "object"
           },
-          "providers_config": {
-            "minLength": 1,
-            "type": "string"
+          "routes": {
+            "additionalProperties": false,
+            "properties": {
+              "embedding": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "generation": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "ocr": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
           }
         },
+        "required": [],
+        "type": "object"
+      },
+      "version": "1"
+    },
+    {
+      "implementation": "knowledge.model_policy",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {},
         "required": [],
         "type": "object"
       },
@@ -7638,23 +8358,6 @@
         },
         "required": [
           "binding"
-        ],
-        "type": "object"
-      },
-      "version": "1"
-    },
-    {
-      "implementation": "knowledge.storage",
-      "schema": {
-        "additionalProperties": false,
-        "properties": {
-          "path": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "path"
         ],
         "type": "object"
       },

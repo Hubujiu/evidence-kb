@@ -2,7 +2,7 @@
   "version": 1,
   "plugins": {
     "storage": {
-      "implementation": "knowledge.storage",
+      "implementation": "foundation.storage",
       "version": "1",
       "config": {
         "path": ".local/storage-knowledge.json"
@@ -12,7 +12,6 @@
       "implementation": "knowledge.model",
       "version": "1",
       "config": {
-        "providers_config": ".local/providers.json",
         "policy": {
           "input_budget": 24000,
           "output_reserve": 1500,
@@ -78,17 +77,36 @@
       "implementation": "knowledge.entry",
       "version": "1",
       "config": {}
+    },
+    "llm": {
+      "implementation": "foundation.llm",
+      "version": "1",
+      "config": {
+        "providers_config": ".local/providers.json"
+      }
+    },
+    "authority": {
+      "implementation": "knowledge.authority",
+      "version": "1",
+      "config": {
+        "binding": "repository.primary"
+      }
+    },
+    "model_policy": {
+      "implementation": "knowledge.model_policy",
+      "version": "1",
+      "config": {}
     }
   },
   "bindings": {
     "model": {
-      "storage": {
-        "plugin": "storage",
-        "export": "storage"
-      },
       "access": {
         "plugin": "access",
         "export": "access"
+      },
+      "llm": {
+        "plugin": "llm",
+        "export": "llm"
       }
     },
     "sessions": {
@@ -111,13 +129,13 @@
         "export": "capabilities"
       },
       "authority": {
-        "plugin": "storage",
+        "plugin": "authority",
         "export": "authority"
       }
     },
     "access": {
       "authority": {
-        "plugin": "storage",
+        "plugin": "authority",
         "export": "authority"
       }
     },
@@ -173,6 +191,28 @@
       "platform": {
         "plugin": "data",
         "export": "platform"
+      }
+    },
+    "llm": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      },
+      "policy": {
+        "plugin": "model_policy",
+        "export": "policy"
+      }
+    },
+    "authority": {
+      "storage": {
+        "plugin": "storage",
+        "export": "storage"
+      }
+    },
+    "model_policy": {
+      "access": {
+        "plugin": "access",
+        "export": "access"
       }
     }
   },
