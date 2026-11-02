@@ -747,3 +747,128 @@ fn retained_registration_during_pending_shadow_does_not_strand_an_operation() {
         0
     );
 }
+
+#[test]
+fn subtree_collection_follows_detached_parent_links_and_call_scope_ownership() {
+    for collect_root in [false, true] {
+        let mut runtime = Coordinator::default();
+        let root = create(&mut runtime, vec![plugin("root", &["service"], &[])], None);
+        let init = poll(&mut runtime, root).remove(0);
+        complete(&mut runtime, &init, "ok", &["service"]);
+        let child = create(
+            &mut runtime,
+            vec![plugin("child", &["child"], &[])],
+            Some(root),
+        );
+        let init = poll(&mut runtime, child).remove(0);
+        complete(&mut runtime, &init, "ok", &["child"]);
+        let grandchild = create(
+            &mut runtime,
+            vec![plugin("grandchild", &["grandchild"], &[])],
+            Some(child),
+        );
+        let init = poll(&mut runtime, grandchild).remove(0);
+        complete(&mut runtime, &init, "ok", &["grandchild"]);
+        let foreign = create(
+            &mut runtime,
+            vec![plugin("foreign", &["foreign"], &[])],
+            None,
+        );
+        let init = poll(&mut runtime, foreign).remove(0);
+        complete(&mut runtime, &init, "ok", &["foreign"]);
+        let foreign_before = call(&mut runtime, "inspect", json!({"host":foreign})).unwrap();
+        for host in [root, child, grandchild] {
+            call(
+                &mut runtime,
+                "diagnostic",
+                json!({"host":host,"code":"owned","message":host.to_string()}),
+            )
+            .unwrap();
+        }
+        let binding = call(
+            &mut runtime,
+            "resolve",
+            json!({"host":grandchild,"service":"service"}),
+        )
+        .unwrap();
+        let invocation = call(
+            &mut runtime,
+            "invoke",
+            json!({"host":grandchild,"registration":binding["registration"],"method":"work"}),
+        )
+        .unwrap();
+        assert_eq!(invocation["binding"]["definition_scope"], root);
+        assert_eq!(invocation["host"], grandchild);
+        let target = if collect_root { root } else { child };
+        call(&mut runtime, "drain", json!({"host":target})).unwrap();
+        assert_eq!(
+            call(&mut runtime, "collect", json!({"host":target}))
+                .unwrap_err()
+                .code,
+            "scope_busy"
+        );
+        complete(&mut runtime, &invocation, "ok", &[]);
+        loop {
+            let actions = poll(&mut runtime, root);
+            if actions.is_empty() {
+                break;
+            }
+            for action in actions {
+                if action["kind"] == "cleanup" {
+                    complete(&mut runtime, &action, "ok", &[]);
+                }
+            }
+        }
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":child})).unwrap()["children"],
+            json!([])
+        );
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":grandchild})).unwrap()["state"],
+            "disposed"
+        );
+        let collected = call(&mut runtime, "collect", json!({"host":target})).unwrap();
+        assert_eq!(
+            collected["collected"]["scopes"],
+            if collect_root { 3 } else { 2 }
+        );
+        assert_eq!(
+            collected["collected"]["instances"],
+            if collect_root { 3 } else { 2 }
+        );
+        for removed in [child, grandchild] {
+            assert_eq!(
+                call(&mut runtime, "inspect", json!({"host":removed}))
+                    .unwrap_err()
+                    .code,
+                "unknown_host"
+            );
+        }
+        if !collect_root {
+            let remaining = call(&mut runtime, "inspect", json!({"host":root})).unwrap();
+            assert_eq!(remaining["state"], "ready");
+            assert_eq!(remaining["counts"]["operations"], 1);
+            assert_eq!(remaining["counts"]["scopes"], 1);
+            assert_eq!(remaining["diagnostics"].as_array().unwrap().len(), 1);
+            assert_eq!(remaining["diagnostics"][0]["host"], root);
+            assert_eq!(
+                call(
+                    &mut runtime,
+                    "cancel",
+                    json!({"host":root,"operation":invocation["operation"]})
+                )
+                .unwrap_err()
+                .code,
+                "unknown_operation"
+            );
+        }
+        assert_eq!(
+            call(&mut runtime, "inspect", json!({"host":foreign})).unwrap(),
+            foreign_before
+        );
+        let new_host = create(&mut runtime, vec![], None);
+        assert!(new_host > foreign);
+        assert_ne!(new_host, child);
+        assert_ne!(new_host, grandchild);
+    }
+}

@@ -376,7 +376,8 @@
         "Pending, Starting, Active, Draining, Cleaning, CleanupFailed, Failed, Disposed",
         "Unallocated/live/completed lease identities and retained ancestor chains.",
         "Pending/queued/claimed/suppressed/completed activation identities across two generations.",
-        "Claimed/completed/acknowledged operations, active/failed/retried resources and retained/retired/collected instance identities."
+        "Claimed/completed/acknowledged operations, active/failed/retried resources and retained/retired/collected instance identities.",
+        "Live/disposed/detached/collected subtree identities, call-host versus owner-instance operation references and non-reused fresh handles."
       ],
       "transitions": [
         "Phase",
@@ -396,7 +397,9 @@
         "Coordinator::affected_closure",
         "Coordinator::registered_binding",
         "Coordinator::lookup_binding",
-        "Coordinator::intercept"
+        "Coordinator::intercept",
+        "Coordinator::collect",
+        "Coordinator::allocate"
       ],
       "invariants": [
         "No unrelated fresh admission on a draining owner; an already-admitted live chain may acquire nested leases. Cancellation is notification, not completion or resource release.",
@@ -405,7 +408,8 @@
         "Cleanup failure retains the resource; successful cleanup follows reverse registration identity order. Terminal completion is immutable; acknowledgement validates the whole owned terminal batch before deletion.",
         "Listener snapshots sort priority, scope order, then resource registration identity. Retired instance records remain until operation ownership references are removed.",
         "An unobserved revision retains its earlier affected descendant obligations when another update/apply overlaps; no-op apply does not create a revision, and already-observed historical closure is not retained indefinitely.",
-        "Invocation binding metadata, definition context and intercept chain identify the exact admitted registration, not a newly visible shadow; successful admission cannot strand an unreturned operation on metadata lookup."
+        "Invocation binding metadata, definition context and intercept chain identify the exact admitted registration, not a newly visible shadow; successful admission cannot strand an unreturned operation on metadata lookup.",
+        "Collect waits for actual termination and traverses stored parent links even after logical child detachment; call-host and owner-instance records, affected references and diagnostics are removed only for the collected subtree."
       ],
       "assumptions": [
         "Inventory originated at main 8160c051e63952278c5f8a80d1b024ebbe3cea17; this batch uses dependency base 27c4180 and only its explicitly registered finite slices, not all coordinator states.",
@@ -419,7 +423,7 @@
       ],
       "exclusions": [
         "All models are finite behavioral abstractions, not Rust-to-TLA+ refinement proofs.",
-        "The original superseded-initialization model remains unchanged; the three additional ownership slices cover only their declared finite transitions.",
+        "The original superseded-initialization model remains unchanged; additional ownership slices cover only their declared finite transitions.",
         "Arbitrary plugin graphs, all service lookup/isolation/intercept values, process transport and external callbacks are not proved."
       ],
       "source_bindings": [
@@ -577,13 +581,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "cancelled_serial_chain_in_child_retains_both_providers_until_real_completion",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "inherited_deadline_and_foreign_runtime_rejections_do_not_allocate_leases",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -607,13 +611,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "all_dependencies_gate_unclaimed_disable_and_reenable_dispatch",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "claimed_disabled_epoch_cannot_publish_after_reenable_or_overwrite_successor",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -661,13 +665,13 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "acknowledgement_validates_entire_batch_before_forgetting_any_completion",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "listener_order_lifo_failure_retry_and_retirement_preserve_resource_identity",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -685,7 +689,7 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "overlapping_updates_keep_earlier_descendant_work_in_revision_fence",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         },
         {
           "path": "rust/plugin-runtime/src/coordinator.rs",
@@ -715,13 +719,25 @@
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "retained_registration_keeps_definition_identity_after_dynamic_shadowing",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         },
         {
           "path": "rust/plugin-runtime/src/ownership_tests.rs",
           "language": "rust",
           "symbol": "retained_registration_during_pending_shadow_does_not_strand_an_operation",
-          "sha256": "e593890fdd44dadbaba41b9a1bdd299769f55d89aaf576e43f786905cd43cd7d"
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
+        },
+        {
+          "path": "rust/plugin-runtime/src/coordinator.rs",
+          "language": "rust",
+          "symbol": "Coordinator::allocate",
+          "sha256": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b"
+        },
+        {
+          "path": "rust/plugin-runtime/src/ownership_tests.rs",
+          "language": "rust",
+          "symbol": "subtree_collection_follows_detached_parent_links_and_call_scope_ownership",
+          "sha256": "3016dfe036b8f9940b3ee9536c72c0e132de88674b1ca80832706685b8409723"
         }
       ],
       "models": [
@@ -900,6 +916,31 @@
           },
           "timeout_seconds": 60,
           "heap_mb": 128
+        },
+        {
+          "id": "plugin-subtree-collection",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/SubtreeCollection.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "invariants": [
+            "TypeOK",
+            "NoEarlyCollection",
+            "StoredParentClosure",
+            "NoDanglingRecords",
+            "NoDanglingReferences",
+            "ForeignSurvives",
+            "NoIdentityReuse"
+          ],
+          "properties": [],
+          "bounds": {
+            "initial_scopes": 4,
+            "new_scopes": 1,
+            "parent_depth": 2,
+            "records": 5,
+            "cross_scope_calls": 1,
+            "scope_pins": 1
+          }
         }
       ],
       "negative_controls": [
@@ -1182,10 +1223,74 @@
           "expected_invariant": "FreshLocalSuccessUnreachable",
           "timeout_seconds": 60,
           "heap_mb": 128
+        },
+        {
+          "id": "plugin-collection-detached",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/CollectionDetached.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "StoredParentClosure"
+        },
+        {
+          "id": "plugin-collection-busy",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/CollectionBusy.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "NoEarlyCollection"
+        },
+        {
+          "id": "plugin-collection-call-host",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/CollectionCallHost.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "NoDanglingRecords"
+        },
+        {
+          "id": "plugin-collection-references",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/CollectionReferences.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "NoDanglingReferences"
+        },
+        {
+          "id": "plugin-collection-foreign",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/CollectionForeign.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ForeignSurvives"
+        },
+        {
+          "id": "plugin-collection-identity",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/CollectionIdentity.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "NoIdentityReuse"
+        },
+        {
+          "id": "plugin-collection-child-success",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/CollectionChildSuccess.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "ChildCollectionSuccessUnreachable"
+        },
+        {
+          "id": "plugin-collection-root-success",
+          "module": "formal/plugin_ownership/SubtreeCollection.tla",
+          "config": "formal/plugin_ownership/CollectionRootSuccess.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "expected_invariant": "RootCollectionSuccessUnreachable"
         }
       ],
       "remaining_obligations": [
-        "Current WIP next owners: subtree collection internal ownership; instance_exited identity; diagnostic bounded retention. Dynamic visibility now has normal/isolated fixed-identity slices; arbitrary nested object overlays, full manifest validation and arbitrary scope topology remain beyond the finite bound.",
+        "Current WIP next owners: instance_exited identity and diagnostic bounded retention. Dynamic visibility and subtree collection have fixed-identity slices; arbitrary nested object overlays, full manifest validation and arbitrary scope topology remain beyond the finite bound.",
         "Arbitrary plugin graphs and repeated reconfiguration, all resource/callback payloads, process transport and cross-slice composed execution remain outside the currently registered bounds.",
         "Allocation exhaustion, operating-system/backend guarantees, compiler-level refinement and unbounded progress remain assumptions, not established by hashes or finite safety runs."
       ]

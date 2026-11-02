@@ -217,16 +217,50 @@ mandatory gate/lint methods pass with 36 refreshed-hash source mutants; all 47
 unified formal runs and two evidence contracts pass. Raw stage-5 evidence is in
 `.local/plugin-*stage5*` and `.local/formal-stage5/`. Ordinary full is still NOT_RUN.
 
+## Stage 6: stored-parent subtree reclamation (model-only)
+
+The pinned Cordis fiber `_unload` and structural disposer were re-read for
+waiting on actual dependent teardown before release. Rust additionally keeps
+explicit terminal records until `collect`; upstream does not prove that protocol.
+`SubtreeCollection` represents root/child/grandchild plus a foreign runtime, a
+fresh never-reused scope, five operation records including an ancestor-owned
+invocation whose **call scope** is the grandchild, one live invocation and one
+scope pin. `Drain`, `Complete`, `Release`, `Dispose`, `Reject`, `Collect`, and
+`Create` map to `drain`, real invoke completion, release, `reconcile`'s child-edge
+detachment, collection guards, `collect`, and monotonic `allocate`.
+
+Logical child edges disappear after completed disposal, but stored parent links
+remain until explicit collection. The model therefore checks transitive parent
+closure, no collection before real completion, both operation owner/call-host
+cleanup, affected/diagnostic cleanup, foreign survival and identity non-reuse.
+Six named seeded negatives violate those checks; two reached success witnesses
+require an earlier busy rejection, real invocation completion and pin release,
+then nested or root collection and a genuinely fresh handle. Cleanup callbacks
+and their retry/LIFO details compose with stage 3; `Dispose` assumes they have
+really finished and is not a substitute for that proof or for external progress.
+
+The positive graph has 64 states. All 56 actual Rust tests pass, including two
+new controlled runtimes that collect root or child after detached grandchild
+cleanup while preserving another runtime unchanged. The first test-authoring run
+incorrectly expected unknown-ID `ack` to fail; actual ack intentionally tolerates
+already-forgotten IDs. That FAIL is retained, and the contract now uses `cancel`
+plus operation counts to observe actual absence without changing production.
+An authoring hash-refresh script used the wrong helper signature; the resulting
+stale-source lint FAIL is also retained separately, not counted as verification.
+After correction, 20 targeted methods / 44 refreshed-hash mutants and all 56
+unified formal runs plus two evidence contracts pass. This stage changes no
+production source and establishes no new implementation defect.
+
 ## Explicit remaining work and boundaries
 
 This feature is still WIP. Concrete next owners, not merely external assumptions:
 
-- `collect` subtree-level reclamation (distinct from modeled `prune_retired`);
-- stale/current `instance_exited` events and bounded diagnostic retention.
+- stale/current `instance_exited` events and bounded diagnostic retention;
+- explicit failed-initialization retry (distinct from already modeled cleanup retry).
 
 Their source bindings are inventory/review anchors only until separate registered
 models and actual contracts cover their transitions. Remaining work is not
-silently declared covered by the five existing slices.
+silently declared covered by the six existing slices.
 
 Unbounded scopes/plugins/calls and arbitrary recursive intercept payloads,
 arbitrary callback effects, process transport, allocation exhaustion, OS failure,
