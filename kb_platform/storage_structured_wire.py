@@ -44,10 +44,22 @@ class _Handle:
         self._manager, self._seconds, self._finished = manager, seconds, finished
         self._queue, self._ready, self._stopped = Queue(maxsize=64), Future(), Event()
         self._state_lock = RLock()
+        self._launched = False
         self._thread = Thread(target=self._run, name='storage-' + self.id[:8], daemon=True)
 
     def start(self):
-        self._thread.start()
+        with self._state_lock:
+            if self._stopped.is_set():
+                raise DatabaseError('STORAGE_HANDLE_CLOSED')
+            if self._launched:
+                raise DatabaseError('STORAGE_HANDLE_BUSY')
+            try:
+                self._thread.start()
+            except Exception:
+                self._stopped.set()
+                self._finished(self.id, {'status': 'UNKNOWN', 'operation_id': self.operation_id})
+                raise
+            self._launched = True
         try:
             self._ready.result(timeout=self._seconds + 1)
         except TimeoutError:
@@ -120,7 +132,7 @@ class _Handle:
                 while True:
                     try:
                         _, queued = self._queue.get_nowait()
-                        if not queued.done():
+                        if queued.set_running_or_notify_cancel():
                             queued.set_exception(DatabaseError('STORAGE_HANDLE_CLOSED'))
                     except Empty:
                         break
@@ -147,6 +159,12 @@ class _Handle:
             raise DatabaseError('STORAGE_HANDLE_TIMEOUT') from None
 
     def close(self):
+        with self._state_lock:
+            if not self._launched:
+                if not self._stopped.is_set():
+                    self._stopped.set()
+                    self._finished(self.id, {'status': 'UNKNOWN', 'operation_id': self.operation_id})
+                return
         if not self._stopped.is_set():
             try:
                 self.call('rollback')
@@ -376,9 +394,10 @@ class PortableStructuredClient:
                     return
 
         worker = Thread(target=heartbeat, name='storage-guard-heartbeat', daemon=True)
-        worker.start()
-        failure = None
+        failure, launched = None, False
         try:
+            worker.start()
+            launched = True
             yield
             if failures:
                 raise failures[0]
@@ -387,7 +406,8 @@ class PortableStructuredClient:
             raise
         finally:
             stopped.set()
-            worker.join(timeout=1)
+            if launched:
+                worker.join(timeout=1)
             try:
                 result = self._call({'op': 'finish', 'handle': token, 'commit': True})
                 if result['status'] != 'RELEASED':
