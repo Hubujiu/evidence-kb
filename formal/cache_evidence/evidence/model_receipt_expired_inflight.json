@@ -1,11 +1,22 @@
 {
+  "schema": "historical-tlc-summary/1",
+  "scope": "Historical captured run, condensed without rerunning TLC; not the live runner evidence schema.",
   "id": "model_receipt_expired_inflight",
   "kind": "negative",
   "decision": "PASS",
   "returncode": 12,
   "timeout": false,
   "seconds": 2.149797591002425,
-  "command": [
+  "expected_invariant": "CapacityBound",
+  "expected_property": null,
+  "states": {
+    "generated": 414,
+    "distinct": 205,
+    "remaining": 120
+  },
+  "raw_log": "model_receipt_expired_inflight.log",
+  "input_checksums": "input-checksums/model_receipt_expired_inflight/SHA256SUMS",
+  "original_command": [
     "java",
     "-Xmx256m",
     "-XX:MaxMetaspaceSize=128m",
@@ -29,124 +40,7 @@
     "ModelReceiptSlotsNegative.cfg",
     "ModelReceiptSlots"
   ],
-  "input_sha256": {
-    "formal/cache_evidence/ModelReceiptSlots.tla": "bf9dbeee4ed440ef0a84784bd663c60393ef7c99b731a59557e6857ad6125d03",
-    "formal/controls/GateControl.tla": "3873ad49c156a90bb9bef20a7483f99717ebc23d8bab0b8482d7c178a4b0bd1f",
-    "formal/controls/LivenessControl.tla": "6c2afdfbde9fd3cc29515a4a444e803a1b64f0e20145a1b8f1c4d66f9ee488a2",
-    "formal/plugin_lifecycle/PluginLifecycle.tla": "9dd487802012380511687a2588a0105a53fa44e9e18215f3840f86fe4acefeef",
-    "formal/cache_evidence/ModelReceiptSlotsNegative.cfg": "f78e58fab369705884f6d84dcf210ab438b142378e64c600b0a5ed4c22d9ccc1"
-  },
-  "expected_invariant": "CapacityBound",
-  "expected_property": null,
-  "parsed": {
-    "frames": [
-      {
-        "code": 2262,
-        "severity": 0,
-        "body": "TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)"
-      },
-      {
-        "code": 2187,
-        "severity": 0,
-        "body": "Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 228MB heap and 64MB offheap memory [pid: 40] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue)."
-      },
-      {
-        "code": 2220,
-        "severity": 0,
-        "body": "Starting SANY..."
-      },
-      {
-        "code": 2219,
-        "severity": 0,
-        "body": "SANY finished."
-      },
-      {
-        "code": 2185,
-        "severity": 0,
-        "body": "Starting... (2026-11-02 10:52:33)"
-      },
-      {
-        "code": 2189,
-        "severity": 0,
-        "body": "Computing initial states..."
-      },
-      {
-        "code": 2190,
-        "severity": 0,
-        "body": "Finished computing initial states: 1 distinct state generated at 2026-11-02 10:52:34."
-      },
-      {
-        "code": 2110,
-        "severity": 1,
-        "body": "Invariant CapacityBound is violated."
-      },
-      {
-        "code": 2121,
-        "severity": 1,
-        "body": "The behavior up to this point is:"
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "1: <Initial predicate>\n/\\ pending = <<\"absent\", \"absent\", \"absent\">>\n/\\ expired = {}\n/\\ active = {}\n/\\ closed = FALSE\n/\\ confirmed = {}\n/\\ accepted = {}\n/\\ settled = {}\n/\\ issued = {}"
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "2: <Begin line 15, col 8 to line 20, col 60 of module ModelReceiptSlots>\n/\\ pending = <<\"running\", \"absent\", \"absent\">>\n/\\ expired = {}\n/\\ active = {1}\n/\\ closed = FALSE\n/\\ confirmed = {}\n/\\ accepted = {}\n/\\ settled = {}\n/\\ issued = {1}"
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "3: <Age line 29, col 11 to line 31, col 88 of module ModelReceiptSlots>\n/\\ pending = <<\"running\", \"absent\", \"absent\">>\n/\\ expired = {1}\n/\\ active = {1}\n/\\ closed = FALSE\n/\\ confirmed = {}\n/\\ accepted = {}\n/\\ settled = {}\n/\\ issued = {1}"
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "4: <Begin line 15, col 8 to line 20, col 60 of module ModelReceiptSlots>\n/\\ pending = <<\"absent\", \"running\", \"absent\">>\n/\\ expired = {}\n/\\ active = {1, 2}\n/\\ closed = FALSE\n/\\ confirmed = {}\n/\\ accepted = {}\n/\\ settled = {}\n/\\ issued = {1, 2}"
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "5: <Begin line 15, col 8 to line 20, col 60 of module ModelReceiptSlots>\n/\\ pending = <<\"absent\", \"running\", \"running\">>\n/\\ expired = {}\n/\\ active = {1, 2, 3}\n/\\ closed = FALSE\n/\\ confirmed = {}\n/\\ accepted = {}\n/\\ settled = {}\n/\\ issued = {1, 2, 3}"
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "6: <Complete line 21, col 16 to line 24, col 76 of module ModelReceiptSlots>\n/\\ pending = <<\"ready\", \"running\", \"running\">>\n/\\ expired = {}\n/\\ active = {2, 3}\n/\\ closed = FALSE\n/\\ confirmed = {}\n/\\ accepted = {}\n/\\ settled = {}\n/\\ issued = {1, 2, 3}"
-      },
-      {
-        "code": 2200,
-        "severity": 0,
-        "body": "Progress(6) at 2026-11-02 10:52:34: 414 states generated (15,466 s/min), 205 distinct states found (7,658 ds/min), 120 states left on queue."
-      },
-      {
-        "code": 2199,
-        "severity": 0,
-        "body": "414 states generated, 205 distinct states found, 120 states left on queue."
-      },
-      {
-        "code": 2194,
-        "severity": 0,
-        "body": "The depth of the complete state graph search is 6."
-      },
-      {
-        "code": 2268,
-        "severity": 0,
-        "body": "The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 7 and the 95th percentile is 5)."
-      },
-      {
-        "code": 2186,
-        "severity": 0,
-        "body": "Finished in 1619ms at (2026-11-02 10:52:34)"
-      }
-    ],
-    "truncated": false,
-    "states": {
-      "generated": 414,
-      "distinct": 205,
-      "remaining": 120
-    }
-  },
-  "log": "model_receipt_expired_inflight/tlc.log"
+  "original_output_log": "model_receipt_expired_inflight/tlc.log",
+  "original_candidate": "6ee22e7de17d1d8187d5e973148edc6672dd269e",
+  "historical_inputs": "Manifest preserves the original run hashes, which may differ from the current source tree. See formal/cache_evidence/historical-evidence-format.md."
 }

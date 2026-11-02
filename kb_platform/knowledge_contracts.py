@@ -373,10 +373,10 @@ class ModelEndpoint:
             with self._lock:
                 self._pending[token] = (monotonic() + 900, envelope)
             return {'completion': envelope.to_dict(), 'token': token}
-        except Exception as error:
+        except BaseException as error:
             with self._lock:
                 self._pending.pop(token, None)
-            if not hasattr(error, 'code'):
+            if not isinstance(error, Exception) or not hasattr(error, 'code'):
                 raise
             from .model_errors import error_details
 

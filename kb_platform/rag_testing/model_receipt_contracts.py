@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from kb_platform.agent_model import CompletionEnvelope
 from kb_platform.knowledge_contracts import MODEL_METHODS, ModelEndpoint
 from kb_platform.plugin_contracts import ContractError, ServiceEndpoint
+from kb_platform.plugin_host import PluginHost, PluginSpec
 
 
 class ModelReceiptContracts(unittest.TestCase):
@@ -173,3 +174,120 @@ class ModelCapacityOutcomeContracts(unittest.TestCase):
             with self.subTest(mutation=new):
                 self.assertIn(old, source)
                 self.assertTrue(model_capacity_outcome_violations(ast.parse(source.replace(old, new))))
+
+
+class ModelReceiptFormalGateContracts(unittest.TestCase):
+    def test_formal_registry_rejects_guard_mutants_even_after_source_digest_refresh(self):
+        from .formal_state_machine_contracts import FormalRegistryContracts
+        from .formal_state_machines import registry_violations, source_digest
+
+        source = ('class ModelEndpoint:\n'
+                  '    def complete(self, request):\n'
+                  '        expired = [key for key, (deadline, envelope) in self._pending.items()\n'
+                  '                   if envelope is not None and deadline < monotonic()]\n'
+                  '        if len(self._pending) >= 64:\n'
+                  "            raise ContractError('MODEL_VALIDATION_CAPACITY', 'capacity',\n"
+                  "                details={'model_sent': False, 'call_record': {'attempts': 0, 'model_sent': False}})\n"
+                  '        try:\n'
+                  '            return self._model.complete(**request)\n'
+                  '        except BaseException as error:\n'
+                  '            with self._lock:\n'
+                  '                self._pending.pop(token, None)\n'
+                  "            if not isinstance(error, Exception) or not hasattr(error, 'code'):\n"
+                  '                raise\n')
+        for mutation in (None, 'expiry', 'unknown', 'cancellation'):
+            with self.subTest(mutation=mutation), TemporaryDirectory() as directory:
+                root = Path(directory)
+                registry = FormalRegistryContracts().fixture(root)
+                changed = source
+                if mutation == 'expiry':
+                    changed = source.replace('envelope is not None and ', '')
+                if mutation == 'unknown':
+                    changed = source.replace("'model_sent': False", "'model_sent': None")
+                if mutation == 'cancellation':
+                    changed = source.replace('except BaseException as error:', 'except Exception as error:')
+                (root / 'kb_platform/knowledge_contracts.py').write_text(changed, encoding='utf-8')
+                binding = {'path': 'kb_platform/knowledge_contracts.py', 'language': 'python',
+                           'symbol': 'ModelEndpoint.complete'}
+                binding['sha256'] = source_digest(root, binding)
+                registry['machines'][0]['source_bindings'].append(binding)
+                errors = registry_violations(root, registry)
+                if mutation is None:
+                    self.assertEqual(errors, [])
+                else:
+                    self.assertTrue(any(error.startswith('model receipts:') for error in errors), errors)
+                    self.assertFalse(any('source review drift' in error for error in errors), errors)
+
+
+class ModelReceiptCancellationContracts(unittest.TestCase):
+    def test_cleanup_lint_rejects_exception_only_missing_cleanup_and_converted_cancellation(self):
+        from scripts.check_project import model_receipt_cleanup_violations
+
+        source = (Path(__file__).resolve().parents[1] / 'knowledge_contracts.py').read_text('utf-8')
+        self.assertEqual(model_receipt_cleanup_violations(ast.parse(source)), [])
+        for old, new in (('except BaseException as error:', 'except Exception as error:'),
+                         ('self._pending.pop(token, None)', 'self._pending.get(token, None)'),
+                         ('not isinstance(error, Exception) or ', ''),
+                         ('not isinstance(error, Exception) or ', 'not isinstance(error, Exception) and ')):
+            with self.subTest(mutation=new):
+                self.assertIn(old, source)
+                self.assertTrue(model_receipt_cleanup_violations(ast.parse(source.replace(old, new))))
+
+    def test_real_host_propagates_cancellation_identity_releases_slot_and_keeps_unknown_cost(self):
+        from .knowledge_capability_contracts import KnowledgeCapabilityContracts
+
+        class SyntheticCancellation(BaseException):
+            code = 'SYNTHETIC_CANCEL'
+
+        _, model, provider = KnowledgeCapabilityContracts.model(self)
+        endpoint = ModelEndpoint(model)
+        public = ServiceEndpoint(endpoint, MODEL_METHODS)
+        success = provider._post.side_effect
+        signals = []
+
+        def cancel(*args, trace, **kwargs):
+            trace['attempt'] += 1
+            signal = SyntheticCancellation('controlled cancellation')
+            signals.append(signal)
+            raise signal
+
+        provider._post.side_effect = cancel
+
+        def mount(ctx, config):
+            ctx.defer(endpoint.close)
+            ctx.provide('model', public)
+
+        profile = {'version': 1, 'plugins': [{'id': 'model', 'use': 'synthetic.model'}]}
+        spec = PluginSpec('synthetic.model', ('model',), (), mount)
+        request = {'messages': [{'role': 'user', 'content': 'Synthetic cancellation fixture'}],
+                   'role': 'answer', 'schema': {'type': 'object'}, 'call_context': {}, 'output_limit': 16}
+        now = [0]
+        with patch('kb_platform.knowledge_contracts.monotonic', side_effect=lambda: now[0]), \
+                PluginHost(profile, (spec,)) as host:
+            for _ in range(64):
+                with self.assertRaises(SyntheticCancellation) as caught:
+                    host.call('model', 'complete', request)
+                self.assertIs(caught.exception, signals[-1])
+                self.assertEqual(caught.exception.code, 'SYNTHETIC_CANCEL')
+            now[0] = 901
+            self.assertEqual(provider._post.call_count, 64)
+            self.assertEqual(host.inspect()['state'], 'ready')
+            self.assertTrue(host.call('model', 'metadata', {})['policy'])
+            self.assertEqual(endpoint._pending, {})
+            failed_budget = model.ledger.snapshot()
+            self.assertEqual(failed_budget['calls'], 64)
+            self.assertEqual(failed_budget['unknown_usage_calls'], 64)
+            self.assertGreater(failed_budget['accounted_tokens'], 0)
+            self.assertEqual(failed_budget['reserved_calls'], 0)
+            provider._post.side_effect = success
+            response = host.call('model', 'complete', request)
+            self.assertEqual(response['completion']['usage']['total_tokens'], 15)
+            self.assertEqual(response['completion']['attempts'], 1)
+            self.assertEqual(provider._post.call_count, 65)
+            host.call('model', 'settle', {'token': response['token'], 'accept': True})
+            provider._cache_put.assert_called_once()
+            after = model.ledger.snapshot()
+            self.assertEqual(after['calls'], 65)
+            self.assertEqual(after['unknown_usage_calls'], 64)
+            self.assertEqual(after['accounted_tokens'], failed_budget['accounted_tokens'] + 15)
+            self.assertEqual(endpoint._pending, {})

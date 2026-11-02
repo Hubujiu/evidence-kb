@@ -1,11 +1,22 @@
 {
+  "schema": "historical-tlc-summary/1",
+  "scope": "Historical captured run, condensed without rerunning TLC; not the live runner evidence schema.",
   "id": "model_capacity_unknown_refusal",
   "kind": "negative",
   "decision": "PASS",
   "returncode": 12,
   "timeout": false,
   "seconds": 3.8162604499957524,
-  "command": [
+  "expected_invariant": "RefusalReportsNoAttempt",
+  "expected_property": null,
+  "states": {
+    "generated": 7,
+    "distinct": 7,
+    "remaining": 0
+  },
+  "raw_log": "model_capacity_unknown_refusal.log",
+  "input_checksums": "input-checksums/model_capacity_unknown_refusal/SHA256SUMS",
+  "original_command": [
     "java",
     "-Xmx128m",
     "-XX:MaxMetaspaceSize=128m",
@@ -29,115 +40,7 @@
     "CapacityRefusalNegative.cfg",
     "CapacityRefusal"
   ],
-  "input_sha256": {
-    "formal/cache_evidence/CapacityRefusal.tla": "4fc041af1b1ada1c981ea119050a9622a546b19be95bda81b66e70e36d4c5e00",
-    "formal/cache_evidence/ModelReceiptSlots.tla": "bf9dbeee4ed440ef0a84784bd663c60393ef7c99b731a59557e6857ad6125d03",
-    "formal/controls/GateControl.tla": "3873ad49c156a90bb9bef20a7483f99717ebc23d8bab0b8482d7c178a4b0bd1f",
-    "formal/controls/LivenessControl.tla": "6c2afdfbde9fd3cc29515a4a444e803a1b64f0e20145a1b8f1c4d66f9ee488a2",
-    "formal/plugin_lifecycle/PluginLifecycle.tla": "9dd487802012380511687a2588a0105a53fa44e9e18215f3840f86fe4acefeef",
-    "formal/cache_evidence/CapacityRefusalNegative.cfg": "27711dec84f1f62424128bc9c27d69aa210ee31e3aae19f70f2ddfc985d16fbe"
-  },
-  "expected_invariant": "RefusalReportsNoAttempt",
-  "expected_property": null,
-  "parsed": {
-    "frames": [
-      {
-        "code": 2262,
-        "severity": 0,
-        "body": "TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)"
-      },
-      {
-        "code": 2187,
-        "severity": 0,
-        "body": "Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 123MB heap and 64MB offheap memory [pid: 34] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue)."
-      },
-      {
-        "code": 2220,
-        "severity": 0,
-        "body": "Starting SANY..."
-      },
-      {
-        "code": 2219,
-        "severity": 0,
-        "body": "SANY finished."
-      },
-      {
-        "code": 2185,
-        "severity": 0,
-        "body": "Starting... (2026-11-02 10:57:39)"
-      },
-      {
-        "code": 2189,
-        "severity": 0,
-        "body": "Computing initial states..."
-      },
-      {
-        "code": 2269,
-        "severity": 0,
-        "body": "Computed 2 initial states..."
-      },
-      {
-        "code": 2190,
-        "severity": 0,
-        "body": "Finished computing initial states: 3 distinct states generated at 2026-11-02 10:57:40."
-      },
-      {
-        "code": 2110,
-        "severity": 1,
-        "body": "Invariant RefusalReportsNoAttempt is violated."
-      },
-      {
-        "code": 2121,
-        "severity": 1,
-        "body": "The behavior up to this point is:"
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "1: <Initial predicate>\n/\\ eventAttempts = 0\n/\\ dispatches = 0\n/\\ phase = \"new\"\n/\\ slots = 2\n/\\ reported = \"missing\""
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "2: <Refuse line 11, col 11 to line 14, col 59 of module CapacityRefusal>\n/\\ eventAttempts = 0\n/\\ dispatches = 0\n/\\ phase = \"refused\"\n/\\ slots = 2\n/\\ reported = \"missing\""
-      },
-      {
-        "code": 2217,
-        "severity": 4,
-        "body": "3: <Observe line 15, col 12 to line 18, col 55 of module CapacityRefusal>\n/\\ eventAttempts = 1\n/\\ dispatches = 0\n/\\ phase = \"observed\"\n/\\ slots = 2\n/\\ reported = \"missing\""
-      },
-      {
-        "code": 2200,
-        "severity": 0,
-        "body": "Progress(3) at 2026-11-02 10:57:40: 7 states generated (136 s/min), 7 distinct states found (136 ds/min), 0 states left on queue."
-      },
-      {
-        "code": 2199,
-        "severity": 0,
-        "body": "7 states generated, 7 distinct states found, 0 states left on queue."
-      },
-      {
-        "code": 2194,
-        "severity": 0,
-        "body": "The depth of the complete state graph search is 3."
-      },
-      {
-        "code": 2268,
-        "severity": 0,
-        "body": "The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 1 and the 95th percentile is 1)."
-      },
-      {
-        "code": 2186,
-        "severity": 0,
-        "body": "Finished in 3102ms at (2026-11-02 10:57:40)"
-      }
-    ],
-    "truncated": false,
-    "states": {
-      "generated": 7,
-      "distinct": 7,
-      "remaining": 0
-    }
-  },
-  "log": "model_capacity_unknown_refusal/tlc.log"
+  "original_output_log": "model_capacity_unknown_refusal/tlc.log",
+  "original_candidate": "6ee22e7de17d1d8187d5e973148edc6672dd269e",
+  "historical_inputs": "Manifest preserves the original run hashes, which may differ from the current source tree. See formal/cache_evidence/historical-evidence-format.md."
 }

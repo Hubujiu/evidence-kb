@@ -1,11 +1,22 @@
 {
+  "schema": "historical-tlc-summary/1",
+  "scope": "Historical captured run, condensed without rerunning TLC; not the live runner evidence schema.",
   "id": "model_capacity_refusal",
   "kind": "positive",
   "decision": "PASS",
   "returncode": 0,
   "timeout": false,
   "seconds": 1.5800756810058374,
-  "command": [
+  "expected_invariant": null,
+  "expected_property": null,
+  "states": {
+    "generated": 7,
+    "distinct": 7,
+    "remaining": 0
+  },
+  "raw_log": "model_capacity_refusal.log",
+  "input_checksums": "input-checksums/model_capacity_refusal/SHA256SUMS",
+  "original_command": [
     "java",
     "-Xmx128m",
     "-XX:MaxMetaspaceSize=128m",
@@ -29,95 +40,7 @@
     "CapacityRefusal.cfg",
     "CapacityRefusal"
   ],
-  "input_sha256": {
-    "formal/cache_evidence/CapacityRefusal.tla": "4fc041af1b1ada1c981ea119050a9622a546b19be95bda81b66e70e36d4c5e00",
-    "formal/cache_evidence/ModelReceiptSlots.tla": "bf9dbeee4ed440ef0a84784bd663c60393ef7c99b731a59557e6857ad6125d03",
-    "formal/controls/GateControl.tla": "3873ad49c156a90bb9bef20a7483f99717ebc23d8bab0b8482d7c178a4b0bd1f",
-    "formal/controls/LivenessControl.tla": "6c2afdfbde9fd3cc29515a4a444e803a1b64f0e20145a1b8f1c4d66f9ee488a2",
-    "formal/plugin_lifecycle/PluginLifecycle.tla": "9dd487802012380511687a2588a0105a53fa44e9e18215f3840f86fe4acefeef",
-    "formal/cache_evidence/CapacityRefusal.cfg": "c6ead4ac91dd7724f770a455bc65ac74938672a128291a684cf76817128a3147"
-  },
-  "expected_invariant": null,
-  "expected_property": null,
-  "parsed": {
-    "frames": [
-      {
-        "code": 2262,
-        "severity": 0,
-        "body": "TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)"
-      },
-      {
-        "code": 2187,
-        "severity": 0,
-        "body": "Running breadth-first search Model-Checking with fp 0 and seed 1 with 1 worker on 9 cores with 123MB heap and 64MB offheap memory [pid: 6] (Linux 6.18.57 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue)."
-      },
-      {
-        "code": 2220,
-        "severity": 0,
-        "body": "Starting SANY..."
-      },
-      {
-        "code": 2219,
-        "severity": 0,
-        "body": "SANY finished."
-      },
-      {
-        "code": 2185,
-        "severity": 0,
-        "body": "Starting... (2026-11-02 10:57:36)"
-      },
-      {
-        "code": 2189,
-        "severity": 0,
-        "body": "Computing initial states..."
-      },
-      {
-        "code": 2269,
-        "severity": 0,
-        "body": "Computed 2 initial states..."
-      },
-      {
-        "code": 2190,
-        "severity": 0,
-        "body": "Finished computing initial states: 3 distinct states generated at 2026-11-02 10:57:36."
-      },
-      {
-        "code": 2193,
-        "severity": 0,
-        "body": "Model checking completed. No error has been found.\n  Estimates of the probability that TLC did not check all reachable states\n  because two distinct states had the same fingerprint:\n  calculated (optimistic):  val = 0.0"
-      },
-      {
-        "code": 2200,
-        "severity": 0,
-        "body": "Progress(3) at 2026-11-02 10:57:36: 7 states generated (402 s/min), 7 distinct states found (402 ds/min), 0 states left on queue."
-      },
-      {
-        "code": 2199,
-        "severity": 0,
-        "body": "7 states generated, 7 distinct states found, 0 states left on queue."
-      },
-      {
-        "code": 2194,
-        "severity": 0,
-        "body": "The depth of the complete state graph search is 3."
-      },
-      {
-        "code": 2268,
-        "severity": 0,
-        "body": "The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 1 and the 95th percentile is 1)."
-      },
-      {
-        "code": 2186,
-        "severity": 0,
-        "body": "Finished in 1056ms at (2026-11-02 10:57:36)"
-      }
-    ],
-    "truncated": false,
-    "states": {
-      "generated": 7,
-      "distinct": 7,
-      "remaining": 0
-    }
-  },
-  "log": "model_capacity_refusal/tlc.log"
+  "original_output_log": "model_capacity_refusal/tlc.log",
+  "original_candidate": "6ee22e7de17d1d8187d5e973148edc6672dd269e",
+  "historical_inputs": "Manifest preserves the original run hashes, which may differ from the current source tree. See formal/cache_evidence/historical-evidence-format.md."
 }

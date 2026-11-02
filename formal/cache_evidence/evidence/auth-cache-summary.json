@@ -1,0 +1,41 @@
+{
+  "scope": "bounded offline model checking and actual synthetic contract execution; partial, not whole-system proof",
+  "auth_session": {
+    "generated": 62836,
+    "distinct": 21788,
+    "exit": 0
+  },
+  "stage_cache": {
+    "generated": 7764,
+    "distinct": 1146,
+    "exit": 0
+  },
+  "evidence_continuation": {
+    "generated": 24590,
+    "distinct": 5303,
+    "exit": 0
+  },
+  "negative_controls": {
+    "auth_session_expiry_bypass": 12,
+    "stage_cache_auth_bypass": 12,
+    "stage_cache_key_bypass": 12,
+    "stage_cache_integrity_bypass": 12,
+    "evidence_other_actor_consumes": 12
+  },
+  "independent_review": "Initial two-token evidence capacity check was vacuous; expanded to3 tokens/cap2. Unauthorized-consumption ghost now derives from observed removal, not mutant flag. Final rerun checks both adjustments.",
+  "remaining_registry_errors": [
+    "Unregistered state candidate: kb_platform/rag_testing/budget_batches.py:ReviewedPredecessorLedger._review_summary",
+    "budget_batches: source review drift at kb_platform/rag_testing/budget_batches.py:LinkedBudgetLedger.cumulative_summary",
+    "budget_batches: source review drift at kb_platform/rag_testing/budget_batches.py:ReviewedPredecessorLedger.cumulative_summary",
+    "physical_budget: source review drift at kb_platform/model_http.py:OpenAICompatibleAdapter.invoke",
+    "physical_budget: source review drift at kb_platform/rag_testing/provider_capture.py:MeteredTransport._handle_admitted",
+    "provider_admission: source review drift at kb_platform/provider_admission.py:ProviderAdmission.require_available",
+    "provider_admission: source review drift at kb_platform/provider_runtime.py:classify_failure",
+    "transfer_protocol: source review drift at kb_platform/contract_transfer.py:JsonClient._call",
+    "transfer_protocol: source review drift at kb_platform/contract_transfer.py:JsonEndpoint.execute",
+    "turn_budget: source review drift at kb_platform/agent_model.py:AgentModel.complete",
+    "turn_budget: source review drift at kb_platform/agent_model.py:BudgetLedger.reserve"
+  ],
+  "paid_model_calls": 0,
+  "full_gate": "Parent-owned integration; not run in child"
+}
