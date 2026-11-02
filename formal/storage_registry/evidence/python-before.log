@@ -1,0 +1,53 @@
+test_active_lease_is_not_released_by_dispose_or_close (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_active_lease_is_not_released_by_dispose_or_close) ... ok
+test_close_blocks_registration_and_competing_close_before_cleanup_finishes (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_close_blocks_registration_and_competing_close_before_cleanup_finishes) ... FAIL
+test_concurrent_disposers_never_close_the_same_adapter_twice (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_concurrent_disposers_never_close_the_same_adapter_twice) ... FAIL
+test_failed_cleanup_retains_owner_for_explicit_retry_and_keeps_admission_closed (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_failed_cleanup_retains_owner_for_explicit_retry_and_keeps_admission_closed) ... FAIL
+test_source_cleanup_guards_and_seeded_mutants (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_source_cleanup_guards_and_seeded_mutants) ... FAIL
+
+======================================================================
+FAIL: test_close_blocks_registration_and_competing_close_before_cleanup_finishes (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_close_blocks_registration_and_competing_close_before_cleanup_finishes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-database-registry/kb_platform/rag_testing/database_registry_lifecycle_contracts.py", line 83, in test_close_blocks_registration_and_competing_close_before_cleanup_finishes
+    with self.assertRaisesRegex(DatabaseError, 'DATABASE_ROUTE_UNAVAILABLE'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: DatabaseError not raised
+
+======================================================================
+FAIL: test_concurrent_disposers_never_close_the_same_adapter_twice (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_concurrent_disposers_never_close_the_same_adapter_twice)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-database-registry/kb_platform/rag_testing/database_registry_lifecycle_contracts.py", line 58, in test_concurrent_disposers_never_close_the_same_adapter_twice
+    with self.assertRaisesRegex(DatabaseError, 'DATABASE_CLEANUP_BUSY'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: DatabaseError not raised
+
+======================================================================
+FAIL: test_failed_cleanup_retains_owner_for_explicit_retry_and_keeps_admission_closed (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_failed_cleanup_retains_owner_for_explicit_retry_and_keeps_admission_closed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-database-registry/kb_platform/rag_testing/database_registry_lifecycle_contracts.py", line 101, in test_failed_cleanup_retains_owner_for_explicit_retry_and_keeps_admission_closed
+    with self.assertRaisesRegex(DatabaseError, 'DATABASE_ROUTE_UNAVAILABLE'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: DatabaseError not raised
+
+======================================================================
+FAIL: test_source_cleanup_guards_and_seeded_mutants (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_source_cleanup_guards_and_seeded_mutants)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-database-registry/kb_platform/rag_testing/database_registry_lifecycle_contracts.py", line 124, in test_source_cleanup_guards_and_seeded_mutants
+    self.assertEqual(registry_cleanup_violations(source), [])
+AssertionError: Lists differ: ['reject concurrent cleanup before changin[84 chars]hot'] != []
+
+First list contains 2 additional elements.
+First extra element 0:
+'reject concurrent cleanup before changing the route phase'
+
++ []
+- ['reject concurrent cleanup before changing the route phase',
+-  'close admission under the lock before taking the disposal snapshot']
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.013s
+
+FAILED (failures=4)

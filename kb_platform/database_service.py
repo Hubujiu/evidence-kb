@@ -105,6 +105,8 @@ class DatabaseService:
         with self._lock:
             if self._routes.get(name) is not route:
                 return
+            if route.phase == 'closing':
+                raise DatabaseError('DATABASE_CLEANUP_BUSY')
             route.phase = 'draining'
             if route.active:
                 raise DatabaseError('DATABASE_ROUTE_BUSY')
@@ -126,6 +128,7 @@ class DatabaseService:
         with self._lock:
             if any(row.active for row in self._routes.values()):
                 raise DatabaseError('DATABASE_ROUTE_BUSY')
+            self._state = 'draining'
             rows = tuple(self._routes.items())
         for name, route in reversed(rows):
             self._dispose(name, route)

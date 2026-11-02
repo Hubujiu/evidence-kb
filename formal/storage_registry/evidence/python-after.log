@@ -1,0 +1,10 @@
+test_active_lease_is_not_released_by_dispose_or_close (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_active_lease_is_not_released_by_dispose_or_close) ... ok
+test_close_blocks_registration_and_competing_close_before_cleanup_finishes (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_close_blocks_registration_and_competing_close_before_cleanup_finishes) ... ok
+test_concurrent_disposers_never_close_the_same_adapter_twice (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_concurrent_disposers_never_close_the_same_adapter_twice) ... ok
+test_failed_cleanup_retains_owner_for_explicit_retry_and_keeps_admission_closed (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_failed_cleanup_retains_owner_for_explicit_retry_and_keeps_admission_closed) ... ok
+test_source_cleanup_guards_and_seeded_mutants (kb_platform.rag_testing.database_registry_lifecycle_contracts.DatabaseRegistryLifecycleContracts.test_source_cleanup_guards_and_seeded_mutants) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.043s
+
+OK
