@@ -1,0 +1,16 @@
+test_actual_registry_and_managed_driver_ownership_structure (kb_platform.rag_testing.llm_registry_formal_contracts.LlmRegistryFormalContracts.test_actual_registry_and_managed_driver_ownership_structure) ... ok
+test_mandatory_guard_rejects_refreshed_hash_for_a_stale_binding_mutation (kb_platform.rag_testing.llm_registry_formal_contracts.LlmRegistryFormalContracts.test_mandatory_guard_rejects_refreshed_hash_for_a_stale_binding_mutation) ... FAIL
+test_seeded_binding_cleanup_and_early_release_mutants_are_rejected (kb_platform.rag_testing.llm_registry_formal_contracts.LlmRegistryFormalContracts.test_seeded_binding_cleanup_and_early_release_mutants_are_rejected) ... ok
+
+======================================================================
+FAIL: test_mandatory_guard_rejects_refreshed_hash_for_a_stale_binding_mutation (kb_platform.rag_testing.llm_registry_formal_contracts.LlmRegistryFormalContracts.test_mandatory_guard_rejects_refreshed_hash_for_a_stale_binding_mutation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/scratch/75c2273f6a80/evidence-kb-llm-registry-formal/kb_platform/rag_testing/llm_registry_formal_contracts.py", line 56, in test_mandatory_guard_rejects_refreshed_hash_for_a_stale_binding_mutation
+    self.assertTrue(any('exact current binding' in error for error in errors))
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.104s
+
+FAILED (failures=1)
