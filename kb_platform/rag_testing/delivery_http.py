@@ -87,6 +87,15 @@ def _assert_authority(actual, expected):
         raise ValueError('FROZEN_AUTHORITY_OR_MANIFEST_MISMATCH')
 
 
+def _publish_bound_json(path, value):
+    path = Path(path)
+    if path.exists():
+        if json.loads(path.read_text('utf-8')) != value:
+            raise ValueError('BOUND_PREPARE_ARTIFACT_CHANGED:' + path.name)
+        return
+    _atomic_json(path, value)
+
+
 def _bind_prepared_http(client, fixtures, root, *, platform, identity, data_scopes, context_budget, state, state_path):
 
     actor = Actor(**identity)
@@ -113,22 +122,19 @@ def _bind_prepared_http(client, fixtures, root, *, platform, identity, data_scop
                  'expectations': split + '-expectations.json', 'documents': split + '-documents.json'}
         for kind, name in files.items():
             value = bound[kind].model_dump(mode='json') if kind == 'suite' else bound[kind]
-            target = root / name
-            if target.exists() and json.loads(target.read_text('utf-8')) != value:
-                raise ValueError('BOUND_PREPARE_ARTIFACT_CHANGED:' + name)
-            _atomic_json(target, value)
+            _publish_bound_json(root / name, value)
         prepared['splits'][split] = {**data, 'files': files, 'authority': expected}
     for split, expected in before.items():
         _assert_authority(read_authority(client, data_scopes[split]['scope_id']), expected)
     scenarios = json.loads((Path(fixtures['root']) / 'scenario-inputs.json').read_text('utf-8'))
-    write_json(root / 'scenario-inputs.json', scenarios)
+    _publish_bound_json(root / 'scenario-inputs.json', scenarios)
     prepared['scenario_inputs'] = 'scenario-inputs.json'
     prepared['file_sha256'] = {name: sha256((root / name).read_bytes()).hexdigest()
         for name in [*sum((list(item['files'].values()) for item in prepared['splits'].values()), []), 'scenario-inputs.json']}
     if 'rebind_from' in state:
         prepared.update(rebind_from=state['rebind_from'], reused_http_operation_receipts=len(state['operations']),
                         new_upload_build_publish_requests=0)
-    _atomic_json(root / 'prepared.json', prepared)
+    _publish_bound_json(root / 'prepared.json', prepared)
     state['status'] = 'COMPLETE'
     _atomic_json(state_path, state)
     return prepared

@@ -2395,7 +2395,7 @@
           "path": "kb_platform/rag_testing/delivery_http.py",
           "language": "python",
           "symbol": "_bind_prepared_http",
-          "sha256": "a9e00584722d1ee92f9397f3d746ef829e67c623193181101d80197a2de17703"
+          "sha256": "8a3d9cdd7272647cf27517e09ad90c009878cdd92e36c63ae8057ceafc82e493"
         },
         {
           "path": "kb_platform/rag_testing/delivery_http.py",
@@ -2464,9 +2464,292 @@
         }
       ],
       "remaining_obligations": [
-        "Model authority binding/rebind artifact publication and acceptance execution receipts beyond exclusive output ownership.",
+        "Binding/rebind artifact publication and client execution now have separate bounded models acceptance_binding_publication and acceptance_client_execution; this owner model alone still does not cover them.",
         "Compose provider/physical-budget admission and settlement models; capture status alone is not cross-ledger confirmation.",
         "OS crash durability (including directory fsync), remote filesystems, arbitrary input sizes and adversarial modifications remain unproved."
+      ]
+    },
+    {
+      "status": "partial",
+      "assumptions": [
+        "Finite bounds are explicit engineering instances, not a source refinement or unbounded proof.",
+        "Atomic successful replacement survives process death; filesystem, OS power-loss and malicious edits are not proved.",
+        "Physical capture and budget settlement use PR34; no pending request is retried or reconciled by this workflow."
+      ],
+      "exclusions": [
+        "No liveness or automatic recovery guarantee. No instantaneous revocation guarantee after the final authority observation.",
+        "Synthetic fixture results are not production RAG quality or live-provider performance evidence."
+      ],
+      "remaining_obligations": [
+        "Unbounded cases/turns/artifacts, full Python refinement, OS power-loss durability and cross-process hostile edits remain unproved.",
+        "Provider settlement and server-session ownership remain independent modeled authorities; these client models do not replace them."
+      ],
+      "id": "acceptance_binding_publication",
+      "purpose": "Two-split read-only binding, immutable artifact reuse and coherent descriptor publication after authority observations.",
+      "owners": [
+        "kb_platform/rag_testing/delivery_http.py"
+      ],
+      "states": [
+        "DATA_READY, BINDING, descriptor published, COMPLETE; reject or one interruption/re-entry",
+        "Two split authorities, eight split artifact slots and one scenario slot; immutable original values"
+      ],
+      "transitions": [
+        "before/after authority reads",
+        "split binding and immutable publication",
+        "scenario and descriptor publication",
+        "process interruption and explicit re-entry"
+      ],
+      "invariants": [
+        "Existing unequal artifacts reject without changing old bytes.",
+        "COMPLETE implies all artifact files and descriptor exist; descriptor records matching before/final authority observations, not current instantaneous authority.",
+        "Receipt reuse performs no new upload/build/publish effect."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_bind_prepared_http",
+          "sha256": "8a3d9cdd7272647cf27517e09ad90c009878cdd92e36c63ae8057ceafc82e493"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_publish_bound_json",
+          "sha256": "7b73eca55df93c2770bc6b087270a90eda1246b695a459e1aae9a832a1ba83cf"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "load_prepared",
+          "sha256": "b22e7cde1587e38a0a502ee3b5d168a0d30d796aa2b9b15f60de1b5ef6bf702e"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "rebind_http",
+          "sha256": "fedb88dd8c474125aa4572f154e155f3ebf93f48f3a8ce03750c399886d46e9f"
+        }
+      ],
+      "models": [
+        {
+          "id": "bindingpublication-positive",
+          "module": "formal/acceptance_output/BindingPublication.tla",
+          "config": "formal/acceptance_output/BindingPublication.cfg",
+          "invariants": [
+            "TypeOK",
+            "ImmutableArtifacts",
+            "DescriptorHasAllFiles",
+            "ObservedAuthorityAgrees",
+            "CompleteHasDescriptor",
+            "NoNewRemoteEffects",
+            "ReceiptReuseSafe"
+          ],
+          "properties": [],
+          "bounds": {
+            "splits": 2,
+            "files_per_split": 4,
+            "scenario_files": 1,
+            "authority_changes": 1,
+            "scenario_changes": 1,
+            "interruptions": 1,
+            "explicit_reentries": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "bindingpublication-overwrite",
+          "module": "formal/acceptance_output/BindingPublication.tla",
+          "config": "formal/acceptance_output/BindingPublicationOverwrite.cfg",
+          "expected_invariant": "ImmutableArtifacts",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "bindingpublication-nofinalread",
+          "module": "formal/acceptance_output/BindingPublication.tla",
+          "config": "formal/acceptance_output/BindingPublicationNoFinalRead.cfg",
+          "expected_invariant": "ObservedAuthorityAgrees",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "bindingpublication-completewitness",
+          "module": "formal/acceptance_output/BindingPublication.tla",
+          "config": "formal/acceptance_output/BindingPublicationCompleteWitness.cfg",
+          "expected_invariant": "NoCompleteWitness",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "bindingpublication-partialcrashwitness",
+          "module": "formal/acceptance_output/BindingPublication.tla",
+          "config": "formal/acceptance_output/BindingPublicationPartialCrashWitness.cfg",
+          "expected_invariant": "NoPartialCrashWitness",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ]
+    },
+    {
+      "status": "partial",
+      "assumptions": [
+        "Finite bounds are explicit engineering instances, not a source refinement or unbounded proof.",
+        "Atomic successful replacement survives process death; filesystem, OS power-loss and malicious edits are not proved.",
+        "Physical capture and budget settlement use PR34; no pending request is retried or reconciled by this workflow."
+      ],
+      "exclusions": [
+        "No liveness or automatic recovery guarantee. No instantaneous revocation guarantee after the final authority observation.",
+        "Synthetic fixture results are not production RAG quality or live-provider performance evidence."
+      ],
+      "remaining_obligations": [
+        "Unbounded cases/turns/artifacts, full Python refinement, OS power-loss durability and cross-process hostile edits remain unproved.",
+        "Provider settlement and server-session ownership remain independent modeled authorities; these client models do not replace them."
+      ],
+      "id": "acceptance_client_execution",
+      "purpose": "Client session/two-turn request journal, physical capture binding, fixed-plan traces and last-marker report publication.",
+      "owners": [
+        "kb_platform/rag_testing/delivery_http.py",
+        "kb_platform/rag_testing/runner.py"
+      ],
+      "states": [
+        "2 cases each with 2 turns: admit/session/request/STARTED/send/response/capture/trace",
+        "physical ABSENT/STARTED/COMPLETE/UNKNOWN; run RUNNING/report files/manifest/COMPLETE or interrupted"
+      ],
+      "transitions": [
+        "DeliveryHTTPAdapter.run",
+        "execute_prepared",
+        "runner.run",
+        "runner.reports",
+        "pending rejection, exception cost recovery, exclusive output rejection"
+      ],
+      "invariants": [
+        "Durable request and STARTED precede turn send; unresolved physical settlement blocks another send.",
+        "Published traces retain every observed physical call from both turns, including before a later exception.",
+        "COMPLETE follows all planned traces, three report formats and manifest; fixed denominator includes NOT_RUN."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "DeliveryHTTPAdapter.run",
+          "sha256": "6d484a68d23b9a56ffed4dad0c38aadd0e4f7e9ec55fb3f6a3dc48f7a95dd1c1"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "execute_prepared",
+          "sha256": "570dac742d36601702ddac4dc43b4eebed32a716024fd647cd7ac9023e9db7d7"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_usage",
+          "sha256": "b32efae73ee2957a6d4cf1f56a186fd3a6ee0d99eabf25538f04d08604e83c70"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_physical_summary",
+          "sha256": "ff261954afab99260b90a3259cf52f4fbc3d8d5f7d40df7908db3c38ed570e2d"
+        },
+        {
+          "path": "kb_platform/rag_testing/runner.py",
+          "language": "python",
+          "symbol": "run",
+          "sha256": "6acd0647c39bdfa5ac39ab584981aea40403ce8a326a42d1be32020f87ef6ce8"
+        },
+        {
+          "path": "kb_platform/rag_testing/runner.py",
+          "language": "python",
+          "symbol": "reports",
+          "sha256": "e5bfcf78ec567066ecc2bd757b36df0e914c2d1908520f49a4310d2a47c4d682"
+        },
+        {
+          "path": "kb_platform/rag_testing/runner.py",
+          "language": "python",
+          "symbol": "write_json",
+          "sha256": "f0ea49d90a179fea7333c4d7824bcf0b5f6d98c48210f9f2f397e27fb919bdc6"
+        }
+      ],
+      "models": [
+        {
+          "id": "acceptanceexecution-positive",
+          "module": "formal/acceptance_output/AcceptanceExecution.tla",
+          "config": "formal/acceptance_output/AcceptanceExecution.cfg",
+          "invariants": [
+            "TypeOK",
+            "MarkerBeforeSend",
+            "PendingBlocksSend",
+            "TraceRetainsAllCalls",
+            "CaptureRequiresAllTurns",
+            "CompletePublication",
+            "FixedDenominator"
+          ],
+          "properties": [],
+          "bounds": {
+            "cases": 2,
+            "turns_per_case": 2,
+            "physical_requests_per_turn": 1,
+            "failures_or_interruptions": 1,
+            "report_formats": 3,
+            "reentry_attempts": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "acceptanceexecution-pending",
+          "module": "formal/acceptance_output/AcceptanceExecution.tla",
+          "config": "formal/acceptance_output/AcceptanceExecutionPending.cfg",
+          "expected_invariant": "PendingBlocksSend",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "acceptanceexecution-lostcalls",
+          "module": "formal/acceptance_output/AcceptanceExecution.tla",
+          "config": "formal/acceptance_output/AcceptanceExecutionLostCalls.cfg",
+          "expected_invariant": "TraceRetainsAllCalls",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "acceptanceexecution-early",
+          "module": "formal/acceptance_output/AcceptanceExecution.tla",
+          "config": "formal/acceptance_output/AcceptanceExecutionEarly.cfg",
+          "expected_invariant": "CompletePublication",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "acceptanceexecution-denominator",
+          "module": "formal/acceptance_output/AcceptanceExecution.tla",
+          "config": "formal/acceptance_output/AcceptanceExecutionDenominator.cfg",
+          "expected_invariant": "FixedDenominator",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "acceptanceexecution-completewitness",
+          "module": "formal/acceptance_output/AcceptanceExecution.tla",
+          "config": "formal/acceptance_output/AcceptanceExecutionCompleteWitness.cfg",
+          "expected_invariant": "NoCompleteWitness",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "acceptanceexecution-blockedwitness",
+          "module": "formal/acceptance_output/AcceptanceExecution.tla",
+          "config": "formal/acceptance_output/AcceptanceExecutionBlockedWitness.cfg",
+          "expected_invariant": "NoBlockedWitness",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
       ]
     }
   ]
