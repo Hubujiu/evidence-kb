@@ -416,6 +416,78 @@ def storage_boundary_violations(tree, module):
     return errors
 
 
+def offline_transport_violations(root: Path) -> list[str]:
+    directory = root / 'kb_platform/rag_testing'
+    helper = directory / 'offline_transport.py'
+    if not helper.is_file() and not (directory / 'embedding_jobs_contracts.py').is_file():
+        return []
+    if not helper.is_file():
+        return ['offline fixtures require the controlled real-client constructor']
+    tree = ast.parse(helper.read_text('utf-8'))
+    required = (
+        '_REAL_CLIENT = httpx.Client',
+        "raise AssertionError('Offline fixture sent before its capture transport was installed')",
+        "if any(name in kwargs for name in ('transport', 'proxy', 'mounts')):\n"
+        "    raise ValueError('Offline construction cannot replace an explicit transport or proxy')",
+        'client = _REAL_CLIENT(*args, **kwargs, transport=httpx.MockTransport(reject_uncaptured_send))',
+        'clients.append(client)',
+        'return client',
+        "with patch('kb_platform.remote.httpx.Client', new=construct):\n    yield",
+        'except BaseException:\n    for client in clients:\n        client.close()\n    raise',
+    )
+    forms = {ast.dump(node, include_attributes=False) for node in ast.walk(tree)}
+    errors = []
+    for statement in required:
+        parsed = ast.parse('try:\n    pass\n' + statement if statement.startswith('except ') else statement)
+        target = parsed.body[0].handlers[0] if statement.startswith('except ') else parsed.body[0]
+        if ast.dump(target, include_attributes=False) not in forms:
+            errors.append('offline constructor must preserve real-client injection, fail-fast and cleanup semantics')
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            module = node.module if isinstance(node, ast.ImportFrom) else ','.join(a.name for a in node.names)
+            if module not in {'httpx', 'contextlib', 'unittest.mock'}:
+                errors.append('offline constructor must not access process environment or alternate transports')
+        if isinstance(node, ast.Call) and ast.unparse(node.func) not in {
+            'AssertionError', 'ValueError', 'any', '_REAL_CLIENT', 'httpx.MockTransport',
+            'clients.append', 'patch', 'client.close',
+        }:
+            errors.append('offline constructor cannot invoke environment mutation or replacement client factories')
+        if isinstance(node, ast.keyword) and node.arg in {'trust_env', 'proxy', 'mounts'}:
+            errors.append('offline constructor must preserve original HTTPX environment policy')
+    entries = {
+        'embedding_jobs_contracts.py': ('captured_google_fixture', 'GoogleEmbeddingProvider'),
+        'model_review_contracts.py': ('observed', 'GoogleEmbeddingProvider'),
+        'model_embedding_review_contracts.py': ('observed', 'GoogleEmbeddingProvider'),
+        'plugin_configuration_contracts.py': (
+            'test_invalid_referenced_remote_provider_does_not_close_existing_clients', 'PluginHost'),
+    }
+    for filename, (function, constructor) in entries.items():
+        path = directory / filename
+        if not path.is_file():
+            errors.append(f'{filename}: missing controlled offline fixture')
+            continue
+        module = ast.parse(path.read_text('utf-8'))
+        candidates = [node for node in ast.walk(module)
+                      if isinstance(node, ast.FunctionDef) and node.name == function]
+        if len(candidates) != 1:
+            errors.append(f'{filename}: offline fixture entry must remain explicit')
+            continue
+        calls = [node for node in ast.walk(candidates[0]) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == constructor]
+        protected = set()
+        for node in ast.walk(candidates[0]):
+            if isinstance(node, ast.With) and any(
+                isinstance(item.context_expr, ast.Call)
+                and isinstance(item.context_expr.func, ast.Name)
+                and item.context_expr.func.id == 'offline_client_construction' for item in node.items
+            ):
+                for statement in node.body:
+                    protected.update(id(child) for child in ast.walk(statement))
+        if not calls or any(id(call) not in protected for call in calls):
+            errors.append(f'{filename}: install fail-fast transport before constructing {constructor}')
+    return sorted(set(errors))
+
+
 def architecture_violations(root: Path) -> list[str]:
 
     import yaml
@@ -497,6 +569,7 @@ def architecture_violations(root: Path) -> list[str]:
                 errors.append(f"{relative.as_posix()}:{line}: product code cannot mutate sys.path")
     if (root / "tests").exists():
         errors.append("Keep contract checks in kb_platform/rag_testing; do not restore a parallel tests directory")
+    errors.extend(offline_transport_violations(root))
     errors.extend(source_quality_violations(root))
     errors.extend(native_architecture_violations(root))
     return sorted(set(errors))
