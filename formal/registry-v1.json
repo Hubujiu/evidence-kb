@@ -10729,7 +10729,8 @@
         "Returning closed implies owned handler/capture quiescence.",
         "Unresolved predecessor records never authorize a physical resend; known response is not settlement acknowledgment.",
         "An explicit terminal HTTP-error recovery uses a fresh physical identity and exact retry origin.",
-        "All-error groups select the unique acyclic full-chain leaf, not filename order; multiple completed results are ambiguous."
+        "All-error groups select the unique acyclic full-chain leaf, not filename order; multiple completed results are ambiguous.",
+        "Every recovered capture matches the existing semantic ProviderAdmission scope before any cache or retry selection; absent provenance fails closed."
       ],
       "assumptions": [
         "Each abstract context denotes the full normalized context identity, including stage/document and input limits; payload identity is exact.",
@@ -10740,7 +10741,8 @@
         "Lineage inputs are already integrity-checked, terminal and confirmed. An absent predecessor is an opaque external historical root.",
         "The loopback gateway has the project trusted-local-caller contract; these models do not introduce or prove a browser/authentication boundary.",
         "Only production constructors in pageindex_full_index.main and pageindex_full_query.main require new output directories; recovery imports physical captures, not old StageCache databases.",
-        "The controlling thread closes the gateway; third-party SDK operations must not dispatch background calls after returning. Timeouts do not prove a hard shutdown deadline."
+        "The controlling thread closes the gateway; third-party SDK operations must not dispatch background calls after returning. Timeouts do not prove a hard shutdown deadline.",
+        "Provider id/model/dimension/semantic endpoint identity use the existing ProviderAdmission.scope_hash, frozen for one gateway; not credential or configuration-path hashing."
       ],
       "exclusions": [
         "No machine-checked source refinement or unbounded/liveness proof.",
@@ -10753,7 +10755,7 @@
           "path": "kb_platform/rag_testing/sdk_gateway.py",
           "language": "python",
           "symbol": "SDKGateway",
-          "sha256": "daf5582b61c6cf360fb34605a9e9b7ad5e67f63e9b565987a04c62690889d9be"
+          "sha256": "432547c10cb561b2b8fa70aef02227002f6948861a6ec0718a42ba7c0101f9aa"
         },
         {
           "path": "kb_platform/rag_testing/pageindex_full_index.py",
@@ -10765,13 +10767,13 @@
           "path": "scripts/sdk_gateway_lint.py",
           "language": "python",
           "symbol": "<module>",
-          "sha256": "1e36ca9ac233e26370e4ba8cf6d8c22e64b04ee25f5de9aa862f8bf02dc52992"
+          "sha256": "d9d5ca0ff1316acef50d46c81823e1c200f237a0e1bf4dac2a467fef681e101f"
         },
         {
           "path": "kb_platform/rag_testing/sdk_gateway_contracts.py",
           "language": "python",
           "symbol": "SDKGatewayContracts",
-          "sha256": "809a6ac6ee86fec08551dedbcca6b5448d41bd044a2fcde680b3e4723517fecb"
+          "sha256": "30764e694468d081472f25c4c089c63c24cf5772a2392e3096dac4d362b9f6f9"
         },
         {
           "path": "kb_platform/rag_testing/sdk_gateway_contracts.py",
@@ -10783,13 +10785,19 @@
           "path": "kb_platform/rag_testing/sdk_gateway_lint_contracts.py",
           "language": "python",
           "symbol": "SDKGatewayLintContracts",
-          "sha256": "b450809298d0250563592915d3c1202434e8a2410249989a2f1144b0652df159"
+          "sha256": "3e31e87355f26598dffeebfa66c8e8731b602d376d36f0e0a0db4bca2ec940a2"
         },
         {
           "path": "kb_platform/rag_testing/pageindex_full_query.py",
           "language": "python",
           "symbol": "main",
           "sha256": "9b8d8e6fb33ca42303d7ed5dabbf6cca6e52ec48e437892f51074d11fc345ff3"
+        },
+        {
+          "path": "kb_platform/provider_admission.py",
+          "language": "python",
+          "symbol": "ProviderAdmission.__init__",
+          "sha256": "618e7fab7669426ceae668e72a259458b3c81738631142f7db2a06ae45bc014e"
         }
       ],
       "models": [
@@ -10839,7 +10847,8 @@
             "ReuseOnlyExactCommittedResponse",
             "RetryHasExactTerminalOrigin",
             "FreshPhysicalRetry",
-            "RejectedDoesNotSend"
+            "RejectedDoesNotSend",
+            "DifferentProviderRecoveryRejected"
           ],
           "properties": [],
           "bounds": {
@@ -10860,6 +10869,10 @@
               "OTHER_SUCCESS",
               "HTTP_ERROR",
               "UNKNOWN"
+            ],
+            "ProviderScopes": [
+              "provider-a",
+              "provider-b"
             ]
           }
         },
@@ -11057,13 +11070,30 @@
           "timeout_seconds": 30,
           "heap_mb": 256,
           "expected_invariant": "NoSpuriousCrossContextRejection"
+        },
+        {
+          "id": "sdk_gateway_recovery_ignore_provider",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryIgnoreProvider.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "DifferentProviderRecoveryRejected"
+        },
+        {
+          "id": "sdk_gateway_recovery_provider_witness",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryProviderWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverRejectedDifferentProvider"
         }
       ],
       "remaining_obligations": [
         "Real SQLite budget/StageCache, MockTransport, exact physical identity and local loopback regressions must accompany the finite models.",
         "Digest/key normalization, source/PDF authorization, raw response/capture integrity, and source-to-model mapping remain executable-contract and lint obligations.",
         "Real concurrent handlers, queued sockets, close failures, capture persistence failures, known-zero-send errors, larger retry chains and adversarial/partial HTTP input remain outside these finite abstractions.",
-        "Transport reservation/settlement durability and multidimensional accounting stay with the physical-budget family; these models do not re-prove them."
+        "Transport reservation/settlement durability and multidimensional accounting stay with the physical-budget family; these models do not re-prove them.",
+        "Credential rotation and provider version changes behind unchanged declared model/endpoint are outside the existing provider-scope semantics; no authentication claim is made."
       ]
     },
     {
@@ -11548,6 +11578,24 @@
           "symbol": "delivery",
           "language": "python",
           "sha256": "aee4d87b4fde339d7b9e14c9c421cdb37752b0a766aae930bc12adc187022c7f"
+        },
+        {
+          "path": "kb_platform/rag_testing/plugin_process_integration.py",
+          "symbol": "idle_exit_dispatcher_settled",
+          "language": "python",
+          "sha256": "b708cc98141bde0e6e6890f07fa27e7eb8346fcb542eb0b45c72b6aec200e1bb"
+        },
+        {
+          "path": "kb_platform/rag_testing/plugin_process_integration.py",
+          "symbol": "idle_exit_case",
+          "language": "python",
+          "sha256": "d046cfcfc4d26dcae5ab2984f91dd9019e15f455699722dd4b34aa05937535d1"
+        },
+        {
+          "path": "kb_platform/rag_testing/process_dispatcher_integration.py",
+          "symbol": "verify_idle_exit_dispatcher",
+          "language": "python",
+          "sha256": "e1d4f08ed2daa37d0864e4cb98b9481da5c356d63b4a9c69bc8b9b68b3534913"
         }
       ],
       "models": [

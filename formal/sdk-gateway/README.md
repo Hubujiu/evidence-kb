@@ -15,6 +15,14 @@ gateway before publishing its final budget summary.
   Recovery is an explicit new run: exact settled results are reused, while a
   permitted terminal failure creates a new physical identity and a `retry_of`
   relationship. This is an application replay cache, not a general HTTP cache.
+- [RFC 9111, sections 2 and 4](https://www.rfc-editor.org/rfc/rfc9111.html)
+  treats request target identity as part of deciding whether an old response can
+  answer a new request. This application replay mechanism reuses the existing
+  `ProviderAdmission.scope_hash`: provider id, model, dimension, and semantic
+  endpoint identity. Every recovery capture must match that scope before either
+  cache publication or retry-lineage selection; a missing scope fails closed.
+  It does not substitute a configuration filename or file hash, add a credential
+  hash, or claim to implement general HTTP POST caching rules.
 - [Python 3.13 `socketserver`](https://docs.python.org/3.13/library/socketserver.html)
   documents that `shutdown` stops the serving loop and `server_close` waits for
   non-daemon request threads when `block_on_close` remains enabled. The gateway
@@ -67,8 +75,8 @@ reachability witnesses, not product bugs and not initialization-only controls.
 
 ### `SDKGatewayRecovery`
 
-Two payloads, two contexts, one earlier physical identity and one possible new
-identity. The old request passes through send, provider observation, capture
+Two payloads, two contexts, two provider scopes, one earlier physical identity
+and one possible new identity. The old request passes through send, provider observation, capture
 settlement, optional crash, recovery load, and a subsequent request decision.
 Known HTTP response, capture status, and settlement acknowledgment are separate.
 A known 200 with an unconfirmed ledger settlement is still unresolved. A settled
@@ -77,12 +85,14 @@ Unknown or STARTED predecessors reject recovery rather than authorizing a new
 send. An exact committed 200 can be reused without a new physical send. A
 terminal HTTP error can authorize a new identity with the old identity recorded
 as its retry origin. Different exact context/payload pairs cannot borrow that
-origin or response.
+origin or response. A provider-scope mismatch rejects the recovery run before
+cache or retry decisions, even when its old result is a confirmed HTTP 200.
 
 `TrustStatus`, `RetryUnknown`, `PayloadOnly`, and `IdentityReplay` independently
 remove the settlement gate, resend an unknown result, weaken the recovery key,
-and reuse the physical identity. Each targets a named safety invariant. The four
-witness configurations establish actual completed reuse, explicit new-identity
+and reuse the physical identity. Each targets a named safety invariant. `IgnoreProvider` removes only the provider-scope guard; `ProviderWitness`
+reaches rejection of a confirmed 200 from a different provider scope. The four
+other witness configurations establish actual completed reuse, explicit new-identity
 retry, rejection of a known-but-unconfirmed response, and rejection of an unknown
 result with the safe configuration.
 
@@ -123,7 +133,9 @@ substitutes for those checks.
   already checked. Actual digest construction, retry-metadata normalization,
   immutable source/PDF checks, response-body integrity, and file identity checks
   require the source lint and executable contracts. No cryptographic theorem is
-  claimed.
+  claimed. Provider scope is frozen for one gateway instance; credential rotation,
+  hidden provider revision changes behind the same declared model/endpoint, and
+  arbitrary mutation of the provider object are not modeled.
 - `SDKGatewayRequest` assumes a successful `MeteredTransport` send has a durable
   reservation. Database atomicity, multidimensional budget arithmetic,
   admission-control persistence, and missing token charges remain the separate

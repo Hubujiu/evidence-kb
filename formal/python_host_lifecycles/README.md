@@ -84,3 +84,37 @@ native lease; a deterministic concurrent-close contract verifies refusal before
 publication and retention of contexts. A factory construction failure followed by
 shutdown failure propagates the latter with the constructor failure in Python's
 exception context; it does not preserve the constructor as the top-level error.
+
+### Process dispatcher observation boundary
+
+The local process-supervision test previously waited only for transport close and the
+first dependent disposer event. An actual native-completion barrier reproduced a
+`cleaning` snapshot with one queued action even though that predicate was true.
+Releasing the barrier lets the original pump settle to `pending` with zero lease,
+resource, operation, pending-operation and queue counts, without an external close
+or process retry. `pending` is a valid live host state, not a disposed business state.
+The fixture now waits for all original teardown assertions (plus operation counts)
+within the unchanged three-second deadline. Mandatory controlled process cases
+release the barrier before waiting (PASS) or hold it through that deadline (correct
+FAIL), then observe natural dispatcher settlement before cleanup. This corrects the
+test's observation boundary; it is not a production process-supervision fix.
+The protocol follows Python `threading.Event` semantics: an event signals its own
+operation, not completion of unrelated work after `set()`; completion must be
+observed at the owning dispatcher. AST guards and refreshed-hash mutations reject
+restoring the early predicate, omitting the queue, or bypassing the barrier gate.
+
+
+### Nested invocation reachability correction
+
+The nested witness previously required `Nest` but could reach settlement directly
+through `Finish`, without executing `Invoke`: that action also stops an absent
+timer. Following the explicit transition/history distinction in
+[Lamport's Specifying Systems, chapter 8](https://lamport.azurewebsites.net/tla/book-02-08-08.pdf),
+`invokedSeen` is initialized false and set only by the actual `Invoke` action.
+The witness now requires both real nesting and real invocation before settlement.
+Normal release without invocation remains valid. Mandatory model-shape checks and
+mutants reject missing witness predicates, fabricated initial history, missing
+Nest/Invoke event updates, and omitted history state. This strengthens evidence
+for the existing finite `PluginHost._invoke`/lease abstraction, not a new claim
+of a production bug or a source refinement proof. Existing live source contracts,
+model bounds, safety conditions and execution deadlines are unchanged.

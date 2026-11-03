@@ -5,6 +5,7 @@ GATEWAY = 'kb_platform/rag_testing/sdk_gateway.py'
 CAPTURE = 'kb_platform/rag_testing/provider_capture.py'
 MAIN = 'kb_platform/rag_testing/pageindex_full_index.py'
 QUERY = 'kb_platform/rag_testing/pageindex_full_query.py'
+ADMISSION = 'kb_platform/provider_admission.py'
 
 
 def _shape(node):
@@ -136,7 +137,8 @@ def _binding_policy(statements):
     checks = ['record["physical_request_id"] != physical_id', 'record["payload_sha256"] != digest(payload)',
               'record["payload"] != payload', 'record["context"] != physical_context',
               'record["status"] != "COMPLETE"', 'capture_unresolved(record)',
-              'record["http_status"] != 200', 'record["response"] != body']
+              'record["http_status"] != 200', 'record["response"] != body',
+              'record["provider_scope"] != admission.scope_hash']
     guard = _single(binding.body, lambda node: isinstance(node, ast.If)
                     and _matches_terms(node.test, ast.Or, checks) and _raises(node))
     publish = _single(binding.body, lambda node: _expression_call(node, 'gateway.recovery_cache.put'))
@@ -233,6 +235,13 @@ def _recovery_policy(initializer):
                       and _same(node.iter, 'groups.items()'))
     if validated is None or grouped is None or recovery.body.index(validated) >= recovery.body.index(grouped):
         return ['recovery must validate every capture before cache publication or retry selection']
+    scope = _single(recovery.body, lambda node: isinstance(node, ast.If) and _same(node.test,
+        'any(old.get("provider_scope") != admission.scope_hash for old in self.recovered_records)') and _raises(node))
+    admission = _single(recovery.body, lambda node: _assign(node, 'admission',
+        'ProviderAdmission(self.provider, self.provider.cache_dir / "provider-admission")'))
+    if (scope is None or admission is None or not (recovery.body.index(validated)
+            < recovery.body.index(admission) < recovery.body.index(scope) < recovery.body.index(grouped))):
+        return ['recovery must verify the semantic provider scope before publishing cache or retry lineage']
     unresolved = _single(validated.body, lambda node: isinstance(node, ast.If)
                          and _same(node.test, 'capture_unresolved(old)') and _raises(node))
     grouped_record = _single(validated.body, lambda node: _assign(node,
@@ -280,6 +289,21 @@ def _main_policy(tree):
     return []
 
 
+def _provider_scope_policy(tree):
+    group = _single(tree.body, lambda node: isinstance(node, ast.ClassDef) and node.name == 'ProviderAdmission')
+    initializer = None if group is None else _method(group, '__init__')
+    if initializer is None:
+        return ['existing provider/model/endpoint scope authority must remain available']
+    identity = _single(initializer.body, lambda node: _assign(node, 'identity',
+        "{'provider_id': provider.provider_id, 'model': provider.model, "
+        "'dimension': getattr(provider, 'dimension', None), "
+        "'endpoint_sha256': digest(provider.manifest.get('endpoint', provider.base_url))}"))
+    published = _single(initializer.body, lambda node: _assign(node, 'self.scope_hash', 'digest(identity)'))
+    if identity is None or published is None or initializer.body.index(identity) >= initializer.body.index(published):
+        return ['existing provider/model/endpoint scope must not become a path hash or constant']
+    return []
+
+
 def violations(root):
     try:
         tree = ast.parse((root / GATEWAY).read_text('utf-8'))
@@ -294,6 +318,8 @@ def violations(root):
             return ['sdk gateway: explicit gateway, handler and close owners required']
         errors = (_request_policy(handler) + _context_policy(group)
                   + _close_policy(initializer, close) + _capture_policy(capture) + _recovery_policy(initializer))
+        if (root / ADMISSION).exists():
+            errors.extend(_provider_scope_policy(ast.parse((root / ADMISSION).read_text('utf-8'))))
         for path in (MAIN, QUERY):
             if (root / path).exists():
                 errors.extend(_main_policy(ast.parse((root / path).read_text('utf-8'))))

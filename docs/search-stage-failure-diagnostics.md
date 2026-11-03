@@ -74,3 +74,115 @@ extension, not its storage-protocol feature ancestry. PR51 itself is not changed
 or rerun. The PR41 candidate has its own frozen mandatory check and new CI;
 composition evidence is targeted plus mandatory source guards, not another
 remote combination PR or a claim that PR51's failure has been repaired.
+
+## Controlled commit-stage observations
+
+PR73 head `f71bba77060186aca14f4ab54ad70610c36d0690`, run
+`41558843828`, again failed Windows Python 3.12 in lexical `writer.commit()`.
+The file snapshot does not identify the failing native syscall. Lexical files
+having nonzero sizes does not prove every flush succeeded. Pages files being
+empty is consistent with its later commit not yet being reached. The old
+PR41/PR51/PR73 failures remain failures, regardless of later probe results.
+
+The pinned Python and Rust Tantivy versions are 0.27.0. The official binding
+converts native errors to `ValueError(err.to_string())`; Python cause inspection
+cannot recover the discarded Rust error chain or path. Rust commit propagates
+both indexing-worker errors and metadata-publication errors. Windows directory
+sync is a no-op, while metadata publication uses tempfile write/flush/sync and
+persist. These observations do not identify which operation failed.
+
+Sources: [binding conversion](https://github.com/quickwit-oss/tantivy-py/blob/0.27.0/src/lib.rs),
+[commit pipeline](https://github.com/quickwit-oss/tantivy/blob/0.27.0/src/indexer/index_writer.rs),
+[atomic filesystem writes](https://github.com/quickwit-oss/tantivy/blob/0.27.0/src/directory/mmap_directory/mod.rs),
+[managed-directory locking](https://github.com/quickwit-oss/tantivy/blob/0.27.0/src/directory/managed_directory.rs).
+The claim of an unprotected managed-path save in upstream
+[issue 2847](https://github.com/quickwit-oss/tantivy/issues/2847) is not supported
+by this pinned source: the write guard remains live through the save. Historical
+[issue 587](https://github.com/quickwit-oss/tantivy/issues/587) does not establish
+antivirus or another process as the cause of our failures. No security tool is
+disabled and no native failure is retried.
+
+Failure-only notes retain stat-only observation and explicitly report
+`not_sampled_active_writers` for metadata contents. A failed commit can leave
+another native writer active, so catching the Python exception is not a safe
+point to open either channel metadata. The controlled probe reads only the two
+known metadata filenames in the just-completed channel after its successful
+`wait_merging_threads`. It never reads the other still-active channel. Each read is capped at 64 KiB
+plus one overflow-detection byte. Only opstamp and segment/managed-path counts
+are reported, never raw JSON, schema, document data or managed-path strings.
+Oversized, malformed, inaccessible, linked/reparse or concurrently replaced
+files produce status labels, without retry. Identity checks happen before
+reading and after reading. They detect observed replacements; these diagnostics
+are not a general hostile-filesystem sandbox or proof of an atomic snapshot.
+The original fixtures still do not sample successful stages. Before/after commit
+observations contain only the phase, case, channel and a not-sampled status.
+No platform-specific opener is introduced. Python ordinary Windows file opens
+do not share delete access, so opening active metadata could itself interfere
+with Tantivy atomic replacement. The smaller post-wait-only scheme avoids that
+observer-induced conflict. See [CPython discussion](https://github.com/python/cpython/issues/88221)
+and [Microsoft sharing semantics](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew).
+
+The new single discovered contract executes A (empty index), B (one synthetic
+document), then C (the production dual-index stage with synthetic inputs), once
+each. The first failing case stops the sequence and rethrows the same error;
+no later case or wait step runs after a failed commit. A test-only forwarding
+wrapper records at most 12 observations: before commit, after commit and after
+wait, for the four writers. All native calls retain their original arguments,
+return values and single invocation. The production implementation and native
+dependency are unchanged. Successful probe observations are printed into normal
+CI logs; failure observations are exception notes. Private local logs are not
+uploaded as repository files.
+
+A has no document-segment flush work. Comparison with B and C can distinguish
+triggering workloads but cannot prove the failing OS operation or responsible
+process. The added observation IO can affect timing, so a passing controlled
+probe is not evidence that the original Windows error was repaired. Metadata
+changing during observation is a valid unavailable observation, not a reason to
+retry or fail the underlying native operation.
+
+The mandatory source gate binds the reviewed diagnostic and probe ASTs. Updating
+that binding requires reviewing the whitelist, byte/event bounds, sharing and
+identity checks, single-pass ordering, forwarding calls and original-error
+preservation. Mutation contracts reject widened reads, unbounded reads, raw
+metadata output, removed identity checks, repeated commits, missing cases,
+wrong stage labels, active-writer content reads, cross-channel reads after wait,
+and swallowed failures. Behavioral contracts separately
+check those guarantees with deterministic failures; source binding is not a
+substitute for execution.
+
+Dependency evidence starts from public PR41 `64f8916`, whose tree is
+`320342aa465594817a50f939c7ee3bd45a3b9c8a`. Local `7718df4` has that same tree
+but different history; publishing must use the public parent, not push private
+local ancestry. PR73's original base is that public PR41 commit; its original
+head and CI evidence remain immutable. Any later combined validation must record
+the new base, original feature delta, exact head and tested tree separately.
+
+The initial local-only candidate sampled contents during active commits. Its
+Linux checks passed, but review identified the Windows delete-sharing risk
+before publication. That candidate was not run on Windows or published; the
+revised protocol removes active content reads. Its old local PASS is not reused
+as validation of this revised candidate.
+
+### Python AST presentation is not the binding format
+
+The first published probe commit `13f0f6e` failed the Python 3.13 architecture and
+mutation contracts: its fixed fingerprints used `ast.dump`, whose Python 3.13
+default presentation omits empty fields that Python 3.12 prints. This diagnostic
+gate defect is separate from the native Windows failure. The original failed
+CI is retained. The replacement follows the existing formal `source_digest` strategy, setting
+`show_empty=True` on Python 3.13 and retaining the Python 3.12 default. A contract
+compares its digest with that existing helper in both supported interpreters. There is
+no second hash format and no list of old version-dependent hashes. The pure-stdlib lint contract
+runs on both supported Python versions, verifies a fixed explicit-field example,
+and rejects behavior mutants. It is separated from native probe execution so
+lint compatibility can be checked without installing another native wheel.
+See [Python AST documentation](https://docs.python.org/3/library/ast.html#ast.dump).
+
+The first portability follow-up `9955ab1` directly imported the formal helper
+from the checker. That failed the actual script entry with `ModuleNotFoundError`
+because the project root is not on that entry's import path; module-import
+preflight had not represented the script entry. This failed CI is also retained.
+The corrected checker uses the same two-line stdlib AST serialization strategy
+without importing project modules or modifying the checker import path. A
+stdlib-only gate contract explicitly rejects project imports while validating
+all three protected sources. The real script entry remains required separately.

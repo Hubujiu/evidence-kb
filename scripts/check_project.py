@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 import faulthandler
 import importlib.util
+import hashlib
 import json
 import io
 import tokenize
@@ -276,6 +277,8 @@ def source_quality_violations(root: Path) -> list[str]:
             source = path.read_text('utf-8-sig')
             tree = ast.parse(source, filename=relative)
             module = relative.removesuffix('.py').replace('/', '.')
+            if relative == 'kb_platform/rag_testing/formal_state_machines.py':
+                errors.extend(f'{relative}: {error}' for error in formal_parse_reuse_violations(tree))
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
             if relative == 'kb_platform/rag_testing/search_router_contracts.py':
@@ -287,6 +290,7 @@ def source_quality_violations(root: Path) -> list[str]:
                 errors.extend(f'{relative}: {error}' for error in model_capacity_outcome_violations(tree))
                 errors.extend(f'{relative}: {error}' for error in model_receipt_cleanup_violations(tree))
                 errors.extend(f'{relative}: {error}' for error in model_error_projection_violations(tree))
+            errors.extend(f'{relative}: {error}' for error in search_probe_diagnostic_violations(tree, relative))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -300,6 +304,94 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def formal_parse_reuse_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse(r"""def local_file(root: Path, relative: str) -> Path:
+    if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
+        raise ValueError('Repository-relative nonempty path required')
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root.resolve()) or not path.is_file():
+        raise ValueError(f'Missing or escaping repository file: {relative}')
+    return path
+
+def source_digest(root: Path, binding: dict) -> str:
+    return _source_digest(root, binding, python_symbols)
+
+def _source_digest(root: Path, binding: dict, parse_symbols) -> str:
+    path = local_file(root, binding['path'])
+    source = path.read_text('utf-8')
+    if binding['language'] == 'python':
+        symbols = parse_symbols(source)
+        if binding['symbol'] not in symbols:
+            raise ValueError(f"Missing Python symbol: {binding['symbol']}")
+        options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
+        return digest(ast.dump(symbols[binding['symbol']], include_attributes=False, **options).encode())
+    if binding['language'] == 'javascript-module':
+        if path.suffix != '.mjs' or binding['symbol'] != '<module>':
+            raise ValueError('JavaScript bindings require a complete .mjs module')
+        return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+    if binding['language'] != 'rust':
+        raise ValueError('Source binding language must be python, rust or javascript-module')
+    leaf = binding['symbol'].replace('::', '.').rsplit('.', 1)[-1]
+    if leaf != '<module>' and (not re.search('\\b(?:fn|enum|struct)\\s+' + re.escape(leaf) + '\\b', source)):
+        raise ValueError(f"Missing Rust declaration: {binding['symbol']}")
+    return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+
+@contextmanager
+def _source_digest_session():
+    parse_symbols = lru_cache(maxsize=128)(python_symbols)
+
+    def reviewed_digest(root, binding):
+        return _source_digest(root, binding, parse_symbols)
+    try:
+        yield reviewed_digest
+    finally:
+        parse_symbols.cache_clear()
+
+def registry_violations(root: Path, registry: dict | None=None) -> list[str]:
+    with _source_digest_session() as reviewed_digest:
+        return _registry_violations(root, registry, reviewed_digest)
+""")
+    errors = []
+    protected = {node.name for node in expected.body}
+    for reference in expected.body:
+        actual = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                  and node.name == reference.name]
+        if len(actual) != 1 or ast.dump(actual[0]) != ast.dump(reference):
+            errors.append(f'formal parse reuse: preserve fresh reads and invocation-local content cache in {reference.name}')
+    symbols = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'python_symbols']
+    if len(symbols) != 1 or symbols[0].decorator_list:
+        errors.append('formal parse reuse: public python_symbols must return independent uncached ASTs')
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id in protected | {'python_symbols'} for target in targets):
+                errors.append('formal parse reuse: no module-scope replacement of validation functions')
+    workers = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_registry_violations']
+    call = ast.parse('actual = reviewed_digest(root, binding)').body[0]
+    if len(workers) != 1 or sum(ast.dump(node) == ast.dump(call) for node in ast.walk(workers[0])) != 1:
+        errors.append('formal parse reuse: registry bindings require the scoped digest callback')
+    return errors
+
+
+def search_diagnostic_digest(node):
+    options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
+    return hashlib.sha256(ast.dump(node, include_attributes=False, **options).encode()).hexdigest()
+
+
+def search_probe_diagnostic_violations(tree: ast.AST, relative: str) -> list[str]:
+    bindings = {'kb_platform/rag_testing/search_stage_probe.py': ('<module>', '3923c10cd2a749a43029ef30cbe72690ff8e44b4d177ea12368b24523252e5aa'), 'kb_platform/rag_testing/search_stage_diagnostics.py': ('<module>', '6f54daeb406baa015c0d0ae9d7b92cfbf39d22e671d535ec841c3762f7d2cb6f'), 'kb_platform/rag_testing/search_stage_probe_contracts.py': ('SearchStageProbeContracts.test_real_three_case_single_pass_retains_stage_observations', '09623de92d7ecb79f2be3ada1065475844a98d21668ec126c4b5716050e550f7')}
+    expected = bindings.get(relative)
+    if expected is None:
+        return []
+    nodes = [tree] if expected[0] == '<module>' else [
+        node for owner in tree.body if isinstance(owner, ast.ClassDef) and owner.name == 'SearchStageProbeContracts'
+        for node in owner.body if isinstance(node, ast.FunctionDef)
+        and node.name == 'test_real_three_case_single_pass_retains_stage_observations']
+    if len(nodes) != 1 or search_diagnostic_digest(nodes[0]) != expected[1]:
+        return ['controlled search diagnostics require reviewed bounded metadata, single-pass stage order and original errors']
+    return []
 
 
 def search_stage_diagnostic_violations(tree: ast.AST) -> list[str]:
@@ -561,6 +653,95 @@ def storage_boundary_violations(tree, module):
     return errors
 
 
+def offline_transport_violations(root: Path) -> list[str]:
+    directory = root / 'kb_platform/rag_testing'
+    helper = directory / 'offline_transport.py'
+    if not helper.is_file() and not (directory / 'embedding_jobs_contracts.py').is_file():
+        return []
+    if not helper.is_file():
+        return ['offline fixtures require the controlled real-client constructor']
+    tree = ast.parse(helper.read_text('utf-8'))
+    required = (
+        '_REAL_CLIENT = httpx.Client',
+        "raise AssertionError('Offline fixture sent before its capture transport was installed')",
+        "if any(name in kwargs for name in ('transport', 'proxy', 'mounts')):\n"
+        "    raise ValueError('Offline construction cannot replace an explicit transport or proxy')",
+        'client = _REAL_CLIENT(*args, **kwargs, transport=httpx.MockTransport(reject_uncaptured_send))',
+        'clients.append(client)',
+        'return client',
+        "with patch('kb_platform.remote.httpx.Client', new=construct):\n    yield",
+        'except BaseException:\n    for client in clients:\n        client.close()\n    raise',
+    )
+    forms = {ast.dump(node, include_attributes=False) for node in ast.walk(tree)}
+    errors = []
+    for statement in required:
+        parsed = ast.parse('try:\n    pass\n' + statement if statement.startswith('except ') else statement)
+        target = parsed.body[0].handlers[0] if statement.startswith('except ') else parsed.body[0]
+        if ast.dump(target, include_attributes=False) not in forms:
+            errors.append('offline constructor must preserve real-client injection, fail-fast and cleanup semantics')
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            module = node.module if isinstance(node, ast.ImportFrom) else ','.join(a.name for a in node.names)
+            if module not in {'httpx', 'contextlib', 'unittest.mock'}:
+                errors.append('offline constructor must not access process environment or alternate transports')
+        if isinstance(node, ast.Call) and ast.unparse(node.func) not in {
+            'AssertionError', 'ValueError', 'any', '_REAL_CLIENT', 'httpx.MockTransport',
+            'clients.append', 'patch', 'client.close',
+        }:
+            errors.append('offline constructor cannot invoke environment mutation or replacement client factories')
+        if isinstance(node, ast.keyword) and node.arg in {'trust_env', 'proxy', 'mounts'}:
+            errors.append('offline constructor must preserve original HTTPX environment policy')
+    entries = {
+        'embedding_jobs_contracts.py': ('captured_google_fixture', 'GoogleEmbeddingProvider'),
+        'model_review_contracts.py': ('observed', 'GoogleEmbeddingProvider'),
+        'model_embedding_review_contracts.py': ('observed', 'GoogleEmbeddingProvider'),
+        'plugin_configuration_contracts.py': (
+            'test_invalid_referenced_remote_provider_does_not_close_existing_clients', 'PluginHost'),
+    }
+    for filename, (function, constructor) in entries.items():
+        path = directory / filename
+        if not path.is_file():
+            errors.append(f'{filename}: missing controlled offline fixture')
+            continue
+        module = ast.parse(path.read_text('utf-8'))
+        candidates = [node for node in ast.walk(module)
+                      if isinstance(node, ast.FunctionDef) and node.name == function]
+        if len(candidates) != 1:
+            errors.append(f'{filename}: offline fixture entry must remain explicit')
+            continue
+        calls = [node for node in ast.walk(candidates[0]) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == constructor]
+        protected = set()
+        for node in ast.walk(candidates[0]):
+            if isinstance(node, ast.With) and any(
+                isinstance(item.context_expr, ast.Call)
+                and isinstance(item.context_expr.func, ast.Name)
+                and item.context_expr.func.id == 'offline_client_construction' for item in node.items
+            ):
+                for statement in node.body:
+                    protected.update(id(child) for child in ast.walk(statement))
+        if not calls or any(id(call) not in protected for call in calls):
+            errors.append(f'{filename}: install fail-fast transport before constructing {constructor}')
+    return sorted(set(errors))
+
+
+def exact_history_fingerprint_violations(root: Path) -> list[str]:
+    path = root / '.gitleaksignore'
+    if not (root / 'formal/combination-inputs-v1.json').is_file() and not path.exists():
+        return []
+    prefix = '6efd45e2129b0c0a2afa7a6d51fa60a561f69bc4:formal/combination-inputs-v1.json:'
+    coordinates = [('generic-api-key', line) for line in (3917, 3918, 3919, 3981, 4052, 4081, 4082, 4091, 4092, 4093)]
+    coordinates.append(('sentry-access-token', 3904))
+    expected = [f'{prefix}{rule}:{line}' for rule, line in coordinates]
+    try:
+        actual = path.read_text('utf-8').splitlines()
+    except OSError:
+        actual = []
+    if actual != expected:
+        return ['Only the eleven authorized immutable historical model-digest fingerprints may be ignored']
+    return []
+
+
 def architecture_violations(root: Path) -> list[str]:
 
     import yaml
@@ -642,6 +823,8 @@ def architecture_violations(root: Path) -> list[str]:
                 errors.append(f"{relative.as_posix()}:{line}: product code cannot mutate sys.path")
     if (root / "tests").exists():
         errors.append("Keep contract checks in kb_platform/rag_testing; do not restore a parallel tests directory")
+    errors.extend(offline_transport_violations(root))
+    errors.extend(exact_history_fingerprint_violations(root))
     errors.extend(source_quality_violations(root))
     errors.extend(native_architecture_violations(root))
     return sorted(set(errors))

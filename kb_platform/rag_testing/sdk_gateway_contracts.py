@@ -26,7 +26,8 @@ CONTEXT = {'stage': 'index', 'document': 'fixture'}
 
 
 @contextmanager
-def gateway_fixture(respond=None, *, live=False, recovery=None):
+def gateway_fixture(respond=None, *, live=False, recovery=None,
+                    base_url="https://synthetic.invalid/v1"):
     with TemporaryDirectory() as directory, ExitStack() as stack:
         root = Path(directory)
         source = root / 'source.pdf'
@@ -37,7 +38,7 @@ def gateway_fixture(respond=None, *, live=False, recovery=None):
             output_tokens=1000, remote_embedding_calls=0, embedding_input_tokens=0))
         stack.callback(ledger.close)
         provider = SimpleNamespace(client=Mock(), provider_id='synthetic-gateway', model='synthetic-gateway',
-            manifest={}, cache_dir=root / 'provider', base_url='https://synthetic.invalid/v1', _headers={})
+            manifest={}, cache_dir=root / 'provider', base_url=base_url, _headers={})
         sends = []
 
         def handle(request):
@@ -273,7 +274,7 @@ class SDKGatewayContracts(unittest.TestCase):
                 (capture / (physical + '.json')).write_text(json.dumps(dict(
                     physical_request_id=physical, payload=PAYLOAD, payload_sha256=digest(PAYLOAD),
                     context=context, status='ERROR', http_status=500, ledger_settlement='COMMITTED',
-                    response={'error': 'synthetic'})), 'utf-8')
+                    provider_scope=old.gateway.client._transport.admission.scope_hash, response={'error': 'synthetic'})), 'utf-8')
             with gateway_fixture(recovery=[old.output]) as recovered:
                 key = digest(recovered.gateway.stage_key(CONTEXT, PAYLOAD))
                 self.assertEqual(recovered.gateway.retry_of[key], '0' * 32)
@@ -367,6 +368,22 @@ class SDKGatewayContracts(unittest.TestCase):
                 fixture.run()
             self.assertIs(fixture.holder['gateway'], original)
             self.assertEqual(original.ledger.summary()['physical_requests'], 1)
+
+    def test_recovery_requires_matching_semantic_provider_scope(self):
+        for status in (200, 500):
+            with self.subTest(status=status), gateway_fixture(
+                    lambda request: httpx.Response(status, json=BODY)) as old:
+                self.assertEqual(local_request(old.gateway)[0], status)
+                with self.assertRaisesRegex(ValueError, 'RECOVERY_PROVIDER_SCOPE_CHANGED_OR_MISSING'):
+                    with gateway_fixture(recovery=[old.output], base_url='https://alternate.synthetic.invalid/v1'):
+                        self.fail('a changed provider route must not reuse or retry a predecessor')
+                capture = next((old.output / 'physical-requests').glob('*.json'))
+                record = json.loads(capture.read_text('utf-8'))
+                record.pop('provider_scope')
+                capture.write_text(json.dumps(record), 'utf-8')
+                with self.assertRaisesRegex(ValueError, 'RECOVERY_PROVIDER_SCOPE_CHANGED_OR_MISSING'):
+                    with gateway_fixture(recovery=[old.output]):
+                        self.fail('missing provenance must not be silently bound to the current provider')
 
     def test_actual_main_closes_gateway_when_sdk_construction_fails(self):
         with main_fixture(constructor_failure=True) as fixture:
