@@ -1,4 +1,3 @@
-"""Real native ownership contracts; faults target local Python setup boundaries."""
 import unittest
 from unittest.mock import patch
 
@@ -193,6 +192,7 @@ class PythonHostOwnershipLintContracts(unittest.TestCase):
             (http, 'if not self._finished:', 'if True:'),
             (http, 'self._entered = True', 'self._entered = False'),
             (http, 'router._shutdown()', 'router.shutdown()'),
+            ('formal/python_host_lifecycles/PythonLease.tla', 'nestedSeen /\\ ~failedSetup', '~failedSetup'),
         ]
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
@@ -205,7 +205,6 @@ class PythonHostOwnershipLintContracts(unittest.TestCase):
                 destination = target / path
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(root / path, destination)
-            # Discovery remains scoped to the exact source snapshot represented by this fixture.
             for path, old, new in mutations:
                 with self.subTest(guard=old):
                     original = (root / path).read_text('utf-8')

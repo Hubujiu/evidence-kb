@@ -1,4 +1,3 @@
-"""Reviewed local ownership guards, independent of refreshable source digests."""
 import ast
 from pathlib import Path
 
@@ -61,6 +60,9 @@ def ownership_violations(root: Path) -> list[str]:
     if len(callbacks) != 1 or any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                                   and n.func.attr == 'pop' for n in ast.walk(ast.Module(body=callbacks[0].finalbody, type_ignores=[]))):
         errors.append('python host ownership: failed disposer must retain callback for explicit retry')
+    lease_model = (root / 'formal/python_host_lifecycles/PythonLease.tla').read_text('utf-8')
+    if 'phase = "done" /\\ nestedSeen /\\ ~failedSetup /\\ timer = "stopped"' not in lease_model:
+        errors.append('python host ownership: nested invocation witness must require real nesting')
     foundation = (root / 'kb_platform/rag_testing/foundation_integration.py').read_text('utf-8')
     if 'foundation_transport_integration, http_lifespan_integration' not in foundation:
         errors.append('python host ownership: actual HTTP lifespan cases require mandatory foundation stage')
