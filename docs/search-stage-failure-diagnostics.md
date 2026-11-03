@@ -162,3 +162,17 @@ Linux checks passed, but review identified the Windows delete-sharing risk
 before publication. That candidate was not run on Windows or published; the
 revised protocol removes active content reads. Its old local PASS is not reused
 as validation of this revised candidate.
+
+### Python AST presentation is not the binding format
+
+The first published probe commit `13f0f6e` failed the Python 3.13 architecture and
+mutation contracts: its fixed fingerprints used `ast.dump`, whose Python 3.13
+default presentation omits empty fields that Python 3.12 prints. This diagnostic
+gate defect is separate from the native Windows failure. The original failed
+CI is retained. The replacement reuses the existing formal `source_digest` helper, which sets
+`show_empty=True` on Python 3.13 and retains the Python 3.12 default. There is
+no second hash format and no list of old version-dependent hashes. The pure-stdlib lint contract
+runs on both supported Python versions, verifies a fixed explicit-field example,
+and rejects behavior mutants. It is separated from native probe execution so
+lint compatibility can be checked without installing another native wheel.
+See [Python AST documentation](https://docs.python.org/3/library/ast.html#ast.dump).

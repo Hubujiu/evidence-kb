@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 import faulthandler
 import importlib.util
-import hashlib
 import json
 import io
 import tokenize
@@ -283,7 +282,7 @@ def source_quality_violations(root: Path) -> list[str]:
                 errors.extend(f'{relative}: {error}' for error in search_stage_diagnostic_violations(tree))
             if relative == 'kb_platform/rag_testing/embedded_search_contracts.py':
                 errors.extend(f'{relative}: {error}' for error in embedded_stage_diagnostic_violations(tree))
-            errors.extend(f'{relative}: {error}' for error in search_probe_diagnostic_violations(tree, relative))
+            errors.extend(f'{relative}: {error}' for error in search_probe_diagnostic_violations(root, relative))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -299,15 +298,18 @@ def source_quality_violations(root: Path) -> list[str]:
     return errors
 
 
-def search_probe_diagnostic_violations(tree: ast.AST, relative: str) -> list[str]:
-    bindings = {'kb_platform/rag_testing/search_stage_probe.py': '3923c10cd2a749a43029ef30cbe72690ff8e44b4d177ea12368b24523252e5aa', 'kb_platform/rag_testing/search_stage_diagnostics.py': '6f54daeb406baa015c0d0ae9d7b92cfbf39d22e671d535ec841c3762f7d2cb6f'}
-    if relative == 'kb_platform/rag_testing/search_stage_probe_contracts.py':
-        cases = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
-                 and node.name == 'test_real_three_case_single_pass_retains_stage_observations']
-        if len(cases) != 1 or hashlib.sha256(ast.dump(cases[0]).encode()).hexdigest() != '09623de92d7ecb79f2be3ada1065475844a98d21668ec126c4b5716050e550f7':
-            return ['controlled search diagnostics require the real single discovered A/B/C contract']
+def search_probe_diagnostic_violations(root: Path, relative: str) -> list[str]:
+    from kb_platform.rag_testing.formal_state_machines import source_digest
+
+    bindings = {'kb_platform/rag_testing/search_stage_probe.py': ('<module>', '3923c10cd2a749a43029ef30cbe72690ff8e44b4d177ea12368b24523252e5aa'), 'kb_platform/rag_testing/search_stage_diagnostics.py': ('<module>', '6f54daeb406baa015c0d0ae9d7b92cfbf39d22e671d535ec841c3762f7d2cb6f'), 'kb_platform/rag_testing/search_stage_probe_contracts.py': ('SearchStageProbeContracts.test_real_three_case_single_pass_retains_stage_observations', '09623de92d7ecb79f2be3ada1065475844a98d21668ec126c4b5716050e550f7')}
     expected = bindings.get(relative)
-    if expected is not None and hashlib.sha256(ast.dump(tree).encode()).hexdigest() != expected:
+    if expected is None:
+        return []
+    try:
+        actual = source_digest(root, {'path': relative, 'language': 'python', 'symbol': expected[0]})
+    except (OSError, ValueError):
+        actual = None
+    if actual != expected[1]:
         return ['controlled search diagnostics require reviewed bounded metadata, single-pass stage order and original errors']
     return []
 

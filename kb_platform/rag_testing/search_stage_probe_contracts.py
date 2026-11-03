@@ -6,7 +6,6 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from scripts.check_project import source_quality_violations
 from . import search_stage_diagnostics as diagnostics, search_stage_probe as probe
 
 
@@ -213,47 +212,3 @@ class SearchStageProbeContracts(unittest.TestCase):
         self.assertEqual(error.args, ('native error',))
         self.assertEqual(single.call_count, 1)
         dual.assert_not_called()
-
-    def test_mandatory_diagnostic_bindings_reject_behavior_mutants(self):
-        sources = {
-            'search_stage_probe.py': Path(probe.__file__).read_text('utf-8'),
-            'search_stage_diagnostics.py': Path(diagnostics.__file__).read_text('utf-8'),
-            'search_stage_probe_contracts.py': Path(__file__).read_text('utf-8'),
-        }
-        replacements = {
-            'search_stage_probe_contracts.py': (
-                ('events = probe.run_probes(root, observation)', 'events = []'),
-            ),
-            'search_stage_probe.py': (
-                ('result = self.writer.commit()', 'self.writer.commit()\n        result = self.writer.commit()'),
-                ('observation.annotate(error)\n        raise', 'observation.annotate(error)\n        return []'),
-                ("single_index_probe(root / 'A', observation, False)", 'None'),
-                ('EVENT_LIMIT = 12', 'EVENT_LIMIT = 120'),
-                ("'after_commit'", "'before_commit'"),
-                ("phase == 'after_wait'", "phase == 'before_commit'"),
-                ("metadata_counts(self.root, path, channel)", "metadata_counts(self.root, path, 'pages')"),
-            ),
-            'search_stage_diagnostics.py': (
-                ('METADATA_LIMIT = 65536', 'METADATA_LIMIT = 99999999'),
-                ('stream.read(METADATA_LIMIT + 1)', 'stream.read()'),
-                ("('meta.json', '.managed.json')", "('meta.json', '.managed.json', 'document.json')"),
-                ("'segment_count': len(value['segments'])", "'segment_count': value['segments']"),
-                ('_identity(opened) != _identity(before)', 'False'),
-                ("summary = {'status': 'not_sampled_active_writers'}", "summary = metadata_counts(root, path, channel)"),
-                ('_blocked(info) or not stat.S_ISDIR(info.st_mode)', 'False'),
-            ),
-        }
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            folder = root / 'kb_platform/rag_testing'
-            folder.mkdir(parents=True)
-            for filename, source in sources.items():
-                path = folder / filename
-                path.write_text(source, encoding='utf-8')
-                self.assertEqual(source_quality_violations(root), [])
-                for old, new in replacements[filename]:
-                    mutant = source.replace(old, new)
-                    self.assertNotEqual(source, mutant)
-                    path.write_text(mutant, encoding='utf-8')
-                    self.assertTrue(source_quality_violations(root))
-                path.write_text(source, encoding='utf-8')
