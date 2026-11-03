@@ -156,6 +156,11 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
             models = machine['models']
             controls = machine['negative_controls']
+            if identity == 'llm_multiblock' and models:
+                from kb_platform.rag_testing.multiblock_lint import multiblock_source_violations
+                errors.extend(f'llm_multiblock: {error}' for error in multiblock_source_violations(
+                    local_file(root, 'rust/llm-service/src/assembler.rs').read_text('utf-8'),
+                    local_file(root, 'formal/llm_multiblock/MultiblockAssembler.tla').read_text('utf-8')))
             if identity == 'llm_stream' and models:
                 from kb_platform.rag_testing.llm_stream_lint import stream_source_violations
                 errors.extend(f'llm_stream: {error}' for error in stream_source_violations(
