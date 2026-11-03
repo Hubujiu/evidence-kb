@@ -1,8 +1,8 @@
 ------------------------- MODULE PostflightAuthority -------------------------
 EXTENDS Naturals
 
-CONSTANT ValidateReplay
-ASSUME ValidateReplay \in BOOLEAN
+CONSTANTS ValidateReplay, ProtectCommit
+ASSUME /\ ValidateReplay \in BOOLEAN /\ ProtectCommit \in BOOLEAN
 
 VARIABLES mode, phase, authorityRevision, scopeAllowed, evidenceAllowed,
           cancelled, initialRevision, authorityChecked, evidenceChecked,
@@ -75,10 +75,12 @@ BuildState ==
           cancelled, initialRevision, authorityChecked, evidenceChecked,
           cancelChecked, authorityAtCheck, evidenceAtCheck, commitAuthority, commitAllowed>>
 
-\* SessionStore's separate transaction does not lock authority storage. Its
-\* own lease, ownership and atomic durability contract is modeled separately.
+\* ProtectCommit represents the shared transaction linearization point.
+\* AtomicAuthorityCommit separately expands lock, staging and physical commit.
 Commit ==
-    /\ phase = "ready" /\ phase' = "complete"
+    /\ phase = "ready"
+    /\ phase' = IF ProtectCommit /\ ~(scopeAllowed /\ evidenceAllowed /\ authorityRevision = initialRevision)
+                 THEN "error" ELSE "complete"
     /\ commitAuthority' = authorityRevision
     /\ commitAllowed' = (scopeAllowed /\ evidenceAllowed)
     /\ UNCHANGED <<mode, authorityRevision, scopeAllowed, evidenceAllowed,
@@ -133,8 +135,8 @@ FreshResponseWasChecked ==
 ReplayResponseWasRevalidated ==
     (mode = "replay" /\ phase = "complete") => evidenceChecked
 
-\* Deliberately stronger than the source contract. Its expected counterexample
-\* documents the absence of a cross-store authority/session transaction.
+\* Required by the current shared-transaction contract. ProtectCommit=FALSE
+\* reproduces the historical separate-transaction regression.
 CurrentAuthorityAtCommit ==
     (mode = "fresh" /\ phase = "complete") =>
         (commitAllowed /\ commitAuthority = evidenceAtCheck)

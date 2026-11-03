@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from .agent_model import CompletionEnvelope
+from .database_contracts import CommitUnknown
 from .agent_context import ContextPolicy
 from .plugin_contracts import ContractError, Method
 from .plugin_configuration import CONTEXT_PROPERTIES
@@ -78,6 +79,8 @@ class Operation:
 
 def operation(names, *, optional=None, response=OBJECT):
     defaults = {'actor': ACTOR, 'state': OBJECT, 'response': OBJECT, 'payload': OBJECT,
+                'authority': object_schema({'scope_id': TEXT, 'manifest_id': {'type': ['string', 'null']},
+                    'authority_revision': INTEGER}),
                 'body': OBJECT, 'policy': NULL_OBJECT, 'source_policy': OBJECT,
                 'config': NULL_OBJECT, 'constraints': {'type': ['array', 'null'], 'items': TEXT},
                 'workflow_state': NULL_OBJECT,
@@ -104,7 +107,7 @@ SESSION_OPERATIONS = {
     'append': operation('actor session_id token kind payload group_id', optional='agent', response=INTEGER),
     'artifact': operation('actor session_id token body'),
     'read_artifact': operation('actor session_id artifact_id'),
-    'finish': operation('actor session_id token state response', optional='assistant_event'),
+    'finish': operation('actor session_id token state response authority', optional='assistant_event'),
     'fail': operation('actor session_id token state response'),
 }
 EVIDENCE_OPERATIONS = {
@@ -171,7 +174,11 @@ class ObjectEndpoint:
             values = dict(request)
             if 'actor' in values:
                 values['actor'] = Actor(**values['actor'])
-            return json.loads(json.dumps(getattr(self._implementation, name)(**values), allow_nan=False))
+            try:
+                return json.loads(json.dumps(getattr(self._implementation, name)(**values), allow_nan=False))
+            except CommitUnknown as error:
+                raise ContractError(error.code, str(error), status_code=503,
+                    details={'kind': 'database', 'operation_id': error.operation_id}) from error
         return invoke
 
 

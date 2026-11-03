@@ -43,9 +43,9 @@ class SessionCatalogLintContracts(unittest.TestCase):
     def test_hash_refreshed_owner_content_commit_and_reachability_mutants_are_rejected(self):
         mutations = {
             'owner-lock-default': ('*, lock=True', '*, lock=False'),
-            'tenant': ('sessions.c.tenant == actor.tenant_id', 'sessions.c.tenant == sessions.c.tenant'),
-            'principal': ('sessions.c.principal == actor.principal_id', 'sessions.c.principal == sessions.c.principal'),
-            'session-key': ('artifacts.c.session == session_id,', 'artifacts.c.session == artifacts.c.session,'),
+            'tenant': ("self._tables['sessions'].c.tenant == actor.tenant_id", "self._tables['sessions'].c.tenant == self._tables['sessions'].c.tenant"),
+            'principal': ("self._tables['sessions'].c.principal == actor.principal_id", "self._tables['sessions'].c.principal == self._tables['sessions'].c.principal"),
+            'session-key': ("self._tables['artifacts'].c.session == session_id,", "self._tables['artifacts'].c.session == self._tables['artifacts'].c.session,"),
             'lease': ('            self._lease(db, session_id, token)', '            pass'),
             'integrity-read': ('if digest(body) != artifact_id:', 'if False:'),
             'integrity-dedup': ("elif digest(json.loads(previous['body'])) != key:", 'elif False:'),

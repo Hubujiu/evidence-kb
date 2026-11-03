@@ -19,7 +19,7 @@ from .plugin_contracts import ContractApplication, ContractRegistry, Method
 
 
 def contract(name):
-    return {'id': name, 'major': 1}
+    return {'id': name, 'major': 2 if name in {'knowledge.sessions', 'knowledge.authority.storage'} else 1}
 
 
 def requirement(name):
@@ -27,7 +27,7 @@ def requirement(name):
 
 
 def definition(name, provides, requires):
-    return {'implementation': 'knowledge.' + name, 'version': '1',
+    return {'implementation': 'knowledge.' + name, 'version': '2' if name in {'sessions', 'authority'} else '1',
             'executor': 'local',
             'provides': {key: contract(value) for key, value in provides.items()},
             'requires': {key: requirement(value) for key, value in requires.items()}}
@@ -39,7 +39,7 @@ CATALOG = [
     definition('model_policy', {'policy': 'llm.policy'}, {'access': 'knowledge.access'}),
     definition('model', {'model': 'knowledge.model', 'capabilities': 'knowledge.model.capabilities'},
                {'llm': 'llm.service', 'access': 'knowledge.access'}),
-    definition('sessions', {'sessions': 'knowledge.sessions'}, {'storage': 'storage.service'}),
+    definition('sessions', {'sessions': 'knowledge.sessions'}, {'authority': 'knowledge.authority.storage'}),
     definition('data', {'evidence': 'knowledge.evidence', 'platform': 'knowledge.platform',
                         'semantic': 'knowledge.semantic'},
                {'storage': 'storage.service', 'authority': 'knowledge.authority.storage', 'model': 'knowledge.model',
@@ -90,10 +90,10 @@ def registry(extensions):
     return ContractRegistry({
         ('application.run', 1): {'run': Method({'oneOf': alternatives}, {})},
         ('knowledge.workflow', 1): methods(APPLICATION_OPERATIONS),
-        ('knowledge.sessions', 1): methods(SESSION_OPERATIONS),
+        ('knowledge.sessions', 2): methods(SESSION_OPERATIONS),
         ('knowledge.evidence', 1): EVIDENCE_METHODS,
         ('knowledge.model', 1): MODEL_METHODS,
-        ('knowledge.authority.storage', 1): AUTHORITY_METHODS,
+        ('knowledge.authority.storage', 2): AUTHORITY_METHODS,
         ('knowledge.context', 1): {
             'prepare_request': Method(PREPARE_REQUEST, CONTEXT_RESPONSE),
             'sources': Method(SOURCE_REQUEST, {'type': 'array'}),
@@ -215,7 +215,7 @@ def build_knowledge_application(application, *, foundation, session_factory, dat
                 return getattr(workflow, request['operation'])(request['request'])
         ctx.provide('application', Entry())
 
-    mounts = {('knowledge.' + name, '1'): factory for name, factory in {
+    mounts = {('knowledge.' + name, '2' if name in {'sessions', 'authority'} else '1'): factory for name, factory in {
         'authority': authority, 'model_policy': model_policy, 'model': model, 'sessions': sessions, 'data': data,
         'access': access, 'context': context, 'workflow': workflow, 'entry': entry}.items()}
     mounts.update(foundation)

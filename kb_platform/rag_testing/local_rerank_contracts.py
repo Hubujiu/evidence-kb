@@ -171,11 +171,12 @@ class LocalRerankContracts(unittest.TestCase):
         self.ranker.encoder.predict.assert_not_called()
 
     def test_invalid_scores_are_not_delivered(self):
-        for values in [[], [float('nan')], [float('inf')], [True], [-0.1], [1.1], [[0.5]], [0.1, 0.2]]:
+        for index, values in enumerate([[], [float('nan')], [float('inf')], [True], [-0.1], [1.1], [[0.5]], [0.1, 0.2]]):
             with self.subTest(values=values):
                 self.ranker.manifest['test_case'] = repr(values)
-                self.ranker.ledger = BudgetLedger(self.root / f'ledger-{len(list(self.root.glob("ledger-*")))}.sqlite3',
+                self.ranker.ledger = BudgetLedger(self.root / f'ledger-{index}.sqlite3',
                                                    {'local_batches': 1, 'pairs': 1, 'remote_calls': 0})
+                self.addCleanup(self.ranker.ledger.close)
                 self.ranker.encoder.predict.side_effect = None
                 self.ranker.encoder.predict.return_value = SimpleNamespace(tolist=lambda: values)
                 with self.assertRaisesRegex(ValueError, 'Invalid model scores'):

@@ -89,7 +89,7 @@ class KnowledgeAuthorityContracts(unittest.TestCase):
                 neutral = authority_schema_descriptor()
                 self.assertNotIn('owner', neutral)
                 self.assertNotIn('digest', neutral)
-                self.assertEqual(set(neutral['appendonly']), {'source_versions', 'parse_snapshots', 'citations'})
+                self.assertEqual(set(neutral['appendonly']), {'source_versions', 'parse_snapshots', 'citations', 'events', 'artifacts'})
                 tables = {table['name'] for table in neutral['tables']}
                 self.assertTrue({'tenant_state', 'knowledge_bases', 'members', 'sources'} <= tables)
                 repository = KnowledgeRepository(database=authority_database(endpoint))
@@ -103,6 +103,18 @@ class KnowledgeAuthorityContracts(unittest.TestCase):
                 with self.assertRaises(ContractError):
                     endpoint.relational({'version': 1, 'op': 'schemas', 'binding': 'store.primary'})
                 self.assertNotIn('store.primary', storage._structured)
+                from kb_platform.knowledge_sessions import KnowledgeSessions
+                from kb_platform.knowledge_schema import knowledge_schema
+                from kb_platform.session_store import SessionStore
+
+                sessions = KnowledgeSessions(SessionStore(database=authority_database(endpoint), schema=knowledge_schema))
+                snapshot = KnowledgeAccess(another).authorize({'actor': asdict(actor), 'scope_id': scope})
+                session = sessions.create(actor, scope, {})['session_id']
+                token = sessions.begin(actor, session, 'wire-turn', 0, 'wire-fingerprint')['token']
+                response = sessions.finish(actor, session, token, {}, {'status': 'answered'}, authority=snapshot)
+                self.assertEqual(response['revision'], 1)
+                self.assertEqual(sessions.identity, repository.identity)
+                self.assertEqual(sessions.begin(actor, session, 'wire-turn', 0, 'wire-fingerprint'), {'cached': response})
             finally:
                 storage.close()
 

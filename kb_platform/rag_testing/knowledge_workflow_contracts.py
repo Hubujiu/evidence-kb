@@ -20,6 +20,30 @@ class KnowledgeWorkflowContracts(unittest.TestCase):
     turn = graph.AgentGraphContracts.turn
     events = graph.AgentGraphContracts.events
 
+    def test_unknown_completion_is_resolved_without_failure_publication_or_model_replay(self):
+        from kb_platform.database_contracts import CommitUnknown
+
+        case = self.setup_service(graph.normal_script())
+        original = case.service.store.finish
+
+        def lose_ack(*args, **kwargs):
+            original(*args, **kwargs)
+            raise CommitUnknown('synthetic-commit-operation')
+
+        with patch.object(case.service.store, 'finish', side_effect=lose_ack), \
+                patch.object(case.service.store, 'fail', side_effect=AssertionError('unknown cannot become failed')):
+            with self.assertRaises(CommitUnknown):
+                self.turn(case)
+        calls = len(case.model.calls)
+        result = self.turn(case)
+        self.assertEqual(result['status'], 'answered')
+        self.assertEqual(len(case.model.calls), calls)
+        self.assertEqual(sum(row['kind'] == 'turn_completed' for row in self.events(case)), 1)
+        case.authority.rows[0]['policy']['llm_context'] = False
+        with self.assertRaises(PlatformError):
+            self.turn(case)
+        self.assertEqual(len(case.model.calls), calls)
+
     def failed_tool_turn(self, *, after_evidence=False):
         script = [('decision', graph.decision())]
         if after_evidence:

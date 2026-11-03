@@ -12,7 +12,7 @@ from .formal_state_machines import source_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / 'formal/combination-inputs-linux-v2.json'
+MANIFEST = ROOT / 'formal/combination-inputs-authority-v3.json'
 
 
 def model_input_digest(data):
@@ -90,20 +90,21 @@ class FormalCombinationContracts(unittest.TestCase):
         self.assertEqual(run_definition_violations(self.registry, self.manifest['required_runs']), [])
 
     def test_linux_scope_preserves_historical_owner_obligations(self):
+        linux = json.loads((ROOT / 'formal/combination-inputs-linux-v2.json').read_text('utf-8'))
         historical_bytes = (ROOT / 'formal/combination-inputs-v1.json').read_bytes()
         self.assertEqual(model_input_digest(historical_bytes),
                          '2cff8fd697800b6feb7b85b3f9189d0a876dc3e911f2d65b06a7df5593477636')
         historical = json.loads(historical_bytes)
         self.assertEqual(
             [row for row in historical['required_runs'] if row['machine'] != 'check_process_owner'],
-            [row for row in self.manifest['required_runs'] if row['machine'] != 'check_process_owner'])
+            [row for row in linux['required_runs'] if row['machine'] != 'check_process_owner'])
         self.assertEqual(
             [row for row in historical['model_inputs'] if not row['path'].startswith('formal/check_process_owner/')],
-            [row for row in self.manifest['model_inputs'] if not row['path'].startswith('formal/check_process_owner/')])
+            [row for row in linux['model_inputs'] if not row['path'].startswith('formal/check_process_owner/')])
         for path, cases in historical['required_contract_cases'].items():
             if path not in ('kb_platform/rag_testing/check_process_owner_windows_contracts.py',
                             'kb_platform/rag_testing/formal_combination_contracts.py'):
-                self.assertTrue(set(cases) <= set(self.manifest['required_contract_cases'][path]), path)
+                self.assertTrue(set(cases) <= set(linux['required_contract_cases'][path]), path)
         combination_path = 'kb_platform/rag_testing/formal_combination_contracts.py'
         renamed = {
             'test_frozen_public_inputs_require_exact_registered_definitions_not_counts':
@@ -117,16 +118,16 @@ class FormalCombinationContracts(unittest.TestCase):
             self.assertIn(identity, old_combination)
             old_combination.remove(identity)
             old_combination.add(f'FormalCombinationContracts.{new}')
-        self.assertTrue(old_combination <= set(self.manifest['required_contract_cases'][combination_path]))
+        self.assertTrue(old_combination <= set(linux['required_contract_cases'][combination_path]))
         retired = {'check_process_owner_windows', 'check_process_owner_coverage_pass_windows'}
         old_runs = {row['id']: row for row in historical['required_runs']
                     if row['machine'] == 'check_process_owner'}
-        new_runs = {row['id']: row for row in self.manifest['required_runs']
+        new_runs = {row['id']: row for row in linux['required_runs']
                     if row['machine'] == 'check_process_owner'}
         self.assertEqual(new_runs, {name: row for name, row in old_runs.items() if name not in retired})
         old_models = {row['path']: row for row in historical['model_inputs']
                       if row['path'].startswith('formal/check_process_owner/')}
-        new_models = {row['path']: row for row in self.manifest['model_inputs']
+        new_models = {row['path']: row for row in linux['model_inputs']
                       if row['path'].startswith('formal/check_process_owner/')}
         removed = {'formal/check_process_owner/CheckProcessOwnerWindows.cfg',
                    'formal/check_process_owner/ReachPassWindows.cfg'}
@@ -137,21 +138,57 @@ class FormalCombinationContracts(unittest.TestCase):
             self.assertEqual(new_models[path], old_models[path])
         path = 'kb_platform/rag_testing/check_process_owner_contracts.py'
         self.assertTrue(set(historical['required_contract_cases'][path]) <=
-                        set(self.manifest['required_contract_cases'][path]))
+                        set(linux['required_contract_cases'][path]))
         self.assertIn('CheckProcessOwnerContracts.test_non_linux_platform_refuses_both_entrypoints_before_spawn',
-                      self.manifest['required_contract_cases'][path])
+                      linux['required_contract_cases'][path])
         self.assertNotIn('kb_platform/rag_testing/check_process_owner_windows_contracts.py',
-                         self.manifest['required_contract_cases'])
+                         linux['required_contract_cases'])
 
     def test_removed_positive_negative_or_known_limitation_cannot_hide_in_same_size_inventory(self):
         for field in ('models', 'negative_controls', 'known_limitations'):
             changed = deepcopy(self.registry)
+            expected = self.manifest['required_runs']
+            if not any(machine.get(field) for machine in changed['machines']):
+                row = {'id': 'synthetic-retained-limitation', 'expected_invariant': 'SyntheticSafety'}
+                changed['machines'].append({'id': 'synthetic', field: [row]})
+                expected = [*expected, {'machine': 'synthetic', 'field': field, 'id': row['id'],
+                    'definition_sha256': definition_digest(row)}]
             owner = next(machine for machine in changed['machines'] if machine.get(field))
             original = owner[field][0]['id']
             owner[field][0]['id'] = 'unreviewed-replacement'
             with self.subTest(field=field, original=original):
-                errors = run_definition_violations(changed, self.manifest['required_runs'])
+                errors = run_definition_violations(changed, expected)
                 self.assertTrue(any(original in error for error in errors), errors)
+
+    def test_authority_revision_preserves_unrelated_linux_obligations_and_records_each_change(self):
+        previous = json.loads((ROOT / 'formal/combination-inputs-linux-v2.json').read_text('utf-8'))
+        changes = self.manifest['reviewed_changes_from_linux_v2']
+        for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
+            rows = deepcopy(previous[field])
+            change = changes[field]
+            for row in change['removed']:
+                rows.remove(row)
+            for pair in change['changed']:
+                rows.remove(pair['before'])
+                rows.append(pair['after'])
+            rows.extend(change['added'])
+            self.assertCountEqual(rows, self.manifest[field])
+        runs = changes['required_runs']
+        historical = {'knowledge_authority_commit_limitation', 'knowledge_postflight_witness_evidencerevokedcommit'}
+        self.assertEqual({row['id'] for row in runs['removed']}, historical)
+        self.assertTrue(all(row['field'] == 'known_limitations' for row in runs['removed']))
+        self.assertEqual({row['id'] for row in runs['added'] if row['machine'] == 'knowledge_turn_postflight'}, historical)
+        self.assertEqual({row['after']['id'] for row in runs['changed']}, {'knowledge_postflight_authority'})
+        self.assertTrue(all(row['machine'] in {'knowledge_turn_postflight', 'knowledge_atomic_commit'}
+            for row in runs['added']))
+        models = changes['model_inputs']
+        self.assertEqual(models['removed'], [])
+        self.assertTrue(all(row['path'].startswith('formal/session_authority/AtomicAuthorityCommit')
+            for row in models['added']))
+        self.assertTrue(all(row['after']['path'].startswith('formal/session_authority/PostflightAuthority')
+            for row in models['changed']))
+        for path, cases in previous['required_contract_cases'].items():
+            self.assertTrue(set(cases) <= set(self.manifest['required_contract_cases'][path]))
 
     def test_changed_control_invariant_is_rejected_without_changing_any_id(self):
         changed = deepcopy(self.registry)

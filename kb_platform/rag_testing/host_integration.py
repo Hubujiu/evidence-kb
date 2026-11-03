@@ -108,6 +108,13 @@ class HostIntegration(unittest.TestCase):
             'bounded_frames': True, 'external_model_calls': 0, 'storage_runtime': 'python', 'host_state': 'disposed'})
         self.capture(0, json.dumps(result), '')
 
+    def test_authority_session_commit_recovers_from_process_crash_on_both_sides_of_commit(self):
+        from .knowledge_commit_process import verify_crash_boundary
+
+        result = verify_crash_boundary(self.directory)
+        self.assertEqual(len(result), 2)
+        self.capture(0, json.dumps(result), '')
+
     def test_non_python_worker_uses_same_parent_runtime_protocol(self):
         profile = self.profile('generic')
         document = json.loads(profile.read_text('utf-8'))

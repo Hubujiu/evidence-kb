@@ -398,6 +398,9 @@ def _registry_violations(root: Path, registry: dict | None, reviewed_digest) -> 
         from scripts.postflight_model_checks import postflight_model_violations
 
         errors.extend(postflight_model_violations(root, registry))
+        from scripts.authority_commit_checks import authority_commit_violations
+
+        errors.extend(authority_commit_violations(root, registry))
         if {'acceptance_binding_publication', 'acceptance_client_execution'} & ids:
             from .acceptance_output_rules import acceptance_output_violations
             errors.extend(acceptance_output_violations(root))

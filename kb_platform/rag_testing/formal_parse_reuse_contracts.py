@@ -190,7 +190,7 @@ class FormalParseReuseContracts(unittest.TestCase):
 
     def test_manifest_binds_registry_body_and_rejects_removed_hooks(self):
         repository = Path(__file__).resolve().parents[2]
-        manifest = json.loads((repository / 'formal/combination-inputs-linux-v2.json').read_text('utf-8'))
+        manifest = json.loads((repository / 'formal/combination-inputs-authority-v3.json').read_text('utf-8'))
         rows = [row for row in manifest['shared_entry_points']
                 if row['path'] == 'kb_platform/rag_testing/formal_state_machines.py'
                 and row['symbol'] == '_registry_violations']

@@ -1,8 +1,45 @@
 # Session writer and postflight authorization models
 
-These are finite, executable abstractions of the current implementation, not a
-proof of all session or authority behavior. Both inventory entries remain
-**partial**. No product defect or production-code change is claimed here.
+These are finite executable abstractions, not a proof of all session or authority
+behavior. Inventory entries remain **partial**. The current implementation adds
+the shared authority/session transaction described below. Sections after
+"Historical session/postflight review" record the earlier separate-store work;
+their counts and limitations describe those historical executions.
+
+## Current shared transaction
+
+`KnowledgeSessions.finish` locks tenant authority, verifies the original
+scope/manifest/revision and the persisted session owner/scope, then stages all
+completion effects in that same transaction. The storage owner retains the lock
+through physical commit. Source ACL/policy writers take the same lock and bump
+the revision; publication is also compared through its manifest pointer.
+
+`PostflightAuthority` now requires `CurrentAuthorityAtCommit` with
+`ProtectCommit = TRUE`. Its two old limitation configurations explicitly set
+`ProtectCommit = FALSE`: they are now seeded regressions of the repaired commit
+boundary, not unchanged positive behavior relabeled as mutation success.
+Historical evidence files and their `OBSERVED_LIMITATION` results are unchanged.
+
+`AtomicAuthorityCommit` expands acquisition, staged effects, physical commit,
+rollback, acknowledgement loss and resolution. Its positive configuration
+checks commit-time authority, atomic completion and resolution without another
+completion. Independent faults remove the comparison or release the lock before
+commit. Terminal witnesses reach durable-but-unknown and rolled-back outcomes.
+The manifest variable covers publication without a tenant revision increment.
+
+Mandatory AST guards bind the domain transaction, persisted scope and unknown
+outcome handling to the reviewed model. Mutation contracts reject separated
+transactions, weakened authority/scope checks and failure publication after an
+unknown commit. Runtime contracts exercise actual SQLite connections, current
+permission changes, public JSON error propagation, lost acknowledgements and
+process exit immediately before/after physical commit. Migration contracts retain
+old completed/running requests, artifacts and source data. No contract claims
+production RAG quality or arbitrary-provider refinement.
+
+Protocol versions and explicit offline migration are documented in
+[authority-session-commit](../../docs/authority-session-commit.md).
+
+## Historical session/postflight review
 
 ## Reuse the existing transaction pattern
 

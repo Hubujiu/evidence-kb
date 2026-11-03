@@ -1,9 +1,11 @@
 from pathlib import Path
 from hashlib import sha256
+from functools import partial
 from threading import RLock
+import sqlite3
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, QueuePool
 
 from ..database_contracts import DatabaseInfo
 from .base import DatabaseSpace
@@ -13,6 +15,8 @@ class SQLiteProvider:
     info = DatabaseInfo('sqlite')
 
     def __init__(self, root, *, files=None):
+        if files is None and sqlite3.sqlite_version_info < (3, 51, 3):
+            raise RuntimeError('SQLITE_VERSION_REQUIRES_3_51_3')
         self.root = Path(root).resolve()
         self._files = None if files is None else {key: Path(path).resolve() for key, path in files.items()}
         if self._files is not None and len(set(self._files.values())) != len(self._files):
@@ -30,10 +34,12 @@ class SQLiteProvider:
                     raise ValueError('SQLITE_SPACE_FILE_NOT_GRANTED')
                 path = self._files[key]
             path.parent.mkdir(parents=True, exist_ok=True)
-            engines = [create_engine('sqlite:///' + path.as_posix(), poolclass=NullPool,
+            pooling = ({'poolclass': QueuePool, 'pool_size': 1, 'max_overflow': -1}
+                       if self._files is None else {'poolclass': NullPool})
+            engines = [create_engine('sqlite:///' + path.as_posix(), **pooling,
                                      connect_args={'timeout': 30, 'check_same_thread': False}) for _ in range(2)]
             for engine in engines:
-                event.listen(engine, 'connect', _initialize)
+                event.listen(engine, 'connect', partial(_initialize, wal=self._files is None))
             space = DatabaseSpace(self, key, engines[0], engines[1], str(path))
             self._spaces[key] = space
             return space
@@ -65,7 +71,11 @@ class SQLiteProvider:
             self._spaces.clear()
 
 
-def _initialize(connection, record):
+def _initialize(connection, record, *, wal):
+    mode = 'wal' if wal else 'delete'
+    if connection.execute('PRAGMA journal_mode=' + mode).fetchone()[0] != mode:
+        raise RuntimeError('SQLITE_WAL_UNAVAILABLE')
+    connection.execute('PRAGMA synchronous=FULL')
     connection.execute('PRAGMA foreign_keys=ON')
     connection.execute('PRAGMA recursive_triggers=ON')
     connection.execute('PRAGMA busy_timeout=30000')

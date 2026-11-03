@@ -97,7 +97,7 @@ are modeled.
 
 ## Linux-only transition
 
-The active combination is `formal/combination-inputs-linux-v2.json`. The earlier
+The active combination is `formal/combination-inputs-authority-v3.json` (the Linux v2 inventory remains historical). The earlier
 `combination-inputs-v1.json` remains unchanged as a historical record of the
 original integration inputs. Its Windows configurations and fake adapter tests
 were retired because the current verifier supports Linux only; they are not

@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy import Integer
 
 from .database_contracts import Migration, SpaceKey, StorageIdentity
-from .knowledge_schema import METADATA
+from .knowledge_schema import LEGACY_METADATA as METADATA
 from .storage_adapters.structured_transfer import (
     content_hash, import_structured_snapshot, read_sql_snapshot,
 )
@@ -147,7 +147,9 @@ def import_knowledge(target, package, *, expected_identity, target_offline=False
             'tenant_revision_increment': 1, 'kb_revision_increment': 1},
         'republication_required': True, 'search_indexes_copied': False, 'original_objects_copied': False,
         'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0}
-    repeated = import_structured_snapshot(target, _tables(transformed, native=True),
+    records = {name: [] for name in target._package.metadata.tables}
+    records.update(_tables(transformed, native=True))
+    repeated = import_structured_snapshot(target, records,
         expected_identity=expected_identity, source_sha256=package['sha256'], receipt=receipt,
         target_offline=target_offline)
     body = {**receipt, 'idempotent': repeated}

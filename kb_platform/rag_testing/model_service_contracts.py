@@ -1,3 +1,4 @@
+from .knowledge_session_fixture import platform_fixture
 from datetime import datetime, timezone
 from kb_platform.knowledge_queries import KnowledgeQuery
 import base64
@@ -449,7 +450,7 @@ class ModelServiceContracts(unittest.TestCase):
         models = ModelService()
         models.register('generation', self.adapter({}))
         with patch('kb_platform.remote.LunaClient', side_effect=AssertionError('second client')):
-            app, host = create_knowledge_application(object(), SimpleNamespace(luna=None),
+            app, host = create_knowledge_application(platform_fixture(self, self.root), SimpleNamespace(luna=None),
                 models=models, service_factory=_KnowledgeFixture,
                 environment={'KB_AGENT_PROVIDERS_CONFIG': 'not-opened.json', 'KB_AGENT_ROOT': str(self.root)})
             with host:
@@ -483,7 +484,7 @@ class ModelServiceContracts(unittest.TestCase):
         config_path.write_text(json.dumps(self.configuration(('generation',))))
         settings = SimpleNamespace(identities=lambda: {}, storage_root=self.root)
         profile, storage = self.http_storage(config_path, 'chat-http')
-        fake_platform = SimpleNamespace(embedding_provider=None, ocr_client=None)
+        fake_platform = platform_fixture(self, self.root)
         with patch.dict('os.environ', {'KB_DEFER_DEFAULT_APP': '1', 'KB_REMOTE_MODELS': '1',
                         'KB_MODELS_CONFIG': str(config_path), 'KB_AGENT_ROOT': str(self.root / 'app-sessions'),
                         'SYNTH_KEY': 'synthetic'}):

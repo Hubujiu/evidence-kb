@@ -114,6 +114,39 @@ class DatabaseFoundationContracts(unittest.TestCase):
         with bound.transaction(write=False) as tx:
             return tx.execute('SELECT count(*) AS count FROM tasks').scalar()
 
+    def test_sqlite_reader_snapshot_does_not_block_durable_writer(self):
+        bound = self.prepared()
+        with bound._space.runtime_engine.connect() as connection:
+            self.assertEqual(connection.exec_driver_sql('PRAGMA journal_mode').scalar_one(), 'wal')
+            self.assertEqual(connection.exec_driver_sql('PRAGMA synchronous').scalar_one(), 2)
+        with bound.transaction() as tx:
+            tx.execute("INSERT INTO tasks VALUES('key','before')")
+        with bound.transaction(write=False) as reader:
+            self.assertEqual(reader.execute('SELECT value FROM tasks').scalar(), 'before')
+            with bound.transaction() as writer:
+                writer.execute("UPDATE tasks SET value='after'")
+            self.assertEqual(reader.execute('SELECT value FROM tasks').scalar(), 'before')
+        with bound.transaction(write=False) as reader:
+            self.assertEqual(reader.execute('SELECT value FROM tasks').scalar(), 'after')
+        with self.assertRaisesRegex(RuntimeError, 'ROLLBACK_PROBE'), bound.transaction() as writer:
+            writer.execute("UPDATE tasks SET value='discarded'")
+            raise RuntimeError('ROLLBACK_PROBE')
+        self.service.close()
+        replacement = DatabaseService()
+        self.addCleanup(replacement.close)
+        replacement.register('main', SQLiteProvider(self.root))
+        restored = self.prepared(service=replacement)
+        self.assertEqual(restored.identity, bound.identity)
+        with restored.transaction(write=False) as reader:
+            self.assertEqual(reader.execute('SELECT value FROM tasks').scalar(), 'after')
+
+    def test_sqlite_rejects_runtime_without_wal_reset_fix_before_creating_files(self):
+        target = self.root / 'unsupported'
+        with patch('kb_platform.database_providers.sqlite.sqlite3.sqlite_version_info', (3, 51, 2)):
+            with self.assertRaisesRegex(RuntimeError, 'SQLITE_VERSION_REQUIRES_3_51_3'):
+                SQLiteProvider(target)
+        self.assertFalse(target.exists())
+
     def test_identical_plugin_tables_are_isolated_between_projects_and_survive_restart(self):
         first, second = self.prepared(), self.prepared(application='project-b')
         with first.transaction() as tx:

@@ -4,6 +4,8 @@
 
 在项目根目录执行以下命令。
 
+根目录型 SQLite 数据集使用 WAL、`synchronous=FULL` 和保留空闲连接的连接池，要求 Python 的 `sqlite3.sqlite_version_info >= (3, 51, 3)`。可先执行 `uv python install 3.12`，用 `uv sync --managed-python --locked --group dev` 创建环境，再核对 `uv run --no-sync python -c 'import sqlite3; print(sqlite3.sqlite_version)'`。该下限包含 SQLite 官方修复的 WAL-reset 问题。显式单文件账本继续使用 DELETE journal 与逐事务连接，保留冻结文件哈希和文件不可用时的拒绝语义。不要把活动 WAL 主文件单独当作完整快照。
+
 ```bash
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 cargo fetch --locked

@@ -1426,19 +1426,19 @@
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore._owner",
-          "sha256": "2c0f506f9e57a8f9177554b5b2b0f3c2cd9f5788dda2eb1cd5362a0d459a9108"
+          "sha256": "6c826ac0807ac20da93a195d9cc6d12b2523f003f117c030390f538ec9790a0a"
         },
         {
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore.begin",
-          "sha256": "22af22ad0552c0239895b9cd55949bc1d71360f4f6682449d8a080df9f03e0d6"
+          "sha256": "db8da6e35745b4444a77f659fee0376e4d1302b5daf4151b828d1ae23fcf77df"
         },
         {
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore._lease",
-          "sha256": "8b76a78b8062b7e349344a7c2b2e7e291593fd317a6cdffc138072d2b88ef3b1"
+          "sha256": "500474ba7155d2314ac786a1eafad87561d59e295924b9dc519001e2609d35b7"
         },
         {
           "path": "kb_platform/session_store.py",
@@ -1462,7 +1462,7 @@
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore._finish",
-          "sha256": "e82d52ea5fd0b714bdd64cfbc7f43d386c3ee1f5acea954c60ed5e4be4befa8b"
+          "sha256": "ccd324e4402d06b02be81ce4b2f943ef002ceebf18aca3bc4c68e3c486b2c9ae"
         },
         {
           "path": "kb_platform/harness_sessions.py",
@@ -1474,13 +1474,19 @@
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore.create",
-          "sha256": "21a100e4c47e926ea04838b8677f9d1929b7e7497305aa530f6d19d9c2deb1f4"
+          "sha256": "cf0b6e2637d107d7f35a66d100d76e7ff50c4804284a3d3d3ca5dd0bd68263e9"
         },
         {
           "path": "kb_platform/knowledge_turn.py",
           "language": "python",
           "symbol": "KnowledgeTurn.run",
-          "sha256": "141be74f7de48bac30c7e82b4ef81a2a6ad11d05acc2d02efae6955863bda5ea"
+          "sha256": "f09fac190d69cb2d63d8241437dcb9eed27199e488661c1736a29b6f14078c27"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.finish_in_transaction",
+          "sha256": "1dbf8a37d88282364b36686fd307a60ffe24620b970a73b55db1d41e6c0112b4"
         }
       ],
       "models": [
@@ -4195,7 +4201,7 @@
           "path": "kb_platform/knowledge_turn.py",
           "language": "python",
           "symbol": "KnowledgeTurn.run",
-          "sha256": "141be74f7de48bac30c7e82b4ef81a2a6ad11d05acc2d02efae6955863bda5ea"
+          "sha256": "f09fac190d69cb2d63d8241437dcb9eed27199e488661c1736a29b6f14078c27"
         },
         {
           "path": "kb_platform/knowledge_turn.py",
@@ -6750,7 +6756,7 @@
           "path": "kb_platform/knowledge_transfer.py",
           "language": "python",
           "symbol": "import_knowledge",
-          "sha256": "204fd6895a9e68d680055048fa845d7eabe590b020a4c1aed079975a9257a452"
+          "sha256": "c790374e11e509f65b0c8dfb9395df017730cdd1e02e7659c559c4c17cbfb665"
         },
         {
           "path": "kb_platform/core.py",
@@ -7272,18 +7278,19 @@
       "transitions": [
         "Preflight authorization; native completion",
         "Post-native execution guard; original authority revision comparison; evidence revalidation",
-        "State construction; final execution guard; separate session commit",
+        "State construction; final execution guard; shared-transaction commit linearization",
         "Current evidence revalidation on completed-request replay",
         "One concurrent authority mutation and cancellation"
       ],
       "invariants": [
         "TypeOK",
         "FreshResponseWasChecked",
-        "ReplayResponseWasRevalidated"
+        "ReplayResponseWasRevalidated",
+        "CurrentAuthorityAtCommit"
       ],
       "assumptions": [
         "Successful gateway validation is abstracted at its check point; internal read/revision correctness is separate",
-        "The session commit contract is modeled separately, not a proved composition or shared transaction",
+        "ProtectCommit abstracts the shared commit linearization; AtomicAuthorityCommit expands lock lifetime and physical commit",
         "Finite authorization/cancellation environment; runtime/provider effects and failure payloads omitted"
       ],
       "exclusions": [
@@ -7294,14 +7301,14 @@
       "remaining_obligations": [
         "Model authority publication/build states separately; this entry must not mark authority_publication as covered",
         "Establish internal gateway validation consistency and shared authority revision protocol",
-        "Define and implement any stronger cross-store authorization-at-commit requirement before claiming it"
+        "Keep recorded historical limitations distinct from current seeded regressions which disable ProtectCommit"
       ],
       "source_bindings": [
         {
           "path": "kb_platform/knowledge_turn.py",
           "language": "python",
           "symbol": "KnowledgeTurn.run",
-          "sha256": "141be74f7de48bac30c7e82b4ef81a2a6ad11d05acc2d02efae6955863bda5ea"
+          "sha256": "f09fac190d69cb2d63d8241437dcb9eed27199e488661c1736a29b6f14078c27"
         },
         {
           "path": "kb_platform/agent_tools.py",
@@ -7337,13 +7344,13 @@
           "path": "scripts/postflight_model_checks.py",
           "language": "python",
           "symbol": "<module>",
-          "sha256": "4ab15687a364f4c8ee077a4ee74ae6d4c300083a511594c33a6506497dc0a00f"
+          "sha256": "e8bf4aa77615ce8f62358e2e656fe4f687860bdd08f2d65eb64818f2bcaf9b8b"
         },
         {
           "path": "kb_platform/rag_testing/postflight_model_contracts.py",
           "language": "python",
           "symbol": "PostflightModelContracts",
-          "sha256": "ef612e5f27c8005b649460216f5d9e1a602667a574fe2e5f8cd718e807323678"
+          "sha256": "38e90c525f7de4d04673c588c88c074020b66b8e6a4388a2805c1a08bc62ab6f"
         }
       ],
       "models": [
@@ -7354,7 +7361,8 @@
           "invariants": [
             "TypeOK",
             "FreshResponseWasChecked",
-            "ReplayResponseWasRevalidated"
+            "ReplayResponseWasRevalidated",
+            "CurrentAuthorityAtCommit"
           ],
           "properties": [],
           "bounds": {
@@ -7369,7 +7377,8 @@
             ],
             "scopeAllowed": "boolean",
             "evidenceAllowed": "boolean",
-            "cancelled": "boolean"
+            "cancelled": "boolean",
+            "ProtectCommit": true
           },
           "timeout_seconds": 120,
           "heap_mb": 256
@@ -7395,9 +7404,7 @@
           "heap_mb": 256,
           "kind": "negative",
           "purpose": "Terminal reachability witness, not a seeded runtime defect."
-        }
-      ],
-      "known_limitations": [
+        },
         {
           "id": "knowledge_authority_commit_limitation",
           "module": "formal/session_authority/PostflightAuthority.tla",
@@ -7405,9 +7412,8 @@
           "expected_invariant": "CurrentAuthorityAtCommit",
           "timeout_seconds": 120,
           "heap_mb": 256,
-          "kind": "limitation",
-          "purpose": "Known implementation-contract limitation: authority can change after revalidation and before a separate session transaction commits; not a fixed bug",
-          "model_id": "knowledge_postflight_authority"
+          "kind": "negative",
+          "purpose": "Seeded regression disables ProtectCommit and reproduces the historical separate-transaction counterexample. Old OBSERVED_LIMITATION records remain unchanged."
         },
         {
           "id": "knowledge_postflight_witness_evidencerevokedcommit",
@@ -7416,11 +7422,11 @@
           "expected_invariant": "NoEvidenceRevokedCommitWitness",
           "timeout_seconds": 120,
           "heap_mb": 256,
-          "kind": "limitation",
-          "purpose": "Evidence-only revocation at the actual separate session commit; independently observed known cross-store limitation, not a fixed bug.",
-          "model_id": "knowledge_postflight_authority"
+          "kind": "negative",
+          "purpose": "Seeded regression disables ProtectCommit and reproduces the historical separate-transaction counterexample. Old OBSERVED_LIMITATION records remain unchanged."
         }
-      ]
+      ],
+      "known_limitations": []
     },
     {
       "id": "console_citation_view",
@@ -7956,13 +7962,13 @@
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore._owner",
-          "sha256": "2c0f506f9e57a8f9177554b5b2b0f3c2cd9f5788dda2eb1cd5362a0d459a9108"
+          "sha256": "6c826ac0807ac20da93a195d9cc6d12b2523f003f117c030390f538ec9790a0a"
         },
         {
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore.create",
-          "sha256": "21a100e4c47e926ea04838b8677f9d1929b7e7497305aa530f6d19d9c2deb1f4"
+          "sha256": "cf0b6e2637d107d7f35a66d100d76e7ff50c4804284a3d3d3ca5dd0bd68263e9"
         },
         {
           "path": "kb_platform/session_store.py",
@@ -7974,25 +7980,25 @@
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore.list_sessions",
-          "sha256": "6f0a17182e1c54294b1839b259dca1b199fb5d0957f93822571a01d3304bc0c1"
+          "sha256": "e220379d5f072465a52a87dd6db27855da97b3d4a7422e12316f4c262112aeb6"
         },
         {
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore.events",
-          "sha256": "66c9bc707bba31900541bb7bdaa516d477c5ca9c4c121b979836c5a459c4c2df"
+          "sha256": "687a253443e184763cfa0daf49121b0e18fe59f8da0e6972509e3faa71e5ac40"
         },
         {
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore.artifact",
-          "sha256": "55fb2a9126a7ea3d18e7ce24aaf9b71493d8e7fa926cc839f85318fe7bf14159"
+          "sha256": "ed87b4047a1d988a081db0e288f868463aae2272eef11f7b52911712b608c989"
         },
         {
           "path": "kb_platform/session_store.py",
           "language": "python",
           "symbol": "SessionStore.read_artifact",
-          "sha256": "d1b91dd122d47134b18db48170d96692fc832f203ad9deb4090326ea5b4e800c"
+          "sha256": "b243d0c4b7ac5a090aff42e8a336fdb4c421b9d343cc32e56eacc028b42c7b2c"
         },
         {
           "path": "kb_platform/session_storage/schema.py",
@@ -12604,6 +12610,215 @@
         "Review race-free pidfd acquisition against live ownership and dedicated-helper ECHILD observation; model abstracts syscall interleavings.",
         "Run real Linux descendant/setsid/PID-reuse safety integration where required proc interfaces are available; current local fail-closed startup is not successful tree execution.",
         "Expand helper failures, multiple generations, deeper trees and creation during cleanup before making broader claims."
+      ]
+    },
+    {
+      "id": "knowledge_atomic_commit",
+      "status": "partial",
+      "owners": [
+        "kb_platform/knowledge_sessions.py",
+        "kb_platform/knowledge_commit_transfer.py"
+      ],
+      "states": [
+        "checked",
+        "staged",
+        "durable",
+        "rejected",
+        "rolled_back"
+      ],
+      "transitions": [
+        "Lock tenant and compare scope/manifest/revision",
+        "Stage session effects in the same transaction",
+        "Physical commit or rollback releases authority lock",
+        "Resolve lost acknowledgement without replay"
+      ],
+      "invariants": [
+        "CurrentAuthorityAtCommit",
+        "AtomicCompletion",
+        "NoUnknownRetry"
+      ],
+      "assumptions": [
+        "All production authority mutations acquire the same tenant lock; direct administrator SQL is outside the protocol",
+        "Storage holds locks through physical commit and supplies atomic transactions",
+        "Revision abstracts source ACL/policy changes; manifest tracks publication changes",
+        "Lease, owner and response-content contracts remain separately checked"
+      ],
+      "exclusions": [
+        "Cancellation after the final check",
+        "Compromised storage or direct administrator writes",
+        "Unbounded liveness and production RAG quality"
+      ],
+      "remaining_obligations": [
+        "Controlled backend integration must verify provider isolation/crash semantics beyond SQLite",
+        "Finite reviewed abstraction is not a proof of arbitrary Python execution"
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/knowledge_sessions.py",
+          "language": "python",
+          "symbol": "KnowledgeSessions.finish",
+          "sha256": "d179527653e5e379b73911e7b0b0540b32f8343ef87a0a96c5fd5749fdaddb39"
+        },
+        {
+          "path": "kb_platform/knowledge_access.py",
+          "language": "python",
+          "symbol": "locked_authority",
+          "sha256": "98205a5d12d77083b1349e140a88aea39230c2e8ecb872ad503929b787c07563"
+        },
+        {
+          "path": "kb_platform/session_store.py",
+          "language": "python",
+          "symbol": "SessionStore.finish_in_transaction",
+          "sha256": "1dbf8a37d88282364b36686fd307a60ffe24620b970a73b55db1d41e6c0112b4"
+        },
+        {
+          "path": "kb_platform/knowledge_turn.py",
+          "language": "python",
+          "symbol": "KnowledgeTurn.run",
+          "sha256": "f09fac190d69cb2d63d8241437dcb9eed27199e488661c1736a29b6f14078c27"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "ObjectEndpoint.__getattr__",
+          "sha256": "203c0ec569399e9a3976d4fef6d74ca5f81ba326b60897b9d67bfc16d48c03b0"
+        },
+        {
+          "path": "kb_platform/knowledge_commit_transfer.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "32bb31154adddab2052618b09ed5cc185af2a43793a7f6c411d12c1f99e56276"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform._lock_authority",
+          "sha256": "b1f6c40adb3cca0141f9cc5b1b2e4cba99130a7f8d4fec1318afa5c7c29dc567"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform._bump",
+          "sha256": "f7f67ce4cefdf228011ba6b2a363ff5e82eea5580d7b03ffc1a730b47b89a90d"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.set_member",
+          "sha256": "2acfdb09beb21e6ec64969e86d0704ddf21cf66af8b905485fa151ccb8110eee"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.set_source_readers",
+          "sha256": "3a078809a9d42b42b5d7e1d2f3ac3394055ef50508dac746123e205bfcd6a82c"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.set_source_policy",
+          "sha256": "0267b7bc814522f53a4a2a6d023e599997252fb9f70e3f7c1058f10c60da696b"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.publish",
+          "sha256": "106ea4435dbfef4b3382e8ed8d38778790ce15fe50e22a9545d534225cdf96b9"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.bind_source",
+          "sha256": "fa128104b011c8144859f45a401248c50fcb3f912bf01c0dffe22005fe1daeb2"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.remove_binding",
+          "sha256": "7cb0ad4b27fe08f4873d7436bbe483e838be2f227c20784999738fa2a8b6c2eb"
+        },
+        {
+          "path": "kb_platform/core.py",
+          "language": "python",
+          "symbol": "Platform.ingest",
+          "sha256": "e2c3cb95a8e29c1db09506b9463cc1252198d5b0ca0fc7b2c48a29511fbe7d7f"
+        },
+        {
+          "path": "scripts/authority_commit_checks.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "366459436654f930280724d1751c6861194e4ee12cdd1d85b646b7dd29f5a190"
+        }
+      ],
+      "models": [
+        {
+          "id": "knowledge_atomic_authority_commit",
+          "module": "formal/session_authority/AtomicAuthorityCommit.tla",
+          "config": "formal/session_authority/AtomicAuthorityCommit.cfg",
+          "invariants": [
+            "TypeOK",
+            "CurrentAuthorityAtCommit",
+            "AtomicCompletion",
+            "NoUnknownRetry"
+          ],
+          "properties": [],
+          "bounds": {
+            "CheckAuthority": true,
+            "HoldLock": true,
+            "revision": [
+              0,
+              1
+            ],
+            "manifest": [
+              0,
+              1
+            ]
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "knowledge_atomic_unchecked",
+          "module": "formal/session_authority/AtomicAuthorityCommit.tla",
+          "config": "formal/session_authority/AtomicAuthorityCommitUnchecked.cfg",
+          "expected_invariant": "CurrentAuthorityAtCommit",
+          "kind": "negative",
+          "purpose": "Remove commit-time comparison",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "knowledge_atomic_released",
+          "module": "formal/session_authority/AtomicAuthorityCommit.tla",
+          "config": "formal/session_authority/AtomicAuthorityCommitReleased.cfg",
+          "expected_invariant": "CurrentAuthorityAtCommit",
+          "kind": "negative",
+          "purpose": "Release authority lock before physical commit",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "knowledge_atomic_unknownwitness",
+          "module": "formal/session_authority/AtomicAuthorityCommit.tla",
+          "config": "formal/session_authority/AtomicAuthorityCommitUnknownWitness.cfg",
+          "expected_invariant": "NoDurableUnknownWitness",
+          "kind": "negative",
+          "purpose": "Reach durable commit with lost acknowledgement",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "knowledge_atomic_rollbackwitness",
+          "module": "formal/session_authority/AtomicAuthorityCommit.tla",
+          "config": "formal/session_authority/AtomicAuthorityCommitRollbackWitness.cfg",
+          "expected_invariant": "NoRollbackWitness",
+          "kind": "negative",
+          "purpose": "Reach rollback with zero completion effects",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        }
       ]
     }
   ]

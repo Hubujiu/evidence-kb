@@ -23,19 +23,22 @@ def postflight_model_violations(root: Path, registry: dict) -> list[str]:
         if f'{invariant} == ~({predicate})' not in source:
             errors.append('postflight model requires the reviewed terminal witness: ' + invariant)
         config = 'formal/session_authority/PostflightAuthority' + name + 'Witness.cfg'
-        channel = 'negative_controls' if name == 'DeniedReplay' else 'known_limitations'
+        channel = 'negative_controls'
         rows = [row for machine in registry['machines'] for row in machine.get(channel, [])
                 if row['module'] == module and row['config'] == config and row.get('expected_invariant') == invariant]
         if len(rows) != 1:
             errors.append('postflight model requires registered witness in ' + channel + ': ' + invariant)
         path = root / config
-        expected = 'SPECIFICATION Spec CONSTANT ValidateReplay = TRUE INVARIANT ' + invariant + ' CHECK_DEADLOCK FALSE'
+        protect = 'TRUE' if name == 'DeniedReplay' else 'FALSE'
+        expected = 'SPECIFICATION Spec CONSTANTS ProtectCommit = ' + protect + ' ValidateReplay = TRUE INVARIANT ' + invariant + ' CHECK_DEADLOCK FALSE'
         if not path.is_file() or ' '.join(path.read_text('utf-8').split()) != expected:
-            errors.append('postflight witness must preserve positive-model behavior: ' + invariant)
-    limitations = [row for machine in registry['machines'] for row in machine.get('known_limitations', [])
+            errors.append('postflight witness must preserve its reviewed current/regression behavior: ' + invariant)
+    limitations = [row for machine in registry['machines'] for row in machine.get('negative_controls', [])
                    if row['module'] == module and row.get('expected_invariant') == 'CurrentAuthorityAtCommit']
     predicate = ('CurrentAuthorityAtCommit == (mode = "fresh" /\\ phase = "complete") => '
                  '(commitAllowed /\\ commitAuthority = evidenceAtCheck)')
     if len(limitations) != 1 or predicate not in source:
-        errors.append('postflight model must retain the independent CurrentAuthorityAtCommit limitation')
+        errors.append('postflight model must retain the historical CurrentAuthorityAtCommit counterexample')
+    if 'IF ProtectCommit /\\ ~(scopeAllowed /\\ evidenceAllowed /\\ authorityRevision = initialRevision)' not in source:
+        errors.append('postflight current behavior requires the atomic commit authority guard')
     return errors

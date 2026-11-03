@@ -138,6 +138,8 @@ Markdown/TXT 的新快照使用 `native-text/0.3.0-markdown-it`，快照哈希�
 
 ## 哪些目录不参与运行
 
+知识库授权与会话成功提交共用一个 authority 数据集和物理事务；通用会话接口仍保持领域无关。协议主版本、未知提交和旧布局迁移见[授权与会话的共同提交](authority-session-commit.md)。
+
 `reports/`、`.local/`、`output/`、`outputs/` 保存证据、私有运行状态或独立产物。它们不是产品模块来源。尤其不能把 `output/rag-evidence-testkit/` 导入本项目来替换当前框架。
 
 `scripts/check_project.py` 用 AST 检查活动产品源码的依赖方向、已知动态导入和搜索路径修改。它检查架构约定，不是执行任意恶意 Python 的安全沙箱。离线工作进程另行阻断 Python socket 网络发送和子进程启动。

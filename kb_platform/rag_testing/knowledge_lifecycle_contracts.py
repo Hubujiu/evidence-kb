@@ -13,13 +13,13 @@ from kb_platform.knowledge_service import KnowledgeService
 from kb_platform.plugin_native import PluginError
 from kb_platform.plugin_host import PluginSpec
 from . import agent_graph_contracts as graph
+from .knowledge_session_fixture import platform_fixture
 
 
 class KnowledgeLifecycleContracts(unittest.TestCase):
     def fixture(self, script=None):
         case = graph.AgentGraphContracts.setup_service(self, graph.normal_script() if script is None else script)
         profile = load_knowledge_profile(environment={})
-        next(row for row in profile['plugins'] if row['id'] == 'store')['config']['root'] = str(case.root)
         case.profile = profile
         return case
 
@@ -128,7 +128,6 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
             config_path.write_text(json.dumps({'luna': {'base_url': 'https://fixture.invalid/v1',
                 'model': 'fixture', 'api_key': 'synthetic'}}), 'utf-8')
             profile = load_knowledge_profile(environment={})
-            next(row for row in profile['plugins'] if row['id'] == 'store')['config']['root'] = str(Path(directory))
             provider = next(row for row in profile['plugins'] if row['id'] == 'provider')
             provider['config'] = {'providers_config': str(config_path)}
             borrowed, owned = Mock(retries=0), Mock(retries=0)
@@ -139,13 +138,13 @@ class KnowledgeLifecycleContracts(unittest.TestCase):
 
             with patch('kb_platform.remote.LunaClient', return_value=owned) as constructor:
                 with self.assertRaisesRegex(RuntimeError, 'synthetic knowledge mount failure'):
-                    create_knowledge_application(object(), SimpleNamespace(luna=borrowed), profile=profile,
+                    create_knowledge_application(platform_fixture(self, directory), SimpleNamespace(luna=borrowed), profile=profile,
                         service_factory=fail_after_mount, environment={})
             constructor.assert_called_once_with(str(config_path))
             owned.close.assert_called_once_with()
             borrowed.close.assert_not_called()
             provider['config'] = {}
             with self.assertRaisesRegex(RuntimeError, 'synthetic knowledge mount failure'):
-                create_knowledge_application(object(), SimpleNamespace(luna=borrowed), profile=profile,
+                create_knowledge_application(platform_fixture(self, directory), SimpleNamespace(luna=borrowed), profile=profile,
                     service_factory=fail_after_mount, environment={})
             borrowed.close.assert_not_called()

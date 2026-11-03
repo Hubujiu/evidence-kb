@@ -277,7 +277,9 @@ class KnowledgePersistenceContracts(unittest.TestCase):
                 self.assertEqual(Migration(migration['version'], tuple(migration['statements'])).digest,
                                  migration['digest'])
         self.assertNotIn('search_generations', METADATA.tables)
-        self.assertEqual(len(METADATA.tables), 12)
+        self.assertEqual(set(METADATA.tables) & {'sessions', 'events', 'requests', 'artifacts'},
+                         {'sessions', 'events', 'requests', 'artifacts'})
+        self.assertEqual(len(METADATA.tables), 16)
 
     def test_immutable_source_identity_is_idempotent_and_rejects_changed_content(self):
         repository = KnowledgeRepository(database=self.database)

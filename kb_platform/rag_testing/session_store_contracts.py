@@ -1,4 +1,7 @@
+from pathlib import Path
 from tempfile import TemporaryDirectory
+from .knowledge_session_fixture import session_fixture
+from kb_platform.knowledge_schema import knowledge_schema
 import unittest
 from unittest.mock import patch
 
@@ -56,15 +59,15 @@ class SessionStoreContracts(unittest.TestCase):
                          ['message', 'assistant', 'turn_completed'])
 
     def test_generic_backend_reopens_knowledge_sessions_with_artifacts_and_replay(self):
-        knowledge = KnowledgeSessions(SessionStore(self.root))
+        knowledge, authority = session_fixture(Path(self.root) / 'knowledge', self.actor, 'knowledge-scope')
         session = knowledge.create(self.actor, 'knowledge-scope', {'mode': 'LOCKED'}, 'fixture')
         sid = session['session_id']
         lease = knowledge.begin(self.actor, sid, 'request', 0, 'fingerprint')
         artifact = knowledge.artifact(self.actor, sid, lease['token'], {'original': 'unchanged'})
         committed = knowledge.finish(self.actor, sid, lease['token'], session['state'],
-                                  {'status': 'answered', 'answer': 'Existing answer'})
+                                  {'status': 'answered', 'answer': 'Existing answer'}, authority=authority)
         identity = knowledge.identity
-        generic = SessionStore(self.root)
+        generic = SessionStore(Path(self.root) / 'knowledge', schema=knowledge_schema)
         self.assertEqual(generic.load(self.actor, sid)['state'], session['state'])
         self.assertEqual(generic.begin(self.actor, sid, 'request', 0, 'fingerprint'), {'cached': committed})
         self.assertEqual(generic.read_artifact(self.actor, sid, artifact['artifact_id']), {'original': 'unchanged'})
@@ -130,7 +133,8 @@ class SessionStoreContracts(unittest.TestCase):
                     return value(*args, **kwargs)
                 return invoke
 
-        backend = RecordingBackend(self.store)
+        selected, authority = session_fixture(Path(self.root) / 'knowledge', self.actor)
+        backend = RecordingBackend(selected.store)
 
 
         with patch.object(SessionStore, '__init__', side_effect=AssertionError('unexpected backend')):
@@ -142,16 +146,16 @@ class SessionStoreContracts(unittest.TestCase):
             state = {**admitted['session']['state'], 'turn_number': 1}
             result = facade.finish(self.actor, sid, admitted['token'], state,
                                    {'status': 'answered', 'answer': 'Preserved answer'},
-                                   assistant_event={'text': 'Preserved answer'})
-        knowledge = KnowledgeSessions(SessionStore(self.root))
+                                   authority=authority, assistant_event={'text': 'Preserved answer'})
+        knowledge = KnowledgeSessions(SessionStore(Path(self.root) / 'knowledge', schema=knowledge_schema))
         old = knowledge.create(self.actor, 'scope', {'mode': 'AUTO'}, 'fixture')
         self.assertEqual(session['state'], old['state'])
         self.assertEqual(knowledge.load(self.actor, sid)['state'], state)
         self.assertEqual(knowledge.begin(self.actor, sid, 'turn', 0, 'fingerprint'), {'cached': result})
         self.assertEqual([event['kind'] for event in knowledge.events(self.actor, sid)],
                          ['assistant', 'turn_completed'])
-        self.assertEqual(backend.calls, ['create', 'begin', 'finish'])
-        self.assertEqual(facade.identity, self.store.identity)
+        self.assertEqual(backend.calls, ['create', 'begin', 'finish_in_transaction'])
+        self.assertEqual(facade.identity, selected.identity)
 
     def test_knowledge_facade_rejects_candidate_evidence_before_failure_commit(self):
         facade = KnowledgeSessions(self.store)

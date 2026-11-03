@@ -58,11 +58,11 @@ class PostflightModelContracts(unittest.TestCase):
                                                     if row['expected_invariant'] != 'NoDeniedReplayWitness']
                     (root / 'formal/session_authority/PostflightAuthorityDeniedReplayWitness.cfg').unlink()
                 elif mutation == 'limitation-as-mutation':
-                    row = machine['known_limitations'].pop()
-                    row['kind'] = 'negative'
-                    machine['negative_controls'].append(row)
+                    row = machine['negative_controls'].pop()
+                    row['kind'] = 'limitation'
+                    machine['known_limitations'].append(row)
                 elif mutation == 'missing-old-limitation':
-                    machine['known_limitations'] = [row for row in machine['known_limitations']
+                    machine['negative_controls'] = [row for row in machine['negative_controls']
                                                    if row['expected_invariant'] != 'CurrentAuthorityAtCommit']
                     (root / 'formal/session_authority/PostflightAuthorityCommitLimit.cfg').unlink()
                 else:
