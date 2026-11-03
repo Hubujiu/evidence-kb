@@ -1,8 +1,11 @@
+import ast
+import builtins
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
-from scripts.check_project import source_quality_violations
+from scripts.check_project import source_quality_violations, search_diagnostic_digest, search_probe_diagnostic_violations
 from .formal_state_machines import source_digest
 
 
@@ -15,8 +18,22 @@ class SearchStageLintContracts(unittest.TestCase):
             binding = {'path': 'fixture.py', 'language': 'python', 'symbol': '<module>'}
             expected = '6e896829a45cfcf24fd5414e19676f3e782b0da4dd4d002216ccbc4e9a5d278a'
             self.assertEqual(source_digest(root, binding), expected)
+            self.assertEqual(search_diagnostic_digest(ast.parse(path.read_text())), expected)
             path.write_text('def f():\n    return 1', encoding='utf-8')
             self.assertNotEqual(source_digest(root, binding), expected)
+
+    def test_script_gate_requires_no_project_import_or_path_change(self):
+        original_import = builtins.__import__
+
+        def stdlib_only(name, *args, **kwargs):
+            if name == 'kb_platform' or name.startswith('kb_platform.'):
+                raise ModuleNotFoundError('script entry has no project import path')
+            return original_import(name, *args, **kwargs)
+
+        for filename in ('search_stage_probe.py', 'search_stage_diagnostics.py', 'search_stage_probe_contracts.py'):
+            tree = ast.parse(Path(__file__).with_name(filename).read_text('utf-8'))
+            with patch.object(builtins, '__import__', side_effect=stdlib_only):
+                self.assertEqual(search_probe_diagnostic_violations(tree, 'kb_platform/rag_testing/' + filename), [])
 
     def test_mandatory_diagnostic_bindings_reject_behavior_mutants(self):
         sources = {

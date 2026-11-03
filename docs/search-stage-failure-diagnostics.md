@@ -169,10 +169,20 @@ The first published probe commit `13f0f6e` failed the Python 3.13 architecture a
 mutation contracts: its fixed fingerprints used `ast.dump`, whose Python 3.13
 default presentation omits empty fields that Python 3.12 prints. This diagnostic
 gate defect is separate from the native Windows failure. The original failed
-CI is retained. The replacement reuses the existing formal `source_digest` helper, which sets
-`show_empty=True` on Python 3.13 and retains the Python 3.12 default. There is
+CI is retained. The replacement follows the existing formal `source_digest` strategy, setting
+`show_empty=True` on Python 3.13 and retaining the Python 3.12 default. A contract
+compares its digest with that existing helper in both supported interpreters. There is
 no second hash format and no list of old version-dependent hashes. The pure-stdlib lint contract
 runs on both supported Python versions, verifies a fixed explicit-field example,
 and rejects behavior mutants. It is separated from native probe execution so
 lint compatibility can be checked without installing another native wheel.
 See [Python AST documentation](https://docs.python.org/3/library/ast.html#ast.dump).
+
+The first portability follow-up `9955ab1` directly imported the formal helper
+from the checker. That failed the actual script entry with `ModuleNotFoundError`
+because the project root is not on that entry's import path; module-import
+preflight had not represented the script entry. This failed CI is also retained.
+The corrected checker uses the same two-line stdlib AST serialization strategy
+without importing project modules or modifying the checker import path. A
+stdlib-only gate contract explicitly rejects project imports while validating
+all three protected sources. The real script entry remains required separately.
