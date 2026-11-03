@@ -227,9 +227,13 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
 
 def _registry_violations(root: Path, registry: dict | None, reviewed_digest) -> list[str]:
     from scripts.storage_grant_checks import violations as storage_grant_violations
+    from .formal_tool_isolation import formal_tool_isolation_violations
 
     errors = []
     try:
+        tool_owner = root / 'kb_platform/rag_testing/formal_state_machines.py'
+        if tool_owner.exists():
+            errors.extend(formal_tool_isolation_violations(tool_owner.read_text('utf-8')))
         if (root / 'kb_platform/rag_testing/sdk_gateway.py').exists():
             errors.extend(sdk_gateway_violations(root))
         canonical = root / 'kb_platform/semantic_page_ingestion.py'
@@ -533,6 +537,8 @@ def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
         raise ValueError('Unknown formal run kind')
     directory = output / spec['id']
     directory.mkdir()
+    scratch = (directory / 'java-tmp').resolve()
+    scratch.mkdir()
     inputs = directory / 'inputs'
     inputs.mkdir()
     snapshots = {}
@@ -552,7 +558,7 @@ def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
     shutil.copy2(config, inputs / config.name)
     snapshots[spec['config']] = digest(config.read_bytes())
     command = ['java', f'-Xmx{spec["heap_mb"]}m', '-XX:MaxMetaspaceSize=128m', '-XX:+UseParallelGC',
-               '-XX:+ExitOnOutOfMemoryError', '-cp', str(jar), 'tlc2.TLC', '-tool',
+               '-XX:+ExitOnOutOfMemoryError', f'-Djava.io.tmpdir={scratch}', '-cp', str(jar), 'tlc2.TLC', '-tool',
                '-workers', '1', '-seed', '1', '-fp', '0', '-fpmem', '0.25',
                '-metadir', str(directory / 'states'), '-config', config.name,
                Path(spec['module']).stem]
@@ -590,7 +596,7 @@ def run_inline_export(jar: Path, output: Path, inputs: Path, identity: str, modu
                       snapshots: dict, expected: list[tuple]) -> dict:
     directory = output / identity
     directory.mkdir()
-    scratch = directory / 'tmp'
+    scratch = (directory / 'java-tmp').resolve()
     scratch.mkdir()
     command = ['java', '-Xmx256m', '-XX:MaxMetaspaceSize=128m', '-XX:+UseParallelGC',
                '-XX:+ExitOnOutOfMemoryError', f'-Djava.io.tmpdir={scratch}', '-cp', str(jar),

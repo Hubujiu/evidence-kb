@@ -13555,6 +13555,104 @@
           "heap_mb": 256
         }
       ]
+    },
+    {
+      "id": "formal_tool_files",
+      "status": "partial",
+      "owners": [
+        "kb_platform/rag_testing/formal_state_machines.py"
+      ],
+      "states": [
+        "new",
+        "prepared",
+        "loaded",
+        "closed"
+      ],
+      "transitions": [
+        "Prepare isolated standard-module files",
+        "Load module",
+        "JVM exit deletes its extracted files"
+      ],
+      "invariants": [
+        "ActiveFilesRetained"
+      ],
+      "assumptions": [
+        "Exclusive output mkdir; absolute per-invocation Java temporary directory",
+        "Pinned JVM honors java.io.tmpdir; no external actor deletes another output"
+      ],
+      "exclusions": [
+        "Crash durability",
+        "Arbitrary external deletion",
+        "Unbounded simultaneous JVMs"
+      ],
+      "remaining_obligations": [
+        "Two-worker finite abstraction is not JVM or filesystem source refinement"
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/rag_testing/formal_state_machines.py",
+          "language": "python",
+          "symbol": "run_model",
+          "sha256": "406533f279a4163c93a411f802cf2f385b2cdc9c6e7816d12ec609efb6044282"
+        },
+        {
+          "path": "kb_platform/rag_testing/formal_state_machines.py",
+          "language": "python",
+          "symbol": "run_inline_export",
+          "sha256": "c6c54f689278ddccd7252454897dce12b9ee4198c8043863bb6c1cc677ca2945"
+        }
+      ],
+      "models": [
+        {
+          "id": "formal_tool_temporary_isolation",
+          "module": "formal/tool_temporary_files/ToolTemporaryIsolation.tla",
+          "config": "formal/tool_temporary_files/ToolTemporaryIsolation.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "invariants": [
+            "TypeOK",
+            "ActiveFilesRetained"
+          ],
+          "properties": [],
+          "bounds": {
+            "workers": 2,
+            "standard_modules": 1,
+            "SharedNamespace": false
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "formal_tool_shared_temporary",
+          "module": "formal/tool_temporary_files/ToolTemporaryIsolation.tla",
+          "config": "formal/tool_temporary_files/SharedToolTemporary.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "ActiveFilesRetained",
+          "kind": "negative",
+          "purpose": "Seed shared standard-module temporary filename and exit deletion"
+        },
+        {
+          "id": "formal_tool_overlap_witness",
+          "module": "formal/tool_temporary_files/ToolTemporaryIsolation.tla",
+          "config": "formal/tool_temporary_files/ToolTempOverlapWitness.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "NoOverlapWitness",
+          "kind": "negative",
+          "purpose": "Witness two loaded concurrent JVM abstractions"
+        },
+        {
+          "id": "formal_tool_survivor_witness",
+          "module": "formal/tool_temporary_files/ToolTemporaryIsolation.tla",
+          "config": "formal/tool_temporary_files/ToolTempSurvivorWitness.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "NoSurvivorWitness",
+          "kind": "negative",
+          "purpose": "Witness one loaded JVM retains its file after another exits"
+        }
+      ]
     }
   ],
   "composition_edges": [

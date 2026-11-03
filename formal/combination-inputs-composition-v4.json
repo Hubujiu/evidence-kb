@@ -4057,6 +4057,30 @@
       "field": "negative_controls",
       "id": "redis_cleanup_reentrant",
       "definition_sha256": "423d64a6dd82e10a628cee99fd6cbc4f6d0612aff40c2b588b0885e5aaee6a9b"
+    },
+    {
+      "machine": "formal_tool_files",
+      "field": "models",
+      "id": "formal_tool_temporary_isolation",
+      "definition_sha256": "9cf10aee697a3487b178e7a56e2e9e50a4385ae83bdb4d682eada1a8e4b8c7a0"
+    },
+    {
+      "machine": "formal_tool_files",
+      "field": "negative_controls",
+      "id": "formal_tool_shared_temporary",
+      "definition_sha256": "dd33fa370ea36e8450f6d4c375a8e3d0126856fb4c7b0284019c40243a4c47c5"
+    },
+    {
+      "machine": "formal_tool_files",
+      "field": "negative_controls",
+      "id": "formal_tool_overlap_witness",
+      "definition_sha256": "06a9934245e643dff8d6f909fb851e7df482e631469a74ba2c9d7ddcf4089bc0"
+    },
+    {
+      "machine": "formal_tool_files",
+      "field": "negative_controls",
+      "id": "formal_tool_survivor_witness",
+      "definition_sha256": "0c3fb6167234bfeaaa3c9ab6690bb4ad10c4743998954a1159fa09512cb263db"
     }
   ],
   "model_inputs": [
@@ -6853,6 +6877,26 @@
       "sha256": "cf879fe98862eda4e751d0e392ddedd34994bd429b0b6c1bc18ae375a7cff3e5"
     },
     {
+      "path": "formal/tool_temporary_files/SharedToolTemporary.cfg",
+      "sha256": "d5b212629ef2840f313499dc0bbbb52d9fa3094ed72fbfb4ba64014f2a4f3d13"
+    },
+    {
+      "path": "formal/tool_temporary_files/ToolTempOverlapWitness.cfg",
+      "sha256": "dc57792b8d032fe34d3bd37b049c4483de0c33386e4e9862ac775b4d091d8b0b"
+    },
+    {
+      "path": "formal/tool_temporary_files/ToolTempSurvivorWitness.cfg",
+      "sha256": "893fbee1d51ca7b6cfe64f8ed1a10c8fe51f80f16abd1261bcd8082dc620b23c"
+    },
+    {
+      "path": "formal/tool_temporary_files/ToolTemporaryIsolation.cfg",
+      "sha256": "67dbf7dc7f1c2ef4a97aec67bd2e77d6d23dd47130fe541067e11aa1587ff549"
+    },
+    {
+      "path": "formal/tool_temporary_files/ToolTemporaryIsolation.tla",
+      "sha256": "612efad67bf46615ab418bf459ab571fd52734a76326c8fd8eb4076c6c76d40f"
+    },
+    {
       "path": "formal/transfer_protocol/TransferOwnership.cfg",
       "sha256": "b3da15fd362f89a50baacd6560672d0ffb8d5b3c1308046449774efa6f810ce7"
     },
@@ -7748,6 +7792,13 @@
       "FormalCompositionContracts.test_terminal_tool_reuse_never_reenters_circuit_receipts_or_ledger",
       "FormalCompositionContracts.test_unknown_keeps_reserved_cost_and_is_not_retried_at_either_layer"
     ],
+    "kb_platform/rag_testing/formal_tool_isolation_contracts.py": [
+      "FormalToolIsolationContracts.test_actual_tool_owner_matches_isolation_lint",
+      "FormalToolIsolationContracts.test_independent_executions_cannot_delete_each_others_standard_modules",
+      "FormalToolIsolationContracts.test_inline_export_uses_the_same_exclusive_absolute_scratch_contract",
+      "FormalToolIsolationContracts.test_missing_shared_relative_or_reassigned_java_scratch_is_rejected_without_hashes",
+      "FormalToolIsolationContracts.test_model_launch_uses_exclusive_absolute_scratch_even_for_relative_output"
+    ],
     "kb_platform/rag_testing/storage_shutdown_contracts.py": [
       "StorageShutdownContracts.test_application_busy_close_drains_active_operation_before_cleanup",
       "StorageShutdownContracts.test_application_retains_actual_redis_provider_after_failed_physical_close",
@@ -7836,7 +7887,7 @@
       "path": "kb_platform/rag_testing/formal_state_machines.py",
       "symbol": "_registry_violations",
       "language": "python",
-      "sha256": "b2992acc161f60952f496fa27014e332e3f1f9facab3208f94f2ca0c247b7d77"
+      "sha256": "cdfb3046169a363e6a9ac1825485ef895515e4f2c5f89b01d241debda4a0a04b"
     },
     {
       "path": "kb_platform/rag_testing/formal_state_machines.py",
@@ -7993,6 +8044,12 @@
       "symbol": "<module>",
       "language": "python",
       "sha256": "09c258baa0f051aa47503993bf8f103db155cbe9158a020594cdb30256d09f2d"
+    },
+    {
+      "path": "kb_platform/rag_testing/formal_tool_isolation.py",
+      "symbol": "<module>",
+      "language": "python",
+      "sha256": "d292418575d3bba39c99430bd66c40d9bff82c5da3073ce6c182ce7e89618c2c"
     }
   ],
   "reviewed_changes_from_linux_v2": {
@@ -8410,6 +8467,30 @@
           "field": "negative_controls",
           "id": "redis_cleanup_reentrant",
           "definition_sha256": "423d64a6dd82e10a628cee99fd6cbc4f6d0612aff40c2b588b0885e5aaee6a9b"
+        },
+        {
+          "machine": "formal_tool_files",
+          "field": "models",
+          "id": "formal_tool_temporary_isolation",
+          "definition_sha256": "9cf10aee697a3487b178e7a56e2e9e50a4385ae83bdb4d682eada1a8e4b8c7a0"
+        },
+        {
+          "machine": "formal_tool_files",
+          "field": "negative_controls",
+          "id": "formal_tool_shared_temporary",
+          "definition_sha256": "dd33fa370ea36e8450f6d4c375a8e3d0126856fb4c7b0284019c40243a4c47c5"
+        },
+        {
+          "machine": "formal_tool_files",
+          "field": "negative_controls",
+          "id": "formal_tool_overlap_witness",
+          "definition_sha256": "06a9934245e643dff8d6f909fb851e7df482e631469a74ba2c9d7ddcf4089bc0"
+        },
+        {
+          "machine": "formal_tool_files",
+          "field": "negative_controls",
+          "id": "formal_tool_survivor_witness",
+          "definition_sha256": "0c3fb6167234bfeaaa3c9ab6690bb4ad10c4743998954a1159fa09512cb263db"
         }
       ],
       "changed": []
@@ -8580,6 +8661,26 @@
         {
           "path": "formal/storage_shutdown/StorageShutdown.tla",
           "sha256": "de5fd8c394a3d630a9a5d03a4b168093d18297154b71bbce02edb13ad155a8cf"
+        },
+        {
+          "path": "formal/tool_temporary_files/SharedToolTemporary.cfg",
+          "sha256": "d5b212629ef2840f313499dc0bbbb52d9fa3094ed72fbfb4ba64014f2a4f3d13"
+        },
+        {
+          "path": "formal/tool_temporary_files/ToolTempOverlapWitness.cfg",
+          "sha256": "dc57792b8d032fe34d3bd37b049c4483de0c33386e4e9862ac775b4d091d8b0b"
+        },
+        {
+          "path": "formal/tool_temporary_files/ToolTempSurvivorWitness.cfg",
+          "sha256": "893fbee1d51ca7b6cfe64f8ed1a10c8fe51f80f16abd1261bcd8082dc620b23c"
+        },
+        {
+          "path": "formal/tool_temporary_files/ToolTemporaryIsolation.cfg",
+          "sha256": "67dbf7dc7f1c2ef4a97aec67bd2e77d6d23dd47130fe541067e11aa1587ff549"
+        },
+        {
+          "path": "formal/tool_temporary_files/ToolTemporaryIsolation.tla",
+          "sha256": "612efad67bf46615ab418bf459ab571fd52734a76326c8fd8eb4076c6c76d40f"
         }
       ],
       "changed": []
@@ -8622,6 +8723,12 @@
           "symbol": "<module>",
           "language": "python",
           "sha256": "09c258baa0f051aa47503993bf8f103db155cbe9158a020594cdb30256d09f2d"
+        },
+        {
+          "path": "kb_platform/rag_testing/formal_tool_isolation.py",
+          "symbol": "<module>",
+          "language": "python",
+          "sha256": "d292418575d3bba39c99430bd66c40d9bff82c5da3073ce6c182ce7e89618c2c"
         }
       ],
       "changed": [
@@ -8636,7 +8743,7 @@
             "path": "kb_platform/rag_testing/formal_state_machines.py",
             "symbol": "_registry_violations",
             "language": "python",
-            "sha256": "b2992acc161f60952f496fa27014e332e3f1f9facab3208f94f2ca0c247b7d77"
+            "sha256": "cdfb3046169a363e6a9ac1825485ef895515e4f2c5f89b01d241debda4a0a04b"
           }
         }
       ]
