@@ -190,7 +190,7 @@ class FormalParseReuseContracts(unittest.TestCase):
 
     def test_manifest_binds_registry_body_and_rejects_removed_hooks(self):
         repository = Path(__file__).resolve().parents[2]
-        manifest = json.loads((repository / 'formal/combination-inputs-v1.json').read_text('utf-8'))
+        manifest = json.loads((repository / 'formal/combination-inputs-linux-v2.json').read_text('utf-8'))
         rows = [row for row in manifest['shared_entry_points']
                 if row['path'] == 'kb_platform/rag_testing/formal_state_machines.py'
                 and row['symbol'] == '_registry_violations']
@@ -343,10 +343,12 @@ def nested_expression():
 
         check = {'name': 'Run offline quality gates',
                  'run': 'uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}'}
-        diagnostic = {'name': 'Profile registry after Windows failure',
-                      'if': "failure() && runner.os == 'Windows'", 'timeout-minutes': 3,
+        diagnostic = {'name': 'Profile registry after failure',
+                      'if': 'failure()', 'timeout-minutes': 3,
                       'run': 'uv run --no-sync python -m kb_platform.rag_testing.formal_profile --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}/registry-profile.json'}
-        quality = {'steps': [check, diagnostic, {'name': 'Upload gate evidence', 'if': 'always()'}]}
+        quality = {'runs-on': '${{ matrix.os }}', 'strategy': {'fail-fast': False,
+                   'matrix': {'os': ['ubuntu-latest'], 'python': ['3.12', '3.13']}},
+                   'steps': [check, diagnostic, {'name': 'Upload gate evidence', 'if': 'always()'}]}
         self.assertEqual([], registry_profile_workflow_violations(quality))
         for index, key, value in ((0, 'if', 'false'), (0, 'continue-on-error', True),
                                   (1, 'if', 'always()'), (1, 'timeout-minutes', 4),
@@ -357,6 +359,17 @@ def nested_expression():
             self.assertTrue(registry_profile_workflow_violations(mutant))
         mutant = deepcopy(quality)
         mutant['steps'].reverse()
+        self.assertTrue(registry_profile_workflow_violations(mutant))
+        for key, value in (('os', ['ubuntu-latest', 'windows-latest']), ('os', []),
+                           ('python', ['3.12']), ('python', ['3.13'])):
+            mutant = deepcopy(quality)
+            mutant['strategy']['matrix'][key] = value
+            self.assertTrue(registry_profile_workflow_violations(mutant))
+        mutant = deepcopy(quality)
+        mutant['strategy']['fail-fast'] = True
+        self.assertTrue(registry_profile_workflow_violations(mutant))
+        mutant = deepcopy(quality)
+        mutant['runs-on'] = 'windows-latest'
         self.assertTrue(registry_profile_workflow_violations(mutant))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

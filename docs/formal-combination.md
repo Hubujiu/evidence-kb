@@ -58,7 +58,7 @@ bindings. Combination controls mutate each while leaving the discovery wrapper
 unchanged and require rejection. The combination's own contract IDs are also
 required by the static manifest.
 
-A three-minute, single-call registry profile runs only after failed Windows
+A three-minute, single-call registry profile runs only after failed Linux
 quality checks and before unconditional artifact upload. It sanitizes paths and
 does not retry tests, change deadlines, alter shards or make quality optional.
 Its ordering and exact failure-only scope are guarded.

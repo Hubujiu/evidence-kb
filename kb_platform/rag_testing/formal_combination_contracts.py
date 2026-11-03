@@ -7,12 +7,12 @@ import re
 from tempfile import TemporaryDirectory
 import unittest
 
-from scripts.check_project import exact_history_fingerprint_violations
+from scripts.check_project import exact_history_fingerprint_violations, offline_bootstrap_violations
 from .formal_state_machines import source_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / 'formal/combination-inputs-v1.json'
+MANIFEST = ROOT / 'formal/combination-inputs-linux-v2.json'
 
 
 def model_input_digest(data):
@@ -80,7 +80,7 @@ class FormalCombinationContracts(unittest.TestCase):
         self.manifest = json.loads(MANIFEST.read_text('utf-8'))
         self.registry = json.loads((ROOT / 'formal/registry-v1.json').read_text('utf-8'))
 
-    def test_frozen_public_inputs_require_exact_registered_definitions_not_counts(self):
+    def test_active_inputs_require_exact_registered_definitions_not_counts(self):
         self.assertEqual(self.manifest['schema_version'], 2)
         identities = [row['pr'] for row in self.manifest['inputs']]
         self.assertEqual(len(identities), len(set(identities)))
@@ -88,6 +88,60 @@ class FormalCombinationContracts(unittest.TestCase):
             for key in ('head', 'tree', 'base', 'base_tree'):
                 self.assertRegex(row[key], r'^[0-9a-f]{40}$')
         self.assertEqual(run_definition_violations(self.registry, self.manifest['required_runs']), [])
+
+    def test_linux_scope_preserves_historical_owner_obligations(self):
+        historical_bytes = (ROOT / 'formal/combination-inputs-v1.json').read_bytes()
+        self.assertEqual(model_input_digest(historical_bytes),
+                         '2cff8fd697800b6feb7b85b3f9189d0a876dc3e911f2d65b06a7df5593477636')
+        historical = json.loads(historical_bytes)
+        self.assertEqual(
+            [row for row in historical['required_runs'] if row['machine'] != 'check_process_owner'],
+            [row for row in self.manifest['required_runs'] if row['machine'] != 'check_process_owner'])
+        self.assertEqual(
+            [row for row in historical['model_inputs'] if not row['path'].startswith('formal/check_process_owner/')],
+            [row for row in self.manifest['model_inputs'] if not row['path'].startswith('formal/check_process_owner/')])
+        for path, cases in historical['required_contract_cases'].items():
+            if path not in ('kb_platform/rag_testing/check_process_owner_windows_contracts.py',
+                            'kb_platform/rag_testing/formal_combination_contracts.py'):
+                self.assertTrue(set(cases) <= set(self.manifest['required_contract_cases'][path]), path)
+        combination_path = 'kb_platform/rag_testing/formal_combination_contracts.py'
+        renamed = {
+            'test_frozen_public_inputs_require_exact_registered_definitions_not_counts':
+                'test_active_inputs_require_exact_registered_definitions_not_counts',
+            'test_required_tla_and_cfg_inputs_are_exact_reviewed_public_bytes':
+                'test_required_tla_and_cfg_inputs_are_exact_reviewed_active_bytes',
+        }
+        old_combination = set(historical['required_contract_cases'][combination_path])
+        for old, new in renamed.items():
+            identity = f'FormalCombinationContracts.{old}'
+            self.assertIn(identity, old_combination)
+            old_combination.remove(identity)
+            old_combination.add(f'FormalCombinationContracts.{new}')
+        self.assertTrue(old_combination <= set(self.manifest['required_contract_cases'][combination_path]))
+        retired = {'check_process_owner_windows', 'check_process_owner_coverage_pass_windows'}
+        old_runs = {row['id']: row for row in historical['required_runs']
+                    if row['machine'] == 'check_process_owner'}
+        new_runs = {row['id']: row for row in self.manifest['required_runs']
+                    if row['machine'] == 'check_process_owner'}
+        self.assertEqual(new_runs, {name: row for name, row in old_runs.items() if name not in retired})
+        old_models = {row['path']: row for row in historical['model_inputs']
+                      if row['path'].startswith('formal/check_process_owner/')}
+        new_models = {row['path']: row for row in self.manifest['model_inputs']
+                      if row['path'].startswith('formal/check_process_owner/')}
+        removed = {'formal/check_process_owner/CheckProcessOwnerWindows.cfg',
+                   'formal/check_process_owner/ReachPassWindows.cfg'}
+        changed = {'formal/check_process_owner/CheckProcessOwner.tla',
+                   'formal/check_process_owner/EarlyResumeSeeded.cfg'}
+        self.assertEqual(set(new_models), set(old_models) - removed)
+        for path in set(new_models) - changed:
+            self.assertEqual(new_models[path], old_models[path])
+        path = 'kb_platform/rag_testing/check_process_owner_contracts.py'
+        self.assertTrue(set(historical['required_contract_cases'][path]) <=
+                        set(self.manifest['required_contract_cases'][path]))
+        self.assertIn('CheckProcessOwnerContracts.test_non_linux_platform_refuses_both_entrypoints_before_spawn',
+                      self.manifest['required_contract_cases'][path])
+        self.assertNotIn('kb_platform/rag_testing/check_process_owner_windows_contracts.py',
+                         self.manifest['required_contract_cases'])
 
     def test_removed_positive_negative_or_known_limitation_cannot_hide_in_same_size_inventory(self):
         for field in ('models', 'negative_controls', 'known_limitations'):
@@ -106,7 +160,7 @@ class FormalCombinationContracts(unittest.TestCase):
         control['expected_invariant'] = 'UnreviewedInvariant'
         self.assertTrue(run_definition_violations(changed, self.manifest['required_runs']))
 
-    def test_required_tla_and_cfg_inputs_are_exact_reviewed_public_bytes(self):
+    def test_required_tla_and_cfg_inputs_are_exact_reviewed_active_bytes(self):
         self.assertEqual(model_input_violations(ROOT, self.registry, self.manifest['model_inputs']), [])
 
     def test_model_input_inventory_rejects_shape_identity_duplicates_and_changed_bytes(self):
@@ -170,6 +224,7 @@ class FormalCombinationContracts(unittest.TestCase):
             self.assertEqual(shared_entry_point_violations(root, bindings), [])
             for before, after in (
                 ('errors.extend(storage_grant_violations(root))', 'pass'),
+                ("errors.extend(f'{identity}: {error}' for error in check_process_owner_violations(root))", 'pass'),
                 ('actual = reviewed_digest(root, binding)', "actual = binding['sha256']"),
             ):
                 with self.subTest(mutation=after):
@@ -207,6 +262,54 @@ class FormalCombinationContracts(unittest.TestCase):
                     self.assertEqual(source_digest(root, bindings[0]), bindings[0]['sha256'])
                     self.assertEqual(shared_entry_point_violations(root, bindings),
                                      [f'Shared entry point changed: {path}:{symbol}'])
+
+    def test_delivery_control_cases_remain_mandatory(self):
+        path = ROOT / 'kb_platform/rag_testing/foundation_integration.py'
+        source = path.read_text('utf-8')
+
+        def has_delivery(source_text):
+            tree = ast.parse(source_text)
+            suite = next(node for node in tree.body
+                         if isinstance(node, ast.FunctionDef) and node.name == 'integration_suite')
+            loops = [node for node in ast.walk(suite) if isinstance(node, ast.For)
+                     and isinstance(node.iter, ast.Tuple)
+                     and sum(isinstance(item, ast.Name) and item.id == 'delivery_control_integration'
+                             for item in node.iter.elts) == 1]
+            expected = ast.parse('suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))').body[0]
+            return any(any(ast.dump(item) == ast.dump(expected) for item in loop.body) for loop in loops)
+
+        self.assertTrue(has_delivery(source))
+        original = '                   delivery_control_integration,\n'
+        self.assertEqual(source.count(original), 1)
+        self.assertFalse(has_delivery(source.replace(original, '', 1)))
+
+    def test_check_and_worker_bindings_detect_removed_ownership_and_offline_seal(self):
+        path = 'scripts/check_project.py'
+        symbols = ('run_check', 'run_worker')
+        bindings = [next(row for row in self.manifest['shared_entry_points']
+                         if row['path'] == path and row['symbol'] == symbol) for symbol in symbols]
+        original = (ROOT / path).read_text('utf-8')
+        mutations = (
+            ('run_check', 'result = run_owned(command, cwd=ROOT, env=env, stream=stream, timeout=timeout)',
+             'result = None'),
+            ('run_worker', '    machine = seal_offline_worker()\n    observation =',
+             '    machine = None\n    observation ='),
+        )
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / path
+            target.parent.mkdir(parents=True)
+            target.write_text(original, encoding='utf-8')
+            self.assertEqual(shared_entry_point_violations(root, bindings), [])
+            for symbol, before, after in mutations:
+                with self.subTest(symbol=symbol):
+                    self.assertEqual(original.count(before), 1)
+                    changed = original.replace(before, after, 1)
+                    target.write_text(changed, encoding='utf-8')
+                    self.assertEqual(shared_entry_point_violations(root, bindings),
+                                     [f'Shared entry point changed: {path}:{symbol}'])
+                    if symbol == 'run_worker':
+                        self.assertTrue(offline_bootstrap_violations(ast.parse(changed)))
 
     def test_historical_fingerprint_scope_cannot_expand_to_other_commits_files_rules_or_lines(self):
         original = (ROOT / '.gitleaksignore').read_text('utf-8').splitlines()

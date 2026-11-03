@@ -33,7 +33,7 @@ class HostProcessFormalContracts(unittest.TestCase):
             (PATHS[3], '(Ok(_), Err(error)) => Err(HostError::new("worker_cleanup", error.to_string())),', '(Ok(value), Err(_)) => Ok(value),'),
             (PATHS[4], 'let joined = join(&mut workers);', 'let joined = Ok(());'),
             (PATHS[5], 'self.child.try_wait()?.is_some() && self.group.is_empty()?', 'true'),
-            (PATHS[7], 'accounting.ActiveProcesses == 0', 'true'),
+            (PATHS[6], 'libc::killpg(group, libc::SIGKILL)', '0'),
         ]
         for path, old, new in mutants:
             with self.subTest(path=path, mutation=old):

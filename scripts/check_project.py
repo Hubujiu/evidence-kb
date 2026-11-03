@@ -4,7 +4,6 @@ import argparse
 import ast
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
-import faulthandler
 import importlib.util
 import hashlib
 import json
@@ -138,7 +137,7 @@ NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
                        'agent-services': {'serde', 'serde_json'},
                        'llm-service': {'serde', 'serde_json', 'tokio'},
                        'storage-service': {'serde', 'serde_json'},
-                       'plugin-host': {'serde', 'serde_json', 'libc', 'windows-sys'},
+                       'plugin-host': {'serde', 'serde_json', 'libc'},
                        'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
@@ -683,17 +682,21 @@ def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
 
 
 def registry_profile_workflow_violations(quality):
+    strategy = quality.get('strategy', {})
+    if (quality.get('runs-on') != '${{ matrix.os }}' or strategy.get('fail-fast') is not False
+            or strategy.get('matrix') != {'os': ['ubuntu-latest'], 'python': ['3.12', '3.13']}):
+        return ['quality must run both supported Python versions on Linux']
     steps = quality.get('steps', [])
     names = [step.get('name') for step in steps]
     expected = {
-        'name': 'Profile registry after Windows failure',
-        'if': "failure() && runner.os == 'Windows'",
+        'name': 'Profile registry after failure',
+        'if': 'failure()',
         'timeout-minutes': 3,
         'run': 'uv run --no-sync python -m kb_platform.rag_testing.formal_profile --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}/registry-profile.json',
     }
     name = expected['name']
     if names.count(name) != 1 or steps[names.index(name)] != expected:
-        return ['registry profile must be bounded, failure-only, Windows-only and observational']
+        return ['registry profile must be bounded, failure-only and observational']
     position = names.index(name)
     check = {'name': 'Run offline quality gates',
              'run': 'uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}'}
@@ -1052,12 +1055,22 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
         return run_contract_workers(output)
     sys.path.insert(0, str(ROOT))
     machine = seal_offline_worker()
+    observation = kind == 'contracts' and shard is not None and os.environ.get('KB_CONTRACT_OBSERVATION') == '1'
+
+    def phase(event):
+        if observation:
+            with (output / 'contracts-phases.jsonl').open('a', encoding='utf-8') as stream:
+                stream.write(json.dumps({'event': event, 'monotonic': time.monotonic()}) + '\n')
+
+    phase('worker_after_seal')
     write_json(output / 'worker-bootstrap.json', {'platform_machine': machine,
         'states': ['BOOTSTRAP', 'SEALED', 'DISCOVER'], 'audit_policy': 'deny_external_io',
         'scope': 'Only real stdlib platform.machine metadata is read before sealing; project/test imports follow the seal.'})
     if kind == "contracts":
-        faulthandler.dump_traceback_later(150)
+        from scripts.check_contract_watchdog import SnapshotWatchdog, valid_capture
+        watchdog = SnapshotWatchdog(150, sys.stderr.fileno())
         try:
+            phase('discovery_start')
             modules = contract_modules()
             if not modules:
                 raise RuntimeError("No contract modules discovered")
@@ -1083,10 +1096,14 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
             identities = [test.id() for test in selected]
             counts = {module: sum(discovered[identity] == module for identity in identities) for module in modules}
             suite = unittest.TestSuite(selected)
+            phase('discovery_done')
             with (output / 'contracts-timing.jsonl').open('w', encoding='utf-8') as timing:
+                phase('tests_start')
                 result = unittest.TextTestRunner(verbosity=2,
                     resultclass=lambda *args, **kwargs: ContractTimingResult(*args, timing=timing, **kwargs)).run(suite)
+                phase('tests_done')
             passed = result.wasSuccessful() and not result.skipped and not result.expectedFailures
+            phase('report_write_start')
             write_json(output / "contracts.json", {
                 "decision": "PASS" if passed else "FAIL", "modules": counts, "total": result.testsRun,
                 "discovered": discovered, "selected": identities,
@@ -1094,9 +1111,26 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
                 "expected_failures": len(result.expectedFailures),
                 "scope": "offline component contracts; no production RAG quality claim",
             })
+            phase('report_write_done')
+            phase('worker_returning')
             return 0 if passed else 1
         finally:
-            faulthandler.cancel_dump_traceback_later()
+            active_error = sys.exception()
+            try:
+                status = watchdog.cancel()
+            except Exception as exc:
+                status = {'thread_stopped': False, 'error': type(exc).__name__, 'written': False,
+                          'due': True, 'triggered': True}
+            if not valid_capture(status, required=False):
+                note = 'CONTRACT_STACK_CAPTURE_UNCONFIRMED: ' + json.dumps(status)
+                try:
+                    print(note, file=sys.stderr, flush=True)
+                except (OSError, ValueError):
+                    note += ' (diagnostic report unavailable)'
+                if active_error is not None:
+                    active_error.add_note(note)
+                else:
+                    raise RuntimeError(note)
     from kb_platform.rag_testing.contracts import Plan, Suite, Trace
     from kb_platform.rag_testing.runner import run
 
@@ -1113,12 +1147,16 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
 
 def run_check(name: str, command: list[str], output: Path, env: dict[str, str], *,
               timeout: int = 180) -> CheckResult:
+    sys.path.insert(0, str(ROOT))
+    from scripts.check_process_owner import run_owned
+
     log = output / f"{name}.log"
     try:
         with log.open("w", encoding="utf-8") as stream:
-            completed = subprocess.run(command, cwd=ROOT, env=env, stdout=stream,
-                                       stderr=subprocess.STDOUT, timeout=timeout, check=False)
-        code = completed.returncode
+            result = run_owned(command, cwd=ROOT, env=env, stream=stream, timeout=timeout)
+            if not result.passed:
+                stream.write(f"\nOwned process failure: {asdict(result)}\n")
+        code = 0 if result.passed else result.exit_code or 2
     except (OSError, subprocess.TimeoutExpired) as exc:
         with log.open("a", encoding="utf-8") as stream:
             stream.write(f"\n{type(exc).__name__}: {exc}\n")
@@ -1128,9 +1166,7 @@ def run_check(name: str, command: list[str], output: Path, env: dict[str, str], 
 
 
 def kernel_library_path(target: Path) -> Path:
-    name = {"win32": "agent_kernel.dll", "darwin": "libagent_kernel.dylib"}.get(
-        sys.platform, "libagent_kernel.so")
-    return target / "release" / name
+    return target / "release" / "libagent_kernel.so"
 
 
 def snapshot_native_library(build: CheckResult, target: Path, output: Path) -> Path | None:
@@ -1145,7 +1181,7 @@ def snapshot_native_library(build: CheckResult, target: Path, output: Path) -> P
 
 
 def host_binary_path(target: Path) -> Path:
-    return target / 'release' / ('evidence-host.exe' if sys.platform == 'win32' else 'evidence-host')
+    return target / 'release' / 'evidence-host'
 
 
 def snapshot_host_binary(build: CheckResult, target: Path, output: Path) -> Path | None:
@@ -1159,7 +1195,7 @@ def snapshot_host_binary(build: CheckResult, target: Path, output: Path) -> Path
 
 
 def native_worker_path(target: Path) -> Path:
-    return target / 'release/examples' / ('native_worker.exe' if sys.platform == 'win32' else 'native_worker')
+    return target / 'release/examples' / 'native_worker'
 
 
 def snapshot_native_worker(build: CheckResult, target: Path, output: Path) -> Path | None:
@@ -1175,7 +1211,7 @@ def snapshot_native_worker(build: CheckResult, target: Path, output: Path) -> Pa
 def snapshot_contract_provider(build: CheckResult, target: Path, output: Path) -> Path | None:
     if build.exit_code:
         return None
-    source = target / 'release/examples' / ('contract_provider.exe' if sys.platform == 'win32' else 'contract_provider')
+    source = target / 'release/examples' / 'contract_provider'
     destination = output / 'native' / source.name
     destination.parent.mkdir(exist_ok=True)
     shutil.copy2(source, destination)
@@ -1235,8 +1271,12 @@ def main() -> int:
         return int(result.exit_code != 0)
     results = []
     try:
+        sys.path.insert(0, str(ROOT))
+        from scripts.check_process_owner_lint import violations as process_owner_violations
+
         violations = architecture_violations(ROOT)
-    except (SyntaxError, ValueError) as exc:
+        violations.extend(process_owner_violations(ROOT))
+    except (OSError, SyntaxError, ValueError) as exc:
         violations = [f"{type(exc).__name__}: {exc}"]
     write_json(output / "architecture.json", {"violations": violations})
     results.append(CheckResult("architecture", int(bool(violations)), "architecture.json"))

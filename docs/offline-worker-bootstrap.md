@@ -28,8 +28,8 @@ No dependency upgrade or vendored SQLAlchemy patch is involved.
 ## Controlled state boundary
 
 1. **BOOTSTRAP:** the trusted checker reads real stdlib `platform.machine()` once.
-   Its OS metadata probe may use the standard Windows fallback. No product,
-   SQLAlchemy, or contract module is imported to warm the cache.
+   The earlier Windows failure involved its standard OS metadata fallback.
+   No product, SQLAlchemy, or contract module is imported to warm the cache.
 2. **SEALED:** immediately install the unchanged `deny_external_io` hook. There is
    no subprocess allowlist, fake machine value, environment-derived replacement,
    direct cache assignment, or temporary relaxation of the audit hook.
@@ -55,8 +55,9 @@ formatting and unrelated post-seal edits remain accepted.
 
 Runtime contracts verify that actual process/network audit events are rejected
 after sealing and that failures prevent discovery. The cold-metadata fallback
-test is explicitly synthetic; passing Linux tests is not actual Windows
-acceptance. The final Windows CI run must verify the original path.
+test is explicitly synthetic; passing Linux tests does not establish Windows
+acceptance. The historical Windows failure remains recorded; the current
+project and CI support Linux only.
 
 Worker/coordinator deadlines, contract discovery completeness, per-module
 nonzero counts, and skip/expected-failure rejection are unchanged. This change

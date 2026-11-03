@@ -3,14 +3,13 @@ use std::process::{Child, Command, ExitStatus};
 use std::thread;
 use std::time::{Duration, Instant};
 
-#[cfg(unix)]
+#[cfg(not(target_os = "linux"))]
+compile_error!("plugin-host requires Linux");
+
+#[cfg(target_os = "linux")]
 mod unix;
-#[cfg(windows)]
-mod windows;
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use unix::Group;
-#[cfg(windows)]
-use windows::Group;
 
 pub(crate) struct ProcessTree {
     pub child: Child,
@@ -32,14 +31,7 @@ impl ProcessTree {
     }
 
     pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-        #[cfg(windows)]
-        {
-            self.child.try_wait()
-        }
-        #[cfg(unix)]
-        {
-            self.group.status()
-        }
+        self.group.status()
     }
 
     pub fn shutdown(&mut self, deadline: Instant) -> io::Result<()> {

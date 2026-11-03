@@ -49,7 +49,7 @@ def profile_registry(root):
             'cpu_count': os.cpu_count(), 'platform': sys.platform,
             'wall_seconds': wall, 'process_seconds': cpu,
             'ordered_errors': [safe_error(error, root) for error in errors], 'profile': rows,
-            'scope': 'One read-only registry call after failed Windows checks; not a replacement or retry of contracts.'}
+            'scope': 'One read-only registry call after failed checks; not a replacement or retry of contracts.'}
 
 
 def main():

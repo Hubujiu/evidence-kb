@@ -282,6 +282,9 @@ def _registry_violations(root: Path, registry: dict | None, reviewed_digest) -> 
             if identity == 'provider_admission':
                 source = local_file(root, 'kb_platform/remote.py').read_text('utf-8')
                 errors.extend(f'{identity}: {error}' for error in presend_admission_violations(source))
+            if identity == 'check_process_owner':
+                from scripts.check_process_owner_lint import violations as check_process_owner_violations
+                errors.extend(f'{identity}: {error}' for error in check_process_owner_violations(root))
             if machine['status'] not in {'partial', 'unmodeled'}:
                 raise ValueError(f'{identity}: unknown coverage status')
             for key in ('owners', 'states', 'transitions', 'invariants', 'assumptions', 'exclusions', 'source_bindings'):

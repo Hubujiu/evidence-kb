@@ -42,7 +42,7 @@ PostgreSQL、MySQL、SQLite 提供商管理连接、受限运行权限和事务�
 
 ```mermaid
 flowchart TD
-    Launcher[scripts/start_delivery.ps1] --> Host[Rust evidence-host]
+    Launcher[scripts/delivery_control.py start] --> Host[Rust evidence-host]
     Host --> Worker[host_worker / host_applications]
     Worker --> Delivery[kb_platform.delivery]
     CLI[scripts/delivery_server_app.py 配置检查] --> Delivery

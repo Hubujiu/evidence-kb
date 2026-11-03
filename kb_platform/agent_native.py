@@ -33,14 +33,15 @@ class _Transition(ctypes.Structure):
 
 
 def library_path():
+    if sys.platform != 'linux':
+        raise KernelError('AGENT_KERNEL_UNSUPPORTED_PLATFORM')
     configured = os.environ.get('KB_AGENT_KERNEL_LIBRARY')
     if configured:
         path = Path(configured)
         if not path.is_absolute():
             raise KernelError('AGENT_KERNEL_PATH_MUST_BE_ABSOLUTE')
         return path
-    filename = ('agent_kernel.dll' if sys.platform == 'win32' else
-                'libagent_kernel.dylib' if sys.platform == 'darwin' else 'libagent_kernel.so')
+    filename = 'libagent_kernel.so'
     if os.environ.get('PLUGIN_HOST_EXECUTABLE'):
         return Path(os.environ['PLUGIN_HOST_EXECUTABLE']).parent / filename
     return Path(__file__).resolve().parents[1] / 'target' / 'debug' / filename

@@ -48,13 +48,12 @@ without run, multiple roots, and all message loss schedules remain obligations;
 no exhaustive source refinement is claimed. `reaped` is the supervisor's leader
 observation, not a promise that arbitrary descendants have disappeared.
 
-**Platform boundary:** Unix `Group::is_empty()` returns `true`; its cleanup
+**Platform boundary:** Linux `Group::is_empty()` returns `true`; its cleanup
 result cannot prove instantaneous physical disappearance of every descendant.
-The Unix binding includes `killpg`, non-reaping `waitid` status, and the actual
-`is_empty` implementation. Windows bindings include Job Object termination and
-`ActiveProcesses == 0`. The model's `cleanup = ack` is only the implementation's
-acknowledgement; existing platform integration remains separate. No Windows
-execution is claimed from local Linux results.
+The Linux binding includes `killpg`, non-reaping `waitid` status, and the actual
+`is_empty` implementation. The former Windows Job Object binding was removed
+when support became Linux-only. The model's `cleanup = ack` is only the
+implementation's acknowledgement; platform integration remains separate.
 
 Seeded profiles: omit the stop wait (`NoConcurrentStopClose`), or ignore final
 supervisor cleanup error (`SuccessRequiresCleanup`). Both must exit 12 with the

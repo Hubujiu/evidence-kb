@@ -132,7 +132,7 @@ audits are retained in `ci-evidence-pr52-fixed/`; the integration ZIP SHA-256 is
 
 The real ASGI test is moved into the existing controlled foundation
 integration stage, following its existing `delivery_status_contracts.live_suite`
-pattern. It remains mandatory on both Windows and Linux, with the same public
+pattern. It remains mandatory on Linux, with the same public
 asset and protected-identity assertions. A further pre-publication check of the
 actual Windows raw module hashes confirmed exact CRLF checkout bytes; existing
 routes use `Path.read_text()` and serve LF text. Only the fixture's expected

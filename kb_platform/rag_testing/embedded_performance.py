@@ -118,7 +118,7 @@ def main():
                             capture_output=True, text=True, check=True).stdout.strip()
     write_json(args.output / 'results.json', dict(rounds=rounds, process_memory=memory, container=json.loads(docker),
         memory_boundary='Python process includes BOTH clients and corpus/scorer objects; container contains only same 5882 full units. '
-                        'OS working set and Windows RSS differ; no full-stack percentage inferred.'))
+                        'Process and container memory have different scopes; no full-stack percentage inferred.'))
     profile = cProfile.Profile()
     profile.enable()
     for case in suite.cases:

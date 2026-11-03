@@ -136,7 +136,7 @@ Rust 串行协调注册、发布和移除服务元数据。执行业务、监听
 
 ## 构建与验证
 
-```powershell
+```bash
 cargo fetch --locked
 cargo build --locked --offline
 uv run --no-sync python scripts/check_project.py

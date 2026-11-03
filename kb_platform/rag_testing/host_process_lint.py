@@ -4,8 +4,7 @@ import re
 
 PATHS = ('kb_platform/host_worker.py', 'kb_platform/host_protocol.py', 'kb_platform/plugin_process.py',
          'rust/plugin-host/src/lib.rs', 'rust/plugin-host/src/process_plugin.rs',
-         'rust/plugin-host/src/process_tree.rs', 'rust/plugin-host/src/process_tree/unix.rs',
-         'rust/plugin-host/src/process_tree/windows.rs')
+         'rust/plugin-host/src/process_tree.rs', 'rust/plugin-host/src/process_tree/unix.rs')
 
 
 def compact(source):
@@ -37,7 +36,7 @@ def ordered(source, *fragments):
 
 
 def host_source_violations(sources):
-    worker, protocol, transport, host, sdk, tree, unix, windows = (sources[path] for path in PATHS)
+    worker, protocol, transport, host, sdk, tree, unix = (sources[path] for path in PATHS)
     errors = []
     run, shutdown, execute = (function(worker, name) for name in ('_run', '_shutdown', '_execute'))
     if (not ordered(run, 'finally:', 'self._finishing = True', 'self._stop_done.wait()', 'self._application.close()')
@@ -76,10 +75,8 @@ def host_source_violations(sources):
     if ('self.child.try_wait()?.is_some()&&self.group.is_empty()?' not in compact(body(tree, 'pub fn shutdown('))
             or 'returntermination;' not in compact(body(tree, 'pub fn shutdown('))
             or 'libc::killpg(group,libc::SIGKILL)' not in compact(body(unix, 'pub fn terminate('))
-            or 'Ok(true)' not in compact(body(unix, 'pub fn is_empty('))
-            or 'TerminateJobObject(' not in body(windows, 'pub fn terminate(')
-            or 'accounting.ActiveProcesses==0' not in compact(body(windows, 'pub fn is_empty('))):
-        errors.append('process-tree observations must preserve reviewed platform-specific cleanup boundary')
+            or 'Ok(true)' not in compact(body(unix, 'pub fn is_empty('))):
+        errors.append('process-tree observations must preserve reviewed Linux cleanup boundary')
     if ('len(payload) > MAX_FRAME' not in function(protocol, 'encode_frame')
             or 'len(payload) > MAX_MESSAGE' not in request
             or 'bytes.len()+1>MAX_FRAME_BYTES' not in compact(body(sdk, 'fn send('))):

@@ -20,9 +20,9 @@
 
 ## 环境
 
-离线验证需要 Python 3.12 或 3.13、[uv](https://docs.astral.sh/uv/) 和 [Rustup](https://rustup.rs/) 管理的 Rust 工具链。Windows 还需要 MSVC C++ 构建工具，Linux 需要 C 链接器。使用 PostgreSQL、MySQL、Redis 或 S3 服务时需要相应服务；本地默认组合使用 SQLite、embedded 与 files。远程模型、Embedding、Docling 和 OCR 不属于离线检查的前置条件。
+项目支持 Linux。离线验证需要 Python 3.12 或 3.13、C 链接器、[uv](https://docs.astral.sh/uv/) 和 [Rustup](https://rustup.rs/) 管理的 Rust 工具链。使用 PostgreSQL、MySQL、Redis 或 S3 服务时需要相应服务；本地默认组合使用 SQLite、embedded 与 files。远程模型、Embedding、Docling 和 OCR 不属于离线检查的前置条件。
 
-```powershell
+```bash
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 cargo fetch --locked
 cargo build --workspace --locked --offline
@@ -36,14 +36,14 @@ uv run --no-sync python scripts/check_project.py
 
 ## 启动本地文档工作台
 
-```powershell
+```bash
 uv run python scripts/bootstrap.py
 uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
 打开 [文档工作台](http://127.0.0.1:58080/)，使用 `.local/identities.json` 中生成的本地令牌。该文件包含私有令牌，不要提交。
 
-正常停止时，在另一终端执行 `New-Item .local/api.stop -ItemType File`；下次启动前移除该标记。宿主等待在途工作与资源清理，异常退出返回非零状态。Linux 可用 `touch .local/api.stop`。HTTP 路由和页面仍由现有 Python 应用提供。
+正常停止时，在另一终端执行 `touch .local/api.stop`；下次启动前移除该标记。宿主等待在途工作与资源清理，异常退出返回非零状态。HTTP 路由和页面仍由现有 Python 应用提供。
 
 `bootstrap.py` 显式初始化新的本地存储空间，并生成含数据身份的 `.local/storage.json`；已有文件不覆盖。新的知识库应用不兼容历史业务数据和配置，使用下面的知识库初始化命令创建空空间。切换后端可按 [业务数据重置](docs/storage-reset.md) 创建新的业务空间，旧目录及费用账本不删除。配置其他后端时，使用 [公共存储配置](docs/storage-plugins-execution-plan.md)，BM25、dense、正文与原件可分别绑定。
 
@@ -60,12 +60,12 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 
 将 `config/remote-providers.example.json` 或 `config/vertex-providers.example.json` 复制到 `.local/providers.json`，替换端点、模型和凭据。示例中的模型名称需要你的提供者实际支持，仓库不提供模型账户或额度。
 
-PowerShell 中显式启用后重启服务。
+显式启用后重启服务。
 
-```powershell
+```bash
 uv run python scripts/bootstrap.py --application knowledge
-$env:KB_REMOTE_MODELS = '1'
-$env:KB_PROVIDERS_CONFIG = '.local/providers.json'
+export KB_REMOTE_MODELS=1
+export KB_PROVIDERS_CONFIG=.local/providers.json
 uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
@@ -73,11 +73,11 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 
 默认知识库数据配置为 `.local/storage-knowledge.json`；`KB_STORAGE_CONFIG` 可显式覆盖。初始化命令不会复制旧知识库、索引或会话。没有发生自动迁移，也不会因连接错误清空数据。
 
-上传、索引和问答可能产生付费请求。执行真实验收前冻结输入、明确预算，并核对已有账本。固定交付工厂 `kb_platform.delivery:create_delivery_app` 还要求匹配的交付配置和私有运行目录。Windows 的 `scripts/start_delivery.ps1` 属于该高级交付流程，需要显式提供配置参数；本机交付配置不随仓库发布。
+上传、索引和问答可能产生付费请求。执行真实验收前冻结输入、明确预算，并核对已有账本。固定交付工厂 `kb_platform.delivery:create_delivery_app` 还要求匹配的交付配置和私有运行目录。本机交付配置不随仓库发布。先用 `uv run --no-sync python scripts/delivery_control.py start --check-only` 校验配置，再去掉 `--check-only` 启动；使用 `--config`、`--providers`、`--semantic-runtime` 和 `--run-root` 指定本机路径。启动输出包含进程回执路径。停止时执行 `uv run --no-sync python scripts/delivery_control.py stop --receipt <回执路径>`。依赖启动仅在指定 `--start-dependencies` 时执行。
 
 ## CI 与贡献
 
-GitHub Actions 在 PR、main/master 推送、合并队列及手动触发时运行相同检查。Windows 和 Ubuntu 分别验证 Python 3.12、3.13，并由 Gitleaks 扫描 Git 历史中的凭据，`required` 汇总任务要求全部检查成功。CI 不配置提供者密钥，也不执行付费评测。
+GitHub Actions 在 PR、main/master 推送、合并队列及手动触发时运行相同检查。Ubuntu 验证 Python 3.12、3.13，并由 Gitleaks 扫描 Git 历史中的凭据，`required` 汇总任务要求全部检查成功。CI 不配置提供者密钥，也不执行付费评测。
 
 - [开发与合并检查](docs/development.md) 说明命令、测试取舍及分支保护。
 - [模块架构](docs/architecture.md) 说明交付、产品和评测模块边界。

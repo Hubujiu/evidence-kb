@@ -18,34 +18,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def process_running(pid):
-    if os.name == 'nt':
-        import ctypes
-        from ctypes import wintypes
-
-        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
-        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        kernel.OpenProcess.restype = wintypes.HANDLE
-        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-        kernel.WaitForSingleObject.restype = wintypes.DWORD
-        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-        handle = kernel.OpenProcess(0x00100000, False, pid)
-        if not handle:
-            if ctypes.get_last_error() == 87:
-                return False
-            raise ctypes.WinError(ctypes.get_last_error())
-        try:
-            result = kernel.WaitForSingleObject(handle, 0)
-            if result not in (0, 258):
-                raise ctypes.WinError(ctypes.get_last_error())
-            return result == 258
-        finally:
-            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
-    if sys.platform != 'linux':
-        return True
     try:
         return Path(f'/proc/{pid}/stat').read_text().split(') ', 1)[1][0] != 'Z'
     except (FileNotFoundError, ProcessLookupError):
@@ -74,7 +50,7 @@ class HostIntegration(unittest.TestCase):
     def launch(self, factory, *, no_library=False, **config):
         environment = dict(os.environ)
         if no_library:
-            environment['KB_AGENT_KERNEL_LIBRARY'] = str(self.directory / 'does-not-exist.dll')
+            environment['KB_AGENT_KERNEL_LIBRARY'] = str(self.directory / 'does-not-exist.so')
         command = [os.environ['KB_PLUGIN_HOST_BINARY'], '--profile', str(self.profile(factory, **config))]
         completed = subprocess.run(command, cwd=ROOT, env=environment, text=True, encoding='utf-8',
                                    capture_output=True, timeout=35, check=False)
@@ -178,7 +154,7 @@ class HostIntegration(unittest.TestCase):
                     {'implementation': 'provider', 'version': '1', 'schema': empty}]}}
         profile = self.directory / 'contract-profile.json'
         profile.write_text(json.dumps(document), 'utf-8')
-        environment = {**os.environ, 'KB_AGENT_KERNEL_LIBRARY': str(self.directory / 'missing.dll')}
+        environment = {**os.environ, 'KB_AGENT_KERNEL_LIBRARY': str(self.directory / 'missing.so')}
         completed = subprocess.run([os.environ['KB_PLUGIN_HOST_BINARY'], '--profile', str(profile)],
             cwd=ROOT, env=environment, text=True, encoding='utf-8', capture_output=True, timeout=35, check=False)
         self.capture(completed.returncode, completed.stdout, completed.stderr)
@@ -401,77 +377,76 @@ class HostIntegration(unittest.TestCase):
                 process.kill()
                 process.communicate(timeout=5)
 
-    if os.name == 'posix':
-        def check_shutdown_signal(self, signum, *, hang_close=False, stop_file=False):
-            profile = self.profile('signal_application', hang_close=hang_close)
-            document = json.loads(profile.read_text('utf-8'))
-            document['shutdown_timeout_ms'] = 500 if hang_close else 5000
-            if stop_file:
-                document['stop_file'] = str(self.directory / 'unused-stop')
-            profile.write_text(json.dumps(document), 'utf-8')
-            unrelated = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
-            process = subprocess.Popen([os.environ['KB_PLUGIN_HOST_BINARY'], '--profile', str(profile)],
-                cwd=ROOT, text=True, encoding='utf-8', stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                start_new_session=True)
-            owned = {}
-            try:
-                expires = monotonic() + 15
-                while monotonic() < expires and process.poll() is None:
-                    running = [row for row in self.records() if row['event'] == 'running']
-                    if running:
-                        owned = {name: running[-1][name] for name in ('worker', 'descendant')}
-                        break
-                    Event().wait(0.02)
-                self.assertTrue(owned, 'Application did not start')
-                self.assertEqual(owned['worker'], os.getpgid(owned['descendant']))
-                self.assertNotEqual(process.pid, os.getpgid(owned['worker']))
-                self.assertTrue(all(process_running(pid) for pid in owned.values()))
-                if signum == signal.SIGINT:
-                    os.killpg(process.pid, signum)
-                else:
-                    process.send_signal(signum)
-                stdout, stderr = process.communicate(timeout=10)
-                self.capture(process.returncode, stdout, stderr)
-                expires = monotonic() + 2
-                while monotonic() < expires and any(process_running(pid) for pid in owned.values()):
-                    Event().wait(0.02)
-                observed = {name: process_running(pid) for name, pid in owned.items()}
-                (self.directory / 'liveness.json').write_text(json.dumps(observed), 'utf-8')
-                self.assertEqual({'worker': False, 'descendant': False}, observed)
-                self.assertIsNone(unrelated.poll())
-                events = [row['event'] for row in self.records()]
-                if hang_close:
-                    self.assertNotEqual(0, process.returncode)
-                    self.assertEqual('timeout', json.loads(stderr.splitlines()[-1])['code'])
-                    self.assertEqual(['created', 'running', 'stop', 'closing'], events)
-                else:
-                    self.successful(subprocess.CompletedProcess([], process.returncode, stdout, stderr))
-                    self.assertEqual(['created', 'running', 'stop', 'closing', 'closed'], events)
-            finally:
-                if process.poll() is None:
-                    process.kill()
-                    process.communicate(timeout=5)
-                if not owned:
-                    running = [row for row in self.records() if row['event'] == 'running']
-                    if running:
-                        owned = {name: running[-1][name] for name in ('worker', 'descendant')}
-                for pid in owned.values():
-                    if process_running(pid):
-                        os.kill(pid, signal.SIGKILL)
-                unrelated.kill()
-                unrelated.wait(timeout=5)
+    def check_shutdown_signal(self, signum, *, hang_close=False, stop_file=False):
+        profile = self.profile('signal_application', hang_close=hang_close)
+        document = json.loads(profile.read_text('utf-8'))
+        document['shutdown_timeout_ms'] = 500 if hang_close else 5000
+        if stop_file:
+            document['stop_file'] = str(self.directory / 'unused-stop')
+        profile.write_text(json.dumps(document), 'utf-8')
+        unrelated = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+        process = subprocess.Popen([os.environ['KB_PLUGIN_HOST_BINARY'], '--profile', str(profile)],
+            cwd=ROOT, text=True, encoding='utf-8', stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            start_new_session=True)
+        owned = {}
+        try:
+            expires = monotonic() + 15
+            while monotonic() < expires and process.poll() is None:
+                running = [row for row in self.records() if row['event'] == 'running']
+                if running:
+                    owned = {name: running[-1][name] for name in ('worker', 'descendant')}
+                    break
+                Event().wait(0.02)
+            self.assertTrue(owned, 'Application did not start')
+            self.assertEqual(owned['worker'], os.getpgid(owned['descendant']))
+            self.assertNotEqual(process.pid, os.getpgid(owned['worker']))
+            self.assertTrue(all(process_running(pid) for pid in owned.values()))
+            if signum == signal.SIGINT:
+                os.killpg(process.pid, signum)
+            else:
+                process.send_signal(signum)
+            stdout, stderr = process.communicate(timeout=10)
+            self.capture(process.returncode, stdout, stderr)
+            expires = monotonic() + 2
+            while monotonic() < expires and any(process_running(pid) for pid in owned.values()):
+                Event().wait(0.02)
+            observed = {name: process_running(pid) for name, pid in owned.items()}
+            (self.directory / 'liveness.json').write_text(json.dumps(observed), 'utf-8')
+            self.assertEqual({'worker': False, 'descendant': False}, observed)
+            self.assertIsNone(unrelated.poll())
+            events = [row['event'] for row in self.records()]
+            if hang_close:
+                self.assertNotEqual(0, process.returncode)
+                self.assertEqual('timeout', json.loads(stderr.splitlines()[-1])['code'])
+                self.assertEqual(['created', 'running', 'stop', 'closing'], events)
+            else:
+                self.successful(subprocess.CompletedProcess([], process.returncode, stdout, stderr))
+                self.assertEqual(['created', 'running', 'stop', 'closing', 'closed'], events)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+            if not owned:
+                running = [row for row in self.records() if row['event'] == 'running']
+                if running:
+                    owned = {name: running[-1][name] for name in ('worker', 'descendant')}
+            for pid in owned.values():
+                if process_running(pid):
+                    os.kill(pid, signal.SIGKILL)
+            unrelated.kill()
+            unrelated.wait(timeout=5)
 
-        def test_sigint_closes_application_and_reaps_descendants(self):
-            self.check_shutdown_signal(signal.SIGINT)
+    def test_sigint_closes_application_and_reaps_descendants(self):
+        self.check_shutdown_signal(signal.SIGINT)
 
-        def test_sigterm_closes_application_and_reaps_descendants(self):
-            self.check_shutdown_signal(signal.SIGTERM, stop_file=True)
+    def test_sigterm_closes_application_and_reaps_descendants(self):
+        self.check_shutdown_signal(signal.SIGTERM, stop_file=True)
 
-        def test_sigint_reaps_descendants_when_close_times_out(self):
-            self.check_shutdown_signal(signal.SIGINT, hang_close=True, stop_file=True)
+    def test_sigint_reaps_descendants_when_close_times_out(self):
+        self.check_shutdown_signal(signal.SIGINT, hang_close=True, stop_file=True)
 
-        def test_sigterm_reaps_descendants_when_close_times_out(self):
-            self.check_shutdown_signal(signal.SIGTERM, hang_close=True)
+    def test_sigterm_reaps_descendants_when_close_times_out(self):
+        self.check_shutdown_signal(signal.SIGTERM, hang_close=True)
 
 
 def main():
@@ -497,7 +472,7 @@ def main():
         'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0,
         'scope': 'Rust main host with trusted Python worker, controlled localhost HTTP and ASGI authentication; '
                  'synthetic component fixtures and unified evidence scoring; '
-                 'no live provider or production RAG quality claim; per-run Agent value kernel uses current DLL'}
+                 'no live provider or production RAG quality claim; per-run Agent value kernel uses current native library'}
     (args.output / 'summary.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), 'utf-8')
     return 0 if report['decision'] == 'PASS' else 1
 

@@ -369,6 +369,7 @@ class NativeBuildGateContracts(unittest.TestCase):
 
         with patch.object(check_project, 'ROOT', root), \
                 patch.object(check_project, 'architecture_violations', return_value=[]), \
+                patch('scripts.check_process_owner_lint.violations', return_value=[]), \
                 patch.object(check_project, 'run_check', side_effect=controlled_check), \
                 patch.object(check_project.sys, 'argv', ['check_project.py', '--output', str(output)]), \
                 patch('builtins.print'):

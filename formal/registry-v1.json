@@ -3003,7 +3003,6 @@
         "rust/plugin-host/src/process_plugin.rs",
         "rust/plugin-host/src/process_tree.rs",
         "rust/plugin-host/src/process_tree/unix.rs",
-        "rust/plugin-host/src/process_tree/windows.rs",
         "kb_platform/host_protocol.py",
         "kb_platform/host_worker.py",
         "kb_platform/plugin_process.py"
@@ -3106,13 +3105,13 @@
           "path": "rust/plugin-host/src/process_tree.rs",
           "language": "rust",
           "symbol": "ProcessTree::shutdown",
-          "sha256": "6550d9328af2124e29571012ec8719e6dfc4bafc61984cb8601652fcb381faf1"
+          "sha256": "d541f58a5d0e72a5c24ffe426236c6d4a899e02251f320c9447a3f78f213a858"
         },
         {
           "path": "rust/plugin-host/src/process_tree.rs",
           "language": "rust",
           "symbol": "ProcessTree::try_wait",
-          "sha256": "6550d9328af2124e29571012ec8719e6dfc4bafc61984cb8601652fcb381faf1"
+          "sha256": "d541f58a5d0e72a5c24ffe426236c6d4a899e02251f320c9447a3f78f213a858"
         },
         {
           "path": "rust/plugin-host/src/process_tree/unix.rs",
@@ -3125,18 +3124,6 @@
           "language": "rust",
           "symbol": "Group::is_empty",
           "sha256": "965b2bf7d3bd48c758977c7afaeb31391ae300f5fff7a559ed52c79b585ecdec"
-        },
-        {
-          "path": "rust/plugin-host/src/process_tree/windows.rs",
-          "language": "rust",
-          "symbol": "Group::terminate",
-          "sha256": "9e086f83672d88492006d32dd34b8440837863778f9113a8a562762bab68f6ee"
-        },
-        {
-          "path": "rust/plugin-host/src/process_tree/windows.rs",
-          "language": "rust",
-          "symbol": "Group::is_empty",
-          "sha256": "9e086f83672d88492006d32dd34b8440837863778f9113a8a562762bab68f6ee"
         },
         {
           "path": "kb_platform/host_protocol.py",
@@ -3268,7 +3255,7 @@
           "path": "rust/plugin-host/src/process_tree.rs",
           "language": "rust",
           "symbol": "ProcessTree::spawn",
-          "sha256": "6550d9328af2124e29571012ec8719e6dfc4bafc61984cb8601652fcb381faf1"
+          "sha256": "d541f58a5d0e72a5c24ffe426236c6d4a899e02251f320c9447a3f78f213a858"
         },
         {
           "path": "rust/plugin-host/src/process_tree/unix.rs",
@@ -3380,7 +3367,7 @@
         }
       ],
       "remaining_obligations": [
-        "Real platform process-tree/timeout integration remains mandatory; Windows behavior is not executed by local Linux tests.",
+        "Real Linux process-tree and timeout integration remains mandatory.",
         "Expand startup failure and multi-root protocols, callback ancestry, recent-ID cache eviction and malformed-frame model coverage.",
         "No machine-checked source refinement or unbounded state/zero-bug claim."
       ]
@@ -12402,6 +12389,221 @@
           "config": "formal/native_sessions/WitnessFailedCleanup.cfg",
           "expected_invariant": "WitnessFailedCleanup"
         }
+      ]
+    },
+    {
+      "id": "check_process_owner",
+      "status": "partial",
+      "owners": [
+        "scripts/check_process_owner.py",
+        "scripts/check_process_owner_linux.py"
+      ],
+      "states": [
+        "dedicated owner: new/suspended/running/cleaning/done; cleanup pending/complete/failed; verdict pending/PASS/FAIL",
+        "physical direct/grandchild/sentinel/reused identities, live and zombie sets, parent adoption, retained pidfd generations, session escape",
+        "sticky timedOut/cancelled/failure observations independent of direct child pending/zero/nonzero exit"
+      ],
+      "transitions": [
+        "CheckProcessOwner: Launch/Contain/Resume/Fork/EscapeSession/ExitDirect/ExitGrandchild/Timeout/Cancel/BeginCleanup/Capture/Signal/RefuseStale/Reap/ReusePid/ObserveEmpty/CleanupError/Publish"
+      ],
+      "invariants": [
+        "Only owned identities may be signalled; stale numeric PID reuse cannot receive a retained generation handle signal.",
+        "Execution requires subreaper containment before the payload can run.",
+        "Confirmed cleanup requires no live owned descendants; PASS requires child exit zero, no timeout/cancellation, no failure, complete cleanup, no live or uncollected owned descendant.",
+        "Timeout/cancellation failure remains sticky across final result publication."
+      ],
+      "assumptions": [
+        "One dedicated Linux subreaper owns only this check tree; containment setup completes before allowing payload execution.",
+        "One direct child, one grandchild, one outside sentinel and one outside PID replacement with two generations. Linux adoption on parent death is atomic in the abstraction.",
+        "Kernel pidfd identity and observed wait results are accurate. The abstract suspended state represents a Linux execution barrier.",
+        "No fairness or termination guarantee: cleanup may fail or remain pending. Coverage controls are reachable-state witnesses, not faulty implementation mutants."
+      ],
+      "exclusions": [
+        "Helper crash/recovery, arbitrary depth and concurrent new forks during teardown, hostile PID/user namespaces, privilege changes, and OS implementation bugs.",
+        "Linux work delegated to an external broker outside the subreaper ancestry is not covered by ECHILD or pidfd observations.",
+        "No machine-checked source refinement: source hashes and model-to-symbol mapping are review evidence only."
+      ],
+      "source_bindings": [
+        {
+          "path": "scripts/check_process_owner.py",
+          "language": "python",
+          "symbol": "Outcome.passed",
+          "sha256": "70706ebbd0126caefd97fc4f04bc0ef6910d75a35d05e6ddd37c0be04983a277"
+        },
+        {
+          "path": "scripts/check_process_owner.py",
+          "language": "python",
+          "symbol": "backend",
+          "sha256": "5436c1ba02348b0a1ec2a90c23649ace19d80fc85469c10dbdfc2891d1569d63"
+        },
+        {
+          "path": "scripts/check_process_owner.py",
+          "language": "python",
+          "symbol": "supervise",
+          "sha256": "59204b79755b3717d38d3d11b179cea34a44cfe0b8c48bc9f22e0a302117d73e"
+        },
+        {
+          "path": "scripts/check_process_owner.py",
+          "language": "python",
+          "symbol": "run_owned",
+          "sha256": "8c3b902a8f033be74c022a82dc74a45df793a056ab71371033927803079a96f6"
+        },
+        {
+          "path": "scripts/check_process_owner_linux.py",
+          "language": "python",
+          "symbol": "Owner.__init__",
+          "sha256": "a6d2e5a3cf2181658c5f4f337c48d9ee6cce4d28fae48803cd08c91c69e46c8c"
+        },
+        {
+          "path": "scripts/check_process_owner_linux.py",
+          "language": "python",
+          "symbol": "Owner.bind",
+          "sha256": "7ad97b6ede1c5682f3d6f063da7b1fa0155524615e2c4245926fac625b52696a"
+        },
+        {
+          "path": "scripts/check_process_owner_linux.py",
+          "language": "python",
+          "symbol": "Owner.cleanup",
+          "sha256": "6b1a85c768d6671867b121eba1e58a5aa702bdb35d68469cf45fbd8ce6ddf67a"
+        }
+      ],
+      "models": [
+        {
+          "id": "check_process_owner_linux",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/CheckProcessOwner.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoUnownedKill",
+            "NoPidReuseKill",
+            "NoResumeBeforeContainment",
+            "CleanupCompleteMeansEmpty",
+            "PassRequiresEvidence",
+            "StickyFailure"
+          ],
+          "properties": [],
+          "bounds": {
+            "direct_children": 1,
+            "grandchildren": 1,
+            "sentinels": 1,
+            "pid_reuses": 1,
+            "generations": 2
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "check_process_owner_direct_only",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/DirectOnlySeeded.cfg",
+          "expected_invariant": "CleanupCompleteMeansEmpty",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_early_resume",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/EarlyResumeSeeded.cfg",
+          "expected_invariant": "NoResumeBeforeContainment",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_stale_handle",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/StaleHandleSeeded.cfg",
+          "expected_invariant": "NoPidReuseKill",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_unowned_kill",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/UnownedKillSeeded.cfg",
+          "expected_invariant": "NoUnownedKill",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_overwrite_failure",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/OverwriteFailureSeeded.cfg",
+          "expected_invariant": "PassRequiresEvidence",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_adopt_escape",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachAdoptEscape.cfg",
+          "expected_invariant": "NeverAdoptEscape",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_cancelled_cleanup",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachCancelledCleanup.cfg",
+          "expected_invariant": "NeverCancelledCleanup",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_cleanup_error",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachCleanupError.cfg",
+          "expected_invariant": "NeverCleanupError",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_escaped_cleanup",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachEscapedCleanup.cfg",
+          "expected_invariant": "NeverEscapedCleanup",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_generation_refusal",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachGenerationRefusal.cfg",
+          "expected_invariant": "NeverGenerationRefusal",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_pass",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachPass.cfg",
+          "expected_invariant": "NeverPass",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_reused_handle",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachReusedHandle.cfg",
+          "expected_invariant": "NeverReusedHandle",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_timeout_cleanup",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachTimeoutCleanup.cfg",
+          "expected_invariant": "NeverTimeoutCleanup",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "Generate exact source bindings after review of final helper implementation and run mandatory integrated project/formal gates.",
+        "Review race-free pidfd acquisition against live ownership and dedicated-helper ECHILD observation; model abstracts syscall interleavings.",
+        "Run real Linux descendant/setsid/PID-reuse safety integration where required proc interfaces are available; current local fail-closed startup is not successful tree execution.",
+        "Expand helper failures, multiple generations, deeper trees and creation during cleanup before making broader claims."
       ]
     }
   ]

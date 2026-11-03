@@ -16,14 +16,15 @@ def case_ids(suite):
 def integration_suite():
     from . import (acceptance_workflow_integration, foundation_consumer_integration,
                    foundation_knowledge_integration, foundation_transport_integration, http_lifespan_integration,
-                   receipt_process_integration)
+                   receipt_process_integration, delivery_control_integration, check_process_owner_integration)
     from .delivery_status_contracts import live_suite as delivery_status_suite
     from .browser_owner_contracts import ASSET_CASE_ID, live_suite as browser_owner_suite
 
     suite = unittest.TestSuite()
     for module in (foundation_consumer_integration, foundation_knowledge_integration,
                    foundation_transport_integration, http_lifespan_integration, receipt_process_integration,
-                   acceptance_workflow_integration):
+                   delivery_control_integration,
+                   acceptance_workflow_integration, check_process_owner_integration):
         suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
     suite.addTests(delivery_status_suite())
     suite.addTest(browser_owner_suite())

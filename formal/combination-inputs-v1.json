@@ -392,6 +392,15 @@
       "base_tree": "6759e022b45822c7c198e542fdd58b77a4571f1f",
       "head_branch": "feat/formal-content-parse-reuse",
       "base_branch": "deps/formal-combination-base-6efd45e"
+    },
+    {
+      "pr": 77,
+      "head": "db5a80137d00de3be8f3f63c5bb03c5baddcf9cf",
+      "tree": "b15fb888dbbd908c042933a331be8f9a6be5537d",
+      "base": "5378c9b18d37c630c4e20250e4db51e0b9420352",
+      "base_tree": "45643f0629ec17b6c08dd188b058f37a1ade9285",
+      "head_branch": "feat/check-process-ownership",
+      "base_branch": "deps/formal-check-owner-base-5378"
     }
   ],
   "required_runs": [
@@ -3718,6 +3727,102 @@
       "field": "negative_controls",
       "id": "native-sessions-witnessfailedcleanup",
       "definition_sha256": "9be4cfb8920fc85645482f9643a9a73e3178e3d99ef8abbaa5ed770a572347e8"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "models",
+      "id": "check_process_owner_linux",
+      "definition_sha256": "dd6b0d6866b620d2f1764b0840ed3cc69edd20146b951e39cf49618a8c9ca97e"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "models",
+      "id": "check_process_owner_windows",
+      "definition_sha256": "90232af74b31fc6563e25c98b7f932ef985448ddab3b89cc15939d155922fc0a"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_direct_only",
+      "definition_sha256": "147aa0b09dda8f45cbe8ca5dfb15164ea8f1b936d8f170ba185367f35ba02822"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_early_resume",
+      "definition_sha256": "36c252abaa6558476fd7c56e131912eaec313475b485b0ccbfab095c63fc48a0"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_stale_handle",
+      "definition_sha256": "33b9e27e42e7ebef72d3e0b86af8c21546409691df420bd247520d20ba7a9379"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_unowned_kill",
+      "definition_sha256": "4fbcded3d6d7106490dd924be705cdf083a61cc42d65078f8334848407bacd56"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_overwrite_failure",
+      "definition_sha256": "13b3819ca597691f7755e143408d227285dfc97b4eae4bf8706b1455ad95c4be"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_adopt_escape",
+      "definition_sha256": "3f0ea450bb1a57784340137a81e31eef898ea741b911244383de7d19572ea78e"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_cancelled_cleanup",
+      "definition_sha256": "2f991901c7cdb91258e21037d52bd97857abbb724c78e5d34ce3aef2833b27d1"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_cleanup_error",
+      "definition_sha256": "aede000a671b7610dd30eb84e208a7981c909818d4fa937fbafccae6a1c774fd"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_escaped_cleanup",
+      "definition_sha256": "d3a79408780de22aa2bc0ee6114620d2676b89fd33f1d7e06591963879f7bcec"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_generation_refusal",
+      "definition_sha256": "92569c76ad508aad128be49ceb83bfec18896be140b0d8dd704c38736b37d1fd"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_pass",
+      "definition_sha256": "69b04edeacfaf6b46c4926ec6bfad0e051b66522e6a70e1c617d249f1056b8c3"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_pass_windows",
+      "definition_sha256": "f71f94d0cb5d4ae981da95abb5b7cbdcfec36f8de351a91099741fec4a1da71c"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_reused_handle",
+      "definition_sha256": "93ee9371554148336de732a5bed8bf3a7bc1f13fc1b120d093cacd938fe7f5db"
+    },
+    {
+      "machine": "check_process_owner",
+      "field": "negative_controls",
+      "id": "check_process_owner_coverage_timeout_cleanup",
+      "definition_sha256": "cd09dc7f43cd525a775f90ab71c52a58ca73da4c8b246a4df53c680e7e9a9837"
     }
   ],
   "model_inputs": [
@@ -4108,6 +4213,74 @@
     {
       "path": "formal/canonical_pages/CanonicalWitnessUnknown.cfg",
       "sha256": "a62e1f31f963c538a8cd33872a650ef3d3b7dbe2c09245f996c9083e197bc833"
+    },
+    {
+      "path": "formal/check_process_owner/CheckProcessOwner.cfg",
+      "sha256": "8418a3a9d246dbf95e78ebb9f73def1402f5dd1324d4da711a714442a2918e49"
+    },
+    {
+      "path": "formal/check_process_owner/CheckProcessOwner.tla",
+      "sha256": "43058c57679eea8919f1318b39fa2e44a78fbf4436fa3b00b39bc2790e433c52"
+    },
+    {
+      "path": "formal/check_process_owner/CheckProcessOwnerWindows.cfg",
+      "sha256": "bf06e34374c1fc5bf2796cd1ba7e8ebf5684ea659a9aaba89029076bfc2670b7"
+    },
+    {
+      "path": "formal/check_process_owner/DirectOnlySeeded.cfg",
+      "sha256": "60240709281ce63ce17edabdd5867f9bee54db03909286f3de19dd86ab4e34c0"
+    },
+    {
+      "path": "formal/check_process_owner/EarlyResumeSeeded.cfg",
+      "sha256": "74fd21f637ac15a1ad52ac64329bc3c62346c7f8b7f8e86a93493378225ce594"
+    },
+    {
+      "path": "formal/check_process_owner/OverwriteFailureSeeded.cfg",
+      "sha256": "74678fd8ba2ac2001e7a03f09e691e120f5082a74044e467bcef4920e2029a77"
+    },
+    {
+      "path": "formal/check_process_owner/ReachAdoptEscape.cfg",
+      "sha256": "ac69e6ae0ebc46c5496467ed3f9952e3de2c67debfb85910280b4765f414806c"
+    },
+    {
+      "path": "formal/check_process_owner/ReachCancelledCleanup.cfg",
+      "sha256": "8bce92df162b8a0e855eaef16190ba89d90a8d341357b4178390d22149683d7d"
+    },
+    {
+      "path": "formal/check_process_owner/ReachCleanupError.cfg",
+      "sha256": "59135df57e1e4f1a07a091e8ca616f04663395395073c36f12dc78c8c28edf08"
+    },
+    {
+      "path": "formal/check_process_owner/ReachEscapedCleanup.cfg",
+      "sha256": "7243a398f0cb9aaf08ab09f8d7522445179027c9a8ab5bb8eb65799bdbc30695"
+    },
+    {
+      "path": "formal/check_process_owner/ReachGenerationRefusal.cfg",
+      "sha256": "99cb14fdcf4a5a3c9520523ddeb5bfb8520cd9f082df348c5c64cf3e801d67d5"
+    },
+    {
+      "path": "formal/check_process_owner/ReachPass.cfg",
+      "sha256": "4d358d826383dcbf38d6f60cb567367e51d7164bfca1b4731ecce0e16bc685f3"
+    },
+    {
+      "path": "formal/check_process_owner/ReachPassWindows.cfg",
+      "sha256": "d8a183df03ef954f1fc684f834efd7dff2ffeb88de6305df73c492d0af2008b2"
+    },
+    {
+      "path": "formal/check_process_owner/ReachReusedHandle.cfg",
+      "sha256": "57f7484d0a6a4478314da6620df64cbf634a4e359e8c54b51d571195a397d877"
+    },
+    {
+      "path": "formal/check_process_owner/ReachTimeoutCleanup.cfg",
+      "sha256": "35402aa1a6bfff7c17efc488658cc97f778f29eb13d3853c3dc97439847bddca"
+    },
+    {
+      "path": "formal/check_process_owner/StaleHandleSeeded.cfg",
+      "sha256": "890099179049718a6300dd2dba389f419cea89bf1396c14e13ea2585fda0045c"
+    },
+    {
+      "path": "formal/check_process_owner/UnownedKillSeeded.cfg",
+      "sha256": "871d1d9d83e5840501894cfb4ed1539249f2f3dfbc143312d53fbc61fad826b0"
     },
     {
       "path": "formal/console_citation_view/ConsoleCitationView.cfg",
@@ -6398,6 +6571,47 @@
       "CanonicalPageLintContracts.test_mandatory_registry_gate_invokes_owner_check",
       "CanonicalPageLintContracts.test_refreshed_source_hash_cannot_hide_semantic_mutations"
     ],
+    "kb_platform/rag_testing/check_contract_watchdog_contracts.py": [
+      "SnapshotChecks.test_cancel_before_deadline_stops_without_later_output",
+      "SnapshotChecks.test_snapshot_contains_frames_but_never_local_values",
+      "SnapshotChecks.test_write_failure_and_unfinished_thread_cannot_pass",
+      "WorkerSnapshotFailureContracts.test_cleanup_exception_preserves_existing_worker_exception",
+      "WorkerSnapshotFailureContracts.test_missing_due_snapshot_cannot_be_reported_as_worker_pass",
+      "WorkerSnapshotFailureContracts.test_snapshot_failure_preserves_an_existing_worker_exception"
+    ],
+    "kb_platform/rag_testing/check_process_owner_contracts.py": [
+      "CheckProcessOwnerContracts.test_cleanup_failure_and_cancel_cannot_pass",
+      "CheckProcessOwnerContracts.test_failure_facts_are_sticky_even_when_cleanup_succeeds",
+      "CheckProcessOwnerContracts.test_linux_containment_capability_failure_precedes_payload",
+      "CheckProcessOwnerContracts.test_linux_empty_candidate_list_does_not_mean_no_children",
+      "CheckProcessOwnerContracts.test_linux_stale_generation_cannot_receive_owned_handle",
+      "CheckProcessOwnerContracts.test_mandatory_lint_rejects_owner_bypass_and_weakened_evidence",
+      "CheckProcessOwnerContracts.test_unsupported_platform_refuses_before_spawn"
+    ],
+    "kb_platform/rag_testing/check_process_owner_integration.py": [
+      "CheckProcessOwnerIntegration.test_cancellation_cleans_owned_tree_and_preserves_failure",
+      "CheckProcessOwnerIntegration.test_spawn_failure_and_normal_exit_have_terminal_ownership",
+      "CheckProcessOwnerIntegration.test_successful_child_exit_still_cleans_descendants",
+      "CheckProcessOwnerIntegration.test_timeout_cleans_independent_session_descendants_not_sentinel"
+    ],
+    "kb_platform/rag_testing/check_process_owner_windows_contracts.py": [
+      "WindowsOwnerFakeContracts.test_assign_precedes_resume_and_native_thread_is_retained",
+      "WindowsOwnerFakeContracts.test_assignment_failure_terminates_exact_process_without_resume",
+      "WindowsOwnerFakeContracts.test_audit_denial_never_creates_a_process",
+      "WindowsOwnerFakeContracts.test_audit_precedes_create_process",
+      "WindowsOwnerFakeContracts.test_cleanup_needs_both_job_empty_and_process_exited",
+      "WindowsOwnerFakeContracts.test_close_is_idempotent_and_owner_cannot_be_reused",
+      "WindowsOwnerFakeContracts.test_configuration_failure_closes_job",
+      "WindowsOwnerFakeContracts.test_create_failure_closes_job_and_temporary_handles",
+      "WindowsOwnerFakeContracts.test_native_audit_boundary_preserves_exact_event_and_arguments",
+      "WindowsOwnerFakeContracts.test_native_create_uses_suspension_and_exact_handle_allowlist",
+      "WindowsOwnerFakeContracts.test_normal_exit_still_terminates_descendants",
+      "WindowsOwnerFakeContracts.test_resume_failure_terminates_owned_process_and_job",
+      "WindowsWitnessFakeContracts.test_birth_mismatch_closes_without_termination",
+      "WindowsWitnessFakeContracts.test_exited_process_is_not_terminated",
+      "WindowsWitnessFakeContracts.test_fixture_receipt_only_describes_self",
+      "WindowsWitnessFakeContracts.test_retains_verified_handle_for_observation_and_termination"
+    ],
     "kb_platform/rag_testing/database_registry_lifecycle_contracts.py": [
       "DatabaseRegistryLifecycleContracts.test_active_lease_is_not_released_by_dispose_or_close",
       "DatabaseRegistryLifecycleContracts.test_close_blocks_registration_and_competing_close_before_cleanup_finishes",
@@ -7130,7 +7344,7 @@
       "path": "kb_platform/rag_testing/formal_state_machines.py",
       "symbol": "_registry_violations",
       "language": "python",
-      "sha256": "6b373dc735fe481c8eb0f4b439eb387ab30a387816cdee3991ad3efd3b5a5dec"
+      "sha256": "18a7e8359be2971221f0f27fb4728a6d9ca947a4b8a9a66b3969a162eb21724e"
     },
     {
       "path": "kb_platform/rag_testing/formal_state_machines.py",
@@ -7196,13 +7410,13 @@
       "path": "scripts/check_project.py",
       "symbol": "main",
       "language": "python",
-      "sha256": "8cb6054d905ccb1d8619f48b438acc9c90d7f035c6f2c0d8f448cad752f83b9b"
+      "sha256": "c330c8d98af598fcb8b44da107258ec6db7592e434bb0a60ee8bec2250c0a5a1"
     },
     {
       "path": "kb_platform/rag_testing/foundation_integration.py",
       "symbol": "integration_suite",
       "language": "python",
-      "sha256": "e1770962e3b60769af3f2a156fdb89adecef54f77d31d1eae5242bf2fa14ca76"
+      "sha256": "0254d5647f8957f2bef3b56df5f7d5546525becc1caf74d93de77b70a4f910e1"
     },
     {
       "path": "kb_platform/rag_testing/host_integration.py",
@@ -7233,6 +7447,18 @@
       "symbol": "idle_exit_case",
       "language": "python",
       "sha256": "d046cfcfc4d26dcae5ab2984f91dd9019e15f455699722dd4b34aa05937535d1"
+    },
+    {
+      "path": "scripts/check_project.py",
+      "symbol": "run_worker",
+      "language": "python",
+      "sha256": "9c44b314dd0d87720184813884d8490542b6e99a072346608ec4bbb04a71a0db"
+    },
+    {
+      "path": "scripts/check_project.py",
+      "symbol": "run_check",
+      "language": "python",
+      "sha256": "41dd911b2fed490b7881f499afddc592eeb62ce5ff51208cc92064e138e1f90e"
     }
   ]
 }

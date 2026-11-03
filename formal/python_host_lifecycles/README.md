@@ -58,7 +58,8 @@ race contracts continue to cover callback lock release, revalidation, cancellati
 registration and timer setup failures.
 
 HTTP async cases live in the mandatory foundation integration suite, not sealed
-contract workers: an event-loop self-pipe on Windows is real local OS activity.
+contract workers. A Windows event-loop self-pipe was real local OS activity in
+the historical cross-platform checks; the current verifier supports Linux only.
 No audit guard is disabled. Real FastAPI routers verify both sync and async
 handlers, no startup-on-close, entry failure and both actual factory cleanup paths.
 
