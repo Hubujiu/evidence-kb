@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+from contextlib import contextmanager
+from functools import lru_cache
 import hashlib
 import io
 import json
@@ -51,6 +53,8 @@ def local_file(root: Path, relative: str) -> Path:
 
 
 def python_symbols(source: str) -> dict[str, ast.AST]:
+    if isinstance(source, ast.AST):
+        raise TypeError('Python symbol discovery requires source text, not an AST')
     symbols = {'<module>': ast.parse(source)}
 
     def collect(node, prefix):
@@ -59,7 +63,7 @@ def python_symbols(source: str) -> dict[str, ast.AST]:
                 name = '.'.join(filter(None, (prefix, child.name)))
                 symbols[name] = child
                 collect(child, name)
-            else:
+            elif not isinstance(child, ast.expr):
                 collect(child, prefix)
 
     collect(symbols['<module>'], '')
@@ -67,10 +71,14 @@ def python_symbols(source: str) -> dict[str, ast.AST]:
 
 
 def source_digest(root: Path, binding: dict) -> str:
+    return _source_digest(root, binding, python_symbols)
+
+
+def _source_digest(root: Path, binding: dict, parse_symbols) -> str:
     path = local_file(root, binding['path'])
     source = path.read_text('utf-8')
     if binding['language'] == 'python':
-        symbols = python_symbols(source)
+        symbols = parse_symbols(source)
         if binding['symbol'] not in symbols:
             raise ValueError(f'Missing Python symbol: {binding["symbol"]}')
         options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
@@ -87,6 +95,78 @@ def source_digest(root: Path, binding: dict) -> str:
     return digest(path.read_bytes().replace(b'\r\n', b'\n'))
 
 
+@contextmanager
+def _source_digest_session():
+    parse_symbols = lru_cache(maxsize=128)(python_symbols)
+
+    def reviewed_digest(root, binding):
+        return _source_digest(root, binding, parse_symbols)
+
+    try:
+        yield reviewed_digest
+    finally:
+        parse_symbols.cache_clear()
+
+
+class _OversizedCandidates(Exception):
+    def __init__(self, result):
+        self.result = result
+
+
+def _candidate_symbols_uncached(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    found = set()
+    for symbol, node in python_symbols(source).items():
+        if isinstance(node, ast.ClassDef) and re.search(r'(State|Status|Phase)$', node.name):
+            found.add(symbol)
+        body = [node]
+        while body:
+            item = body.pop()
+            if item is not node and isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            targets = item.targets if isinstance(item, ast.Assign) else (
+                [item.target] if isinstance(item, (ast.AnnAssign, ast.AugAssign)) else [])
+            for target in targets:
+                name = target.attr if isinstance(target, ast.Attribute) else (
+                    target.id if isinstance(target, ast.Name) else None)
+                if isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant):
+                    name = target.slice.value
+                if name in state_names:
+                    found.add(symbol)
+            if not isinstance(item, ast.expr):
+                body.extend(ast.iter_child_nodes(item))
+    return frozenset(found)
+
+
+def _candidate_payload_bytes(source, state_names, result):
+    pending = [(source, state_names, result)]
+    seen = set()
+    total = 0
+    while pending:
+        value = pending.pop()
+        if id(value) in seen:
+            continue
+        seen.add(id(value))
+        total += sys.getsizeof(value)
+        if isinstance(value, (tuple, frozenset)):
+            pending.extend(value)
+    return total
+
+
+@lru_cache(maxsize=512)
+def _cached_candidate_symbols(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    result = _candidate_symbols_uncached(source, state_names)
+    if _candidate_payload_bytes(source, state_names, result) > 256 * 1024:
+        raise _OversizedCandidates(result)
+    return result
+
+
+def candidate_symbols(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    try:
+        return _cached_candidate_symbols(source, state_names)
+    except _OversizedCandidates as error:
+        return error.result
+
+
 def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
     found = set()
     for directory in roots:
@@ -97,25 +177,8 @@ def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
             if path.name.endswith('_contracts.py') or '__pycache__' in path.parts:
                 continue
             relative = path.relative_to(root).as_posix()
-            symbols = python_symbols(path.read_text('utf-8'))
-            for symbol, node in symbols.items():
-                if isinstance(node, ast.ClassDef) and re.search(r'(State|Status|Phase)$', node.name):
-                    found.add((relative, symbol))
-                body = [node]
-                while body:
-                    item = body.pop()
-                    if item is not node and isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                        continue
-                    targets = item.targets if isinstance(item, ast.Assign) else (
-                        [item.target] if isinstance(item, (ast.AnnAssign, ast.AugAssign)) else [])
-                    for target in targets:
-                        name = target.attr if isinstance(target, ast.Attribute) else (
-                            target.id if isinstance(target, ast.Name) else None)
-                        if isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant):
-                            name = target.slice.value
-                        if name in STATE_NAMES:
-                            found.add((relative, symbol))
-                    body.extend(ast.iter_child_nodes(item))
+            source = path.read_text('utf-8')
+            found.update((relative, symbol) for symbol in candidate_symbols(source, frozenset(STATE_NAMES)))
         for path in sorted(base.rglob('*.rs')):
             if path.name == 'tests.rs' or 'tests' in path.relative_to(base).parts:
                 continue
@@ -125,8 +188,6 @@ def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
         for path in sorted(base.rglob('*.mjs')):
             found.add((path.relative_to(root).as_posix(), '<module>'))
     return found
-
-
 def configured_operators(config: str, sections: set[str]) -> set[str]:
     tokens = re.sub(r'\\\*[^\n]*', '', config).split()
     result = set()
@@ -158,6 +219,11 @@ def operator_names(value, *, allow_empty: bool) -> bool:
 
 
 def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
+    with _source_digest_session() as reviewed_digest:
+        return _registry_violations(root, registry, reviewed_digest)
+
+
+def _registry_violations(root: Path, registry: dict | None, reviewed_digest) -> list[str]:
     from scripts.storage_grant_checks import violations as storage_grant_violations
 
     errors = []
@@ -226,7 +292,7 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
             for binding in machine['source_bindings']:
                 key = (binding['path'], binding['symbol'])
                 bindings.add(key)
-                actual = source_digest(root, binding)
+                actual = reviewed_digest(root, binding)
                 if not re.fullmatch('[0-9a-f]{64}', binding['sha256']) or actual != binding['sha256']:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
             if identity == 'tool_executor':

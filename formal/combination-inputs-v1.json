@@ -5007,7 +5007,13 @@
       "path": "kb_platform/rag_testing/formal_state_machines.py",
       "symbol": "registry_violations",
       "language": "python",
-      "sha256": "70ad7320e2dd4a2f07986e1524127c562636c897a5da8534abcc5b28cd03d945"
+      "sha256": "845f5c79d3cfbd1d15830a04197a1941658d89ba32dd0774d8ee0c016b88c2c3"
+    },
+    {
+      "path": "kb_platform/rag_testing/formal_state_machines.py",
+      "symbol": "_registry_violations",
+      "language": "python",
+      "sha256": "5665828103e3ad13ab2c95b7824b1ff8288e9d340d9357a45ae9f8f7277d2005"
     },
     {
       "path": "kb_platform/rag_testing/formal_state_machines.py",
@@ -5019,7 +5025,7 @@
       "path": "scripts/check_project.py",
       "symbol": "source_quality_violations",
       "language": "python",
-      "sha256": "b910752a5535d243503e4256573c731ce5a57f9a7b1ef914156377c5a4b2a034"
+      "sha256": "5cbe1aa7bbdd4c257fd05cd7afdf6c5acf71fe9d48c3f2af6857be11decb3af2"
     },
     {
       "path": "scripts/check_project.py",

@@ -276,6 +276,8 @@ def source_quality_violations(root: Path) -> list[str]:
             source = path.read_text('utf-8-sig')
             tree = ast.parse(source, filename=relative)
             module = relative.removesuffix('.py').replace('/', '.')
+            if relative == 'kb_platform/rag_testing/formal_state_machines.py':
+                errors.extend(f'{relative}: {error}' for error in formal_parse_reuse_violations(tree))
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
             if relative == 'kb_platform/rag_testing/search_router_contracts.py':
@@ -299,6 +301,172 @@ def source_quality_violations(root: Path) -> list[str]:
             for line, target in imports(tree, module):
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
+    return errors
+
+
+def formal_parse_reuse_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse(r"""def python_symbols(source: str) -> dict[str, ast.AST]:
+    if isinstance(source, ast.AST):
+        raise TypeError('Python symbol discovery requires source text, not an AST')
+    symbols = {'<module>': ast.parse(source)}
+
+    def collect(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                name = '.'.join(filter(None, (prefix, child.name)))
+                symbols[name] = child
+                collect(child, name)
+            elif not isinstance(child, ast.expr):
+                collect(child, prefix)
+    collect(symbols['<module>'], '')
+    return symbols
+
+class _OversizedCandidates(Exception):
+    def __init__(self, result):
+        self.result = result
+
+
+def _candidate_symbols_uncached(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    found = set()
+    for symbol, node in python_symbols(source).items():
+        if isinstance(node, ast.ClassDef) and re.search(r'(State|Status|Phase)$', node.name):
+            found.add(symbol)
+        body = [node]
+        while body:
+            item = body.pop()
+            if item is not node and isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            targets = item.targets if isinstance(item, ast.Assign) else (
+                [item.target] if isinstance(item, (ast.AnnAssign, ast.AugAssign)) else [])
+            for target in targets:
+                name = target.attr if isinstance(target, ast.Attribute) else (
+                    target.id if isinstance(target, ast.Name) else None)
+                if isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant):
+                    name = target.slice.value
+                if name in state_names:
+                    found.add(symbol)
+            if not isinstance(item, ast.expr):
+                body.extend(ast.iter_child_nodes(item))
+    return frozenset(found)
+
+
+def _candidate_payload_bytes(source, state_names, result):
+    pending = [(source, state_names, result)]
+    seen = set()
+    total = 0
+    while pending:
+        value = pending.pop()
+        if id(value) in seen:
+            continue
+        seen.add(id(value))
+        total += sys.getsizeof(value)
+        if isinstance(value, (tuple, frozenset)):
+            pending.extend(value)
+    return total
+
+
+@lru_cache(maxsize=512)
+def _cached_candidate_symbols(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    result = _candidate_symbols_uncached(source, state_names)
+    if _candidate_payload_bytes(source, state_names, result) > 256 * 1024:
+        raise _OversizedCandidates(result)
+    return result
+
+
+def candidate_symbols(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    try:
+        return _cached_candidate_symbols(source, state_names)
+    except _OversizedCandidates as error:
+        return error.result
+
+
+def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
+    found = set()
+    for directory in roots:
+        base = (root / directory).resolve()
+        if not base.is_relative_to(root.resolve()) or not base.is_dir():
+            raise ValueError(f'Invalid discovery root: {directory}')
+        for path in sorted(base.rglob('*.py')):
+            if path.name.endswith('_contracts.py') or '__pycache__' in path.parts:
+                continue
+            relative = path.relative_to(root).as_posix()
+            source = path.read_text('utf-8')
+            found.update((relative, symbol) for symbol in candidate_symbols(source, frozenset(STATE_NAMES)))
+        for path in sorted(base.rglob('*.rs')):
+            if path.name == 'tests.rs' or 'tests' in path.relative_to(base).parts:
+                continue
+            for name in re.findall(r'\benum\s+([A-Za-z_][A-Za-z_0-9]*)', path.read_text('utf-8')):
+                if re.search(r'(State|Status|Phase)$', name):
+                    found.add((path.relative_to(root).as_posix(), name))
+        for path in sorted(base.rglob('*.mjs')):
+            found.add((path.relative_to(root).as_posix(), '<module>'))
+    return found
+
+def local_file(root: Path, relative: str) -> Path:
+    if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
+        raise ValueError('Repository-relative nonempty path required')
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root.resolve()) or not path.is_file():
+        raise ValueError(f'Missing or escaping repository file: {relative}')
+    return path
+
+def source_digest(root: Path, binding: dict) -> str:
+    return _source_digest(root, binding, python_symbols)
+
+def _source_digest(root: Path, binding: dict, parse_symbols) -> str:
+    path = local_file(root, binding['path'])
+    source = path.read_text('utf-8')
+    if binding['language'] == 'python':
+        symbols = parse_symbols(source)
+        if binding['symbol'] not in symbols:
+            raise ValueError(f"Missing Python symbol: {binding['symbol']}")
+        options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
+        return digest(ast.dump(symbols[binding['symbol']], include_attributes=False, **options).encode())
+    if binding['language'] == 'javascript-module':
+        if path.suffix != '.mjs' or binding['symbol'] != '<module>':
+            raise ValueError('JavaScript bindings require a complete .mjs module')
+        return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+    if binding['language'] != 'rust':
+        raise ValueError('Source binding language must be python, rust or javascript-module')
+    leaf = binding['symbol'].replace('::', '.').rsplit('.', 1)[-1]
+    if leaf != '<module>' and (not re.search('\\b(?:fn|enum|struct)\\s+' + re.escape(leaf) + '\\b', source)):
+        raise ValueError(f"Missing Rust declaration: {binding['symbol']}")
+    return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+
+@contextmanager
+def _source_digest_session():
+    parse_symbols = lru_cache(maxsize=128)(python_symbols)
+
+    def reviewed_digest(root, binding):
+        return _source_digest(root, binding, parse_symbols)
+    try:
+        yield reviewed_digest
+    finally:
+        parse_symbols.cache_clear()
+
+def registry_violations(root: Path, registry: dict | None=None) -> list[str]:
+    with _source_digest_session() as reviewed_digest:
+        return _registry_violations(root, registry, reviewed_digest)
+""")
+    errors = []
+    protected = {node.name for node in expected.body}
+    for reference in expected.body:
+        actual = [node for node in tree.body if isinstance(node, type(reference))
+                  and node.name == reference.name]
+        if len(actual) != 1 or ast.dump(actual[0]) != ast.dump(reference):
+            errors.append(f'formal parse reuse: preserve fresh reads and invocation-local content cache in {reference.name}')
+    symbols = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'python_symbols']
+    if len(symbols) != 1 or symbols[0].decorator_list:
+        errors.append('formal parse reuse: public python_symbols must return independent uncached ASTs')
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id in protected | {'python_symbols'} for target in targets):
+                errors.append('formal parse reuse: no module-scope replacement of validation functions')
+    workers = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_registry_violations']
+    call = ast.parse('actual = reviewed_digest(root, binding)').body[0]
+    if len(workers) != 1 or sum(ast.dump(node) == ast.dump(call) for node in ast.walk(workers[0])) != 1:
+        errors.append('formal parse reuse: registry bindings require the scoped digest callback')
     return errors
 
 
@@ -493,11 +661,36 @@ def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
     return sorted(set(errors))
 
 
+def registry_profile_workflow_violations(quality):
+    steps = quality.get('steps', [])
+    names = [step.get('name') for step in steps]
+    expected = {
+        'name': 'Profile registry after Windows failure',
+        'if': "failure() && runner.os == 'Windows'",
+        'timeout-minutes': 3,
+        'run': 'uv run --no-sync python -m kb_platform.rag_testing.formal_profile --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}/registry-profile.json',
+    }
+    name = expected['name']
+    if names.count(name) != 1 or steps[names.index(name)] != expected:
+        return ['registry profile must be bounded, failure-only, Windows-only and observational']
+    position = names.index(name)
+    check = {'name': 'Run offline quality gates',
+             'run': 'uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}'}
+    if position == 0 or steps[position - 1] != check or position + 1 >= len(steps):
+        return ['registry profile must follow unchanged mandatory checks']
+    upload = steps[position + 1]
+    if upload.get('name') != 'Upload gate evidence' or upload.get('if') != 'always()':
+        return ['registry profile must precede unconditional evidence upload']
+    if quality.get('continue-on-error', False) or 'if' in quality:
+        return ['quality cannot be optional for registry diagnostics']
+    return []
+
+
 def workflow_violations(workflow):
     jobs = workflow.get('jobs', {})
     integration = jobs.get('integration', {})
     required = jobs.get('required', {})
-    errors = []
+    errors = registry_profile_workflow_violations(jobs.get('quality', {}))
     dependencies = {'quality': 'QUALITY_RESULT', 'secrets': 'SECRETS_RESULT',
                     'integration': 'INTEGRATION_RESULT', 'formal': 'FORMAL_RESULT'}
     if not dependencies.keys() <= set(required.get('needs', [])):
