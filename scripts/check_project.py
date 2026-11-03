@@ -269,7 +269,10 @@ def native_architecture_violations(root: Path) -> list[str]:
 
 
 def source_quality_violations(root: Path) -> list[str]:
-    errors = []
+    sys.path.insert(0, str(root))
+    from scripts.check_process_owner_lint import violations as process_owner_violations
+
+    errors = process_owner_violations(root)
     retired = {'kb_platform.agent_store', 'kb_platform.search_compat'}
     for directory in ('kb_platform', 'scripts'):
         for path in sorted((root / directory).rglob('*.py')):

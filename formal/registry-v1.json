@@ -12403,6 +12403,274 @@
           "expected_invariant": "WitnessFailedCleanup"
         }
       ]
+    },
+    {
+      "id": "check_process_owner",
+      "status": "partial",
+      "owners": [
+        "scripts/check_process_owner.py",
+        "scripts/check_process_owner_linux.py",
+        "scripts/check_process_owner_windows.py"
+      ],
+      "states": [
+        "dedicated owner: new/suspended/running/cleaning/done; cleanup pending/complete/failed; verdict pending/PASS/FAIL",
+        "physical direct/grandchild/sentinel/reused identities, live and zombie sets, parent adoption, Job containment, retained generation handles, session escape",
+        "sticky timedOut/cancelled/failure observations independent of direct child pending/zero/nonzero exit"
+      ],
+      "transitions": [
+        "CheckProcessOwner: Launch/Contain/Resume/Fork/EscapeSession/ExitDirect/ExitGrandchild/Timeout/Cancel/BeginCleanup/Capture/Signal/RefuseStale/Reap/ReusePid/ObserveEmpty/CleanupError/Publish"
+      ],
+      "invariants": [
+        "Only owned identities may be signalled; stale numeric PID reuse cannot receive a retained generation handle signal.",
+        "Execution requires containment first; Windows suspended launch precedes Job bind and resume.",
+        "Confirmed cleanup requires no live owned descendants; PASS requires child exit zero, no timeout/cancellation, no failure, complete cleanup, no live or uncollected owned descendant.",
+        "Timeout/cancellation failure remains sticky across final result publication."
+      ],
+      "assumptions": [
+        "One dedicated Linux subreaper owns only this check tree; containment setup completes before allowing payload execution.",
+        "One direct child, one grandchild, one outside sentinel and one outside PID replacement with two generations. Linux adoption on parent death is atomic in the abstraction.",
+        "Windows ordinary CreateProcess child inheritance with breakaway disabled; active Job count observation is represented by ObserveEmpty.",
+        "Kernel pidfd/handle identity and observed wait/Job-empty results are accurate. Shared suspended state represents a Linux execution barrier, not a Linux CREATE_SUSPENDED API.",
+        "No fairness or termination guarantee: cleanup may fail or remain pending. Coverage controls are reachable-state witnesses, not faulty implementation mutants."
+      ],
+      "exclusions": [
+        "Helper crash/recovery, arbitrary depth and concurrent new forks during teardown, hostile PID/user namespaces, privilege changes, and OS implementation bugs.",
+        "Windows WMI-created descendants, breakaway configurations, and platform API execution on Linux.",
+        "No machine-checked source refinement: source hashes and model-to-symbol mapping are review evidence only."
+      ],
+      "source_bindings": [
+        {
+          "path": "scripts/check_process_owner.py",
+          "language": "python",
+          "symbol": "Outcome.passed",
+          "sha256": "70706ebbd0126caefd97fc4f04bc0ef6910d75a35d05e6ddd37c0be04983a277"
+        },
+        {
+          "path": "scripts/check_process_owner.py",
+          "language": "python",
+          "symbol": "backend",
+          "sha256": "4aa1fc9b04f623bc37807cdafa3c90a9907b665dc2015f49397a810143777290"
+        },
+        {
+          "path": "scripts/check_process_owner.py",
+          "language": "python",
+          "symbol": "supervise",
+          "sha256": "dd898ebbf00e373a4515b9d1afbeabaaf1e53edaf71854e2e045b4192222d825"
+        },
+        {
+          "path": "scripts/check_process_owner.py",
+          "language": "python",
+          "symbol": "run_owned",
+          "sha256": "dfb45e7229ad1598bc44e21a7c2a68a1afed44ab0497b93f3454891bd19ec992"
+        },
+        {
+          "path": "scripts/check_process_owner_linux.py",
+          "language": "python",
+          "symbol": "Owner.__init__",
+          "sha256": "a6d2e5a3cf2181658c5f4f337c48d9ee6cce4d28fae48803cd08c91c69e46c8c"
+        },
+        {
+          "path": "scripts/check_process_owner_linux.py",
+          "language": "python",
+          "symbol": "Owner.bind",
+          "sha256": "7ad97b6ede1c5682f3d6f063da7b1fa0155524615e2c4245926fac625b52696a"
+        },
+        {
+          "path": "scripts/check_process_owner_linux.py",
+          "language": "python",
+          "symbol": "Owner.cleanup",
+          "sha256": "6b1a85c768d6671867b121eba1e58a5aa702bdb35d68469cf45fbd8ce6ddf67a"
+        },
+        {
+          "path": "scripts/check_process_owner_windows.py",
+          "language": "python",
+          "symbol": "Owner.spawn",
+          "sha256": "f11570618468e71bce1f8fde95702ceda86f186d17615240ba37b24086d848e3"
+        },
+        {
+          "path": "scripts/check_process_owner_windows.py",
+          "language": "python",
+          "symbol": "Owner.cleanup",
+          "sha256": "1145103e107926df0aeec1b241d88563407679ea908174361008c8450033533f"
+        },
+        {
+          "path": "scripts/check_process_owner_windows.py",
+          "language": "python",
+          "symbol": "_WindowsAPI.audit",
+          "sha256": "117464936a0c7e2312d30ed385f1327eea5fc69aecac555175f28f5eaca5b7f5"
+        }
+      ],
+      "models": [
+        {
+          "id": "check_process_owner_linux",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/CheckProcessOwner.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoUnownedKill",
+            "NoPidReuseKill",
+            "NoResumeBeforeContainment",
+            "CleanupCompleteMeansEmpty",
+            "PassRequiresEvidence",
+            "StickyFailure"
+          ],
+          "properties": [],
+          "bounds": {
+            "direct_children": 1,
+            "grandchildren": 1,
+            "sentinels": 1,
+            "pid_reuses": 1,
+            "generations": 2
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_windows",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/CheckProcessOwnerWindows.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoUnownedKill",
+            "NoPidReuseKill",
+            "NoResumeBeforeContainment",
+            "CleanupCompleteMeansEmpty",
+            "PassRequiresEvidence",
+            "StickyFailure"
+          ],
+          "properties": [],
+          "bounds": {
+            "direct_children": 1,
+            "grandchildren": 1,
+            "sentinels": 1,
+            "pid_reuses": 1,
+            "generations": 2
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "check_process_owner_direct_only",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/DirectOnlySeeded.cfg",
+          "expected_invariant": "CleanupCompleteMeansEmpty",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_early_resume",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/EarlyResumeSeeded.cfg",
+          "expected_invariant": "NoResumeBeforeContainment",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_stale_handle",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/StaleHandleSeeded.cfg",
+          "expected_invariant": "NoPidReuseKill",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_unowned_kill",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/UnownedKillSeeded.cfg",
+          "expected_invariant": "NoUnownedKill",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_overwrite_failure",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/OverwriteFailureSeeded.cfg",
+          "expected_invariant": "PassRequiresEvidence",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_adopt_escape",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachAdoptEscape.cfg",
+          "expected_invariant": "NeverAdoptEscape",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_cancelled_cleanup",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachCancelledCleanup.cfg",
+          "expected_invariant": "NeverCancelledCleanup",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_cleanup_error",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachCleanupError.cfg",
+          "expected_invariant": "NeverCleanupError",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_escaped_cleanup",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachEscapedCleanup.cfg",
+          "expected_invariant": "NeverEscapedCleanup",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_generation_refusal",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachGenerationRefusal.cfg",
+          "expected_invariant": "NeverGenerationRefusal",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_pass",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachPass.cfg",
+          "expected_invariant": "NeverPass",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_pass_windows",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachPassWindows.cfg",
+          "expected_invariant": "NeverPass",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_reused_handle",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachReusedHandle.cfg",
+          "expected_invariant": "NeverReusedHandle",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "check_process_owner_coverage_timeout_cleanup",
+          "module": "formal/check_process_owner/CheckProcessOwner.tla",
+          "config": "formal/check_process_owner/ReachTimeoutCleanup.cfg",
+          "expected_invariant": "NeverTimeoutCleanup",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "Generate exact source bindings after review of final helper implementation and run mandatory integrated project/formal gates.",
+        "Review race-free pidfd acquisition against live ownership and dedicated-helper ECHILD observation; model abstracts syscall interleavings.",
+        "Run real Linux descendant/setsid/PID-reuse safety integration where required proc interfaces are available; current local fail-closed startup is not successful tree execution.",
+        "Execute Windows suspended Job binding, inherited descendants, termination and active-process-zero tests on Windows.",
+        "Expand helper failures, multiple generations, deeper trees and creation during cleanup before making broader claims."
+      ]
     }
   ]
 }
