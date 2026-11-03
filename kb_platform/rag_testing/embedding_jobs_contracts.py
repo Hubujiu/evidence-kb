@@ -1,3 +1,4 @@
+from .offline_transport import offline_client_construction
 from .knowledge_persistence_contracts import postgres_repository, raw_job_transaction
 import json
 from contextlib import closing, contextmanager
@@ -44,7 +45,8 @@ def captured_google_fixture(platform):
 
         with patch.object(GoogleEmbeddingProvider, '_init_vertex_auth'), \
                 patch.object(GoogleEmbeddingProvider, '_vertex_headers', return_value={}):
-            provider = GoogleEmbeddingProvider(path)
+            with offline_client_construction():
+                provider = GoogleEmbeddingProvider(path)
             caps = dict(model=0, input_tokens=0, output_tokens=0,
                         remote_embedding_calls=1, embedding_input_tokens=50000)
             ledger = BudgetLedger(root / 'physical.sqlite', caps)
