@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 import faulthandler
 import importlib.util
+import hashlib
 import json
 import io
 import tokenize
@@ -282,6 +283,7 @@ def source_quality_violations(root: Path) -> list[str]:
                 errors.extend(f'{relative}: {error}' for error in search_stage_diagnostic_violations(tree))
             if relative == 'kb_platform/rag_testing/embedded_search_contracts.py':
                 errors.extend(f'{relative}: {error}' for error in embedded_stage_diagnostic_violations(tree))
+            errors.extend(f'{relative}: {error}' for error in search_probe_diagnostic_violations(tree, relative))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -295,6 +297,19 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def search_probe_diagnostic_violations(tree: ast.AST, relative: str) -> list[str]:
+    bindings = {'kb_platform/rag_testing/search_stage_probe.py': '3923c10cd2a749a43029ef30cbe72690ff8e44b4d177ea12368b24523252e5aa', 'kb_platform/rag_testing/search_stage_diagnostics.py': 'bc4b29fded6afd8b17ba8fb0c4cea16558e1b8d0b86b2efee37cb55949a2cc4d'}
+    if relative == 'kb_platform/rag_testing/search_stage_probe_contracts.py':
+        cases = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+                 and node.name == 'test_real_three_case_single_pass_retains_stage_observations']
+        if len(cases) != 1 or hashlib.sha256(ast.dump(cases[0]).encode()).hexdigest() != '09623de92d7ecb79f2be3ada1065475844a98d21668ec126c4b5716050e550f7':
+            return ['controlled search diagnostics require the real single discovered A/B/C contract']
+    expected = bindings.get(relative)
+    if expected is not None and hashlib.sha256(ast.dump(tree).encode()).hexdigest() != expected:
+        return ['controlled search diagnostics require reviewed bounded metadata, single-pass stage order and original errors']
+    return []
 
 
 def search_stage_diagnostic_violations(tree: ast.AST) -> list[str]:

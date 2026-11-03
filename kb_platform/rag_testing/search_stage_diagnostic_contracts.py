@@ -54,12 +54,14 @@ class SearchStageDiagnosticContracts(unittest.TestCase):
         error.__cause__ = cause
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            self._failure(root, error)
+            with patch.object(diagnostics, '_metadata_file', side_effect=AssertionError('active writers must not read contents')):
+                self._failure(root, error)
             self.assertIs(error.__cause__, cause)
             self.assertEqual(error.args, ('synthetic commit failure',))
             self.assertEqual(len(error.__notes__), 1)
             detail = json.loads(error.__notes__[0].removeprefix(diagnostics.PREFIX))
             self.assertEqual((detail['channel'], detail['status']), ('lexical', 'observed'))
+            self.assertEqual(detail['metadata'], {'status': 'not_sampled_active_writers'})
             self.assertTrue(detail['staging'].startswith('lexical-database/.staging-'))
             self.assertNotIn(str(root), error.__notes__[0])
             diagnostics.note_stage_failure(error, root)
