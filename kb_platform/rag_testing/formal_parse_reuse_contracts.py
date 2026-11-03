@@ -170,6 +170,7 @@ class FormalParseReuseContracts(unittest.TestCase):
         mutations = (
             ('parse_symbols.cache_clear()', 'pass'),
             ('elif not isinstance(child, ast.expr):', 'elif not isinstance(child, ast.stmt):'),
+            ('if isinstance(source, ast.AST):', 'if False:'),
             ('lru_cache(maxsize=128)', 'lru_cache(maxsize=None)'),
             ("source = path.read_text('utf-8')", "source = str(path)"),
             ('symbols = parse_symbols(source)', 'symbols = parse_symbols(str(path))'),
@@ -254,6 +255,13 @@ class Outer[T](factory(lambda: object)):
 value = (lambda item: item)([x for x in range(10)])
 """
         compile(source, 'declaration_fixture', 'exec')
+        injected = ast.parse('value = call()')
+        injected.body[0].value.args.append(ast.parse('def injected(): pass').body[0])
+        for untrusted in (ast.parse(source), injected):
+            with self.assertRaises(TypeError):
+                formal.python_symbols(untrusted)
+        from_bytes = formal.python_symbols(source.encode('utf-8'))
+        self.assertEqual(list(formal.python_symbols(source)), list(from_bytes))
         expected = {'<module>': ast.parse(source)}
 
         def collect(node, prefix):

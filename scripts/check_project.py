@@ -306,6 +306,8 @@ def source_quality_violations(root: Path) -> list[str]:
 
 def formal_parse_reuse_violations(tree: ast.AST) -> list[str]:
     expected = ast.parse(r"""def python_symbols(source: str) -> dict[str, ast.AST]:
+    if isinstance(source, ast.AST):
+        raise TypeError('Python symbol discovery requires source text, not an AST')
     symbols = {'<module>': ast.parse(source)}
 
     def collect(node, prefix):

@@ -53,6 +53,8 @@ def local_file(root: Path, relative: str) -> Path:
 
 
 def python_symbols(source: str) -> dict[str, ast.AST]:
+    if isinstance(source, ast.AST):
+        raise TypeError('Python symbol discovery requires source text, not an AST')
     symbols = {'<module>': ast.parse(source)}
 
     def collect(node, prefix):
