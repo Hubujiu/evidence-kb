@@ -331,3 +331,46 @@ def nested_expression():
             for name in ('tuple_target', 'named_expression', 'nested_expression'):
                 self.assertNotIn(('fixture.py', name), actual_candidates)
             self.assertEqual(19, len(actual_candidates))
+
+    def test_failure_only_profile_is_bounded_and_cannot_replace_required_checks(self):
+        from scripts.check_project import registry_profile_workflow_violations
+        from . import formal_profile
+        import sys
+        from types import SimpleNamespace
+
+        check = {'name': 'Run offline quality gates',
+                 'run': 'uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}'}
+        diagnostic = {'name': 'Profile registry after Windows failure',
+                      'if': "failure() && runner.os == 'Windows'", 'timeout-minutes': 3,
+                      'run': 'uv run --no-sync python -m kb_platform.rag_testing.formal_profile --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}/registry-profile.json'}
+        quality = {'steps': [check, diagnostic, {'name': 'Upload gate evidence', 'if': 'always()'}]}
+        self.assertEqual([], registry_profile_workflow_violations(quality))
+        for index, key, value in ((0, 'if', 'false'), (0, 'continue-on-error', True),
+                                  (1, 'if', 'always()'), (1, 'timeout-minutes', 4),
+                                  (1, 'continue-on-error', True), (1, 'run', 'echo PASS'),
+                                  (2, 'if', 'success()')):
+            mutant = deepcopy(quality)
+            mutant['steps'][index][key] = value
+            self.assertTrue(registry_profile_workflow_violations(mutant))
+        mutant = deepcopy(quality)
+        mutant['steps'].reverse()
+        self.assertTrue(registry_profile_workflow_violations(mutant))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / 'diagnostic.json'
+            revision = SimpleNamespace(stdout='a' * 40 + '\n' + 'b' * 40 + '\n')
+            with patch.object(formal_profile.subprocess, 'run', return_value=revision), \
+                    patch.object(formal_profile, 'registry_violations', return_value=[]) as registry, \
+                    patch.object(sys, 'argv', ['formal_profile', '--output', str(target)]):
+                self.assertEqual(0, formal_profile.main())
+                registry.assert_called_once_with(Path.cwd().resolve())
+            result = json.loads(target.read_text('utf-8'))
+            self.assertEqual([], result['ordered_errors'])
+            self.assertEqual('a' * 40, result['head'])
+            self.assertEqual('b' * 40, result['tree'])
+            self.assertTrue(result['profile'])
+            self.assertFalse(any(Path(row['file']).is_absolute() for row in result['profile']))
+            self.assertNotIn('environment', result)
+            self.assertEqual('<external>/private.py', formal_profile.source_label('/private/person/private.py', root))
+            self.assertNotIn('/private/person', formal_profile.safe_error('error /private/person/secret.py', root))
+            self.assertNotIn('C:\\Users', formal_profile.safe_error('error C:\\Users\\person\\secret.py', root))

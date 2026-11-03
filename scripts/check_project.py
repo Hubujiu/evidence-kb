@@ -620,11 +620,36 @@ def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
     return sorted(set(errors))
 
 
+def registry_profile_workflow_violations(quality):
+    steps = quality.get('steps', [])
+    names = [step.get('name') for step in steps]
+    expected = {
+        'name': 'Profile registry after Windows failure',
+        'if': "failure() && runner.os == 'Windows'",
+        'timeout-minutes': 3,
+        'run': 'uv run --no-sync python -m kb_platform.rag_testing.formal_profile --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}/registry-profile.json',
+    }
+    name = expected['name']
+    if names.count(name) != 1 or steps[names.index(name)] != expected:
+        return ['registry profile must be bounded, failure-only, Windows-only and observational']
+    position = names.index(name)
+    check = {'name': 'Run offline quality gates',
+             'run': 'uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}'}
+    if position == 0 or steps[position - 1] != check or position + 1 >= len(steps):
+        return ['registry profile must follow unchanged mandatory checks']
+    upload = steps[position + 1]
+    if upload.get('name') != 'Upload gate evidence' or upload.get('if') != 'always()':
+        return ['registry profile must precede unconditional evidence upload']
+    if quality.get('continue-on-error', False) or 'if' in quality:
+        return ['quality cannot be optional for registry diagnostics']
+    return []
+
+
 def workflow_violations(workflow):
     jobs = workflow.get('jobs', {})
     integration = jobs.get('integration', {})
     required = jobs.get('required', {})
-    errors = []
+    errors = registry_profile_workflow_violations(jobs.get('quality', {}))
     dependencies = {'quality': 'QUALITY_RESULT', 'secrets': 'SECRETS_RESULT',
                     'integration': 'INTEGRATION_RESULT', 'formal': 'FORMAL_RESULT'}
     if not dependencies.keys() <= set(required.get('needs', [])):
