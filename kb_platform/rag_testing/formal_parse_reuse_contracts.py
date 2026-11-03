@@ -1,6 +1,7 @@
 import ast
 from copy import deepcopy
 import os
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -180,3 +181,29 @@ class FormalParseReuseContracts(unittest.TestCase):
                 self.assertIn(old, source)
                 self.assertTrue(formal_parse_reuse_violations(ast.parse(source.replace(old, new, 1))))
         self.assertTrue(formal_parse_reuse_violations(ast.parse(source + '\nsource_digest = lru_cache()(source_digest)\n')))
+
+    def test_manifest_binds_registry_body_and_rejects_removed_hooks(self):
+        repository = Path(__file__).resolve().parents[2]
+        manifest = json.loads((repository / 'formal/combination-inputs-v1.json').read_text('utf-8'))
+        rows = [row for row in manifest['shared_entry_points']
+                if row['path'] == 'kb_platform/rag_testing/formal_state_machines.py'
+                and row['symbol'] == '_registry_violations']
+        self.assertEqual(1, len(rows))
+        row = rows[0]
+        self.assertEqual(row['sha256'], formal.source_digest(repository, row))
+        source = (repository / row['path']).read_text('utf-8')
+        wrapper = {**row, 'symbol': 'registry_violations'}
+        mutations = (
+            ('errors.extend(postflight_model_violations(root, registry))', 'pass'),
+            ("for binding in machine['source_bindings']:", 'for binding in []:'),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / row['path']
+            target.parent.mkdir(parents=True)
+            for old, new in mutations:
+                with self.subTest(mutation=old):
+                    self.assertIn(old, source)
+                    target.write_text(source.replace(old, new, 1), 'utf-8')
+                    self.assertNotEqual(row['sha256'], formal.source_digest(root, row))
+                    self.assertEqual(formal.source_digest(repository, wrapper), formal.source_digest(root, wrapper))
