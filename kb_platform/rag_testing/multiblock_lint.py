@@ -1,4 +1,3 @@
-"""Reviewed Assembler admission/projection seams, independent of refreshed hashes."""
 from kb_platform.rag_testing.llm_stream_lint import body, compact
 
 
