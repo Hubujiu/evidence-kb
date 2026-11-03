@@ -4081,6 +4081,42 @@
       "field": "negative_controls",
       "id": "formal_tool_survivor_witness",
       "definition_sha256": "0c3fb6167234bfeaaa3c9ab6690bb4ad10c4743998954a1159fa09512cb263db"
+    },
+    {
+      "machine": "sqlite_connection_bootstrap",
+      "field": "models",
+      "id": "sqlite_connection_bootstrap",
+      "definition_sha256": "ab5e2a7f5c4709a2e7191be84ceec8cfe9ee66c32776fe122528154a0d6aea5b"
+    },
+    {
+      "machine": "sqlite_connection_bootstrap",
+      "field": "negative_controls",
+      "id": "sqlite_bootstrap_early_publish",
+      "definition_sha256": "a70aaf5a6d26a90fac32cceb874cf754ed7eb0c07b59a10a4aeb2518e96cdadd"
+    },
+    {
+      "machine": "sqlite_connection_bootstrap",
+      "field": "negative_controls",
+      "id": "sqlite_bootstrap_retry_other",
+      "definition_sha256": "f0ed73794115b712fd79b24b12c14b84d5f36248c274f8bb2265548d06dd1b26"
+    },
+    {
+      "machine": "sqlite_connection_bootstrap",
+      "field": "negative_controls",
+      "id": "sqlite_bootstrap_reset_budget",
+      "definition_sha256": "35d75c0698bd26dbdced9f787f0fd1f50690c88c494771320f2f5d5d0456243d"
+    },
+    {
+      "machine": "sqlite_connection_bootstrap",
+      "field": "negative_controls",
+      "id": "sqlite_bootstrap_retry_witness",
+      "definition_sha256": "bb633ea7cc9595e7db98ca3a4198abf95677e320970faae8407ac233d0746a68"
+    },
+    {
+      "machine": "sqlite_connection_bootstrap",
+      "field": "negative_controls",
+      "id": "sqlite_bootstrap_exhausted_witness",
+      "definition_sha256": "33c7918419bb3725a2e32dba045b09cc94b725e63de006b21bf1fd0461bec849"
     }
   ],
   "model_inputs": [
@@ -6529,6 +6565,34 @@
       "sha256": "3a1b4397aa2b4d342941662df37b7b8f40343cc2b0eb7e66ff4779c04296dd6f"
     },
     {
+      "path": "formal/sqlite_bootstrap/BootstrapExhaustedWitness.cfg",
+      "sha256": "4c88bff7d820fae7f77aa0952058479e2b7cce23ed3f3645cb1df24fe044076b"
+    },
+    {
+      "path": "formal/sqlite_bootstrap/BootstrapRetryWitness.cfg",
+      "sha256": "3f40945c5c6e743ed59366f701ede66ca40fd8aa543d2356131c1cadf53e9a23"
+    },
+    {
+      "path": "formal/sqlite_bootstrap/EarlyBootstrapPublish.cfg",
+      "sha256": "6193a8f09c01e5b350e16798c80e198ec71968e4c06bfeef0562d57e0b4cc826"
+    },
+    {
+      "path": "formal/sqlite_bootstrap/ResetBootstrapBudget.cfg",
+      "sha256": "c7f3f68a8ed14c1124f027602fc760d6035644d9e48d92582b292145fd52e251"
+    },
+    {
+      "path": "formal/sqlite_bootstrap/RetryBootstrapOther.cfg",
+      "sha256": "0ce4ec99e73cddf4981e624a6d719de20b897e58525bcc4f247cb04701745e95"
+    },
+    {
+      "path": "formal/sqlite_bootstrap/SQLiteBootstrap.cfg",
+      "sha256": "8039dacefe28fa98d0a2a44ef0ff76d5488072710a98bec652b50cbde715aff5"
+    },
+    {
+      "path": "formal/sqlite_bootstrap/SQLiteBootstrap.tla",
+      "sha256": "a680efbe651bfc0de1ecff05af7f9ef99ecb7749ad9c48eccca92d37d0a626f1"
+    },
+    {
       "path": "formal/storage_grants/StorageGrants.cfg",
       "sha256": "da60922ae42e26b15e36f65ff97d159c6e71d90f626a02881184a2b379eadaf9"
     },
@@ -7799,6 +7863,18 @@
       "FormalToolIsolationContracts.test_missing_shared_relative_or_reassigned_java_scratch_is_rejected_without_hashes",
       "FormalToolIsolationContracts.test_model_launch_uses_exclusive_absolute_scratch_even_for_relative_output"
     ],
+    "kb_platform/rag_testing/sqlite_initialization_contracts.py": [
+      "SQLiteInitializationContracts.test_busy_read_or_switch_retries_only_unadmitted_journal_configuration",
+      "SQLiteInitializationContracts.test_deadline_exhausted_by_read_refuses_switch_before_another_sql_wait",
+      "SQLiteInitializationContracts.test_existing_wal_writer_allows_new_reader_without_another_mode_change",
+      "SQLiteInitializationContracts.test_explicit_legacy_file_stays_delete_without_new_sidecars",
+      "SQLiteInitializationContracts.test_independent_engines_converge_to_wal_on_simultaneous_first_connections",
+      "SQLiteInitializationContracts.test_only_busy_including_extended_busy_is_retryable",
+      "SQLiteInitializationContracts.test_persistent_busy_cannot_reset_deadline_or_admit_connection",
+      "SQLiteInitializationContracts.test_read_elapsed_time_reduces_switch_timeout_and_success_restores_connection_policy",
+      "SQLiteInitializationContracts.test_reviewed_initialization_and_unsafe_source_mutations",
+      "SQLiteInitializationContracts.test_wrong_mode_and_fetch_failure_close_cursors_and_refuse_admission"
+    ],
     "kb_platform/rag_testing/storage_shutdown_contracts.py": [
       "StorageShutdownContracts.test_application_busy_close_drains_active_operation_before_cleanup",
       "StorageShutdownContracts.test_application_retains_actual_redis_provider_after_failed_physical_close",
@@ -8043,7 +8119,7 @@
       "path": "kb_platform/rag_testing/discovered_lifecycle_lint.py",
       "symbol": "<module>",
       "language": "python",
-      "sha256": "09c258baa0f051aa47503993bf8f103db155cbe9158a020594cdb30256d09f2d"
+      "sha256": "e7e187b9896aca9a271e7d52f9943dfabb2395370e79b4decaa0cdd6681e3afc"
     },
     {
       "path": "kb_platform/rag_testing/formal_tool_isolation.py",
@@ -8491,6 +8567,42 @@
           "field": "negative_controls",
           "id": "formal_tool_survivor_witness",
           "definition_sha256": "0c3fb6167234bfeaaa3c9ab6690bb4ad10c4743998954a1159fa09512cb263db"
+        },
+        {
+          "machine": "sqlite_connection_bootstrap",
+          "field": "models",
+          "id": "sqlite_connection_bootstrap",
+          "definition_sha256": "ab5e2a7f5c4709a2e7191be84ceec8cfe9ee66c32776fe122528154a0d6aea5b"
+        },
+        {
+          "machine": "sqlite_connection_bootstrap",
+          "field": "negative_controls",
+          "id": "sqlite_bootstrap_early_publish",
+          "definition_sha256": "a70aaf5a6d26a90fac32cceb874cf754ed7eb0c07b59a10a4aeb2518e96cdadd"
+        },
+        {
+          "machine": "sqlite_connection_bootstrap",
+          "field": "negative_controls",
+          "id": "sqlite_bootstrap_retry_other",
+          "definition_sha256": "f0ed73794115b712fd79b24b12c14b84d5f36248c274f8bb2265548d06dd1b26"
+        },
+        {
+          "machine": "sqlite_connection_bootstrap",
+          "field": "negative_controls",
+          "id": "sqlite_bootstrap_reset_budget",
+          "definition_sha256": "35d75c0698bd26dbdced9f787f0fd1f50690c88c494771320f2f5d5d0456243d"
+        },
+        {
+          "machine": "sqlite_connection_bootstrap",
+          "field": "negative_controls",
+          "id": "sqlite_bootstrap_retry_witness",
+          "definition_sha256": "bb633ea7cc9595e7db98ca3a4198abf95677e320970faae8407ac233d0746a68"
+        },
+        {
+          "machine": "sqlite_connection_bootstrap",
+          "field": "negative_controls",
+          "id": "sqlite_bootstrap_exhausted_witness",
+          "definition_sha256": "33c7918419bb3725a2e32dba045b09cc94b725e63de006b21bf1fd0461bec849"
         }
       ],
       "changed": []
@@ -8631,6 +8743,34 @@
           "sha256": "658a48b57dce36d73cb21e008c4ce29c8eb263118ee73c27e44717d0d9305c14"
         },
         {
+          "path": "formal/sqlite_bootstrap/BootstrapExhaustedWitness.cfg",
+          "sha256": "4c88bff7d820fae7f77aa0952058479e2b7cce23ed3f3645cb1df24fe044076b"
+        },
+        {
+          "path": "formal/sqlite_bootstrap/BootstrapRetryWitness.cfg",
+          "sha256": "3f40945c5c6e743ed59366f701ede66ca40fd8aa543d2356131c1cadf53e9a23"
+        },
+        {
+          "path": "formal/sqlite_bootstrap/EarlyBootstrapPublish.cfg",
+          "sha256": "6193a8f09c01e5b350e16798c80e198ec71968e4c06bfeef0562d57e0b4cc826"
+        },
+        {
+          "path": "formal/sqlite_bootstrap/ResetBootstrapBudget.cfg",
+          "sha256": "c7f3f68a8ed14c1124f027602fc760d6035644d9e48d92582b292145fd52e251"
+        },
+        {
+          "path": "formal/sqlite_bootstrap/RetryBootstrapOther.cfg",
+          "sha256": "0ce4ec99e73cddf4981e624a6d719de20b897e58525bcc4f247cb04701745e95"
+        },
+        {
+          "path": "formal/sqlite_bootstrap/SQLiteBootstrap.cfg",
+          "sha256": "8039dacefe28fa98d0a2a44ef0ff76d5488072710a98bec652b50cbde715aff5"
+        },
+        {
+          "path": "formal/sqlite_bootstrap/SQLiteBootstrap.tla",
+          "sha256": "a680efbe651bfc0de1ecff05af7f9ef99ecb7749ad9c48eccca92d37d0a626f1"
+        },
+        {
           "path": "formal/storage_shutdown/EarlyAck.cfg",
           "sha256": "469c39da6e095077d550679a1611f827fd12b840fe3f55683bff23bec132c362"
         },
@@ -8722,7 +8862,7 @@
           "path": "kb_platform/rag_testing/discovered_lifecycle_lint.py",
           "symbol": "<module>",
           "language": "python",
-          "sha256": "09c258baa0f051aa47503993bf8f103db155cbe9158a020594cdb30256d09f2d"
+          "sha256": "e7e187b9896aca9a271e7d52f9943dfabb2395370e79b4decaa0cdd6681e3afc"
         },
         {
           "path": "kb_platform/rag_testing/formal_tool_isolation.py",

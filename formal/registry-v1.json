@@ -13653,6 +13653,142 @@
           "purpose": "Witness one loaded JVM retains its file after another exits"
         }
       ]
+    },
+    {
+      "id": "sqlite_connection_bootstrap",
+      "status": "partial",
+      "owners": [
+        "kb_platform/database_providers/sqlite.py"
+      ],
+      "states": [
+        "probe",
+        "changing mode",
+        "busy waiting",
+        "configured",
+        "ready",
+        "error"
+      ],
+      "transitions": [
+        "Read current mode",
+        "Change only mismatched mode",
+        "BUSY-only deadline admission retry",
+        "Confirm mode and configure connection",
+        "Publish or fail without business effects"
+      ],
+      "invariants": [
+        "PublishedConfigured",
+        "OnlyBusyRetry",
+        "FixedBudget"
+      ],
+      "assumptions": [
+        "SQLite respects busy_timeout for ordinary lock waiting; monotonic clock does not move backwards",
+        "No external mode change after configured connection publication"
+      ],
+      "exclusions": [
+        "Unbounded or guaranteed admission success",
+        "SQLite implementation and filesystem refinement",
+        "Retry of business transactions or unknown commits"
+      ],
+      "remaining_obligations": [
+        "Finite waiting ticks abstract wall-clock budgeting; implementation contracts check each statement remaining timeout",
+        "Environmental contention remains possible and may exhaust the admission deadline"
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/database_providers/sqlite.py",
+          "language": "python",
+          "symbol": "SQLiteProvider.open_space",
+          "sha256": "ad23fd526548a0ad9cc27d5c39ada1296dc3e662bcd9157c8259ade0029065c3"
+        },
+        {
+          "path": "kb_platform/database_providers/sqlite.py",
+          "language": "python",
+          "symbol": "_initialize",
+          "sha256": "077ff0fd9493ccbbe5586028ffc24b601595ee9ff016a82c8989219f7c7c4ba3"
+        },
+        {
+          "path": "kb_platform/database_providers/sqlite.py",
+          "language": "python",
+          "symbol": "_set_journal_mode",
+          "sha256": "d0c1280df5b30ffdbe14fc11f1381c0add81a57661aa622b9c064b3bc37e430f"
+        }
+      ],
+      "models": [
+        {
+          "id": "sqlite_connection_bootstrap",
+          "module": "formal/sqlite_bootstrap/SQLiteBootstrap.tla",
+          "config": "formal/sqlite_bootstrap/SQLiteBootstrap.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "invariants": [
+            "TypeOK",
+            "PublishedConfigured",
+            "OnlyBusyRetry",
+            "FixedBudget"
+          ],
+          "properties": [],
+          "bounds": {
+            "managed": [
+              true,
+              false
+            ],
+            "waiting_ticks": 2,
+            "attempts": 3
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "sqlite_bootstrap_early_publish",
+          "module": "formal/sqlite_bootstrap/SQLiteBootstrap.tla",
+          "config": "formal/sqlite_bootstrap/EarlyBootstrapPublish.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "PublishedConfigured",
+          "kind": "negative",
+          "purpose": "Seed connection published before confirmed mode and settings"
+        },
+        {
+          "id": "sqlite_bootstrap_retry_other",
+          "module": "formal/sqlite_bootstrap/SQLiteBootstrap.tla",
+          "config": "formal/sqlite_bootstrap/RetryBootstrapOther.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "OnlyBusyRetry",
+          "kind": "negative",
+          "purpose": "Seed retry of non-BUSY admission failure"
+        },
+        {
+          "id": "sqlite_bootstrap_reset_budget",
+          "module": "formal/sqlite_bootstrap/SQLiteBootstrap.tla",
+          "config": "formal/sqlite_bootstrap/ResetBootstrapBudget.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "FixedBudget",
+          "kind": "negative",
+          "purpose": "Seed resetting deadline on another admission attempt"
+        },
+        {
+          "id": "sqlite_bootstrap_retry_witness",
+          "module": "formal/sqlite_bootstrap/SQLiteBootstrap.tla",
+          "config": "formal/sqlite_bootstrap/BootstrapRetryWitness.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "NoRetrySuccessWitness",
+          "kind": "negative",
+          "purpose": "Witness BUSY then configured success"
+        },
+        {
+          "id": "sqlite_bootstrap_exhausted_witness",
+          "module": "formal/sqlite_bootstrap/SQLiteBootstrap.tla",
+          "config": "formal/sqlite_bootstrap/BootstrapExhaustedWitness.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "NoExhaustedWitness",
+          "kind": "negative",
+          "purpose": "Witness admission failure on exhausted BUSY budget"
+        }
+      ]
     }
   ],
   "composition_edges": [

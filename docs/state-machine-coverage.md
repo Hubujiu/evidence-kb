@@ -60,5 +60,6 @@
 | application_storage | 1 | 3 | `kb_platform/application_storage.py` |
 | redis_cache_provider | 1 | 2 | `kb_platform/storage_adapters/redis_cache.py` |
 | formal_tool_files | 1 | 3 | `kb_platform/rag_testing/formal_state_machines.py` |
+| sqlite_connection_bootstrap | 1 | 5 | `kb_platform/database_providers/sqlite.py` |
 
 自动发现还不能覆盖任意隐式状态、动态代码和别名写入。此次扩展生命周期字段和 scripts 扫描，并逐项审阅新增候选；明确的观测、CLI 报告和夹具排除仍记录在注册表，不算生产状态机。

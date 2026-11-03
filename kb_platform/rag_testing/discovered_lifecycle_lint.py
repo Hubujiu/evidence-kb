@@ -11,8 +11,62 @@ def _has(node, source):
     return any(_dump(child) == expected for child in ast.walk(node))
 
 
+def sqlite_initialization_violations(source):
+    errors = []
+    expected = ast.parse('''
+def _set_journal_mode(connection, mode):
+    deadline = time.monotonic() + 30
+    def read(statement):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('SQLITE_JOURNAL_MODE_TIMEOUT')
+        with closing(connection.execute('PRAGMA busy_timeout=' + str(int(remaining * 1000)))):
+            pass
+        with closing(connection.execute(statement)) as cursor:
+            return cursor.fetchone()[0]
+    while True:
+        try:
+            if read('PRAGMA journal_mode') != mode:
+                if read('PRAGMA journal_mode=' + mode) != mode:
+                    raise RuntimeError('SQLITE_WAL_UNAVAILABLE')
+            return
+        except sqlite3.OperationalError as error:
+            code = getattr(error, 'sqlite_errorcode', None)
+            if not isinstance(code, int) or code & 0xff != sqlite3.SQLITE_BUSY:
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.01, remaining))
+def _initialize(connection, record, *, wal):
+    _set_journal_mode(connection, 'wal' if wal else 'delete')
+    for statement in ('PRAGMA busy_timeout=30000', 'PRAGMA synchronous=FULL',
+                      'PRAGMA foreign_keys=ON', 'PRAGMA recursive_triggers=ON'):
+        with closing(connection.execute(statement)):
+            pass
+''').body
+    try:
+        tree = ast.parse(source)
+        for function in expected:
+            initializers = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == function.name]
+            if len(initializers) != 1 or _dump(initializers[0]) != _dump(function):
+                errors.append('sqlite-bootstrap: journal admission requires bounded BUSY-only retry with remaining-budget waits and cursor release')
+        owner = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'SQLiteProvider')
+        opener = next(node for node in owner.body if isinstance(node, ast.FunctionDef) and node.name == 'open_space')
+        if not _has(opener, "event.listen(engine, 'connect', partial(_initialize, wal=self._files is None))"):
+            errors.append('sqlite-bootstrap: both engines must use journal admission before handing out a connection')
+        if not _has(opener, "pooling = {'poolclass': QueuePool, 'pool_size': 1, 'max_overflow': -1} if self._files is None else {'poolclass': NullPool}"):
+            errors.append('sqlite-bootstrap: explicit legacy files must keep NullPool and DELETE without new sidecars')
+    except (SyntaxError, StopIteration):
+        errors.append('sqlite-bootstrap: initialization owner shape is invalid')
+    return errors
+
+
 def discovered_lifecycle_violations(root: Path):
     errors = []
+    sqlite = root / 'kb_platform/database_providers/sqlite.py'
+    if sqlite.is_file():
+        errors.extend(sqlite_initialization_violations(sqlite.read_text('utf-8')))
     sources = {
         'memory': ('kb_platform/harness_sessions.py', 'MemorySession'),
         'raw_sql': ('kb_platform/storage_adapters/sql.py', '_SqlSpace'),

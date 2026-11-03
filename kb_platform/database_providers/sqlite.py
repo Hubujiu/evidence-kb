@@ -1,8 +1,10 @@
 from pathlib import Path
+from contextlib import closing
 from hashlib import sha256
 from functools import partial
 from threading import RLock
 import sqlite3
+import time
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.pool import NullPool, QueuePool
@@ -71,11 +73,37 @@ class SQLiteProvider:
             self._spaces.clear()
 
 
+def _set_journal_mode(connection, mode):
+    deadline = time.monotonic() + 30
+
+    def read(statement):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('SQLITE_JOURNAL_MODE_TIMEOUT')
+        with closing(connection.execute('PRAGMA busy_timeout=' + str(int(remaining * 1000)))):
+            pass
+        with closing(connection.execute(statement)) as cursor:
+            return cursor.fetchone()[0]
+
+    while True:
+        try:
+            if read('PRAGMA journal_mode') != mode:
+                if read('PRAGMA journal_mode=' + mode) != mode:
+                    raise RuntimeError('SQLITE_WAL_UNAVAILABLE')
+            return
+        except sqlite3.OperationalError as error:
+            code = getattr(error, 'sqlite_errorcode', None)
+            if not isinstance(code, int) or code & 0xff != sqlite3.SQLITE_BUSY:
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.01, remaining))
+
+
 def _initialize(connection, record, *, wal):
-    mode = 'wal' if wal else 'delete'
-    if connection.execute('PRAGMA journal_mode=' + mode).fetchone()[0] != mode:
-        raise RuntimeError('SQLITE_WAL_UNAVAILABLE')
-    connection.execute('PRAGMA synchronous=FULL')
-    connection.execute('PRAGMA foreign_keys=ON')
-    connection.execute('PRAGMA recursive_triggers=ON')
-    connection.execute('PRAGMA busy_timeout=30000')
+    _set_journal_mode(connection, 'wal' if wal else 'delete')
+    for statement in ('PRAGMA busy_timeout=30000', 'PRAGMA synchronous=FULL',
+                      'PRAGMA foreign_keys=ON', 'PRAGMA recursive_triggers=ON'):
+        with closing(connection.execute(statement)):
+            pass
