@@ -184,6 +184,7 @@ class PortableStructuredEndpoint:
         validate_identity(asdict(store.identity))
         self._lock, self._handles, self._outcomes = RLock(), {}, {}
         self._package, self._sealed, self._closed = None, False, False
+        self._prepared_schema = None
         self._transport = StorageJsonEndpoint(self._execute, self._validate_transfer_transaction)
 
     def _finished(self, token, outcome):
@@ -223,18 +224,20 @@ class PortableStructuredEndpoint:
             if operation == 'schemas':
                 return _wire({'schemas': [schema_descriptor(item) for item in self._schemas]})
             if operation == 'prepare':
+                requested = (request['owner'], request['schema_version'], request['digest'])
                 selected = next((item for item in self._schemas if item.owner == request['owner']
                                  and item.version == request['schema_version'] and item.digest == request['digest']), None)
                 if selected is None:
                     raise DatabaseError('STORAGE_WIRE_SCHEMA_UNDECLARED')
                 if self._package is not None:
-                    if self._package.digest != selected.digest:
+                    if self._prepared_schema != requested:
                         raise DatabaseError('STORAGE_STRUCTURED_SCHEMA_MISMATCH')
                     return {'status': 'PREPARED'}
                 if self._sealed:
                     raise DatabaseError('DATABASE_PREPARE_CLOSED')
                 self._store.prepare(selected)
                 self._package = selected
+                self._prepared_schema = requested
                 return {'status': 'PREPARED'}
             if self._package is None:
                 raise DatabaseError('STORAGE_STRUCTURED_SCHEMA_REQUIRED')
@@ -348,12 +351,16 @@ class PortableStructuredClient:
         matches = [item for item in advertised['schemas'] if schema_semantics(item) == expected]
         if (len(matches) != 1 or type(matches[0].get('digest')) is not str or not matches[0]['digest']):
             raise DatabaseError('STORAGE_WIRE_SCHEMA_UNDECLARED')
-        self._call({'op': 'prepare', 'owner': package.owner, 'schema_version': package.version,
-                    'digest': matches[0]['digest']})
+        response = self._call({'op': 'prepare', 'owner': package.owner, 'schema_version': package.version,
+                               'digest': matches[0]['digest']})
+        if response != {'status': 'PREPARED'}:
+            raise DatabaseError('STORAGE_WIRE_SCHEMA_INVALID')
         return self
 
     def seal(self):
-        self._call({'op': 'seal'})
+        response = self._call({'op': 'seal'})
+        if response != {'status': 'SEALED'}:
+            raise DatabaseError('STORAGE_WIRE_SCHEMA_INVALID')
         return self
 
     @contextmanager

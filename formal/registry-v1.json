@@ -999,8 +999,7 @@
         "StorageService._unregister",
         "StorageService.close",
         "DatabaseService._dispose",
-        "DatabaseService.close",
-        "BoundDatabase.seal"
+        "DatabaseService.close"
       ],
       "invariants": [
         "Full space/dataset/registration identity; no ABA grant; close/unregister cannot release active calls; schema prepare only before seal."
@@ -1011,7 +1010,8 @@
       ],
       "exclusions": [
         "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory.",
+        "Per-handle schema admission and consumer seal inheritance are separately modeled under storage_schema_admission; this registry entry remains unmodeled."
       ],
       "source_bindings": [
         {
@@ -1043,12 +1043,6 @@
           "language": "python",
           "symbol": "DatabaseService.close",
           "sha256": "82e66a29a3a03d35d325ffcd6b3b0b2c3a74db549eb2ca2ff6cfffd87b67ac0b"
-        },
-        {
-          "path": "kb_platform/database_service.py",
-          "language": "python",
-          "symbol": "BoundDatabase.seal",
-          "sha256": "5cad9ba76c9f108765b36fcbd47c77f29a985e01004b7c8f4d2561fb352b9da1"
         },
         {
           "path": "kb_platform/blob_service.py",
@@ -1120,7 +1114,7 @@
           "path": "kb_platform/storage_structured_wire.py",
           "language": "python",
           "symbol": "PortableStructuredEndpoint._execute",
-          "sha256": "782eaceaa37b42decc885937b367f22d1e99f925c108c6ea8f195a76266db22e"
+          "sha256": "5f71949d5f90bb42d352cd03e8c6e632c421fd589cfa1cb59aad1196fe424afe"
         },
         {
           "path": "kb_platform/storage_structured_wire.py",
@@ -2011,7 +2005,7 @@
           "path": "kb_platform/storage_structured_wire.py",
           "language": "python",
           "symbol": "PortableStructuredEndpoint._execute",
-          "sha256": "782eaceaa37b42decc885937b367f22d1e99f925c108c6ea8f195a76266db22e"
+          "sha256": "5f71949d5f90bb42d352cd03e8c6e632c421fd589cfa1cb59aad1196fe424afe"
         },
         {
           "path": "kb_platform/storage_structured_wire.py",
@@ -2272,6 +2266,414 @@
         "Finite retention/capacity model uses bounds two and three tokens; actual contracts exercise 257 outcomes/256 retention and reduced-capacity admission, not all 64 concurrent handle schedules.",
         "Cross-model composition, strict wall-clock expiry under scheduling stalls, in-flight heartbeat/transport shutdown, context-manager suppression semantics and asynchronous interruption during Thread.start remain unproved.",
         "Schema/scope admission and database isolation semantics are separate owners; no liveness or unconditional cleanup progress is claimed."
+      ]
+    },
+    {
+      "id": "storage_schema_admission",
+      "status": "partial",
+      "owners": [
+        "kb_platform/storage_structured_wire.py",
+        "kb_platform/storage_adapters/structured.py",
+        "kb_platform/database_service.py",
+        "kb_platform/storage_sdk/relational.py",
+        "kb_platform/database_migrations.py"
+      ],
+      "states": [
+        "Unprepared / durable-but-unpublished / prepared / handle-sealed / endpoint-closed",
+        "Configured identity and successful prepared identity are distinct; lost or invalid ACK does not erase server state"
+      ],
+      "transitions": [
+        "StructuredSqlSpace.prepare/seal/transaction",
+        "PortableStructuredEndpoint._execute/close",
+        "PortableStructuredClient.prepare/seal",
+        "BoundDatabase.prepare/seal/transaction/for_consumer"
+      ],
+      "invariants": [
+        "Retry matches the successful owner/version/digest, not a mutable configuration object.",
+        "Failed prepare cannot publish readiness; exact PREPARED/SEALED ACK required for client success.",
+        "Same-version schema hash and owner checked; closure blocks admission; seal is per handle and consumer clones inherit its snapshot."
+      ],
+      "assumptions": [
+        "Finite models use two same-version schema contents, two owners, three handles/prepare attempts and one physical dataset; no SQL engine is reimplemented.",
+        "Endpoint calls serialize under its existing RLock; direct bound/structured handle initialization is caller-serialized.",
+        "Metadata may be constructed before prepare, but changing it after prepare is unsupported live configuration; the adversarial re-prepare control tests that such a change is not falsely acknowledged as the same identity.",
+        "A valid exact provider acknowledgement is trusted; corrupt or missing acknowledgements are not success."
+      ],
+      "exclusions": [
+        "No proof of SQLAlchemy/DB migration atomicity, backend honesty, driver/OS failure semantics, cross-model refinement or unbounded executions.",
+        "Concurrent caller mutation during initialization or active transactions, live schema replacement, multi-version migrations, grant ABA and active handle cleanup are outside these models."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredEndpoint.__init__",
+          "sha256": "ca3620bcf93477709bf0b137adf530339d7bdf3d5d3b6f446b2e0e60dded0633"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredEndpoint._execute",
+          "sha256": "5f71949d5f90bb42d352cd03e8c6e632c421fd589cfa1cb59aad1196fe424afe"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredEndpoint.close",
+          "sha256": "c58dd03f065f56c82ca4dd4c960c99881c6267452edd7dffb2adebed5cf50775"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredClient.prepare",
+          "sha256": "11fdf461839c8176043a1378a66825f811af683bce2e03a798c49ce3db7b006d"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredClient.seal",
+          "sha256": "dfa960efcc73528e8b37bae05cd678f14a89eb1d528d1e98f838301ad3a7a42e"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured.py",
+          "language": "python",
+          "symbol": "StructuredSqlSpace.__init__",
+          "sha256": "b58ab8ca03000d9b5225ee6b000fd40ad43278ac31da0b92e08ca532e4c5a5ae"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured.py",
+          "language": "python",
+          "symbol": "StructuredSqlSpace.prepare",
+          "sha256": "c9f56cb3032685a12f38f42f807a401f3af7bf49c38663db628956fdd89ea6ee"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured.py",
+          "language": "python",
+          "symbol": "StructuredSqlSpace.seal",
+          "sha256": "7f8e59ba8ac907862c72df6fc98268f3a9a0ad08d61c7e7faacf520aa1691f58"
+        },
+        {
+          "path": "kb_platform/storage_adapters/structured.py",
+          "language": "python",
+          "symbol": "StructuredSqlSpace.transaction",
+          "sha256": "adb10682793b25754ccf72fed5f2757bc8d62bc3fea4a3fa3a291b49c0301733"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "BoundDatabase.__init__",
+          "sha256": "7d97dd9f2f6db1f9cf4d4d8d6f6773937999fa1505d3b59ac985d1050ab42d77"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "BoundDatabase.prepare",
+          "sha256": "df384778f8de99f18143c903dec3c7793a4a87c0a8717c4c297a60a9d88d40e5"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "BoundDatabase.seal",
+          "sha256": "5cad9ba76c9f108765b36fcbd47c77f29a985e01004b7c8f4d2561fb352b9da1"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "BoundDatabase.transaction",
+          "sha256": "a269bedc4e408e9965e22a75aa117830ddc1558fc7f5e396969eed87d114f1ec"
+        },
+        {
+          "path": "kb_platform/database_service.py",
+          "language": "python",
+          "symbol": "BoundDatabase.for_consumer",
+          "sha256": "dc3b575abf063816b0eeb80cbba480dfae733811624f0f7b0379f484dd917244"
+        },
+        {
+          "path": "kb_platform/storage_sdk/relational.py",
+          "language": "python",
+          "symbol": "StructuredSchema.digest",
+          "sha256": "3ee766b916d767eb28cd996bd5311daa3f9f179b0fbe09264930ecea30a0158b"
+        },
+        {
+          "path": "kb_platform/database_migrations.py",
+          "language": "python",
+          "symbol": "prepare",
+          "sha256": "ec1d605762bef6e0741359c38dd1e5af9fa45ba25d84ca9a23aee9dbf56cfd36"
+        }
+      ],
+      "models": [
+        {
+          "id": "storage-schema-schema-negotiation",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/SchemaNegotiation.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "invariants": [
+            "TypeOK",
+            "PreparedIsDurable",
+            "OnlySuccessfulPublication",
+            "RetryMatchesPreparedIdentity",
+            "NoClosedAdmission",
+            "ExactAcknowledgement"
+          ],
+          "properties": [],
+          "bounds": {
+            "keys": 4,
+            "prepare_attempts": 3,
+            "endpoint": 1,
+            "client_observation": 1
+          }
+        },
+        {
+          "id": "storage-schema-structured-lifecycle",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/StructuredLifecycle.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "invariants": [
+            "TypeOK",
+            "ClonePreservesIdentity",
+            "ConsumerNameChecked",
+            "SiblingSealUnchanged",
+            "NoSchemaReplacement",
+            "ConsumerInheritsSeal",
+            "CorrectOwner",
+            "UnboundHandlesStayOpen",
+            "PreparedMatchesPhysical"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 3,
+            "same_version_schemas": 2,
+            "physical_database": 1,
+            "identity_tuples": 2,
+            "consumer_name_matches": 2
+          }
+        },
+        {
+          "id": "storage-schema-bound-lifecycle",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/BoundLifecycle.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "invariants": [
+            "TypeOK",
+            "ClonePreservesIdentity",
+            "ConsumerNameChecked",
+            "SiblingSealUnchanged",
+            "NoSchemaReplacement",
+            "ConsumerInheritsSeal",
+            "CorrectOwner",
+            "UnboundHandlesStayOpen",
+            "PreparedMatchesPhysical"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 3,
+            "same_version_schemas": 2,
+            "physical_database": 1,
+            "identity_tuples": 2,
+            "consumer_name_matches": 2
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "storage-schema-mutable-identity",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/MutableIdentity.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "RetryMatchesPreparedIdentity"
+        },
+        {
+          "id": "storage-schema-early-publication",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/EarlyPublication.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "OnlySuccessfulPublication"
+        },
+        {
+          "id": "storage-schema-invalid-acknowledgement",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/InvalidAcknowledgement.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "ExactAcknowledgement"
+        },
+        {
+          "id": "storage-schema-closed-prepare",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/ClosedPrepare.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoClosedAdmission"
+        },
+        {
+          "id": "storage-schema-retry-witness",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/RetryWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoRetryWitness"
+        },
+        {
+          "id": "storage-schema-failure-recovery-witness",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/FailureRecoveryWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoFailureRecoveryWitness"
+        },
+        {
+          "id": "storage-schema-lost-ack-retry-witness",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/LostAckRetryWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoLostAckRetryWitness"
+        },
+        {
+          "id": "storage-schema-begin-witness",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/BeginWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoBeginWitness"
+        },
+        {
+          "id": "storage-schema-clone-unseals",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/CloneUnseals.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "ConsumerInheritsSeal"
+        },
+        {
+          "id": "storage-schema-global-seal",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/GlobalSeal.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "SiblingSealUnchanged"
+        },
+        {
+          "id": "storage-schema-wrong-owner",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/WrongOwner.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "CorrectOwner"
+        },
+        {
+          "id": "storage-schema-replace-physical",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/ReplacePhysical.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoSchemaReplacement"
+        },
+        {
+          "id": "storage-schema-structured-sibling-prepare-witness",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/StructuredSiblingPrepareWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoSiblingPrepareWitness"
+        },
+        {
+          "id": "storage-schema-structured-transaction-witness",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/StructuredTransactionWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoTransactionWitness"
+        },
+        {
+          "id": "storage-schema-structured-recovery-witness",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/StructuredRecoveryWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoRecoveryWitness"
+        },
+        {
+          "id": "storage-schema-bound-sibling-prepare-witness",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/BoundSiblingPrepareWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoSiblingPrepareWitness"
+        },
+        {
+          "id": "storage-schema-bound-transaction-witness",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/BoundTransactionWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoTransactionWitness"
+        },
+        {
+          "id": "storage-schema-bound-recovery-witness",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/BoundRecoveryWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoRecoveryWitness"
+        },
+        {
+          "id": "storage-schema-owner-identity",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/OwnerIdentity.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "RetryMatchesPreparedIdentity"
+        },
+        {
+          "id": "storage-schema-invalid-seal-acknowledgement",
+          "module": "formal/storage_schema/SchemaNegotiation.tla",
+          "config": "formal/storage_schema/InvalidSealAcknowledgement.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "ExactAcknowledgement"
+        },
+        {
+          "id": "storage-schema-clone-identity",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/CloneIdentity.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "ClonePreservesIdentity"
+        },
+        {
+          "id": "storage-schema-wrong-consumer",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/WrongConsumer.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "ConsumerNameChecked"
+        },
+        {
+          "id": "storage-schema-clone-witness",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/CloneWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoCloneWitness"
+        },
+        {
+          "id": "storage-schema-consumer-rejection-witness",
+          "module": "formal/storage_schema/SchemaLifecycle.tla",
+          "config": "formal/storage_schema/ConsumerRejectionWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 60,
+          "expected_invariant": "NoConsumerRejectionWitness"
+        }
+      ],
+      "remaining_obligations": [
+        "The Python database_migrations persisted dirty/step protocol, multi-version/downgrade rules, MySQL per-step commit recovery, and grant_runtime after final migration commit remain a separate unmodeled owner; source binding is not coverage of that protocol. Direct handle concurrent initialization, unbounded schemas and database internals are also unproved.",
+        "Scope enforcement, grant ABA, launch/queue/guard/retention owners and cross-layer composition are separate; no liveness or unconditional recovery claim."
       ]
     }
   ]
