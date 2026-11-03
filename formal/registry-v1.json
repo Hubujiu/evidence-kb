@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -181,7 +181,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -242,7 +242,7 @@
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation → consumed/released"
+        "pending reservation \u2192 consumed/released"
       ],
       "transitions": [
         "BudgetLedger.reserve",
@@ -603,7 +603,7 @@
         "rust/llm-service/src/registry.rs"
       ],
       "states": [
-        "route Active→Draining→Cleaning→removed/CleanupFailed"
+        "route Active\u2192Draining\u2192Cleaning\u2192removed/CleanupFailed"
       ],
       "transitions": [
         "RoutePhase",
@@ -750,7 +750,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY↔WAITING"
+        "READY\u2194WAITING"
       ],
       "transitions": [
         "transition",
@@ -887,7 +887,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1081,7 +1081,7 @@
         "kb_platform/database_providers/base.py"
       ],
       "states": [
-        "begin→held→executing→commit/rollback"
+        "begin\u2192held\u2192executing\u2192commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1108,7 +1108,7 @@
           "path": "kb_platform/storage_structured_wire.py",
           "language": "python",
           "symbol": "_Handle._run",
-          "sha256": "41096024cbe3fc352cba29c933e6597448f2621a56f4c5e3903c29858c7c12c0"
+          "sha256": "dcc2cd3c9e026545be0cdd254a276223c558a4ff3ecef6e3d9422f4e208735af"
         },
         {
           "path": "kb_platform/storage_structured_wire.py",
@@ -1181,7 +1181,7 @@
         }
       ],
       "remaining_obligations": [
-        "Handle queues, lease capacity/expiry concurrency, guard heartbeat, scope/schema enforcement, begin/connection failure and 256-outcome eviction are not covered by this bounded model.",
+        "Structured Python handle launch/queue/guard/capacity/outcome-retention safety is separately inventoried under storage_handles; schema/scope enforcement and cross-layer refinement remain open. The commit model still does not model scheduling.",
         "Backend progress is not assumed: this safety model intentionally claims no liveness or guaranteed transaction resolution."
       ]
     },
@@ -1194,7 +1194,7 @@
         "kb_platform/storage_adapters/values.py"
       ],
       "states": [
-        "Input→Executing→Result→Values / Failed"
+        "Input\u2192Executing\u2192Result\u2192Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1260,7 +1260,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1322,7 +1322,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent→issued→expired/revoked"
+        "absent\u2192issued\u2192expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1447,7 +1447,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1537,7 +1537,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1586,7 +1586,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1659,7 +1659,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",
@@ -1925,6 +1925,354 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "storage_handles",
+      "status": "partial",
+      "owners": [
+        "kb_platform/storage_structured_wire.py"
+      ],
+      "states": [
+        "published/unlaunched \u2192 launched/waiting \u2192 active \u2192 stopping/draining \u2192 outcome cached \u2192 evicted",
+        "guard acquired \u2192 heartbeat running/failed \u2192 release attempted/expired"
+      ],
+      "transitions": [
+        "_Handle.__init__",
+        "_Handle.start",
+        "_Handle._run",
+        "_Handle.call",
+        "_Handle.close",
+        "PortableStructuredEndpoint._open",
+        "PortableStructuredEndpoint._finished",
+        "PortableStructuredEndpoint._execute",
+        "PortableStructuredEndpoint.close",
+        "PortableStructuredClient.guard"
+      ],
+      "invariants": [
+        "Failed native launch is retired exactly once; unstarted close never joins; launched worker remains owned until its actual cleanup.",
+        "Future drain arbitrates cancellation atomically before publishing close; cancelled queued actions never execute.",
+        "Failed guard heartbeat launch still attempts guard release and preserves the primary failure; stopped handles cannot renew.",
+        "Admission and receipt caches are bounded; repeated or evicted finish observations never replay a transaction or invent a receipt."
+      ],
+      "assumptions": [
+        "Native Thread.start ordinary Exception denotes a failure before native work begins; asynchronous interruption after native launch is explicitly excluded. CPython 3.12.14 start/Executor/Future behavior was reviewed.",
+        "Internal endpoint completion callback, locks and stdlib Future semantics are trusted; a running Future cannot be cancelled, _ready is never cancelled.",
+        "Independent finite models cover one launch, one queued Future plus current worker action, one guard heartbeat and three unique handle tokens with capacity/retention two.",
+        "Guard time is an observed dispatch/idle-expiry abstraction, not a strict real-time deadline or OS scheduling guarantee; finish response may remain UNKNOWN."
+      ],
+      "exclusions": [
+        "No Python/TLA+ refinement proof, unbounded concurrency, asynchronous native-start interruption, process crash, adversarial internal callbacks or UUID collisions.",
+        "No proof of database/file/OS internals or generic idempotency; original operation_id is evidence correlation only."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "_Handle.__init__",
+          "sha256": "9b49558948f5d203cb0150a64868a3b87dd4761d6f986124ef3c49979b4b3a32"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "_Handle.start",
+          "sha256": "3aeafc4f3470823f198b20660bf1834af69cb9e25df0e0723a395f3b001e5b34"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "_Handle._run",
+          "sha256": "dcc2cd3c9e026545be0cdd254a276223c558a4ff3ecef6e3d9422f4e208735af"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "_Handle.call",
+          "sha256": "395f9d5c712ee755053e25e7fed03fadd5b81f41058e401ff5cad9552f4d320f"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "_Handle.close",
+          "sha256": "3d6c7fd93402a6ba266e33eb35b35f1a68074d0d06b10333bb77ba79c35d1b07"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredEndpoint._open",
+          "sha256": "4c3f1c9df84b5c4d658c7d836dd696f28bb3e8721821944071b888951f3d2946"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredEndpoint._finished",
+          "sha256": "f9dbceedc498fb7d52909eb800891c334885c93735ea5ee23bdadc3897ddf43e"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredEndpoint._execute",
+          "sha256": "782eaceaa37b42decc885937b367f22d1e99f925c108c6ea8f195a76266db22e"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredEndpoint.close",
+          "sha256": "c58dd03f065f56c82ca4dd4c960c99881c6267452edd7dffb2adebed5cf50775"
+        },
+        {
+          "path": "kb_platform/storage_structured_wire.py",
+          "language": "python",
+          "symbol": "PortableStructuredClient.guard",
+          "sha256": "defaf978093cb16b12af5ddf9eff7b03f565a67a5fda16d1276f2a9b9c87799e"
+        }
+      ],
+      "models": [
+        {
+          "id": "storage-handles-guard-lease",
+          "module": "formal/storage_handles/GuardLease.tla",
+          "config": "formal/storage_handles/GuardLease.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "invariants": [
+            "FailedStartStillCleans",
+            "FailurePreserved",
+            "NoStoppedPing",
+            "ReleaseNeedsActualRelease",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "guards": 1,
+            "heartbeat_threads": 1,
+            "pings": 1,
+            "clock_ticks": 4
+          }
+        },
+        {
+          "id": "storage-handles-handle-launch",
+          "module": "formal/storage_handles/HandleLaunch.tla",
+          "config": "formal/storage_handles/HandleLaunch.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "invariants": [
+            "FailedLaunchReleases",
+            "KnownOutcomeNeedsExit",
+            "LaunchedWorkerRetainsSlot",
+            "NoLateLaunch",
+            "NoUnstartedJoin",
+            "OneTerminalReport",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 1,
+            "native_launches": 1,
+            "manager_exits": 1,
+            "terminal_reports": 2
+          }
+        },
+        {
+          "id": "storage-handles-handle-queue",
+          "module": "formal/storage_handles/HandleQueue.tla",
+          "config": "formal/storage_handles/HandleQueue.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "invariants": [
+            "CancelledNeverExecutes",
+            "DrainCannotAbort",
+            "NoPrematureRetirement",
+            "TerminalOwnerRetired",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "workers": 1,
+            "queued_requests": 1,
+            "timeout_observations": 1
+          }
+        },
+        {
+          "id": "storage-handles-handle-retention",
+          "module": "formal/storage_handles/HandleRetention.tla",
+          "config": "formal/storage_handles/HandleRetention.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "invariants": [
+            "BoundedActive",
+            "BoundedReceipts",
+            "NoFabricatedReceipt",
+            "NoReplay",
+            "OnlyFinishedCached",
+            "TypeOK"
+          ],
+          "properties": [],
+          "bounds": {
+            "tokens": 3,
+            "active_capacity": 2,
+            "retained_outcomes": 2
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "storage-handles-guard-lease-ping-negative",
+          "module": "formal/storage_handles/GuardLease.tla",
+          "config": "formal/storage_handles/GuardLeasePingNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoStoppedPing"
+        },
+        {
+          "id": "storage-handles-guard-lease-release-witness",
+          "module": "formal/storage_handles/GuardLease.tla",
+          "config": "formal/storage_handles/GuardLeaseReleaseWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoFailedStartRelease"
+        },
+        {
+          "id": "storage-handles-guard-lease-renew-witness",
+          "module": "formal/storage_handles/GuardLease.tla",
+          "config": "formal/storage_handles/GuardLeaseRenewWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoRenewedLease"
+        },
+        {
+          "id": "storage-handles-guard-lease-start-negative",
+          "module": "formal/storage_handles/GuardLease.tla",
+          "config": "formal/storage_handles/GuardLeaseStartNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "FailedStartStillCleans"
+        },
+        {
+          "id": "storage-handles-handle-launch-close-witness",
+          "module": "formal/storage_handles/HandleLaunch.tla",
+          "config": "formal/storage_handles/HandleLaunchCloseWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoCancelledUnstarted"
+        },
+        {
+          "id": "storage-handles-handle-launch-commit-witness",
+          "module": "formal/storage_handles/HandleLaunch.tla",
+          "config": "formal/storage_handles/HandleLaunchCommitWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoFreshCommit"
+        },
+        {
+          "id": "storage-handles-handle-launch-failure-negative",
+          "module": "formal/storage_handles/HandleLaunch.tla",
+          "config": "formal/storage_handles/HandleLaunchFailureNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "FailedLaunchReleases"
+        },
+        {
+          "id": "storage-handles-handle-launch-join-negative",
+          "module": "formal/storage_handles/HandleLaunch.tla",
+          "config": "formal/storage_handles/HandleLaunchJoinNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoUnstartedJoin"
+        },
+        {
+          "id": "storage-handles-handle-launch-stopped-negative",
+          "module": "formal/storage_handles/HandleLaunch.tla",
+          "config": "formal/storage_handles/HandleLaunchStoppedNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoLateLaunch"
+        },
+        {
+          "id": "storage-handles-handle-launch-timeout-negative",
+          "module": "formal/storage_handles/HandleLaunch.tla",
+          "config": "formal/storage_handles/HandleLaunchTimeoutNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "LaunchedWorkerRetainsSlot"
+        },
+        {
+          "id": "storage-handles-handle-launch-timeout-witness",
+          "module": "formal/storage_handles/HandleLaunch.tla",
+          "config": "formal/storage_handles/HandleLaunchTimeoutWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoLateStartupCleanup"
+        },
+        {
+          "id": "storage-handles-handle-queue-action-witness",
+          "module": "formal/storage_handles/HandleQueue.tla",
+          "config": "formal/storage_handles/HandleQueueActionWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoFreshAction"
+        },
+        {
+          "id": "storage-handles-handle-queue-cancel-witness",
+          "module": "formal/storage_handles/HandleQueue.tla",
+          "config": "formal/storage_handles/HandleQueueCancelWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoCancelledDrain"
+        },
+        {
+          "id": "storage-handles-handle-queue-negative",
+          "module": "formal/storage_handles/HandleQueue.tla",
+          "config": "formal/storage_handles/HandleQueueNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "DrainCannotAbort"
+        },
+        {
+          "id": "storage-handles-handle-retention-capacity-negative",
+          "module": "formal/storage_handles/HandleRetention.tla",
+          "config": "formal/storage_handles/HandleRetentionCapacityNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "BoundedActive"
+        },
+        {
+          "id": "storage-handles-handle-retention-evict-negative",
+          "module": "formal/storage_handles/HandleRetention.tla",
+          "config": "formal/storage_handles/HandleRetentionEvictNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "BoundedReceipts"
+        },
+        {
+          "id": "storage-handles-handle-retention-evicted-witness",
+          "module": "formal/storage_handles/HandleRetention.tla",
+          "config": "formal/storage_handles/HandleRetentionEvictedWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoEvictedObservation"
+        },
+        {
+          "id": "storage-handles-handle-retention-open-witness",
+          "module": "formal/storage_handles/HandleRetention.tla",
+          "config": "formal/storage_handles/HandleRetentionOpenWitness.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoFreshOpen"
+        },
+        {
+          "id": "storage-handles-handle-retention-replay-negative",
+          "module": "formal/storage_handles/HandleRetention.tla",
+          "config": "formal/storage_handles/HandleRetentionReplayNegative.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoReplay"
+        }
+      ],
+      "remaining_obligations": [
+        "Finite queue model has one queued Future, not all interleavings of production queue size 64; contracts exercise actual size-64 saturation and pre-dispatch cancellation.",
+        "Finite retention/capacity model uses bounds two and three tokens; actual contracts exercise 257 outcomes/256 retention and reduced-capacity admission, not all 64 concurrent handle schedules.",
+        "Cross-model composition, strict wall-clock expiry under scheduling stalls, in-flight heartbeat/transport shutdown, context-manager suppression semantics and asynchronous interruption during Thread.start remain unproved.",
+        "Schema/scope admission and database isolation semantics are separate owners; no liveness or unconditional cleanup progress is claimed."
+      ]
     }
   ]
 }
