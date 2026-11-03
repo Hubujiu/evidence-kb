@@ -300,7 +300,7 @@ def source_quality_violations(root: Path) -> list[str]:
 
 
 def search_probe_diagnostic_violations(tree: ast.AST, relative: str) -> list[str]:
-    bindings = {'kb_platform/rag_testing/search_stage_probe.py': '3923c10cd2a749a43029ef30cbe72690ff8e44b4d177ea12368b24523252e5aa', 'kb_platform/rag_testing/search_stage_diagnostics.py': 'bc4b29fded6afd8b17ba8fb0c4cea16558e1b8d0b86b2efee37cb55949a2cc4d'}
+    bindings = {'kb_platform/rag_testing/search_stage_probe.py': '3923c10cd2a749a43029ef30cbe72690ff8e44b4d177ea12368b24523252e5aa', 'kb_platform/rag_testing/search_stage_diagnostics.py': '6f54daeb406baa015c0d0ae9d7b92cfbf39d22e671d535ec841c3762f7d2cb6f'}
     if relative == 'kb_platform/rag_testing/search_stage_probe_contracts.py':
         cases = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
                  and node.name == 'test_real_three_case_single_pass_retains_stage_observations']

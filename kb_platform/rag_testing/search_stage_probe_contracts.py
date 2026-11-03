@@ -143,6 +143,18 @@ class SearchStageProbeContracts(unittest.TestCase):
                 self.assertEqual(diagnostics._metadata_file(path), {'status': 'unavailable'})
             self.assertEqual(diagnostics.metadata_counts(root, root.parent, 'lexical'), {'status': 'outside_owned_root'})
 
+    def test_failed_stream_wrapping_closes_the_open_descriptor(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'lexical' / 'meta.json'
+            path.parent.mkdir()
+            path.write_text('{"opstamp": 0, "segments": []}', encoding='utf-8')
+            with patch.object(diagnostics.os, 'fdopen', side_effect=OSError('stream wrapper unavailable')), \
+                    patch.object(diagnostics.os, 'close', wraps=diagnostics.os.close) as close:
+                self.assertEqual(diagnostics._metadata_file(path), {'status': 'unavailable'})
+            close.assert_called_once()
+            with self.assertRaises(OSError):
+                diagnostics.os.fstat(close.call_args.args[0])
+
     def test_metadata_identity_changes_and_reparse_files_are_rejected(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'lexical' / 'meta.json'

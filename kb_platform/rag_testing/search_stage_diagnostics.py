@@ -90,7 +90,12 @@ def _metadata_file(path):
         if before.st_size > METADATA_LIMIT:
             return {'status': 'oversized'}
         descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0))
-        with os.fdopen(descriptor, 'rb') as stream:
+        try:
+            stream = os.fdopen(descriptor, 'rb')
+        except BaseException:
+            os.close(descriptor)
+            raise
+        with stream:
             opened = os.fstat(stream.fileno())
             if _identity(opened) != _identity(before) or not stat.S_ISREG(opened.st_mode):
                 return {'status': 'changed'}
