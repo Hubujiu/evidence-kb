@@ -93,7 +93,6 @@ class DiscoveredLifecycleContracts(unittest.TestCase):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 for before, after in pairs:
                     with self.subTest(path=path, before=before):
-                        # Replace the last duplicate to exercise MemorySession rather than DurableSession.
                         head, separator, tail = source.rpartition(before)
                         self.assertTrue(separator)
                         target.write_text(head + after + tail, encoding='utf-8')

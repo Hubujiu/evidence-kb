@@ -28,7 +28,7 @@ no Windows gate pass is claimed.
 
 The bounded formal model is not source refinement or an unbounded tree proof.
 The historical public combination manifest remains unchanged; the active
-Linux-only manifest is `formal/combination-inputs-authority-v3.json` (the Linux v2 inventory remains historical).
+Linux-only manifest is `formal/combination-inputs-composition-v4.json` (the authority v3 and Linux v2 inventories remain historical).
 
 ## Historical stage one (superseded)
 

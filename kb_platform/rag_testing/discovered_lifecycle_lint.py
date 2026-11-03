@@ -1,4 +1,3 @@
-"""Reviewed ownership seams for newly inventoried local lifecycle owners."""
 import ast
 from pathlib import Path
 
