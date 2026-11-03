@@ -198,6 +198,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                         errors.append(f'{identity}: liveness negative control must isolate its named property')
                 elif model['expected_invariant'] not in configured:
                     errors.append(f'{identity}: negative control must target a configured invariant')
+        if any(machine['id'] == 'storage_handles' for machine in registry.get('machines', [])):
+            from .formal_storage_handles import ownership_violations
+            errors.extend(ownership_violations(root))
         exclusions = registry['discovery']['exclusions']
         excluded = {(row['path'], row['symbol']) for row in exclusions if row.get('reason', '').strip()}
         if len(excluded) != len(exclusions):

@@ -155,3 +155,20 @@ uv run --no-sync python scripts/check_project.py --formal-only --output .local/c
 The pinned Java/TLC and native build prerequisites remain unchanged. CI must check
 the exact published commit; tests of another tree are not represented as an exact
 published-tree pass. This review stays draft until its outstanding checks finish.
+
+
+### Replay-control evidence correction
+
+The earlier replay control assigned its verdict directly from a mutation flag.
+It did not demonstrate a repeated modeled finish effect. Following the explicit
+state/history distinction in [Lamport's Specifying Systems, chapter 8](https://lamport.azurewebsites.net/tla/book-02-08-08.pdf),
+`finishCount[t]` now records actual modeled `Finish(t)` effects. Unsafe `Observe(t)`
+executes a second finish effect; safe observation leaves the count unchanged.
+`NoReplay` checks every count is at most one. The extra count domain 0..2 stops
+at the first duplicate; token, active-capacity and receipt-retention bounds are
+unchanged. This is a correction to model evidence, not a new production defect.
+A mandatory model-shape guard and deliberate mutants reject the old constant
+verdict, missing effect increments, wrong initialization or omitted state tuple.
+The existing real transaction/cache contracts remain unchanged. Source mapping
+stays `Finish` to completion and `Observe` to endpoint repeated-finish dispatch;
+this does not prove underlying database behavior or source refinement.

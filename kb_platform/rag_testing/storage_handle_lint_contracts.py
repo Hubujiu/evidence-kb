@@ -105,3 +105,33 @@ class StorageHandleLintContracts(unittest.TestCase):
                 mutant = source.replace(old, new, 1)
                 self.assertNotEqual(mutant, source)
                 self.assertTrue(handle_ownership_violations(mutant))
+
+
+class StorageHandleModelLintContracts(unittest.TestCase):
+    def test_retention_model_uses_actual_finish_effects(self):
+        from .formal_storage_handles import retention_model_violations
+        root = Path(__file__).resolve().parents[2]
+        source = (root / 'formal/storage_handles/HandleRetention.tla').read_text('utf-8')
+        self.assertEqual(retention_model_violations(source), [])
+        changes = [
+            (r"NoReplay == \A t \in Tokens : finishCount[t] <= 1", "NoReplay == TRUE"),
+            ("@ + 1", "@ + 0"),
+            ("THEN [finishCount EXCEPT ![t] = @ + 1] ELSE finishCount", "THEN finishCount ELSE finishCount"),
+            ("finishCount' = IF ReplayCachedFinish", "replayed' = IF ReplayCachedFinish"),
+            (r"finishCount = [t \in Tokens |-> 0]", r"finishCount = [t \in Tokens |-> 1]"),
+            ("outcomes, finishCount, observed", "outcomes, observed"),
+        ]
+        for old, new in changes:
+            with self.subTest(guard=old):
+                self.assertIn(old, source)
+                mutant = source.replace(old, new)
+                self.assertTrue(retention_model_violations(mutant))
+
+    def test_retention_model_guard_is_called_by_registry_validation(self):
+        from .formal_state_machines import registry_violations
+        from . import formal_storage_handles
+        from unittest.mock import patch
+        root = Path(__file__).resolve().parents[2]
+        with patch.object(formal_storage_handles, 'ownership_violations', return_value=['storage handle model sentinel']) as guard:
+            self.assertIn('storage handle model sentinel', registry_violations(root))
+        guard.assert_called_once_with(root)
