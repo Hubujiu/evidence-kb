@@ -217,6 +217,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
         from scripts.error_projection_model_checks import error_projection_model_violations
 
         errors.extend(error_projection_model_violations(root, registry))
+        from scripts.rpc_transfer_owner_checks import rpc_transfer_owner_violations
+
+        errors.extend(rpc_transfer_owner_violations(root, registry))
         receipt_owner = root / 'kb_platform/knowledge_contracts.py'
         if receipt_owner.is_file():
             from scripts.check_project import (
