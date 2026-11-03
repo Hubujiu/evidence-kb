@@ -371,6 +371,6 @@ def nested_expression():
             self.assertTrue(result['profile'])
             self.assertFalse(any(Path(row['file']).is_absolute() for row in result['profile']))
             self.assertNotIn('environment', result)
-            self.assertEqual('<external>/private.py', formal_profile.source_label('/private/person/private.py', root))
+            self.assertEqual('<external>/private.py', formal_profile.source_label(str(root.parent / 'private.py'), root))
             self.assertNotIn('/private/person', formal_profile.safe_error('error /private/person/secret.py', root))
             self.assertNotIn('C:\\Users', formal_profile.safe_error('error C:\\Users\\person\\secret.py', root))
