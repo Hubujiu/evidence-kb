@@ -200,6 +200,22 @@ class KnowledgeTransferContracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'RECEIPT_INTEGRITY'):
             validate_receipt(receipt)
 
+    def test_runtime_handle_cannot_import_legacy_authority(self):
+        from kb_platform.storage_sdk.relational import GUARDED_RELATIONAL_V1
+        from kb_platform.storage_service import StorageService
+
+        service = StorageService()
+        self.addCleanup(service.close)
+        export = next(item for item in self.provider.exports() if item.name == 'structured')
+        service.register('authority', export)
+        grant = service.grant('authority', GUARDED_RELATIONAL_V1,
+            self.target_identity.space, 'fixture', target=ExistingDataset(self.target_identity.dataset_id))
+        target = service.bind(grant)
+        target.prepare(knowledge_schema(self.target_identity.space.owner_id))
+        target.seal()
+        with self.assertRaisesRegex(DatabaseError, 'INITIALIZED_SQL_TARGET_REQUIRED'):
+            import_knowledge(target, self.export(), expected_identity=self.target_identity, target_offline=True)
+
     def test_failed_import_rolls_back_all_domain_rows_and_repeat_cannot_overwrite_changes(self):
         package = self.export()
         broken = deepcopy(package)

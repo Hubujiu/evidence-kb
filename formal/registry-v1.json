@@ -6756,7 +6756,7 @@
           "path": "kb_platform/knowledge_transfer.py",
           "language": "python",
           "symbol": "import_knowledge",
-          "sha256": "c790374e11e509f65b0c8dfb9395df017730cdd1e02e7659c559c4c17cbfb665"
+          "sha256": "6fbeb74701c899bdfc33bdacfa945467401a88486fb365894405c681b5ff630c"
         },
         {
           "path": "kb_platform/core.py",
