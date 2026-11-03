@@ -1,4 +1,3 @@
-"""Native table owner guard independent of source digest refresh."""
 import re
 
 
