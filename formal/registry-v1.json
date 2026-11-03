@@ -2672,8 +2672,413 @@
         }
       ],
       "remaining_obligations": [
-        "The Python database_migrations persisted dirty/step protocol, multi-version/downgrade rules, MySQL per-step commit recovery, and grant_runtime after final migration commit remain a separate unmodeled owner; source binding is not coverage of that protocol. Direct handle concurrent initialization, unbounded schemas and database internals are also unproved.",
+        "Multi-version persisted journals are a separate partial owner in persistent_migration_journal, not covered by schema admission acknowledgements. Direct handle concurrent initialization, unbounded schemas and database internals remain unproved.",
         "Scope enforcement, grant ABA, launch/queue/guard/retention owners and cross-layer composition are separate; no liveness or unconditional recovery claim."
+      ]
+    },
+    {
+      "id": "persistent_migration_journal",
+      "status": "partial",
+      "owners": [
+        "kb_platform/database_migrations.py"
+      ],
+      "states": [
+        "Identity absent/durable/published; version/hash/dirty/step journal; prepare/commit/cleanup/grant"
+      ],
+      "transitions": [
+        "migration_connection",
+        "initialize_space",
+        "prepare"
+      ],
+      "invariants": [
+        "Only compatible journals are admitted; clean implies completed steps; grant follows durable commit and cleanup; release error cannot skip connection close."
+      ],
+      "assumptions": [
+        "Two versions with two statements, two prepare attempts, one owner key and dataset identity; serialized migration lock.",
+        "SQLite explicit BEGIN IMMEDIATE and PostgreSQL transactions atomically roll back DDL; MySQL DDL can persist between dirty and step commits. SQLAlchemy/engine semantics are trusted primitives."
+      ],
+      "exclusions": [
+        "Database engine internals, lock fairness, arbitrary migration SQL, external corruption and unbounded histories are not proved."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/database_migrations.py",
+          "language": "python",
+          "symbol": "migration_connection",
+          "sha256": "69cdead7318a073d4ffcd5a73e28f3aa1c6759da10a4e2c842ae23d7a2b3286d"
+        },
+        {
+          "path": "kb_platform/database_migrations.py",
+          "language": "python",
+          "symbol": "initialize_space",
+          "sha256": "da64ebe93e5ed37b28a290cb9c18601e7de64dacd911dfb598c9b36f83774885"
+        },
+        {
+          "path": "kb_platform/database_migrations.py",
+          "language": "python",
+          "symbol": "prepare",
+          "sha256": "ec1d605762bef6e0741359c38dd1e5af9fa45ba25d84ca9a23aee9dbf56cfd36"
+        },
+        {
+          "path": "kb_platform/rag_testing/persistent_storage_contracts.py",
+          "language": "python",
+          "symbol": "exercise_migration_journal",
+          "sha256": "c1e95cf54f3246fbceadeb9448acc3a6abf66331157b8b11e22298be9452a995"
+        },
+        {
+          "path": "kb_platform/rag_testing/persistent_storage_contracts.py",
+          "language": "python",
+          "symbol": "PersistentMigrationContracts",
+          "sha256": "d9df0046ef234176050fb2de9a86bf10d37be56b269cea4c0e3b5965ecab0bfb"
+        },
+        {
+          "path": "kb_platform/rag_testing/persistent_storage_lint_contracts.py",
+          "language": "python",
+          "symbol": "migration_cleanup_violations",
+          "sha256": "a02a561dd5a3c2bda7272693b35ff3a6579bdcc3204e4b8fb0c19290dbe574db"
+        }
+      ],
+      "models": [
+        {
+          "id": "persistent-mysqljournal",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/MysqlJournal.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "invariants": [
+            "TypeOK",
+            "IdentityPublication",
+            "RefuseIncompatibleJournal",
+            "CleanMeansComplete",
+            "PartialEffectHasDirtyJournal",
+            "RuntimeAfterDurability",
+            "ConnectionAlwaysClosed",
+            "ReleasedSessionNotReused",
+            "PrimaryErrorPreserved"
+          ],
+          "properties": [],
+          "bounds": {
+            "versions_or_keys": 2,
+            "steps_or_writers": 2,
+            "prepare_attempts": 2,
+            "document_operations": 4
+          }
+        },
+        {
+          "id": "persistent-transactionaljournal",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/TransactionalJournal.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "invariants": [
+            "TypeOK",
+            "IdentityPublication",
+            "RefuseIncompatibleJournal",
+            "CleanMeansComplete",
+            "PartialEffectHasDirtyJournal",
+            "RuntimeAfterDurability",
+            "ConnectionAlwaysClosed",
+            "ReleasedSessionNotReused",
+            "PrimaryErrorPreserved"
+          ],
+          "properties": [],
+          "bounds": {
+            "versions_or_keys": 2,
+            "steps_or_writers": 2,
+            "prepare_attempts": 2,
+            "document_operations": 4
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "persistent-acceptdirty",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/AcceptDirty.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "RefuseIncompatibleJournal"
+        },
+        {
+          "id": "persistent-accepthash",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/AcceptHash.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "RefuseIncompatibleJournal"
+        },
+        {
+          "id": "persistent-acceptdowngrade",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/AcceptDowngrade.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "RefuseIncompatibleJournal"
+        },
+        {
+          "id": "persistent-missingdirty",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/MissingDirty.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "CleanMeansComplete"
+        },
+        {
+          "id": "persistent-earlyclean",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/EarlyClean.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "CleanMeansComplete"
+        },
+        {
+          "id": "persistent-earlygrant",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/EarlyGrant.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "RuntimeAfterDurability"
+        },
+        {
+          "id": "persistent-releaseleak",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/ReleaseLeak.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "ConnectionAlwaysClosed"
+        },
+        {
+          "id": "persistent-earlyidentity",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/EarlyIdentity.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "IdentityPublication"
+        },
+        {
+          "id": "persistent-upgradewitness",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/UpgradeWitness.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "NoUpgradeWitness"
+        },
+        {
+          "id": "persistent-dirtyrefusalwitness",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/DirtyRefusalWitness.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "NoDirtyRefusalWitness"
+        },
+        {
+          "id": "persistent-durableretrywitness",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/DurableRetryWitness.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "NoDurableRetryWitness"
+        },
+        {
+          "id": "persistent-lostidentitywitness",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/LostIdentityWitness.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "NoLostIdentityWitness"
+        },
+        {
+          "id": "persistent-releasereuse",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/ReleaseReuse.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "ReleasedSessionNotReused"
+        },
+        {
+          "id": "persistent-maskprimaryerror",
+          "module": "formal/persistent_storage/MigrationJournal.tla",
+          "config": "formal/persistent_storage/MaskPrimaryError.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "PrimaryErrorPreserved"
+        }
+      ],
+      "remaining_obligations": [
+        "No automatic dirty recovery is introduced. MySQL durable dirty journals require explicit operator resolution.",
+        "Commit response loss is conservative; bounded witnesses are not liveness or source refinement proofs.",
+        "GET_LOCK acquisition before result confirmation is a driver communication boundary: appropriate SQLAlchemy invalidation is assumed, not proved. No acquisition defect is established by this model."
+      ]
+    },
+    {
+      "id": "persistent_document_revisions",
+      "status": "partial",
+      "owners": [
+        "kb_platform/storage_adapters/values.py"
+      ],
+      "states": [
+        "Absent/live/tombstone; monotone revision with exhaustion; caller expected revision; exported immutable clone snapshot and target"
+      ],
+      "transitions": [
+        "SqlDocumentStore.put/delete",
+        "export_documents/import_documents"
+      ],
+      "invariants": [
+        "CAS and create preconditions reject stale writes; deletion retains revision history; MAX does not wrap; clone preserves tombstones and rejects a different nonempty target."
+      ],
+      "assumptions": [
+        "Two keys, two writers, three serialized transactions, maximum abstract revision three; none/zero/stale/current/MAX expectations.",
+        "SQLite BEGIN IMMEDIATE / PostgreSQL advisory transaction lock and atomic SQL commits serialize writes. Snapshot validation and hashing are trusted boundary primitives.",
+        "Export is a quiescent cut; the finite source stops writing after export. An immutable validated snapshot, not current source state, is imported."
+      ],
+      "exclusions": [
+        "SQL engine internals, all JSON shapes and byte limits, hash collision resistance, arbitrary interleavings outside the existing write locks, external database writers and unbounded revisions are not proved."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "SqlDocumentStore.put",
+          "sha256": "005e73a7c811ef4930616d21b622a5b457e347e9fd9176d85391e752b21002e6"
+        },
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "SqlDocumentStore.delete",
+          "sha256": "0d0e79417332a6770b90110e7feac18519a9ea9f69f71282b32bbaa1cfa537b4"
+        },
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "SqlDocumentStore._lock_writes",
+          "sha256": "b8697bdd29361c49f547e2b54d74540bad6e6d7585aad8db9a88da6672bafee9"
+        },
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "export_documents",
+          "sha256": "e2d510eb9df4953006ef27038b33d5ffbf0d48b7f82c08ebc9c1c48d39283ab7"
+        },
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "import_documents",
+          "sha256": "1087ea8fc8971e6bd8f3136fb7e374b51539e8bc72c01c55d9e5fd4a631efd73"
+        },
+        {
+          "path": "kb_platform/storage_adapters/values.py",
+          "language": "python",
+          "symbol": "_validate_snapshot",
+          "sha256": "300cf2a506f8b9611648d990266ec1d843fc4b4a31002c9ad4aede34b2d9450e"
+        },
+        {
+          "path": "kb_platform/rag_testing/persistent_storage_contracts.py",
+          "language": "python",
+          "symbol": "PersistentDocumentContracts",
+          "sha256": "f2c6b67c66977e087ff5ac5da6125439b90d8b321e0b67e48fc68861c88172e5"
+        }
+      ],
+      "models": [
+        {
+          "id": "persistent-documentrevisions",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/DocumentRevisions.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "invariants": [
+            "TypeOK",
+            "CompareAndSwap",
+            "MonotoneRevision",
+            "ExactClone",
+            "TombstonePayload"
+          ],
+          "properties": [],
+          "bounds": {
+            "versions_or_keys": 2,
+            "steps_or_writers": 2,
+            "prepare_attempts": 2,
+            "document_operations": 3,
+            "maximum_revision": 3
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "persistent-revisionaba",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/RevisionABA.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "MonotoneRevision"
+        },
+        {
+          "id": "persistent-ignoreexpected",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/IgnoreExpected.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "CompareAndSwap"
+        },
+        {
+          "id": "persistent-revisionwrap",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/RevisionWrap.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "MonotoneRevision"
+        },
+        {
+          "id": "persistent-losetombstones",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/LoseTombstones.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "ExactClone"
+        },
+        {
+          "id": "persistent-overwriteclonetarget",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/OverwriteCloneTarget.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "ExactClone"
+        },
+        {
+          "id": "persistent-recreatewitness",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/RecreateWitness.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "NoRecreateWitness"
+        },
+        {
+          "id": "persistent-stalewitness",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/StaleWitness.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "NoStaleWitness"
+        },
+        {
+          "id": "persistent-maximumwitness",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/MaximumWitness.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "NoMaximumWitness"
+        },
+        {
+          "id": "persistent-cloneretrywitness",
+          "module": "formal/persistent_storage/DocumentRevisions.tla",
+          "config": "formal/persistent_storage/CloneRetryWitness.cfg",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "expected_invariant": "NoCloneRetryWitness"
+        }
+      ],
+      "remaining_obligations": [
+        "Clone import is one atomic SQL transaction; driver interruption/rollback is covered by real contracts, not a model of database internals.",
+        "No newly confirmed CAS production bug; existing strong revision/tombstone contracts remain required."
       ]
     }
   ]
