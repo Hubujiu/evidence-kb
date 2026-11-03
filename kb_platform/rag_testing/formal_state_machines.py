@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+from contextlib import contextmanager
+from functools import lru_cache
 import hashlib
 import io
 import json
@@ -67,10 +69,14 @@ def python_symbols(source: str) -> dict[str, ast.AST]:
 
 
 def source_digest(root: Path, binding: dict) -> str:
+    return _source_digest(root, binding, python_symbols)
+
+
+def _source_digest(root: Path, binding: dict, parse_symbols) -> str:
     path = local_file(root, binding['path'])
     source = path.read_text('utf-8')
     if binding['language'] == 'python':
-        symbols = python_symbols(source)
+        symbols = parse_symbols(source)
         if binding['symbol'] not in symbols:
             raise ValueError(f'Missing Python symbol: {binding["symbol"]}')
         options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
@@ -85,6 +91,19 @@ def source_digest(root: Path, binding: dict) -> str:
     if leaf != '<module>' and not re.search(r'\b(?:fn|enum|struct)\s+' + re.escape(leaf) + r'\b', source):
         raise ValueError(f'Missing Rust declaration: {binding["symbol"]}')
     return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+
+
+@contextmanager
+def _source_digest_session():
+    parse_symbols = lru_cache(maxsize=128)(python_symbols)
+
+    def reviewed_digest(root, binding):
+        return _source_digest(root, binding, parse_symbols)
+
+    try:
+        yield reviewed_digest
+    finally:
+        parse_symbols.cache_clear()
 
 
 def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
@@ -158,6 +177,11 @@ def operator_names(value, *, allow_empty: bool) -> bool:
 
 
 def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
+    with _source_digest_session() as reviewed_digest:
+        return _registry_violations(root, registry, reviewed_digest)
+
+
+def _registry_violations(root: Path, registry: dict | None, reviewed_digest) -> list[str]:
     from scripts.storage_grant_checks import violations as storage_grant_violations
 
     errors = []
@@ -226,7 +250,7 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
             for binding in machine['source_bindings']:
                 key = (binding['path'], binding['symbol'])
                 bindings.add(key)
-                actual = source_digest(root, binding)
+                actual = reviewed_digest(root, binding)
                 if not re.fullmatch('[0-9a-f]{64}', binding['sha256']) or actual != binding['sha256']:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
             if identity == 'tool_executor':

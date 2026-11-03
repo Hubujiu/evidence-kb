@@ -276,6 +276,8 @@ def source_quality_violations(root: Path) -> list[str]:
             source = path.read_text('utf-8-sig')
             tree = ast.parse(source, filename=relative)
             module = relative.removesuffix('.py').replace('/', '.')
+            if relative == 'kb_platform/rag_testing/formal_state_machines.py':
+                errors.extend(f'{relative}: {error}' for error in formal_parse_reuse_violations(tree))
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
             if relative == 'kb_platform/rag_testing/search_router_contracts.py':
@@ -299,6 +301,75 @@ def source_quality_violations(root: Path) -> list[str]:
             for line, target in imports(tree, module):
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
+    return errors
+
+
+def formal_parse_reuse_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse(r"""def local_file(root: Path, relative: str) -> Path:
+    if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
+        raise ValueError('Repository-relative nonempty path required')
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root.resolve()) or not path.is_file():
+        raise ValueError(f'Missing or escaping repository file: {relative}')
+    return path
+
+def source_digest(root: Path, binding: dict) -> str:
+    return _source_digest(root, binding, python_symbols)
+
+def _source_digest(root: Path, binding: dict, parse_symbols) -> str:
+    path = local_file(root, binding['path'])
+    source = path.read_text('utf-8')
+    if binding['language'] == 'python':
+        symbols = parse_symbols(source)
+        if binding['symbol'] not in symbols:
+            raise ValueError(f"Missing Python symbol: {binding['symbol']}")
+        options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
+        return digest(ast.dump(symbols[binding['symbol']], include_attributes=False, **options).encode())
+    if binding['language'] == 'javascript-module':
+        if path.suffix != '.mjs' or binding['symbol'] != '<module>':
+            raise ValueError('JavaScript bindings require a complete .mjs module')
+        return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+    if binding['language'] != 'rust':
+        raise ValueError('Source binding language must be python, rust or javascript-module')
+    leaf = binding['symbol'].replace('::', '.').rsplit('.', 1)[-1]
+    if leaf != '<module>' and (not re.search('\\b(?:fn|enum|struct)\\s+' + re.escape(leaf) + '\\b', source)):
+        raise ValueError(f"Missing Rust declaration: {binding['symbol']}")
+    return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+
+@contextmanager
+def _source_digest_session():
+    parse_symbols = lru_cache(maxsize=128)(python_symbols)
+
+    def reviewed_digest(root, binding):
+        return _source_digest(root, binding, parse_symbols)
+    try:
+        yield reviewed_digest
+    finally:
+        parse_symbols.cache_clear()
+
+def registry_violations(root: Path, registry: dict | None=None) -> list[str]:
+    with _source_digest_session() as reviewed_digest:
+        return _registry_violations(root, registry, reviewed_digest)
+""")
+    errors = []
+    protected = {node.name for node in expected.body}
+    for reference in expected.body:
+        actual = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                  and node.name == reference.name]
+        if len(actual) != 1 or ast.dump(actual[0]) != ast.dump(reference):
+            errors.append(f'formal parse reuse: preserve fresh reads and invocation-local content cache in {reference.name}')
+    symbols = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'python_symbols']
+    if len(symbols) != 1 or symbols[0].decorator_list:
+        errors.append('formal parse reuse: public python_symbols must return independent uncached ASTs')
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id in protected | {'python_symbols'} for target in targets):
+                errors.append('formal parse reuse: no module-scope replacement of validation functions')
+    workers = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_registry_violations']
+    call = ast.parse('actual = reviewed_digest(root, binding)').body[0]
+    if len(workers) != 1 or sum(ast.dump(node) == ast.dump(call) for node in ast.walk(workers[0])) != 1:
+        errors.append('formal parse reuse: registry bindings require the scoped digest callback')
     return errors
 
 
