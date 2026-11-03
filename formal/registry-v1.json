@@ -12747,7 +12747,13 @@
           "path": "scripts/authority_commit_checks.py",
           "language": "python",
           "symbol": "<module>",
-          "sha256": "366459436654f930280724d1751c6861194e4ee12cdd1d85b646b7dd29f5a190"
+          "sha256": "614cc4bc892835ebbabcbacc2eeef6c95e1882bd9c18b5ba5a51572ea95d5959"
+        },
+        {
+          "path": "kb_platform/knowledge_authority_contract.py",
+          "language": "python",
+          "symbol": "validate_authority_bindings",
+          "sha256": "db7da521a3510d54a98f7bc9cdc1cfa64420aebeb9ac665ab8d3491c5a89feda"
         }
       ],
       "models": [

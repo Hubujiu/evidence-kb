@@ -15,6 +15,17 @@ session = self._owner(db, actor, session_id)
 if expected_scope is not None and session['scope'] != expected_scope:
     raise PlatformError('SCOPE_CHANGED', 'Session scope differs from verified authority', 409)
 """
+BINDINGS = """
+consumers = [name for name, definition in application.get('plugins', {}).items()
+    if definition.get('implementation') in {'knowledge.access', 'knowledge.data', 'knowledge.sessions'}]
+if len(consumers) < 2:
+    return
+bindings = [application.get('bindings', {}).get(name, {}).get('authority') for name in consumers]
+if any(not isinstance(binding, dict) or set(binding) != {'plugin', 'export'} for binding in bindings):
+    raise PluginError('KNOWLEDGE_AUTHORITY_BINDING_REQUIRED')
+if any(binding != bindings[0] for binding in bindings[1:]):
+    raise PluginError('KNOWLEDGE_AUTHORITY_BINDING_MISMATCH')
+"""
 
 
 def _method(root, file, owner, method):
@@ -32,6 +43,12 @@ def authority_commit_violations(root, registry):
     if not any(machine['id'] == 'knowledge_atomic_commit' for machine in registry['machines']):
         return []
     errors = []
+    tree = ast.parse((root / 'kb_platform/knowledge_authority_contract.py').read_text('utf-8'))
+    bindings = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+        and node.name == 'validate_authority_bindings']
+    if (len(bindings) != 1 or bindings[0].decorator_list
+            or _statements(bindings[0].body) != _statements(ast.parse(BINDINGS).body)):
+        errors.append('authority commit requires every pair of builtin consumers to share one authority export')
     method = _method(root, 'kb_platform/knowledge_sessions.py', 'KnowledgeSessions', 'finish')
     if method is None or len(method.body) != 3 or _statements(method.body[1:]) != _statements(ast.parse(COMMIT).body):
         errors.append('authority commit must lock, compare the full snapshot and finish inside the same transaction')

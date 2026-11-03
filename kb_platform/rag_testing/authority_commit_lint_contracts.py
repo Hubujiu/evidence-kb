@@ -7,7 +7,7 @@ from scripts.authority_commit_checks import authority_commit_violations
 
 ROOT = Path(__file__).resolve().parents[2]
 FILES = ('kb_platform/knowledge_sessions.py', 'kb_platform/session_store.py', 'kb_platform/knowledge_turn.py',
-         'formal/session_authority/AtomicAuthorityCommit.tla')
+         'formal/session_authority/AtomicAuthorityCommit.tla', 'kb_platform/knowledge_authority_contract.py')
 REGISTRY = {'machines': [{'id': 'knowledge_atomic_commit'}]}
 
 
@@ -24,6 +24,7 @@ class AuthorityCommitLintContracts(unittest.TestCase):
             (FILES[2], 'authority=self.authority', "authority={'scope_id': self.scope}"),
             (FILES[2], "if code == 'COMMIT_UNKNOWN':\n                raise", "if code == 'COMMIT_UNKNOWN':\n                pass"),
             (FILES[3], '/\\ (~locked \\/ ~HoldLock)', '/\\ TRUE'),
+            (FILES[4], 'if len(consumers) < 2:', 'if len(consumers) < 3:'),
         )
         for file, before, after in mutations:
             with self.subTest(file=file, mutation=before), TemporaryDirectory() as directory:

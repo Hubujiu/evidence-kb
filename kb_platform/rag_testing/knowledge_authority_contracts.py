@@ -25,6 +25,22 @@ from kb_platform.storage_catalog import initialize_configuration
 
 
 class KnowledgeAuthorityContracts(unittest.TestCase):
+    def test_partial_builtin_compositions_cannot_split_session_and_evidence_authority(self):
+        from kb_platform.knowledge_authority_contract import validate_authority_bindings
+
+        for other in ('access', 'data'):
+            with self.subTest(other=other):
+                profile = {'plugins': {name: {'implementation': 'knowledge.' + name}
+                    for name in ('sessions', other)}, 'bindings': {name: {'authority': {
+                        'plugin': 'shared', 'export': 'authority'}} for name in ('sessions', other)}}
+                validate_authority_bindings(profile)
+                profile['bindings']['sessions']['authority']['plugin'] = 'different'
+                with self.assertRaisesRegex(PluginError, 'KNOWLEDGE_AUTHORITY_BINDING_MISMATCH'):
+                    validate_authority_bindings(profile)
+                del profile['bindings']['sessions']['authority']
+                with self.assertRaisesRegex(PluginError, 'KNOWLEDGE_AUTHORITY_BINDING_REQUIRED'):
+                    validate_authority_bindings(profile)
+
     def test_foreign_authority_revision_is_negotiated_from_neutral_schema(self):
         with TemporaryDirectory() as directory:
             configuration = initialize_configuration({'version': 2, 'application_id': 'foreign-authority-contract',
