@@ -13,8 +13,8 @@ class PostgresSearchContracts(unittest.TestCase):
         from kb_platform.knowledge_service import KnowledgeService
         from kb_platform.semantic_pages_v2 import SemanticPageService
 
-        backend = PostgresSearch.__new__(PostgresSearch)
-        backend.pool = Mock()
+        with patch('kb_platform.postgres_search.ConnectionPool', return_value=Mock()):
+            backend = PostgresSearch('postgresql://synthetic.invalid/fixture')
         connection = Mock()
         backend.pool.connection.side_effect = lambda: nullcontext(connection)
         connection.execute.return_value.fetchone.return_value = None

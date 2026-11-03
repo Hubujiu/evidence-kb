@@ -1,3 +1,5 @@
+from .test_outcomes import passed_contract_run
+
 import argparse
 from contextlib import contextmanager
 from hashlib import sha256
@@ -260,9 +262,11 @@ def main():
         parser.error('Set KB_REMOTE_MODELS=0 and KB_DEFER_DEFAULT_APP=1')
     args.output.mkdir(parents=True, exist_ok=False)
     observations = {}
+    suite = build_suite(dsn, args.output, observations, migration_dsn=migration_dsn)
+    planned = suite.countTestCases()
     with (args.output / 'checks.log').open('w', encoding='utf-8') as stream:
-        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(
-            build_suite(dsn, args.output, observations, migration_dsn=migration_dsn))
+        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
+    passed = passed_contract_run(result, planned)
     with psycopg.connect(dsn) as connection:
         database = connection.execute('SELECT current_database(), version()').fetchone()
         extensions = connection.execute("SELECT extname,extversion FROM pg_extension WHERE extname IN ('vector','pg_textsearch') ORDER BY extname").fetchall()
@@ -270,8 +274,10 @@ def main():
 
     root = Path(__file__).resolve().parents[2]
     native = library_path().resolve()
-    report = {'status': 'PASS' if result.wasSuccessful() else 'FAIL', 'tests': result.testsRun,
+    report = {'status': 'PASS' if passed else 'FAIL', 'tests': result.testsRun,
         'failures': len(result.failures), 'errors': len(result.errors), 'skipped': len(result.skipped),
+        'expected_failures': len(result.expectedFailures), 'planned': planned,
+        'not_run': planned - result.testsRun,
         'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0,
         'scope': 'controlled actual loopback HTTP + PostgreSQL + native Python parsing subprocess; synthetic source; not production RAG quality',
         'database': database[0], 'postgresql': database[1], 'extensions': dict(extensions),
@@ -281,7 +287,7 @@ def main():
         'observations': observations}
     write_json(args.output / 'report.json', report)
     print(json.dumps({key: report[key] for key in ('status','tests','failures','errors','skipped','database')}, ensure_ascii=False))
-    raise SystemExit(0 if result.wasSuccessful() and not result.skipped else 1)
+    raise SystemExit(0 if passed else 1)
 
 
 if __name__ == '__main__':

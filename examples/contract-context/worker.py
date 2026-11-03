@@ -16,11 +16,14 @@ module = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 
-from kb_platform.agent_context import ContextManager, ContextPolicy
-from kb_platform.knowledge_capabilities import AuthorizedEvidenceClient
-from kb_platform.knowledge_context import KnowledgeContext, LocalEvidenceSource, LocalHistorySource
-from kb_platform.knowledge_contracts import SessionClient
-from kb_platform.plugin_contracts import ContractError
+agent_context = importlib.import_module('kb_platform.agent_context')
+ContextManager, ContextPolicy = agent_context.ContextManager, agent_context.ContextPolicy
+AuthorizedEvidenceClient = importlib.import_module('kb_platform.knowledge_capabilities').AuthorizedEvidenceClient
+knowledge_context = importlib.import_module('kb_platform.knowledge_context')
+KnowledgeContext = knowledge_context.KnowledgeContext
+LocalEvidenceSource, LocalHistorySource = knowledge_context.LocalEvidenceSource, knowledge_context.LocalHistorySource
+SessionClient = importlib.import_module('kb_platform.knowledge_contracts').SessionClient
+ContractError = importlib.import_module('kb_platform.plugin_contracts').ContractError
 
 
 PROTOCOL = 'evidence-plugin-process/1'

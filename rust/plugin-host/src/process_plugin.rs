@@ -1,9 +1,3 @@
-//! JSON-lines SDK for contract providers hosted by the Rust process supervisor.
-//!
-//! Handlers run concurrently and must check [`CallContext`] during long work.
-//! Shutdown cancels and joins all calls before closing the plugin; the supervisor
-//! enforces a hard termination deadline for handlers that do not cooperate.
-
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};

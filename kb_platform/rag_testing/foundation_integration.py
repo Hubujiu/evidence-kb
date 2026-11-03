@@ -1,3 +1,5 @@
+from .test_outcomes import passed_contract_run
+
 import argparse
 import json
 from pathlib import Path
@@ -18,8 +20,7 @@ def main():
         suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
     planned = suite.countTestCases()
     result = unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(suite)
-    passed = (result.wasSuccessful() and result.testsRun == planned > 0
-              and not result.skipped and not result.expectedFailures)
+    passed = passed_contract_run(result, planned)
     report = {'decision': 'PASS' if passed else 'FAIL', 'planned': planned,
         'total': result.testsRun, 'failures': len(result.failures), 'errors': len(result.errors),
         'skipped': len(result.skipped), 'expected_failures': len(result.expectedFailures),

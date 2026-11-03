@@ -164,7 +164,6 @@ pub fn validate_invocation(arguments: &Map<String, Value>) -> Result<(), Storage
     Ok(())
 }
 
-/// A bound driver descriptor is the same for a local adapter and a process provider.
 pub fn validate_descriptor(value: &Value) -> Result<(), StorageError> {
     let value = object(value, "STORAGE_IMPLEMENTATION_INVALID")?;
     fields(

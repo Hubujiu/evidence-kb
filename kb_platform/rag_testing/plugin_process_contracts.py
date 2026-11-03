@@ -438,16 +438,22 @@ class ProcessPackageContracts(unittest.TestCase):
             process.terminate.side_effect = terminate
             process.stdin.write.side_effect = write
             request = {'id': 'cancel-control', 'kind': 'cancel'}
-            control = _Write(request, b'cancel\n', monotonic() + 0.05, Future(), status='CANCEL_SENT')
-            try:
-                transport._enqueue(control)
-                self.assertTrue(writing.wait(1))
-                self.assertEqual(transport._pending, {})
-                self.assertTrue(terminated.wait(1), 'Control write must retain independent supervision')
-                transport._writer.join(1)
-                self.assertFalse(transport._writer.is_alive())
-                self.assertTrue(control.future.done())
-                self.assertEqual(transport._writes, {})
-            finally:
-                released.set()
-                transport.close()
+            control = _Write(request, b'cancel\n', 101, Future(), status='CANCEL_SENT')
+            with patch('kb_platform.plugin_process.monotonic', return_value=100) as clock:
+                try:
+                    transport._enqueue(control)
+                    self.assertTrue(writing.wait(1))
+                    self.assertEqual(transport._pending, {})
+                    self.assertFalse(terminated.is_set())
+                    self.assertFalse(control.future.done())
+                    with transport._write_condition:
+                        clock.return_value = control.expires
+                        transport._write_condition.notify_all()
+                    self.assertTrue(terminated.wait(1), 'Control write must retain independent supervision')
+                    transport._writer.join(1)
+                    self.assertFalse(transport._writer.is_alive())
+                    self.assertTrue(control.future.done())
+                    self.assertEqual(transport._writes, {})
+                finally:
+                    released.set()
+                    transport.close()
