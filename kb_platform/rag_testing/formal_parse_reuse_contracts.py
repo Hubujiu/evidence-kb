@@ -169,6 +169,7 @@ class FormalParseReuseContracts(unittest.TestCase):
         self.assertEqual([], formal_parse_reuse_violations(ast.parse(source)))
         mutations = (
             ('parse_symbols.cache_clear()', 'pass'),
+            ('elif not isinstance(child, ast.expr):', 'elif not isinstance(child, ast.stmt):'),
             ('lru_cache(maxsize=128)', 'lru_cache(maxsize=None)'),
             ("source = path.read_text('utf-8')", "source = str(path)"),
             ('symbols = parse_symbols(source)', 'symbols = parse_symbols(str(path))'),
@@ -207,3 +208,72 @@ class FormalParseReuseContracts(unittest.TestCase):
                     target.write_text(source.replace(old, new, 1), 'utf-8')
                     self.assertNotEqual(row['sha256'], formal.source_digest(root, row))
                     self.assertEqual(formal.source_digest(repository, wrapper), formal.source_digest(root, wrapper))
+
+    def test_named_declarations_match_unpruned_walk_through_all_statement_containers(self):
+        source = """@decorate(lambda value: [item for item in value])
+class Outer[T](factory(lambda: object)):
+    if flag:
+        def same(): pass
+    else:
+        def same(): return 2
+    for item in values:
+        def in_for(): pass
+    else:
+        def in_for_else(): pass
+    while flag:
+        def in_while(): pass
+    else:
+        def in_while_else(): pass
+    with resource() as value:
+        class InWith:
+            def nested(self): pass
+    try:
+        def in_try(): pass
+    except ValueError:
+        def in_except(): pass
+    else:
+        def in_else(): pass
+    finally:
+        def in_finally(): pass
+    try:
+        def in_try_star(): pass
+    except* ValueError:
+        def in_except_star(): pass
+    match value:
+        case {'key': captured} if check(captured):
+            def in_case(): pass
+    def generic[U](self, value: U = factory(lambda: 1)) -> U:
+        def nested(): pass
+        return value
+    async def asynchronous(self):
+        async for item in values:
+            async def in_async_for(): pass
+        async with resource():
+            class InAsyncWith: pass
+        return lambda: [x for x in values if x]
+value = (lambda item: item)([x for x in range(10)])
+"""
+        compile(source, 'declaration_fixture', 'exec')
+        expected = {'<module>': ast.parse(source)}
+
+        def collect(node, prefix):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    name = '.'.join(filter(None, (prefix, child.name)))
+                    expected[name] = child
+                    collect(child, name)
+                else:
+                    collect(child, prefix)
+
+        with patch.object(ast, 'iter_child_nodes', wraps=ast.iter_child_nodes) as visits:
+            collect(expected['<module>'], '')
+            baseline = visits.call_count
+        with patch.object(ast, 'iter_child_nodes', wraps=ast.iter_child_nodes) as visits:
+            actual = formal.python_symbols(source)
+            self.assertLess(visits.call_count, baseline)
+        self.assertEqual(list(expected), list(actual))
+        self.assertGreater(len(expected), 20)
+        for name in expected:
+            with self.subTest(symbol=name):
+                self.assertEqual(ast.dump(expected[name], include_attributes=True),
+                                 ast.dump(actual[name], include_attributes=True))

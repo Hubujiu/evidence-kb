@@ -305,7 +305,21 @@ def source_quality_violations(root: Path) -> list[str]:
 
 
 def formal_parse_reuse_violations(tree: ast.AST) -> list[str]:
-    expected = ast.parse(r"""def local_file(root: Path, relative: str) -> Path:
+    expected = ast.parse(r"""def python_symbols(source: str) -> dict[str, ast.AST]:
+    symbols = {'<module>': ast.parse(source)}
+
+    def collect(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                name = '.'.join(filter(None, (prefix, child.name)))
+                symbols[name] = child
+                collect(child, name)
+            elif not isinstance(child, ast.expr):
+                collect(child, prefix)
+    collect(symbols['<module>'], '')
+    return symbols
+
+def local_file(root: Path, relative: str) -> Path:
     if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
         raise ValueError('Repository-relative nonempty path required')
     path = (root / relative).resolve()

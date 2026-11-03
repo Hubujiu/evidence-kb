@@ -61,7 +61,7 @@ def python_symbols(source: str) -> dict[str, ast.AST]:
                 name = '.'.join(filter(None, (prefix, child.name)))
                 symbols[name] = child
                 collect(child, name)
-            else:
+            elif not isinstance(child, ast.expr):
                 collect(child, prefix)
 
     collect(symbols['<module>'], '')
