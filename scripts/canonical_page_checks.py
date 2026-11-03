@@ -1,4 +1,3 @@
-"""Structural semantic obligations for the canonical public-library workflow."""
 import ast
 
 
@@ -24,8 +23,6 @@ def canonical_page_violations(source):
         methods = {node.name: node for node in owner.body if isinstance(node, ast.FunctionDef)}
         run, receipt = methods['run'], methods['_receipt']
         errors = []
-        # Validation must be a disjunction that directly raises: merely retaining
-        # the comparison in dead code, a tuple or an AND cannot satisfy the gate.
         guards = [node for node in ast.walk(receipt) if isinstance(node, ast.If)
                   and isinstance(node.test, ast.BoolOp) and isinstance(node.test.op, ast.Or)
                   and any(isinstance(child, ast.Raise) for child in node.body)]

@@ -1,4 +1,3 @@
-"""Public library protocol contracts; synthetic encoder, real SQLite/files/capsule validation."""
 from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
@@ -32,7 +31,7 @@ class SyntheticEncoder:
         self.fail = None
 
     def _unchanged(self):
-        pass  # No remote client exists. The real capsule importer still validates every field.
+        pass
 
     def documents_observed(self, texts, *, request_id, audit_context, authorize):
         if not authorize():
@@ -73,7 +72,7 @@ class SyntheticAuthority:
 
     @contextmanager
     def locked(self, actor, kb_id, *, manage):
-        assert manage and kb_id == 'kb' and actor.tenant_id == 'tenant'
+        unittest.TestCase().assertTrue(manage and kb_id == 'kb' and actor.tenant_id == 'tenant')
         yield {'state': self.current, 'rows': [{'source_id': identity,
             'policy': {'embedding': True, 'allowed_providers': ['google_gemini']}}
             for identity in self.items], 'authorize': lambda: self.allowed}
@@ -113,7 +112,7 @@ class CanonicalPageContracts(unittest.TestCase):
         self.assertEqual(len(set(self.provider.calls)), 4)
         self.assertEqual(set(result['capsules']), set(self.sources))
         self.assertEqual(result['document_physical_request_ids'], self.provider.calls)
-        self.assertEqual(result['remote_calls'], 4)  # Synthetic ledger units, no network.
+        self.assertEqual(result['remote_calls'], 4)
         self.assertEqual(result['new_query_embedding_calls'], 0)
         for entry in result['capsules'].values():
             path = Path(entry['path'])
