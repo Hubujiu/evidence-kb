@@ -171,6 +171,7 @@ class FormalParseReuseContracts(unittest.TestCase):
             ('parse_symbols.cache_clear()', 'pass'),
             ('elif not isinstance(child, ast.expr):', 'elif not isinstance(child, ast.stmt):'),
             ('if isinstance(source, ast.AST):', 'if False:'),
+            ('if not isinstance(item, ast.expr):', 'if not isinstance(item, ast.stmt):'),
             ('lru_cache(maxsize=128)', 'lru_cache(maxsize=None)'),
             ("source = path.read_text('utf-8')", "source = str(path)"),
             ('symbols = parse_symbols(source)', 'symbols = parse_symbols(str(path))'),
@@ -285,3 +286,48 @@ value = (lambda item: item)([x for x in range(10)])
             with self.subTest(symbol=name):
                 self.assertEqual(ast.dump(expected[name], include_attributes=True),
                                  ast.dump(actual[name], include_attributes=True))
+
+        candidate_source = source.replace('pass', 'state = 0') + """
+class RuntimeState: pass
+def attribute():
+    self.phase: str = 'open'
+def subscript():
+    data['status'] += 1
+def chained():
+    state = other = 1
+def tuple_target():
+    state, other = (1, 2)
+def named_expression():
+    return (state := 1)
+def nested_expression():
+    return factory(lambda: [value for value in items if (phase := value)])
+"""
+        expected_candidates = set()
+        for name, node in formal.python_symbols(candidate_source).items():
+            if isinstance(node, ast.ClassDef) and node.name.endswith(('State', 'Status', 'Phase')):
+                expected_candidates.add(('fixture.py', name))
+            pending = [node]
+            while pending:
+                item = pending.pop()
+                if item is not node and isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                targets = item.targets if isinstance(item, ast.Assign) else (
+                    [item.target] if isinstance(item, (ast.AnnAssign, ast.AugAssign)) else [])
+                for target in targets:
+                    target_name = target.attr if isinstance(target, ast.Attribute) else (
+                        target.id if isinstance(target, ast.Name) else None)
+                    if isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant):
+                        target_name = target.slice.value
+                    if target_name in formal.STATE_NAMES:
+                        expected_candidates.add(('fixture.py', name))
+                pending.extend(ast.iter_child_nodes(item))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'fixture.py').write_text(candidate_source, 'utf-8')
+            actual_candidates = formal.state_candidates(root, ['.'])
+            self.assertEqual(sorted(expected_candidates), sorted(actual_candidates))
+            for name in ('attribute', 'subscript', 'chained', 'RuntimeState'):
+                self.assertIn(('fixture.py', name), actual_candidates)
+            for name in ('tuple_target', 'named_expression', 'nested_expression'):
+                self.assertNotIn(('fixture.py', name), actual_candidates)
+            self.assertEqual(19, len(actual_candidates))

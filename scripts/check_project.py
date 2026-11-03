@@ -323,6 +323,46 @@ def formal_parse_reuse_violations(tree: ast.AST) -> list[str]:
     collect(symbols['<module>'], '')
     return symbols
 
+def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
+    found = set()
+    for directory in roots:
+        base = (root / directory).resolve()
+        if not base.is_relative_to(root.resolve()) or not base.is_dir():
+            raise ValueError(f'Invalid discovery root: {directory}')
+        for path in sorted(base.rglob('*.py')):
+            if path.name.endswith('_contracts.py') or '__pycache__' in path.parts:
+                continue
+            relative = path.relative_to(root).as_posix()
+            symbols = python_symbols(path.read_text('utf-8'))
+            for symbol, node in symbols.items():
+                if isinstance(node, ast.ClassDef) and re.search(r'(State|Status|Phase)$', node.name):
+                    found.add((relative, symbol))
+                body = [node]
+                while body:
+                    item = body.pop()
+                    if item is not node and isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                        continue
+                    targets = item.targets if isinstance(item, ast.Assign) else (
+                        [item.target] if isinstance(item, (ast.AnnAssign, ast.AugAssign)) else [])
+                    for target in targets:
+                        name = target.attr if isinstance(target, ast.Attribute) else (
+                            target.id if isinstance(target, ast.Name) else None)
+                        if isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant):
+                            name = target.slice.value
+                        if name in STATE_NAMES:
+                            found.add((relative, symbol))
+                    if not isinstance(item, ast.expr):
+                        body.extend(ast.iter_child_nodes(item))
+        for path in sorted(base.rglob('*.rs')):
+            if path.name == 'tests.rs' or 'tests' in path.relative_to(base).parts:
+                continue
+            for name in re.findall(r'\benum\s+([A-Za-z_][A-Za-z_0-9]*)', path.read_text('utf-8')):
+                if re.search(r'(State|Status|Phase)$', name):
+                    found.add((path.relative_to(root).as_posix(), name))
+        for path in sorted(base.rglob('*.mjs')):
+            found.add((path.relative_to(root).as_posix(), '<module>'))
+    return found
+
 def local_file(root: Path, relative: str) -> Path:
     if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
         raise ValueError('Repository-relative nonempty path required')
