@@ -11,11 +11,12 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     from . import foundation_consumer_integration, foundation_knowledge_integration, foundation_transport_integration
+    from . import http_lifespan_integration
     from .delivery_status_contracts import live_suite as delivery_status_suite
 
     suite = unittest.TestSuite()
     for module in (foundation_consumer_integration, foundation_knowledge_integration,
-                   foundation_transport_integration):
+                   foundation_transport_integration, http_lifespan_integration):
         suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
     suite.addTests(delivery_status_suite())
     planned = suite.countTestCases()

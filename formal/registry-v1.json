@@ -3145,6 +3145,391 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "python_host_lifecycles",
+      "status": "partial",
+      "owners": [
+        "kb_platform/plugin_host.py",
+        "kb_platform/host_applications.py",
+        "kb_platform/host_worker.py"
+      ],
+      "states": [
+        "Python root pump owner; callback maps and explicit retry; local lease users/context/timer; configuration entry CAS; collected snapshot; HTTP lifespan ownership."
+      ],
+      "transitions": [
+        "Acquire/setup/finally/release; claim/poll/callback/complete/ack/release; validate/recheck/update; collect/read snapshot; lifespan enter/serve/exit/fallback."
+      ],
+      "invariants": [
+        "No leaked setup lease, premature release, terminal signal/timer, duplicate pump, lost failed disposer, stale configuration commit, premature collection or duplicate HTTP shutdown."
+      ],
+      "assumptions": [
+        "Native coordinator operations are atomic and obey separately modeled PR57 contracts; root RLock serializes local metadata. Two callers and bounded resources/attempts.",
+        "HostWorker only calls close after run finishes or before run starts; stop may occur during run. Callback execution may fail; no forced asynchronous thread termination. HTTP finished means attempted lifespan exit, not proof all application resources successfully closed."
+      ],
+      "exclusions": [
+        "No unbounded memory, OS scheduling, arbitrary foreign mutation, process crash, or plugin callback correctness proof. No guaranteed progress for permanently failing cleanup."
+      ],
+      "remaining_obligations": [
+        "Bounded protocol exploration and executable regression/negative controls, not formal source refinement or universal absence of bugs. Native/process/ASGI internals remain separate owners."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginHost.lease",
+          "language": "python",
+          "sha256": "c2f6bd82a0a480fa8f74700204ebe60bd27da670650f5f63799b9d096d10cb82"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginContext.lease",
+          "language": "python",
+          "sha256": "4beed77d79c494c428dc4aa6e9f72e3668a7ea54c51742e2f83d4ffae29d1104"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginHost._pump",
+          "language": "python",
+          "sha256": "71614c58d18690774ee37995fb7f44b90a120810c7f7e27bf9df71829dedf33a"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginHost._execute",
+          "language": "python",
+          "sha256": "3b7ec6e82018e5f4e4ad6e589a671b151665f13588b090d5ab49ff903264a6f6"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginHost._release",
+          "language": "python",
+          "sha256": "27acd1225a6b0812de155461b9f6f5b78a98295a61c73521d48f5914aafe0824"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginHost._invoke",
+          "language": "python",
+          "sha256": "92730ff511fc6368de9d94dfd026e5fa10c69c614ed597e85a7b70a5202cea0e"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginHost.update",
+          "language": "python",
+          "sha256": "f68a17dcb03b6c7eff68a61d814d42f566c13ba9aff0f461d5e33a78da0fe4f9"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginHost._collect",
+          "language": "python",
+          "sha256": "561fb75a5400e0782161fd1caf056518f78e85aad16001ec00b9541372ef2f3a"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginHost.inspect",
+          "language": "python",
+          "sha256": "818962327709d23f96409d19ad89b07c91c5bd642349af35d451d9710f706c3c"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginContext.defer",
+          "language": "python",
+          "sha256": "402543d34c3a6558f36d9596fb39318a33d8420ea22e7d541ad0d7bd23827421"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "symbol": "PluginContext.on",
+          "language": "python",
+          "sha256": "f3c88c3647fd173c9a473146e0750aa7697b551d90a4d3a1f154adf9c7d2bd6b"
+        },
+        {
+          "path": "kb_platform/host_applications.py",
+          "symbol": "HttpApplication",
+          "language": "python",
+          "sha256": "6c672cfc8b5956264f6b8dd01268d46722ed477efbc998ce7fa3c899936796cd"
+        },
+        {
+          "path": "kb_platform/host_worker.py",
+          "symbol": "ApplicationWorker._run",
+          "language": "python",
+          "sha256": "746000cd66e738cdaaa343353516bdd86006641547722bf14a35fda74bc3e0c9"
+        },
+        {
+          "path": "kb_platform/host_worker.py",
+          "symbol": "ApplicationWorker._shutdown",
+          "language": "python",
+          "sha256": "12f1f596b73ffbe43638802c14a43b9ba732fefa2ebdd75d5fe7f9030414af88"
+        },
+        {
+          "path": "kb_platform/host_applications.py",
+          "symbol": "api",
+          "language": "python",
+          "sha256": "1752fd1691d8a7cee67027c633357e4f5a3bb7162f37d8d83601d0b53a67957f"
+        },
+        {
+          "path": "kb_platform/host_applications.py",
+          "symbol": "delivery",
+          "language": "python",
+          "sha256": "aee4d87b4fde339d7b9e14c9c421cdb37752b0a766aae930bc12adc187022c7f"
+        },
+        {
+          "path": "kb_platform/rag_testing/plugin_process_integration.py",
+          "symbol": "idle_exit_dispatcher_settled",
+          "language": "python",
+          "sha256": "b708cc98141bde0e6e6890f07fa27e7eb8346fcb542eb0b45c72b6aec200e1bb"
+        },
+        {
+          "path": "kb_platform/rag_testing/plugin_process_integration.py",
+          "symbol": "idle_exit_case",
+          "language": "python",
+          "sha256": "d046cfcfc4d26dcae5ab2984f91dd9019e15f455699722dd4b34aa05937535d1"
+        },
+        {
+          "path": "kb_platform/rag_testing/process_dispatcher_integration.py",
+          "symbol": "verify_idle_exit_dispatcher",
+          "language": "python",
+          "sha256": "e1d4f08ed2daa37d0864e4cb98b9481da5c356d63b4a9c69bc8b9b68b3534913"
+        }
+      ],
+      "models": [
+        {
+          "id": "python-host-pythonlease-positive",
+          "module": "formal/python_host_lifecycles/PythonLease.tla",
+          "config": "formal/python_host_lifecycles/PythonLeasePositive.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "invariants": [
+            "TypeOK",
+            "NoSetupLeak",
+            "NoEarlyRelease",
+            "NoSignalLeak",
+            "NoLiveTimerAfterReturn"
+          ],
+          "properties": [],
+          "bounds": {
+            "callers": 2,
+            "generations": 2,
+            "cleanup_attempts": 2
+          }
+        },
+        {
+          "id": "python-host-pythonpump-positive",
+          "module": "formal/python_host_lifecycles/PythonPump.tla",
+          "config": "formal/python_host_lifecycles/PythonPumpPositive.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "invariants": [
+            "TypeOK",
+            "SinglePump",
+            "NoIdleToken",
+            "FailedCallbackRetained",
+            "NoPrematureCollection"
+          ],
+          "properties": [],
+          "bounds": {
+            "callers": 2,
+            "generations": 2,
+            "cleanup_attempts": 2
+          }
+        },
+        {
+          "id": "python-host-pythonconfiguration-positive",
+          "module": "formal/python_host_lifecycles/PythonConfiguration.tla",
+          "config": "formal/python_host_lifecycles/PythonConfigurationPositive.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "invariants": [
+            "TypeOK",
+            "FreshValidation",
+            "NativePythonAgree"
+          ],
+          "properties": [],
+          "bounds": {
+            "callers": 2,
+            "generations": 2,
+            "cleanup_attempts": 2
+          }
+        },
+        {
+          "id": "python-host-httplifespan-positive",
+          "module": "formal/python_host_lifecycles/HttpLifespan.tla",
+          "config": "formal/python_host_lifecycles/HttpLifespanPositive.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "invariants": [
+            "TypeOK",
+            "ExitIsOwner",
+            "NoSecondShutdownAfterExit",
+            "NoFallbackFalseSuccess"
+          ],
+          "properties": [],
+          "bounds": {
+            "callers": 2,
+            "generations": 2,
+            "cleanup_attempts": 2
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "python-host-pythonlease-bugsetupfinally",
+          "module": "formal/python_host_lifecycles/PythonLease.tla",
+          "config": "formal/python_host_lifecycles/PythonLeaseBugSetupFinally.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoSetupLeak"
+        },
+        {
+          "id": "python-host-pythonlease-buglastuseronly",
+          "module": "formal/python_host_lifecycles/PythonLease.tla",
+          "config": "formal/python_host_lifecycles/PythonLeaseBugLastUserOnly.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoEarlyRelease"
+        },
+        {
+          "id": "python-host-pythonlease-bugremovesignal",
+          "module": "formal/python_host_lifecycles/PythonLease.tla",
+          "config": "formal/python_host_lifecycles/PythonLeaseBugRemoveSignal.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoSignalLeak"
+        },
+        {
+          "id": "python-host-pythonlease-bugjointimer",
+          "module": "formal/python_host_lifecycles/PythonLease.tla",
+          "config": "formal/python_host_lifecycles/PythonLeaseBugJoinTimer.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoLiveTimerAfterReturn"
+        },
+        {
+          "id": "python-host-pythonlease-witnesssetupfailurerecoveredunreachable",
+          "module": "formal/python_host_lifecycles/PythonLease.tla",
+          "config": "formal/python_host_lifecycles/PythonLeaseWitnessSetupFailureRecoveredUnreachable.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "SetupFailureRecoveredUnreachable"
+        },
+        {
+          "id": "python-host-pythonlease-witnessnestedinvocationsettledunreachable",
+          "module": "formal/python_host_lifecycles/PythonLease.tla",
+          "config": "formal/python_host_lifecycles/PythonLeaseWitnessNestedInvocationSettledUnreachable.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NestedInvocationSettledUnreachable"
+        },
+        {
+          "id": "python-host-pythonpump-bugsingleowner",
+          "module": "formal/python_host_lifecycles/PythonPump.tla",
+          "config": "formal/python_host_lifecycles/PythonPumpBugSingleOwner.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "SinglePump"
+        },
+        {
+          "id": "python-host-pythonpump-bugreleaseowner",
+          "module": "formal/python_host_lifecycles/PythonPump.tla",
+          "config": "formal/python_host_lifecycles/PythonPumpBugReleaseOwner.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoIdleToken"
+        },
+        {
+          "id": "python-host-pythonpump-bugretainfailure",
+          "module": "formal/python_host_lifecycles/PythonPump.tla",
+          "config": "formal/python_host_lifecycles/PythonPumpBugRetainFailure.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "FailedCallbackRetained"
+        },
+        {
+          "id": "python-host-pythonpump-bugcollectafterdone",
+          "module": "formal/python_host_lifecycles/PythonPump.tla",
+          "config": "formal/python_host_lifecycles/PythonPumpBugCollectAfterDone.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoPrematureCollection"
+        },
+        {
+          "id": "python-host-pythonpump-witnessretrycollectedunreachable",
+          "module": "formal/python_host_lifecycles/PythonPump.tla",
+          "config": "formal/python_host_lifecycles/PythonPumpWitnessRetryCollectedUnreachable.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "RetryCollectedUnreachable"
+        },
+        {
+          "id": "python-host-pythonconfiguration-bugrevalidateentry",
+          "module": "formal/python_host_lifecycles/PythonConfiguration.tla",
+          "config": "formal/python_host_lifecycles/PythonConfigurationBugRevalidateEntry.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "FreshValidation"
+        },
+        {
+          "id": "python-host-pythonconfiguration-bugpublishtogether",
+          "module": "formal/python_host_lifecycles/PythonConfiguration.tla",
+          "config": "formal/python_host_lifecycles/PythonConfigurationBugPublishTogether.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NativePythonAgree"
+        },
+        {
+          "id": "python-host-pythonconfiguration-witnessrevalidatedcommitunreachable",
+          "module": "formal/python_host_lifecycles/PythonConfiguration.tla",
+          "config": "formal/python_host_lifecycles/PythonConfigurationWitnessRevalidatedCommitUnreachable.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "RevalidatedCommitUnreachable"
+        },
+        {
+          "id": "python-host-httplifespan-bugmarkentered",
+          "module": "formal/python_host_lifecycles/HttpLifespan.tla",
+          "config": "formal/python_host_lifecycles/HttpLifespanBugMarkEntered.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "ExitIsOwner"
+        },
+        {
+          "id": "python-host-httplifespan-bugmarkattemptedexit",
+          "module": "formal/python_host_lifecycles/HttpLifespan.tla",
+          "config": "formal/python_host_lifecycles/HttpLifespanBugMarkAttemptedExit.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "ExitIsOwner"
+        },
+        {
+          "id": "python-host-httplifespan-bugmarkonlyfallbacksuccess",
+          "module": "formal/python_host_lifecycles/HttpLifespan.tla",
+          "config": "formal/python_host_lifecycles/HttpLifespanBugMarkOnlyFallbackSuccess.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoFallbackFalseSuccess"
+        },
+        {
+          "id": "python-host-httplifespan-bugskipfinished",
+          "module": "formal/python_host_lifecycles/HttpLifespan.tla",
+          "config": "formal/python_host_lifecycles/HttpLifespanBugSkipFinished.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "NoSecondShutdownAfterExit"
+        },
+        {
+          "id": "python-host-httplifespan-witnessentryfailurefallbackunreachable",
+          "module": "formal/python_host_lifecycles/HttpLifespan.tla",
+          "config": "formal/python_host_lifecycles/HttpLifespanWitnessEntryFailureFallbackUnreachable.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "EntryFailureFallbackUnreachable"
+        },
+        {
+          "id": "python-host-httplifespan-witnessexitfailurereportedunreachable",
+          "module": "formal/python_host_lifecycles/HttpLifespan.tla",
+          "config": "formal/python_host_lifecycles/HttpLifespanWitnessExitFailureReportedUnreachable.cfg",
+          "heap_mb": 128,
+          "timeout_seconds": 30,
+          "expected_invariant": "ExitFailureReportedUnreachable"
+        }
+      ]
     }
   ]
 }
