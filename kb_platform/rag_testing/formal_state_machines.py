@@ -154,6 +154,11 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                 actual = source_digest(root, binding)
                 if not re.fullmatch('[0-9a-f]{64}', binding['sha256']) or actual != binding['sha256']:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
+            if identity == 'native_storage_sessions' and machine['models']:
+                from kb_platform.rag_testing.native_sessions_lint import native_sessions_violations
+                errors.extend(f'native_storage_sessions: {error}' for error in native_sessions_violations(
+                    local_file(root, 'rust/storage-service/src/service.rs').read_text('utf-8'),
+                    local_file(root, 'formal/native_sessions/NativeSessions.tla').read_text('utf-8')))
             models = machine['models']
             controls = machine['negative_controls']
             if (machine['status'] == 'partial') != bool(models):

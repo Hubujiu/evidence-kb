@@ -380,3 +380,7 @@ pub fn reply(arguments: &Map<String, Value>) -> Value {
         Err(error) => json!({"ok":false,"error":error}),
     }
 }
+
+#[cfg(test)]
+#[path = "session_contracts.rs"]
+mod session_contracts;

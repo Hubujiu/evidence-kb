@@ -65,7 +65,7 @@
         "kb_platform/model_http.py"
       ],
       "states": [
-        "absent → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "absent \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "BudgetLedger._reserve",
@@ -181,7 +181,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
+        "no receipt \u2192 STARTED \u2192 COMPLETE / ERROR / UNKNOWN"
       ],
       "transitions": [
         "RequestReceipts.begin",
@@ -242,7 +242,7 @@
         "kb_platform/agent_model.py"
       ],
       "states": [
-        "pending reservation → consumed/released"
+        "pending reservation \u2192 consumed/released"
       ],
       "transitions": [
         "BudgetLedger.reserve",
@@ -603,7 +603,7 @@
         "rust/llm-service/src/registry.rs"
       ],
       "states": [
-        "route Active→Draining→Cleaning→removed/CleanupFailed"
+        "route Active\u2192Draining\u2192Cleaning\u2192removed/CleanupFailed"
       ],
       "transitions": [
         "RoutePhase",
@@ -750,7 +750,7 @@
         "kb_platform/agent_native.py"
       ],
       "states": [
-        "READY↔WAITING"
+        "READY\u2194WAITING"
       ],
       "transitions": [
         "transition",
@@ -887,7 +887,7 @@
         "kb_platform/rag_testing/context_decisions.py"
       ],
       "states": [
-        "plan↔tool→compose→verify→repair→verify→deliver→complete"
+        "plan\u2194tool\u2192compose\u2192verify\u2192repair\u2192verify\u2192deliver\u2192complete"
       ],
       "transitions": [
         "KnowledgeWorkflow.__init__",
@@ -1080,7 +1080,7 @@
         "rust/storage-service/src/transaction.rs"
       ],
       "states": [
-        "begin→held→executing→commit/rollback"
+        "begin\u2192held\u2192executing\u2192commit/rollback"
       ],
       "transitions": [
         "_Handle._run",
@@ -1154,7 +1154,7 @@
         "rust/storage-service/src/operations.rs"
       ],
       "states": [
-        "Input→Executing→Result→Values / Failed"
+        "Input\u2192Executing\u2192Result\u2192Values / Failed"
       ],
       "transitions": [
         "Phase",
@@ -1178,13 +1178,13 @@
           "path": "rust/storage-service/src/service.rs",
           "language": "rust",
           "symbol": "Phase",
-          "sha256": "a013a2c271dec5692025f5d4dea1af6b2492881b73a8d784e328d9d1f0db8555"
+          "sha256": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584"
         },
         {
           "path": "rust/storage-service/src/service.rs",
           "language": "rust",
           "symbol": "dispatch",
-          "sha256": "a013a2c271dec5692025f5d4dea1af6b2492881b73a8d784e328d9d1f0db8555"
+          "sha256": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584"
         },
         {
           "path": "kb_platform/storage.py",
@@ -1282,7 +1282,7 @@
         "kb_platform/storage_object_wire.py"
       ],
       "states": [
-        "upload open→ordered chunks→verified→single dispatch→download chunks→release"
+        "upload open\u2192ordered chunks\u2192verified\u2192single dispatch\u2192download chunks\u2192release"
       ],
       "transitions": [
         "JsonEndpoint.execute",
@@ -1406,7 +1406,7 @@
         "kb_platform/authentication.py"
       ],
       "states": [
-        "absent→issued→expired/revoked"
+        "absent\u2192issued\u2192expired/revoked"
       ],
       "transitions": [
         "SessionAuthentication.issue",
@@ -1531,7 +1531,7 @@
         "kb_platform/semantic_pages_v2.py"
       ],
       "states": [
-        "lexical/dense/source independently staged→verified→sealed→manifest publication"
+        "lexical/dense/source independently staged\u2192verified\u2192sealed\u2192manifest publication"
       ],
       "transitions": [
         "SplitSearch.stage",
@@ -1621,7 +1621,7 @@
         "EmbeddingJobs.reconcile"
       ],
       "invariants": [
-        "One claimant per batch; expired RUNNING→UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
+        "One claimant per batch; expired RUNNING\u2192UNKNOWN, not replay; dependency hash immutable; only observed recovered result or known-unsent evidence permits recovery; late owner cannot settle new attempt."
       ],
       "assumptions": [
         "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
@@ -1670,7 +1670,7 @@
         "kb_platform/remote.py"
       ],
       "states": [
-        "AVAILABLE→BLOCKED on received 403→AVAILABLE only checkpoint-matched explicit acknowledgment"
+        "AVAILABLE\u2192BLOCKED on received 403\u2192AVAILABLE only checkpoint-matched explicit acknowledgment"
       ],
       "transitions": [
         "ProviderAdmission.block",
@@ -1743,7 +1743,7 @@
         "kb_platform/provider_runtime.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "CLOSED\u2192OPEN\u2192HALF_OPEN probe\u2192CLOSED/OPEN"
       ],
       "transitions": [
         "ProviderCircuit.acquire",
@@ -2009,6 +2009,165 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "native_storage_sessions",
+      "status": "partial",
+      "owners": [
+        "rust/storage-service/src/service.rs"
+      ],
+      "states": [
+        "Global bounded handle map with monotonic IDs and dispatch-time idle expiry",
+        "Per-handle Input, Executing, Result, Values, Failed; consumed handles cannot be reused"
+      ],
+      "transitions": [
+        "Sessions allocation",
+        "dispatch values/open/feed/admit/result/finish/close",
+        "dispatch idle sweep"
+      ],
+      "invariants": [
+        "Active handles never exceed capacity; released IDs never name later sessions.",
+        "Result requires admission; finish consumes its handle including errors."
+      ],
+      "assumptions": [
+        "Three total allocations and two concurrent slots (also a one-slot profile). Global Mutex admission is atomic; stale abstracts elapsed >=300 seconds and Sweep is the dispatch prelude.",
+        "Codec value semantics and SQL driver execution are separate owners; the native session table does not execute the driver itself."
+      ],
+      "exclusions": [
+        "No database/OS/process-crash or unbounded-clock proof; no forced cleanup timer: expiry occurs only when a dispatch visits the table."
+      ],
+      "remaining_obligations": [
+        "Real Rust contracts exercise capacity64, exact expiry rejection via clock metadata injection, stale handle isolation, failed/Values phases and complete operation handoff.",
+        "Finite safety checking is not source-level refinement. The u64 exhaustion checked_add path is guarded by source lint; model exhausts after three allocations."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/storage-service/src/service.rs",
+          "language": "rust",
+          "symbol": "Sessions",
+          "sha256": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584"
+        },
+        {
+          "path": "rust/storage-service/src/service.rs",
+          "language": "rust",
+          "symbol": "dispatch",
+          "sha256": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584"
+        },
+        {
+          "path": "rust/storage-service/src/service.rs",
+          "language": "rust",
+          "symbol": "Phase",
+          "sha256": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584"
+        }
+      ],
+      "models": [
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-positive",
+          "config": "formal/native_sessions/Positive.cfg",
+          "bounds": {
+            "total_handles": 3,
+            "capacity": 2,
+            "age_classes": 2
+          },
+          "invariants": [
+            "TypeOK",
+            "Bounded",
+            "NoReuse",
+            "NoExecuteBeforeAdmission",
+            "FinishConsumes"
+          ],
+          "properties": []
+        },
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-singleslot",
+          "config": "formal/native_sessions/SingleSlot.cfg",
+          "bounds": {
+            "total_handles": 3,
+            "capacity": 1,
+            "age_classes": 2
+          },
+          "invariants": [
+            "TypeOK",
+            "Bounded",
+            "NoReuse",
+            "NoExecuteBeforeAdmission",
+            "FinishConsumes"
+          ],
+          "properties": []
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-capacity",
+          "config": "formal/native_sessions/Capacity.cfg",
+          "expected_invariant": "Bounded"
+        },
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-reuse",
+          "config": "formal/native_sessions/Reuse.cfg",
+          "expected_invariant": "NoReuse"
+        },
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-admission",
+          "config": "formal/native_sessions/Admission.cfg",
+          "expected_invariant": "NoExecuteBeforeAdmission"
+        },
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-finish",
+          "config": "formal/native_sessions/Finish.cfg",
+          "expected_invariant": "FinishConsumes"
+        },
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-witnessvalues",
+          "config": "formal/native_sessions/WitnessValues.cfg",
+          "expected_invariant": "WitnessValues"
+        },
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-witnessoverlap",
+          "config": "formal/native_sessions/WitnessOverlap.cfg",
+          "expected_invariant": "WitnessOverlap"
+        },
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-witnessexpiry",
+          "config": "formal/native_sessions/WitnessExpiry.cfg",
+          "expected_invariant": "WitnessExpiry"
+        },
+        {
+          "module": "formal/native_sessions/NativeSessions.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "native-sessions-witnessfailedcleanup",
+          "config": "formal/native_sessions/WitnessFailedCleanup.cfg",
+          "expected_invariant": "WitnessFailedCleanup"
+        }
+      ]
     }
   ]
 }
