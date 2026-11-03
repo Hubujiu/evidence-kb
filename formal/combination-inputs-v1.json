@@ -386,12 +386,12 @@
     },
     {
       "pr": 76,
-      "head": "b7d5272cc2195e95609900b07591b0663c3d5b92",
-      "tree": "011f5fbad5b392d623a4c8f531607263a21079e3",
+      "head": "306a57feb301dc49914495771126907fed508235",
+      "tree": "2f47d6f1ad0d11ca3d2c10906d4eb3064effb7dd",
       "base": "6efd45e2129b0c0a2afa7a6d51fa60a561f69bc4",
       "base_tree": "6759e022b45822c7c198e542fdd58b77a4571f1f",
       "head_branch": "feat/formal-content-parse-reuse",
-      "base_branch": "test/formal-combination-20261103"
+      "base_branch": "deps/formal-combination-base-6efd45e"
     }
   ],
   "required_runs": [
@@ -6492,6 +6492,7 @@
       "FormalParseReuseContracts.test_fresh_content_same_size_mtime_and_different_roots",
       "FormalParseReuseContracts.test_lint_rejects_cache_lifetime_and_read_bypasses",
       "FormalParseReuseContracts.test_manifest_binds_registry_body_and_rejects_removed_hooks",
+      "FormalParseReuseContracts.test_named_declarations_match_unpruned_walk_through_all_statement_containers",
       "FormalParseReuseContracts.test_public_symbol_asts_are_independent",
       "FormalParseReuseContracts.test_registry_error_lists_match_uncached_and_mutations",
       "FormalParseReuseContracts.test_session_clears_cache_on_success_and_failure",
@@ -7095,7 +7096,7 @@
       "path": "scripts/check_project.py",
       "symbol": "formal_parse_reuse_violations",
       "language": "python",
-      "sha256": "5eae646a4aecbe9181b836cdf2bf91c210be6cbc0b53e2fee7004f7021c0765a"
+      "sha256": "bb02f88c738ed6108863cbe4c057d9ce02122749a905b314b5fd5aa343340c00"
     },
     {
       "path": "scripts/check_project.py",
