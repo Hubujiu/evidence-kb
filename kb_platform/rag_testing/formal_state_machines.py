@@ -15,6 +15,7 @@ import time
 import unittest
 
 from scripts.physical_settlement_lint import settlement_violations
+from scripts.sdk_gateway_lint import violations as sdk_gateway_violations
 from scripts.physical_ledger_checks import ledger_core_violations, local_ranker_settlement_violations
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -133,6 +134,8 @@ def operator_names(value, *, allow_empty: bool) -> bool:
 def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
     errors = []
     try:
+        if (root / 'kb_platform/rag_testing/sdk_gateway.py').exists():
+            errors.extend(sdk_gateway_violations(root))
         if any((root / path).exists() for path in ('kb_platform/rag_testing/provider_capture.py',
                                                    'kb_platform/google_semantic_provider.py')):
             errors.extend(settlement_violations(root))

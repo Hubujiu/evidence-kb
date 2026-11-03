@@ -485,9 +485,11 @@ def main():
     HostIntegration.output = args.output.resolve()
     HostIntegration.captures = []
     from .authentication_contracts import live_suite as authentication_suite
+    from .sdk_gateway_contracts import live_suite as sdk_gateway_suite
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(HostIntegration)
     suite.addTests(authentication_suite())
+    suite.addTests(sdk_gateway_suite())
     result = unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(suite)
     report = {'decision': 'PASS' if result.wasSuccessful() and not result.skipped else 'FAIL',
         'total': result.testsRun, 'failures': len(result.failures), 'errors': len(result.errors),
