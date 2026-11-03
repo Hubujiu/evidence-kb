@@ -15,6 +15,8 @@ from uuid import uuid4
 import httpx
 from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential
 
+from .database_providers.sqlite_guard import sqlite_guard
+
 
 class RuntimePolicyError(RuntimeError):
     def __init__(self, code, status=None):
@@ -75,6 +77,11 @@ def retry_after_seconds(value, *, wall_clock=time.time):
     return delay if math.isfinite(delay) and delay >= 0 else None
 
 
+@dataclass(frozen=True, eq=False)
+class _CircuitPermit:
+    generation: int
+
+
 class ProviderCircuit:
 
     def __init__(self, failure_threshold=3, cooldown_seconds=30.0, *, clock=time.monotonic):
@@ -87,31 +94,50 @@ class ProviderCircuit:
         self._lock = threading.Lock()
         self._failures = 0
         self._opened_at = None
-        self._probe = False
+        self._probe = None
+        self._generation = 0
+        self._active = set()
+
+    def _advance(self):
+        self._generation += 1
+        self._active.clear()
+
+    def _permit(self):
+        permit = _CircuitPermit(self._generation)
+        self._active.add(permit)
+        return permit
 
     def acquire(self):
         with self._lock:
             if self._opened_at is None:
-                return False
-            if self.clock() - self._opened_at < self.cooldown or self._probe:
+                return self._permit()
+            if self.clock() - self._opened_at < self.cooldown or self._probe is not None:
                 raise RuntimePolicyError('PROVIDER_CIRCUIT_OPEN')
-            self._probe = True
-            return True
+            self._advance()
+            self._probe = self._permit()
+            return self._probe
 
-    def finish(self, probe, *, failure=False, success=False):
+    def finish(self, permit, *, failure=False, success=False):
         with self._lock:
+            if permit not in self._active or permit.generation != self._generation:
+                return
+            self._active.remove(permit)
+            probing = permit is self._probe
             if success:
                 self._failures, self._opened_at = 0, None
             elif failure:
                 self._failures += 1
-                if probe or self._failures >= self.threshold:
+                if probing or self._failures >= self.threshold:
                     self._opened_at = self.clock()
-            if probe:
-                self._probe = False
+                    if not probing:
+                        self._advance()
+            if probing:
+                self._probe = None
+                self._advance()
 
     def snapshot(self):
         with self._lock:
-            state = 'HALF_OPEN' if self._probe else 'OPEN' if self._opened_at is not None else 'CLOSED'
+            state = 'HALF_OPEN' if self._probe is not None else 'OPEN' if self._opened_at is not None else 'CLOSED'
             return {'state': state, 'consecutive_failures': self._failures,
                     'failure_threshold': self.threshold, 'cooldown_seconds': self.cooldown}
 
@@ -151,24 +177,25 @@ class RequestReceipts:
                'retry_reason': metadata.get('retry_reason')}
         if self._database is not None:
             return self._database.begin(logical_id, row, lambda previous: self._validate_previous(previous, metadata))
-        pending = self._pending(logical_id)
-        try:
-            with pending.open('x', encoding='utf-8') as stream:
-                json.dump(row, stream)
-                stream.flush()
-                os.fsync(stream.fileno())
-        except FileExistsError:
-            raise RuntimePolicyError('PROVIDER_REQUEST_UNRESOLVED') from None
-        try:
-            terminal = pending.with_suffix('.terminal')
-            if terminal.exists():
-                previous = json.loads(terminal.read_text('utf-8'))
-                self._validate_previous(previous, metadata)
-            self._write(physical_id, row)
-        except BaseException:
-            pending.unlink(missing_ok=True)
-            raise
-        return physical_id
+        with sqlite_guard(self._pending(logical_id).with_suffix('.guard.sqlite3'), nowait=False):
+            pending = self._pending(logical_id)
+            try:
+                with pending.open('x', encoding='utf-8') as stream:
+                    json.dump(row, stream)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            except FileExistsError:
+                raise RuntimePolicyError('PROVIDER_REQUEST_UNRESOLVED') from None
+            try:
+                terminal = pending.with_suffix('.terminal')
+                if terminal.exists():
+                    previous = json.loads(terminal.read_text('utf-8'))
+                    self._validate_previous(previous, metadata)
+                self._write(physical_id, row)
+            except BaseException:
+                pending.unlink(missing_ok=True)
+                raise
+            return physical_id
 
     def _write(self, physical_id, row):
         self._write_path(self.directory / (physical_id + '.json'), row)
@@ -195,15 +222,19 @@ class RequestReceipts:
                 row.update(status=status, completed_at=time.time(), **metadata)
 
             return self._database.transition(logical_id, physical_id, mutate)
-        target = self.directory / (physical_id + '.json')
-        row = json.loads(target.read_text('utf-8'))
-        if row['logical_request_id'] != logical_id or row['status'] != 'STARTED':
-            raise RuntimePolicyError('INVALID_PHYSICAL_REQUEST_TRANSITION')
-        row.update(status=status, completed_at=time.time(), **metadata)
-        self._write(physical_id, row)
-        if status != 'UNKNOWN':
-            self._write_path(self._pending(logical_id).with_suffix('.terminal'), row)
-            self._pending(logical_id).unlink(missing_ok=True)
+        with sqlite_guard(self._pending(logical_id).with_suffix('.guard.sqlite3'), nowait=False):
+            target = self.directory / (physical_id + '.json')
+            row = json.loads(target.read_text('utf-8'))
+            pending = self._pending(logical_id)
+            active = json.loads(pending.read_text('utf-8')) if pending.exists() else None
+            if (row['logical_request_id'] != logical_id or row['status'] != 'STARTED'
+                    or active is None or active['physical_request_id'] != physical_id):
+                raise RuntimePolicyError('INVALID_PHYSICAL_REQUEST_TRANSITION')
+            row.update(status=status, completed_at=time.time(), **metadata)
+            self._write(physical_id, row)
+            if status != 'UNKNOWN':
+                self._write_path(pending.with_suffix('.terminal'), row)
+                pending.unlink()
 
     def reconcile(self, logical_id, physical_id, *, outcome, evidence_reference):
         if outcome not in {'COMPLETE', 'ERROR'} or not isinstance(evidence_reference, str) or not evidence_reference.strip():
@@ -217,17 +248,18 @@ class RequestReceipts:
                 row.update(status=outcome, reconciled_at=time.time(), reconciliation_evidence=evidence_reference)
 
             return self._database.transition(logical_id, physical_id, mutate)
-        target = self.directory / (physical_id + '.json')
-        row = json.loads(target.read_text('utf-8'))
-        pending = self._pending(logical_id)
-        active = json.loads(pending.read_text('utf-8'))
-        if (row['logical_request_id'] != logical_id or row['status'] not in {'STARTED', 'UNKNOWN'}
-                or active['physical_request_id'] != physical_id):
-            raise RuntimePolicyError('INVALID_REQUEST_RECONCILIATION')
-        row.update(status=outcome, reconciled_at=time.time(), reconciliation_evidence=evidence_reference)
-        self._write(physical_id, row)
-        self._write_path(pending.with_suffix('.terminal'), row)
-        pending.unlink()
+        with sqlite_guard(self._pending(logical_id).with_suffix('.guard.sqlite3'), nowait=False):
+            target = self.directory / (physical_id + '.json')
+            row = json.loads(target.read_text('utf-8'))
+            pending = self._pending(logical_id)
+            active = json.loads(pending.read_text('utf-8')) if pending.exists() else None
+            if (row['logical_request_id'] != logical_id or row['status'] not in {'STARTED', 'UNKNOWN'}
+                    or active is None or active['physical_request_id'] != physical_id):
+                raise RuntimePolicyError('INVALID_REQUEST_RECONCILIATION')
+            row.update(status=outcome, reconciled_at=time.time(), reconciliation_evidence=evidence_reference)
+            self._write(physical_id, row)
+            self._write_path(pending.with_suffix('.terminal'), row)
+            pending.unlink()
 
 
 @dataclass(frozen=True)
@@ -281,13 +313,21 @@ class ToolExecutor:
         def wait(retry_state):
             delay = backoff(retry_state)
             exc = retry_state.outcome.exception()
+            hint = getattr(exc, 'retry_after_seconds', None)
+            try:
+                hint = float(hint) if type(hint) in (int, float) else None
+            except OverflowError:
+                hint = None
+            if hint is not None and math.isfinite(hint) and hint >= 0:
+                delay = max(delay, hint)
             cause = exc if isinstance(exc, httpx.HTTPStatusError) else getattr(exc, '__cause__', None)
             if isinstance(cause, httpx.HTTPStatusError):
                 delay = max(delay, retry_after_seconds(cause.response.headers.get('Retry-After')) or 0)
             return delay
 
         def stop(retry_state):
-            return (stop_after_attempt(self.max_attempts)(retry_state)
+            return (not read_only or not classify_failure(retry_state.outcome.exception()).retryable
+                    or stop_after_attempt(self.max_attempts)(retry_state)
                     or retry_state.idle_for + retry_state.upcoming_sleep > self.max_wait_seconds
                     or (deadline_seconds is not None and
                         time.monotonic() - started + retry_state.upcoming_sleep >= deadline_seconds))

@@ -1,0 +1,8 @@
+---- MODULE InlineScopeLimits ----
+CONSTANTS A, B
+VARIABLES x, y
+OtherLogicalOperator == x' = A \/ B
+SeparateLine == x' = A
+                /\ B
+ChainTail == x' = A /\ y' = B /\ A
+====

@@ -105,7 +105,7 @@ PLUGIN = PluginSpec("example.consumer", (), (CACHE,), mount)
 
 业务插件拥有领域 schema、逻辑集合、字段和迁移。提供商管理连接、隔离和引擎差异；document、kv、vector 等适配器只管理实现其合同需要的内部结构。结构化关系适配器编译 SQLAlchemy Core 表达式，并实现各引擎的时间、JSON、精确字符串、冲突写入和锁语义。业务不提交 PostgreSQL 字符串让其他数据库猜测翻译。
 
-业务关系消费者提交自己的 `StructuredSchema`，使用公共 Core 表达式及 `ExactString`、`TypedJSON`、`UtcDateTime`、`Clock`、`After`。低层 SQL 接口仍使用 `SchemaPackage`，它与 structured 是不同合同，不能互相冒充。owner 必须匹配空间 owner，同版本不同内容哈希或 dirty 迁移拒绝继续。`prepare()` 在 `seal()` 或首次普通事务后关闭。SQLite 用写事务，PostgreSQL 用事务级 advisory lock，MySQL 用命名锁协调迁移；MySQL DDL 的隐式提交由迁移进度记录处理。受限运行账号与 SQLite authorizer 限制直接 DDL 和基础元数据修改。
+业务关系消费者提交自己的 `StructuredSchema`，使用公共 Core 表达式及 `ExactString`、`TypedJSON`、`UtcDateTime`、`Clock`、`After`。低层 SQL 接口仍使用 `SchemaPackage`，它与 structured 是不同合同，不能互相冒充。owner 必须匹配空间 owner，同版本不同内容哈希或 dirty 迁移拒绝继续。`prepare()` 在 `seal()` 或首次普通事务后对该句柄关闭，不是对所有绑定的全局封禁；`BoundDatabase.for_consumer` 继承派生时的 seal 状态。线上协议仍可对同一个已成功准备的固定身份返回幂等确认，不重新调用后端准备。SQLite 用写事务，PostgreSQL 用事务级 advisory lock，MySQL 用命名锁协调迁移；MySQL DDL 的隐式提交由迁移进度记录处理。受限运行账号与 SQLite authorizer 限制直接 DDL 和基础元数据修改。
 
 一个插件空间可以包含多个企业租户。空间归属与企业 ACL 是不同的约束。知识库每次事务传入可信 tenant、kb 作用域，公共适配器执行作用域约束；PostgreSQL 另外设置事务局部 RLS。证据读取和最终交付仍复查领域权限。可信 Python 插件和数据库账号边界不构成恶意代码沙箱。
 

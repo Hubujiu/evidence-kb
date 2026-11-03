@@ -60,12 +60,12 @@
 
 从项目根目录执行，`--output` 使用尚不存在的新目录：
 
-```powershell
+```bash
 # 评分器控制样本回放：不是产品召回成绩
-.venv\Scripts\python.exe scripts/rag_test.py replay --suite config/rag-testing/suite-v1.json --plan config/rag-testing/plan-v1.json --traces config/rag-testing/oracle-traces-v1.json --output reports/rag-testing/new-controls-run
+.venv/bin/python scripts/rag_test.py replay --suite config/rag-testing/suite-v1.json --plan config/rag-testing/plan-v1.json --traces config/rag-testing/oracle-traces-v1.json --output reports/rag-testing/new-controls-run
 
 # 只读复用历史请求、结果及已有语义复核，执行当前上下文组件对照
-.venv\Scripts\python.exe scripts/replay_rag_history.py --output reports/rag-history-v1/new-history-run
+.venv/bin/python scripts/replay_rag_history.py --output reports/rag-history-v1/new-history-run
 ```
 
 历史适配入口针对 crossdoc-hard 格式；其他数据集应新增薄适配层或映射到统一 Suite/Trace，不能为套用入口而伪造相同来源或协议。框架或适配器变更后执行相应回归，再开展增量评测。

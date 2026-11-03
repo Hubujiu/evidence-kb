@@ -68,8 +68,12 @@ def knowledge_plugins(platform, research, *, service_factory=None, tool_plugins=
 
     def store(ctx, config):
         from .knowledge_sessions import KnowledgeSessions
+        from .knowledge_schema import knowledge_schema
+        from .session_store import SessionStore
 
-        ctx.provide('knowledge.store', KnowledgeSessions(ctx.require('session.store')))
+        selected = SessionStore(database=ctx.require('knowledge.platform').repository.database,
+                                schema=knowledge_schema, prepared=True)
+        ctx.provide('knowledge.store', KnowledgeSessions(selected))
 
     def workflow(ctx, config):
         from .knowledge_workflow import KnowledgeWorkflow
@@ -197,7 +201,7 @@ def knowledge_plugins(platform, research, *, service_factory=None, tool_plugins=
                    ('models', 'models.route.generation', 'knowledge.context.policy', 'knowledge.budget'), model),
         PluginSpec('knowledge.model', ('knowledge.model', 'llm'),
                    ('models', 'knowledge.context.policy', 'knowledge.budget'), model),
-        PluginSpec('knowledge.sessions', ('knowledge.store',), ('session.store',), store),
+        PluginSpec('knowledge.sessions', ('knowledge.store',), ('knowledge.platform',), store),
         PluginSpec('knowledge.workflow.graph', ('knowledge.workflow',), (), workflow),
         PluginSpec('knowledge.driver.graph', ('loop',), (), driver),
         PluginSpec('knowledge.gateway', ('knowledge.gateway',),

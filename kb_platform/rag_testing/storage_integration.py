@@ -267,6 +267,21 @@ def session_suite(fixtures):
 
 def foundation_suite(fixtures):
     class FoundationStorageIntegration(unittest.TestCase):
+        def test_actual_engine_migration_journals_preserve_failure_boundaries(self):
+            from .persistent_storage_contracts import exercise_migration_journal
+
+            for engine in ('sqlite', 'postgresql', 'mysql'):
+                with self.subTest(engine=engine):
+                    _, bound = fixtures.bind(engine, 'migration-journal', owner='journal')
+                    result = exercise_migration_journal(bound)
+                    fixtures.observations.setdefault('migration_journals', []).append(result)
+
+        def test_actual_mysql_release_error_discards_session_lock(self):
+            from .persistent_storage_contracts import exercise_mysql_release_failure
+
+            _, bound = fixtures.bind('mysql', 'migration-release-failure', owner='journal')
+            fixtures.observations['migration_release'] = exercise_mysql_release_failure(bound)
+
         def test_actual_engines_reject_transaction_escape_without_committing_writes(self):
             from .database_foundation_contracts import exercise_transaction_atomicity, task_schema
 

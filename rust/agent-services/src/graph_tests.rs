@@ -144,3 +144,34 @@ fn graph_bounds_configuration() {
         .insert("x".repeat(129), None);
     assert_eq!(registry.create(invalid).unwrap_err().code, "INVALID_GRAPH");
 }
+
+#[test]
+fn exhausted_effect_identity_closes_graph_without_wrapping() {
+    let mut registry = GraphRegistry::default();
+    let id = create(&mut registry);
+    registry.graphs.get_mut(&id).unwrap().sequence = u64::MAX;
+    assert_eq!(
+        registry.next(&id).unwrap_err().code,
+        "GRAPH_SEQUENCE_EXHAUSTED"
+    );
+    assert_eq!(registry.snapshot(&id).unwrap_err().code, "GRAPH_NOT_FOUND");
+}
+
+#[test]
+fn completed_graph_is_stable_until_close_or_invalid_accept() {
+    let mut registry = GraphRegistry::default();
+    let id = create(&mut registry);
+    registry.next(&id).unwrap();
+    registry.accept(&id, 1, "done").unwrap();
+    registry.next(&id).unwrap();
+    let completed = registry.accept(&id, 2, "done").unwrap();
+    for _ in 0..3 {
+        assert_eq!(registry.next(&id).unwrap(), json!({"kind": "complete"}));
+        assert_eq!(registry.snapshot(&id).unwrap(), completed);
+    }
+    assert_eq!(
+        registry.accept(&id, 2, "done").unwrap_err().code,
+        "GRAPH_RESULT_MISMATCH"
+    );
+    assert_eq!(registry.snapshot(&id).unwrap_err().code, "GRAPH_NOT_FOUND");
+}

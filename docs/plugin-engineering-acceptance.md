@@ -67,7 +67,7 @@ uv run --no-sync python -m kb_platform.rag_testing.harness_performance \
   --processes 5 --output .local/harness-performance/new-run
 ```
 
-Windows/macOS 替换动态库文件名；Windows 上无法取得 `resource.ru_maxrss` 时明确记录 unavailable。每次结果包含计划、逐请求耗时、失败、机器信息、源码与库哈希。此次本地聚合记录为 `.local/harness-performance/interleaved-release-02-summary.json`，首次候选记录为 `.local/harness-performance/indexed-release-01/`；私有运行目录不随仓库发布，其他环境需重新执行。
+当前复现入口支持 Linux。每次结果包含计划、逐请求耗时、失败、机器信息、源码与库哈希。此次本地聚合记录为 `.local/harness-performance/interleaved-release-02-summary.json`，首次候选记录为 `.local/harness-performance/indexed-release-01/`；私有运行目录不随仓库发布，其他环境需重新执行。
 
 ## 工程参考与保留边界
 

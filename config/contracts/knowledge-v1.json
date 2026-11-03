@@ -45,7 +45,7 @@
       "provides": {
         "authority": {
           "id": "knowledge.authority.storage",
-          "major": 1
+          "major": 2
         }
       },
       "requires": {
@@ -56,7 +56,7 @@
           }
         }
       },
-      "version": "1"
+      "version": "2"
     },
     {
       "executor": "local",
@@ -112,18 +112,18 @@
       "provides": {
         "sessions": {
           "id": "knowledge.sessions",
-          "major": 1
+          "major": 2
         }
       },
       "requires": {
-        "storage": {
+        "authority": {
           "contract": {
-            "id": "storage.service",
-            "major": 1
+            "id": "knowledge.authority.storage",
+            "major": 2
           }
         }
       },
-      "version": "1"
+      "version": "2"
     },
     {
       "executor": "local",
@@ -146,7 +146,7 @@
         "authority": {
           "contract": {
             "id": "knowledge.authority.storage",
-            "major": 1
+            "major": 2
           }
         },
         "model": {
@@ -183,7 +183,7 @@
         "authority": {
           "contract": {
             "id": "knowledge.authority.storage",
-            "major": 1
+            "major": 2
           }
         }
       },
@@ -214,7 +214,7 @@
         "sessions": {
           "contract": {
             "id": "knowledge.sessions",
-            "major": 1
+            "major": 2
           }
         }
       },
@@ -263,7 +263,7 @@
         "sessions": {
           "contract": {
             "id": "knowledge.sessions",
-            "major": 1
+            "major": 2
           }
         }
       },
@@ -2115,7 +2115,9 @@
         "appendonly": [
           "source_versions",
           "parse_snapshots",
-          "citations"
+          "citations",
+          "events",
+          "artifacts"
         ],
         "tables": [
           {
@@ -2553,6 +2555,83 @@
           {
             "columns": [
               {
+                "name": "id",
+                "nullable": false,
+                "primary_key": true,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 64
+                }
+              },
+              {
+                "name": "tenant",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 256
+                }
+              },
+              {
+                "name": "principal",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 256
+                }
+              },
+              {
+                "name": "scope",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "text"
+                }
+              },
+              {
+                "name": "revision",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "integer"
+                }
+              },
+              {
+                "name": "state",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "text"
+                }
+              },
+              {
+                "name": "created",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "string",
+                  "length": 40
+                }
+              },
+              {
+                "name": "updated",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "string",
+                  "length": 40
+                }
+              }
+            ],
+            "constraints": [],
+            "indexes": [],
+            "name": "sessions",
+            "scope": []
+          },
+          {
+            "columns": [
+              {
                 "name": "tenant_id",
                 "nullable": false,
                 "primary_key": true,
@@ -2645,6 +2724,59 @@
             "scope": [
               "tenant_id"
             ]
+          },
+          {
+            "columns": [
+              {
+                "name": "session",
+                "nullable": false,
+                "primary_key": true,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 64
+                }
+              },
+              {
+                "name": "id",
+                "nullable": false,
+                "primary_key": true,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 64
+                }
+              },
+              {
+                "name": "body",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "text"
+                }
+              },
+              {
+                "name": "created",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "string",
+                  "length": 40
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "columns": [
+                  "session"
+                ],
+                "kind": "foreign_key",
+                "references": [
+                  "sessions.id"
+                ]
+              }
+            ],
+            "indexes": [],
+            "name": "artifacts",
+            "scope": []
           },
           {
             "columns": [
@@ -2791,6 +2923,82 @@
           {
             "columns": [
               {
+                "name": "session",
+                "nullable": false,
+                "primary_key": true,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 64
+                }
+              },
+              {
+                "name": "seq",
+                "nullable": false,
+                "primary_key": true,
+                "type": {
+                  "kind": "integer"
+                }
+              },
+              {
+                "name": "kind",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "text"
+                }
+              },
+              {
+                "name": "payload",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "text"
+                }
+              },
+              {
+                "name": "group_id",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "text"
+                }
+              },
+              {
+                "name": "agent",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "text"
+                }
+              },
+              {
+                "name": "created",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "string",
+                  "length": 40
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "columns": [
+                  "session"
+                ],
+                "kind": "foreign_key",
+                "references": [
+                  "sessions.id"
+                ]
+              }
+            ],
+            "indexes": [],
+            "name": "events",
+            "scope": []
+          },
+          {
+            "columns": [
+              {
                 "name": "tenant_id",
                 "nullable": false,
                 "primary_key": true,
@@ -2844,6 +3052,85 @@
             "scope": [
               "tenant_id"
             ]
+          },
+          {
+            "columns": [
+              {
+                "name": "session",
+                "nullable": false,
+                "primary_key": true,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 64
+                }
+              },
+              {
+                "name": "request_id",
+                "nullable": false,
+                "primary_key": true,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 256
+                }
+              },
+              {
+                "name": "fingerprint",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 256
+                }
+              },
+              {
+                "name": "token",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "exact_string",
+                  "length": 64
+                }
+              },
+              {
+                "name": "status",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "string",
+                  "length": 20
+                }
+              },
+              {
+                "name": "expires",
+                "nullable": false,
+                "primary_key": false,
+                "type": {
+                  "kind": "float"
+                }
+              },
+              {
+                "name": "response",
+                "nullable": true,
+                "primary_key": false,
+                "type": {
+                  "kind": "text"
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "columns": [
+                  "session"
+                ],
+                "kind": "foreign_key",
+                "references": [
+                  "sessions.id"
+                ]
+              }
+            ],
+            "indexes": [],
+            "name": "requests",
+            "scope": []
           },
           {
             "columns": [
@@ -3315,7 +3602,7 @@
         "version": 1
       },
       "id": "knowledge.authority.storage",
-      "major": 1,
+      "major": 2,
       "methods": {
         "describe": {
           "request": {
@@ -6560,7 +6847,7 @@
     },
     {
       "id": "knowledge.sessions",
-      "major": 1,
+      "major": 2,
       "methods": {
         "append": {
           "request": {
@@ -6885,6 +7172,31 @@
                   "null"
                 ]
               },
+              "authority": {
+                "additionalProperties": false,
+                "properties": {
+                  "authority_revision": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "manifest_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scope_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "scope_id",
+                  "manifest_id",
+                  "authority_revision"
+                ],
+                "type": "object"
+              },
               "response": {
                 "type": "object"
               },
@@ -6905,7 +7217,8 @@
               "session_id",
               "token",
               "state",
-              "response"
+              "response",
+              "authority"
             ],
             "type": "object"
           },
@@ -8194,7 +8507,7 @@
         ],
         "type": "object"
       },
-      "version": "1"
+      "version": "2"
     },
     {
       "implementation": "knowledge.context",
@@ -8350,18 +8663,11 @@
       "implementation": "knowledge.sessions",
       "schema": {
         "additionalProperties": false,
-        "properties": {
-          "binding": {
-            "minLength": 1,
-            "type": "string"
-          }
-        },
-        "required": [
-          "binding"
-        ],
+        "properties": {},
+        "required": [],
         "type": "object"
       },
-      "version": "1"
+      "version": "2"
     },
     {
       "implementation": "knowledge.workflow",

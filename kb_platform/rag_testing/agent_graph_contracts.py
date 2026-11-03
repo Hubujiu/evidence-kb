@@ -14,7 +14,6 @@ from kb_platform.agent_schema import compile_schema, validate_output
 from .product_fixture import knowledge_service as AgentService
 from kb_platform.knowledge_policy import CONFIGS, RECOMMENDED
 from kb_platform.core import Actor, PlatformError
-from kb_platform.session_storage.schema import requests
 from .budget import BudgetLedger
 from .product_fixture import Authority, Gateway
 from .provider_capture import CapturedLuna, observe_client
@@ -462,7 +461,7 @@ class AgentGraphContracts(unittest.TestCase):
             self.turn(case)
         self.assertEqual(caught.exception.code, 'TURN_IN_PROGRESS')
         with case.service.store.database.transaction() as db:
-            db.execute(requests.update().values(expires=0))
+            db.execute(case.service.store.store._tables['requests'].update().values(expires=0))
         with self.assertRaises(PlatformError) as caught:
             self.turn(case)
         self.assertEqual(caught.exception.code, 'TURN_INTERRUPTED')

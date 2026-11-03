@@ -303,6 +303,9 @@ def create_delivery_app(config_path=None, providers_path=None, run_root=None, *,
 
 def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
                          dependency_probe, budget_batch, inner_factory, cleanup):
+    instance = os.getenv('KB_DELIVERY_INSTANCE')
+    if instance and not re.fullmatch('[0-9a-f]{64}', instance):
+        raise DeliveryConfigurationError('INVALID_DELIVERY_INSTANCE')
     profile = load_profile(config_path, providers_path, run_root)
     batch = load_budget_batch(profile, budget_batch or os.getenv('KB_DELIVERY_BUDGET_BATCH') or None)
     ensure_private_identity(profile)
@@ -428,6 +431,8 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
     async def identify_delivery_response(request, call_next):
         response = await call_next(request)
         response.headers['X-Delivery-Profile'] = profile.config['id']
+        if instance and request.url.path == '/health':
+            response.headers['X-Delivery-Instance'] = instance
         return response
 
     manifest = {**profile.public(), 'config_sha256': hashlib.sha256(profile.config_path.read_bytes()).hexdigest(),

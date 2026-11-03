@@ -4,7 +4,9 @@
 
 在项目根目录执行以下命令。
 
-```powershell
+根目录型 SQLite 数据集使用 WAL、`synchronous=FULL` 和保留空闲连接的连接池，要求 Python 的 `sqlite3.sqlite_version_info >= (3, 51, 3)`。可先执行 `uv python install 3.12`，用 `uv sync --managed-python --locked --group dev` 创建环境，再核对 `uv run --no-sync python -c 'import sqlite3; print(sqlite3.sqlite_version)'`。该下限包含 SQLite 官方修复的 WAL-reset 问题。显式单文件账本继续使用 DELETE journal 与逐事务连接，保留冻结文件哈希和文件不可用时的拒绝语义。不要把活动 WAL 主文件单独当作完整快照。
+
+```bash
 rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
 cargo fetch --locked
 cargo build --locked --offline
@@ -16,7 +18,7 @@ Rust 工具链由 `rust-toolchain.toml` 固定，依赖由 `Cargo.lock` 锁定�
 
 默认结果写入 `.local/checks/<唯一编号>/`。指定目录时必须使用尚不存在的路径。
 
-```powershell
+```bash
 uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 ```
 
@@ -26,9 +28,9 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 检查过程将运行目录指向临时目录，禁用默认 API 初始化、远程模型和 Embedding。合同和控制回放在独立 Python 工作进程中执行，导入前安装审计钩子，阻断 socket 连接、DNS 查询、UDP 发送和子进程启动。依赖安装需要联网，但检查不调用提供者。这个约束防止误执行，不是恶意代码沙箱。
 
-离线 worker 的顺序是 `BOOTSTRAP → SEALED → DISCOVER`：仅先读取真实 stdlib `platform.machine()` 元数据，再安装原有审计钩子，之后才导入项目/合同。这样 Windows 的标准 OS 版本回退探测不会在 SQLAlchemy 导入时误触发子进程禁令；封闭后仍拒绝所有子进程，不预先导入 SQLAlchemy 或项目代码。实际元数据与顺序写入 `worker-bootstrap.json`。原因、固定上游来源和顺序变异合同见[离线 worker 启动边界](offline-worker-bootstrap.md)。
+离线 worker 的顺序是 `BOOTSTRAP → SEALED → DISCOVER`：先读取真实 stdlib `platform.machine()` 元数据，再安装审计钩子，之后才导入项目和合同。封闭后拒绝所有子进程，不预先导入 SQLAlchemy 或项目代码。实际元数据与顺序写入 `worker-bootstrap.json`。原因、固定上游来源和顺序变异合同见[离线 worker 启动边界](offline-worker-bootstrap.md)。
 
-合同协调进程按排序后的测试用例列表分配四个隔离工作进程，各自使用独立临时运行目录、日志及审计钩子。协调进程不加载产品模块；统一入口仍限制整个合同阶段为 180 秒，子进程限制为 170 秒以留出收尾时间。每个工作进程在安装离线审计钩子后独立发现完整用例集合；聚合器要求各进程发现集合相同、每个模块非零、全部用例恰好执行一次且与报告总数一致。缺失分片、重复模块、子进程非零退出以及失败、错误、跳过、预期失败均不能通过；不通过放宽时间门槛消除 Windows 落盘等待导致的超时。
+合同协调进程按排序后的测试用例列表分配四个隔离工作进程，各自使用独立临时运行目录、日志及审计钩子。协调进程不加载产品模块；统一入口仍限制整个合同阶段为 180 秒，子进程限制为 170 秒以留出收尾时间。每个工作进程在安装离线审计钩子后独立发现完整用例集合；聚合器要求各进程发现集合相同、每个模块非零、全部用例恰好执行一次且与报告总数一致。缺失分片、重复模块、子进程非零退出以及失败、错误、跳过、预期失败均不能通过。
 
 ## 修改或新增插件
 
@@ -58,7 +60,7 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 删除测试前，记录被删除用例的行为、保留用例的位置及两者的覆盖关系。只覆盖重复行为的用例可以合并参数。不能因当前实现失败而删掉权限、预算、证据完整性或请求身份的边界检查。
 
-`authentication_contracts.AuthenticationContracts.test_http_uses_replaceable_ttl_store_without_reading_identity_file` 已完整迁至同模块 `live_suite()` 的 `AuthenticationIntegration`，由统一入口的受控 `host-integration` 阶段执行。有效身份、无文件启动、503、撤销后 401、缺失 token 401 和资源关闭断言全部保留。Windows 的 asyncio 内部唤醒 socketpair 使用 loopback connect，因此 ASGI 用例不能放在禁止所有 socket.connect 的离线工作进程中；网络禁令、超时和通过门槛保持不变。纯认证逻辑及插件准入仍由离线合同执行。
+`authentication_contracts.AuthenticationContracts.test_http_uses_replaceable_ttl_store_without_reading_identity_file` 已完整迁至同模块 `live_suite()` 的 `AuthenticationIntegration`，由统一入口的受控 `host-integration` 阶段执行。有效身份、无文件启动、503、撤销后 401、缺失 token 401 和资源关闭断言全部保留。纯认证逻辑及插件准入仍由离线合同执行。
 
 本轮把 `repair_contracts.PackingContracts.test_unmatched_bridge_is_not_arbitrarily_cut` 合并至 `default_path_contracts.DefaultPathContracts.test_unmatched_bridge_can_use_spare_context_budget`。保留两种文本长度及预算上限断言。超大表格不可截断的独立用例继续保留。历史归档的 208 个测试不恢复，也不删除其证据。
 
@@ -70,7 +72,7 @@ uv run --no-sync python scripts/check_project.py --output reports/ci/my-new-run
 
 ## 配置远端合并约束
 
-`.github/workflows/ci.yml` 在 PR、main/master 推送、合并队列和手动触发时执行。Windows 与 Ubuntu 分别检查 Python 3.12、3.13。四个质量任务使用同一入口，`secrets` 任务使用固定版本 Gitleaks 检查 Git 历史。聚合任务 `required` 仅在质量任务和密钥扫描全部成功时通过。工作流不使用路径过滤，以免必需检查因路径未命中而缺失。
+`.github/workflows/ci.yml` 在 PR、main/master 推送、合并队列和手动触发时执行。Ubuntu 检查 Python 3.12、3.13，两个质量任务使用同一入口，`secrets` 任务使用固定版本 Gitleaks 检查 Git 历史。聚合任务 `required` 要求质量、密钥扫描、集成和形式化检查全部成功。工作流不使用路径过滤，以免必需检查因路径未命中而缺失。
 
 工作流只授予 `contents: read`，不持久化 checkout 凭证，不读取模型密钥。Action 固定到完整提交 SHA。Dependabot 每周检查 Action 更新。安装使用固定 uv 版本及 `uv sync --locked --group dev`，不静默更新 `uv.lock`。失败时仍上传检查产物，保留 14 天。
 

@@ -548,3 +548,46 @@ fn repeated_invoke_identity_never_executes_twice() {
         ["configure", "invoke", "finished", "close"]
     );
 }
+
+#[test]
+fn lost_successful_response_joins_and_closes_without_reinvoking() {
+    struct LostResponse(Output);
+    impl Write for LostResponse {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            let response: Value = serde_json::from_slice(bytes).unwrap();
+            if response["id"] == "request" {
+                assert_eq!(response["result"], json!({"answer": 42}));
+                return Err(io::Error::new(io::ErrorKind::BrokenPipe, "lost reply"));
+            }
+            self.0.write(bytes)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            self.0.flush()
+        }
+    }
+    let (sender, receiver) = mpsc::channel();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let output = Output::default();
+    let bytes = [handshake(), invoke("request")].concat();
+    let error = serve(
+        GatedInput {
+            offset: bytes.len() as u64,
+            cursor: Cursor::new(bytes),
+            entered: Some(receiver),
+        },
+        LostResponse(output.clone()),
+        Fixture {
+            events: events.clone(),
+            entered: sender,
+            wait_for_cancel: false,
+        },
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+    assert_eq!(
+        *events.lock().unwrap(),
+        ["configure", "invoke", "finished", "close"]
+    );
+    assert_eq!(output.frames().len(), 1);
+    assert_eq!(output.frames()[0]["id"], "hello");
+}

@@ -32,7 +32,7 @@
 
 参考生成器可在独立目录重现。已有来源会逐文件校验，`--download` 只允许取得锁中指定提交的缺失文件。旧输出不会覆盖。
 
-```powershell
+```bash
 uv run --no-sync python scripts/generate_cordis_reference.py --workdir .local/cordis-reference-new --output reports/rust-plugin-v1/reference-new/cordis-traces.json --download
 ```
 
@@ -42,10 +42,9 @@ uv run --no-sync python scripts/generate_cordis_reference.py --workdir .local/co
 
 正式入口的首次执行因 shell 的 PATH 不包含 Cargo 而失败，保留于 `checks/`。固定工具链已安装在 `C:\Users\Hubujiu\.cargo\bin`。补齐本次进程 PATH 后，同一入口在 `checks-path-fixed/` 完整通过。Rust 格式、Clippy、release 构建与 Rust 测试通过，374 个 Python 合同零失败、零跳过，24 个评分器控制样本通过。动态库来自这次成功构建，并复制到该输出的 `native/`。旧库未参与替代。
 
-以下命令重现检查。`--output` 必须指向不存在的新目录。
+以下命令在 Linux 上重现检查。先按[开发约定](development.md)安装工具链，`--output` 必须指向不存在的新目录。
 
-```powershell
-$env:Path = 'C:\Users\Hubujiu\.cargo\bin;' + $env:Path
+```bash
 uv run --no-sync python scripts/check_project.py --output reports/rust-plugin-v1/new-baseline/checks
 ```
 
@@ -79,7 +78,7 @@ R0 盘点确认 `rag-history-v1/final-01` 有 240 条既有结果、240 个请�
 
 重现既有测量使用以下命令。新实现使用本轮新构建库，不能把旧库填入新结果。
 
-```powershell
+```bash
 uv run --no-sync python -m kb_platform.rag_testing.harness_performance --output reports/rust-plugin-v1/new-performance --library <本轮原生库绝对路径> --build-profile release --processes 5 --samples 1000 --scope-samples 100 --loop-samples 100 --warmup 20
 ```
 

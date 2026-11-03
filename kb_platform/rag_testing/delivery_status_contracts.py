@@ -250,6 +250,20 @@ def live_suite():
             self.assertEqual(self.physical, [])
             return value
 
+        def test_liveness_identifies_only_the_configured_delivery_instance(self):
+            with patch.dict(os.environ, {'KB_DELIVERY_INSTANCE': 'a' * 64}):
+                app, headers = self.application()
+            self.addCleanup(app.state.delivery['ledger'].close)
+            app.get('/health')(lambda: {'status': 'ok'})
+            with TestClient(app) as client:
+                health = client.get('/health')
+                self.assertEqual(health.status_code, 200)
+                self.assertEqual(health.headers['X-Delivery-Profile'], 'delivery-status-contract')
+                self.assertEqual(health.headers['X-Delivery-Instance'], 'a' * 64)
+                status = client.get('/agent/runtime-status', headers=headers)
+                self.assertNotIn('X-Delivery-Instance', status.headers)
+            self.assertEqual(self.physical, [])
+
         def test_http_plain_read_failure_is_blocked_json_without_provider_calls(self):
             app, headers = self.application()
             ledger = app.state.delivery['ledger']

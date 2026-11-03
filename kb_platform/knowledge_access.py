@@ -5,6 +5,15 @@ from .knowledge_queries import KnowledgeQuery
 from .session_identity import Actor, PlatformError
 
 
+def locked_authority(connection, actor, scope):
+    tenant = connection.execute(KnowledgeQuery.AUTHORITY_LOCK, (actor.tenant_id,)).fetchone()
+    kb = connection.execute(KnowledgeQuery.KB_MEMBERSHIP,
+                            (actor.tenant_id, scope, actor.principal_id)).fetchone()
+    if tenant is None or kb is None or 'kb.read' not in kb['capabilities']:
+        raise PlatformError('ACCESS_DENIED', 'Scope is not available', 403)
+    return {'scope_id': scope, 'manifest_id': kb['manifest_id'], 'authority_revision': tenant['revision']}
+
+
 class KnowledgeAccess:
     def __init__(self, repository):
         self._platform = Platform(repository=repository, search=None, store=None, parser=None,
@@ -13,9 +22,7 @@ class KnowledgeAccess:
     def authorize(self, request):
         actor, scope = Actor(**request['actor']), request['scope_id']
         with self._platform._tx(actor, scope) as connection:
-            revision = self._platform._lock_authority(connection, actor)
-            kb = self._platform._auth(connection, actor, scope)
-            return {'scope_id': scope, 'manifest_id': kb['manifest_id'], 'authority_revision': revision}
+            return locked_authority(connection, actor, scope)
 
     def validate_embedding(self, request):
         audit, task, provider = request['audit_context'], request['task'], request['provider_id']

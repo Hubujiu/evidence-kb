@@ -8,7 +8,7 @@ from .storage_sdk import SpaceKey, StorageIdentity
 from .storage_structured_wire import PortableStructuredClient
 
 
-PROTOCOL = 'knowledge.authority.storage/1'
+PROTOCOL = 'knowledge.authority.storage/2'
 METHODS = {
     'describe': Method(EMPTY, object_schema({'identity': OBJECT,
         'methods': {'type': 'array', 'items': TEXT}, 'schema': OBJECT})),
@@ -65,9 +65,8 @@ def authority_database(dependency):
 
 def validate_authority_bindings(application):
     consumers = [name for name, definition in application.get('plugins', {}).items()
-                 if definition.get('implementation') in {'knowledge.access', 'knowledge.data'}]
-    kinds = {application['plugins'][name]['implementation'] for name in consumers}
-    if kinds != {'knowledge.access', 'knowledge.data'}:
+                 if definition.get('implementation') in {'knowledge.access', 'knowledge.data', 'knowledge.sessions'}]
+    if len(consumers) < 2:
         return
     bindings = [application.get('bindings', {}).get(name, {}).get('authority') for name in consumers]
     if any(not isinstance(binding, dict) or set(binding) != {'plugin', 'export'} for binding in bindings):

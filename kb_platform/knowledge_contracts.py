@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from .agent_model import CompletionEnvelope
+from .database_contracts import CommitUnknown
 from .agent_context import ContextPolicy
 from .plugin_contracts import ContractError, Method
 from .plugin_configuration import CONTEXT_PROPERTIES
@@ -78,6 +79,8 @@ class Operation:
 
 def operation(names, *, optional=None, response=OBJECT):
     defaults = {'actor': ACTOR, 'state': OBJECT, 'response': OBJECT, 'payload': OBJECT,
+                'authority': object_schema({'scope_id': TEXT, 'manifest_id': {'type': ['string', 'null']},
+                    'authority_revision': INTEGER}),
                 'body': OBJECT, 'policy': NULL_OBJECT, 'source_policy': OBJECT,
                 'config': NULL_OBJECT, 'constraints': {'type': ['array', 'null'], 'items': TEXT},
                 'workflow_state': NULL_OBJECT,
@@ -104,7 +107,7 @@ SESSION_OPERATIONS = {
     'append': operation('actor session_id token kind payload group_id', optional='agent', response=INTEGER),
     'artifact': operation('actor session_id token body'),
     'read_artifact': operation('actor session_id artifact_id'),
-    'finish': operation('actor session_id token state response', optional='assistant_event'),
+    'finish': operation('actor session_id token state response authority', optional='assistant_event'),
     'fail': operation('actor session_id token state response'),
 }
 EVIDENCE_OPERATIONS = {
@@ -171,7 +174,11 @@ class ObjectEndpoint:
             values = dict(request)
             if 'actor' in values:
                 values['actor'] = Actor(**values['actor'])
-            return json.loads(json.dumps(getattr(self._implementation, name)(**values), allow_nan=False))
+            try:
+                return json.loads(json.dumps(getattr(self._implementation, name)(**values), allow_nan=False))
+            except CommitUnknown as error:
+                raise ContractError(error.code, str(error), status_code=503,
+                    details={'kind': 'database', 'operation_id': error.operation_id}) from error
         return invoke
 
 
@@ -359,26 +366,33 @@ class ModelEndpoint:
     def complete(self, request):
         token = uuid4().hex
         with self._lock:
-            expired = [key for key, (deadline, _) in self._pending.items() if deadline < monotonic()]
+            expired = [key for key, (deadline, envelope) in self._pending.items()
+                       if envelope is not None and deadline < monotonic()]
             for key in expired:
                 del self._pending[key]
             if len(self._pending) >= 64:
-                raise ContractError('MODEL_VALIDATION_CAPACITY', 'Too many pending model validations', status_code=503)
+                raise ContractError('MODEL_VALIDATION_CAPACITY', 'Too many pending model validations',
+                    status_code=503, details={'model_sent': False,
+                                             'call_record': {'attempts': 0, 'model_sent': False}})
             self._pending[token] = (monotonic() + 900, None)
         try:
             envelope = self._model.complete(**request, cache_result=False)
             with self._lock:
                 self._pending[token] = (monotonic() + 900, envelope)
             return {'completion': envelope.to_dict(), 'token': token}
-        except Exception as error:
+        except BaseException as error:
             with self._lock:
                 self._pending.pop(token, None)
-            if not hasattr(error, 'code'):
+            if not isinstance(error, Exception):
                 raise
             from .model_errors import error_details
 
-            details = {'kind': 'model', **error_details(error)}
-            raise ContractError(error.code, str(error), status_code=502, details=details) from error
+            details = error_details(error)
+            if not hasattr(error, 'code'):
+                raise ContractError('CONTRACT_IMPLEMENTATION_FAILED', 'Service implementation failed',
+                    details={**details, 'code': 'CONTRACT_IMPLEMENTATION_FAILED'}) from error
+            raise ContractError(error.code, str(error), status_code=502,
+                                details={'kind': 'model', **details}) from error
 
     def settle(self, request):
         with self._lock:

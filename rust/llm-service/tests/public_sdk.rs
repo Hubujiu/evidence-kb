@@ -658,3 +658,262 @@ async fn a_panicking_provider_has_no_successful_finish_or_executable_tool_calls(
         "LLM_PROVIDER_TASK_FAILED"
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn malformed_queued_content_preserves_latest_observed_usage_without_replaying() {
+    for (initial, latest) in [
+        (None, Some((12, 3))),
+        (Some((8, 2)), Some((12, 3))),
+        (Some((8, 2)), Some((3, 1))),
+        (None, None),
+    ] {
+        let queued = Arc::new(Notify::new());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = CallbackProvider(Arc::new({
+            let queued = queued.clone();
+            let calls = calls.clone();
+            move |_, sink, _| {
+                let queued = queued.clone();
+                let calls = calls.clone();
+                Box::pin(async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    if let Some((input_tokens, output_tokens)) = initial {
+                        sink.send(StreamEvent::Usage {
+                            usage: TokenUsage {
+                                input_tokens,
+                                output_tokens,
+                                ..Default::default()
+                            },
+                        })
+                        .await?;
+                    }
+                    for _ in 0..2 {
+                        sink.send(StreamEvent::BlockStart {
+                            index: 0,
+                            block_type: llm_service::BlockType::Text,
+                        })
+                        .await?;
+                    }
+                    if let Some((input_tokens, output_tokens)) = latest {
+                        sink.send(StreamEvent::Usage {
+                            usage: TokenUsage {
+                                input_tokens,
+                                output_tokens,
+                                ..Default::default()
+                            },
+                        })
+                        .await?;
+                    }
+                    sink.send(StreamEvent::Finish {
+                        reason: FinishReason::Stop,
+                        replay_state: None,
+                    })
+                    .await?;
+                    queued.notify_one();
+                    Ok(())
+                })
+            }
+        }));
+        let service = Service::default();
+        service.register("fixture", Arc::new(provider)).unwrap();
+        let mut stream = service
+            .prepare("fixture", "model")
+            .await
+            .unwrap()
+            .stream(Request::text("fixture", "model", "q"))
+            .unwrap();
+        queued.notified().await;
+        let mut terminals = 0;
+        while let Some(event) = stream.next().await {
+            terminals += usize::from(matches!(event, StreamEvent::Finish { .. }));
+        }
+        stream.close(Duration::from_secs(1)).await.unwrap();
+        let response = stream.response().unwrap();
+        assert!(
+            matches!(&response.finish, FinishReason::Error { failure } if failure.code == "INVALID_LLM_BLOCK_TRANSITION")
+        );
+        assert_eq!(
+            response
+                .usage
+                .as_ref()
+                .map(|usage| (usage.input_tokens, usage.output_tokens)),
+            latest.or(initial)
+        );
+        assert_eq!(
+            response.usage.as_ref().and_then(|usage| usage.total_tokens),
+            None
+        );
+        assert_eq!(terminals, 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn usage_survives_full_content_assembly_without_admitting_more_content() {
+    let mut boundary = llm_service::Assembler::default();
+    boundary
+        .push(StreamEvent::TextDelta {
+            index: 0,
+            text: String::new(),
+        })
+        .unwrap();
+    let text =
+        "x".repeat(llm_service::MAX_CONTENT_BYTES - serde_json::to_vec(&boundary).unwrap().len());
+    boundary
+        .push(StreamEvent::TextDelta {
+            index: 0,
+            text: text.clone(),
+        })
+        .unwrap();
+    assert_eq!(
+        serde_json::to_vec(&boundary).unwrap().len(),
+        llm_service::MAX_CONTENT_BYTES
+    );
+    let usage = TokenUsage {
+        input_tokens: 12,
+        output_tokens: 3,
+        ..Default::default()
+    };
+    assert_eq!(
+        boundary
+            .push(StreamEvent::Usage {
+                usage: usage.clone()
+            })
+            .unwrap_err()
+            .code,
+        "LLM_STREAM_TOO_LARGE"
+    );
+    assert_eq!(
+        boundary
+            .push(StreamEvent::TextDelta {
+                index: 0,
+                text: "overflow".into()
+            })
+            .unwrap_err()
+            .code,
+        "LLM_STREAM_TOO_LARGE"
+    );
+    for overflow in [false, true] {
+        let queued = Arc::new(Notify::new());
+        let provider = CallbackProvider(Arc::new({
+            let queued = queued.clone();
+            let text = text.clone();
+            let usage = usage.clone();
+            move |_, sink, _| {
+                let queued = queued.clone();
+                let text = text.clone();
+                let usage = usage.clone();
+                Box::pin(async move {
+                    sink.send(StreamEvent::TextDelta { index: 0, text }).await?;
+                    if overflow {
+                        sink.send(StreamEvent::TextDelta {
+                            index: 0,
+                            text: "overflow".into(),
+                        })
+                        .await?;
+                    }
+                    sink.send(StreamEvent::Usage { usage }).await?;
+                    sink.send(StreamEvent::Finish {
+                        reason: FinishReason::Stop,
+                        replay_state: None,
+                    })
+                    .await?;
+                    queued.notify_one();
+                    Ok(())
+                })
+            }
+        }));
+        let service = Service::default();
+        service.register("fixture", Arc::new(provider)).unwrap();
+        let mut stream = service
+            .prepare("fixture", "model")
+            .await
+            .unwrap()
+            .stream(Request::text("fixture", "model", "q"))
+            .unwrap();
+        queued.notified().await;
+        while stream.next().await.is_some() {}
+        stream.close(Duration::from_secs(1)).await.unwrap();
+        let response = stream.response().unwrap();
+        assert!(
+            matches!(&response.finish, FinishReason::Error { failure } if failure.code == "LLM_STREAM_TOO_LARGE")
+        );
+        assert_eq!(response.usage, Some(usage.clone()));
+        assert_eq!(
+            response.content,
+            vec![ContentBlock::Text { text: text.clone() }]
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn synthesized_terminal_freezes_known_usage_but_still_waits_for_provider_cleanup() {
+    let queued = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let cleaned = Arc::new(AtomicUsize::new(0));
+    let provider = CallbackProvider(Arc::new({
+        let queued = queued.clone();
+        let release = release.clone();
+        let cleaned = cleaned.clone();
+        move |_, sink, _| {
+            let queued = queued.clone();
+            let release = release.clone();
+            let cleaned = cleaned.clone();
+            Box::pin(async move {
+                for _ in 0..2 {
+                    sink.send(StreamEvent::BlockStart {
+                        index: 0,
+                        block_type: llm_service::BlockType::Text,
+                    })
+                    .await?;
+                }
+                sink.send(StreamEvent::Usage {
+                    usage: TokenUsage {
+                        input_tokens: 12,
+                        output_tokens: 3,
+                        ..Default::default()
+                    },
+                })
+                .await?;
+                queued.notify_one();
+                release.notified().await;
+                assert_eq!(
+                    sink.send(StreamEvent::Usage {
+                        usage: TokenUsage {
+                            input_tokens: 99,
+                            output_tokens: 8,
+                            ..Default::default()
+                        }
+                    })
+                    .await
+                    .unwrap_err()
+                    .code,
+                    "LLM_ABORTED"
+                );
+                cleaned.store(1, Ordering::SeqCst);
+                Ok(())
+            })
+        }
+    }));
+    let service = Service::default();
+    service.register("fixture", Arc::new(provider)).unwrap();
+    let mut stream = service
+        .prepare("fixture", "model")
+        .await
+        .unwrap()
+        .stream(Request::text("fixture", "model", "q"))
+        .unwrap();
+    queued.notified().await;
+    while stream.next().await.is_some() {}
+    let terminal_response = stream.response().unwrap();
+    assert_eq!(terminal_response.usage.as_ref().unwrap().input_tokens, 12);
+    assert_eq!(
+        stream.close(Duration::ZERO).await.unwrap_err().code,
+        "LLM_CLEANUP_PENDING"
+    );
+    assert_eq!(cleaned.load(Ordering::SeqCst), 0);
+    release.notify_one();
+    stream.close(Duration::from_secs(1)).await.unwrap();
+    assert_eq!(cleaned.load(Ordering::SeqCst), 1);
+    assert_eq!(stream.response().unwrap(), terminal_response);
+}
