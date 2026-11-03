@@ -14,6 +14,18 @@ import sys
 import time
 import unittest
 
+from scripts.formal_provider_lint import provider_circuit_violations
+from scripts.physical_settlement_lint import settlement_violations
+from scripts.sdk_gateway_lint import violations as sdk_gateway_violations
+from scripts.canonical_page_checks import canonical_page_violations
+from scripts.physical_ledger_checks import ledger_core_violations, local_ranker_settlement_violations
+from scripts.receipt_transition_checks import receipt_transition_violations, sqlite_guard_violations
+from scripts.presend_admission_checks import presend_admission_violations
+from scripts.semantic_manifest_checks import semantic_manifest_violations
+from scripts.knowledge_workflow_checks import knowledge_workflow_violations
+from scripts.receipt_database_checks import receipt_database_violations, receipt_database_transition_violations, receipt_send_order_violations
+from .formal_inline_boolean import inline_boolean_findings, inline_control_fixtures, finding_signature
+
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'formal/registry-v1.json'
 LOCK = 'formal/toolchain-v1.json'
@@ -63,8 +75,12 @@ def source_digest(root: Path, binding: dict) -> str:
             raise ValueError(f'Missing Python symbol: {binding["symbol"]}')
         options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
         return digest(ast.dump(symbols[binding['symbol']], include_attributes=False, **options).encode())
+    if binding['language'] == 'javascript-module':
+        if path.suffix != '.mjs' or binding['symbol'] != '<module>':
+            raise ValueError('JavaScript bindings require a complete .mjs module')
+        return digest(path.read_bytes().replace(b'\r\n', b'\n'))
     if binding['language'] != 'rust':
-        raise ValueError('Source binding language must be python or rust')
+        raise ValueError('Source binding language must be python, rust or javascript-module')
     leaf = binding['symbol'].replace('::', '.').rsplit('.', 1)[-1]
     if leaf != '<module>' and not re.search(r'\b(?:fn|enum|struct)\s+' + re.escape(leaf) + r'\b', source):
         raise ValueError(f'Missing Rust declaration: {binding["symbol"]}')
@@ -106,6 +122,8 @@ def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
             for name in re.findall(r'\benum\s+([A-Za-z_][A-Za-z_0-9]*)', path.read_text('utf-8')):
                 if re.search(r'(State|Status|Phase)$', name):
                     found.add((path.relative_to(root).as_posix(), name))
+        for path in sorted(base.rglob('*.mjs')):
+            found.add((path.relative_to(root).as_posix(), '<module>'))
     return found
 
 
@@ -121,6 +139,18 @@ def configured_operators(config: str, sections: set[str]) -> set[str]:
     return result
 
 
+def configuration_behavior(config: str) -> list[str]:
+    tokens = re.sub(r'\\\*[^\n]*', '', config).split()
+    result = []
+    checking = False
+    for token in tokens:
+        if token in CFG_SECTIONS:
+            checking = token in {'INVARIANT', 'INVARIANTS', 'PROPERTY', 'PROPERTIES'}
+        if not checking:
+            result.append(token)
+    return result
+
+
 def operator_names(value, *, allow_empty: bool) -> bool:
     return isinstance(value, list) and (allow_empty or bool(value)) and all(
         isinstance(name, str) and re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', name)
@@ -128,19 +158,64 @@ def operator_names(value, *, allow_empty: bool) -> bool:
 
 
 def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
+    from scripts.storage_grant_checks import violations as storage_grant_violations
+
     errors = []
     try:
+        if (root / 'kb_platform/rag_testing/sdk_gateway.py').exists():
+            errors.extend(sdk_gateway_violations(root))
+        canonical = root / 'kb_platform/semantic_page_ingestion.py'
+        if canonical.exists():
+            errors.extend(canonical_page_violations(canonical.read_text('utf-8')))
+        if (root / 'kb_platform/provider_runtime.py').exists():
+            source = local_file(root, 'kb_platform/provider_runtime.py').read_text('utf-8')
+            errors.extend(provider_circuit_violations(source))
+        if any((root / path).exists() for path in ('kb_platform/rag_testing/provider_capture.py',
+                                                   'kb_platform/google_semantic_provider.py')):
+            errors.extend(settlement_violations(root))
+        for path, check in (('kb_platform/rag_testing/budget.py', ledger_core_violations),
+                            ('kb_platform/rag_testing/local_rerank.py', local_ranker_settlement_violations)):
+            if (root / path).exists():
+                errors.extend(check((root / path).read_text('utf-8')))
         registry = registry if registry is not None else json.loads(local_file(root, REGISTRY).read_text('utf-8'))
         if registry.get('schema_version') != 1 or not registry.get('machines'):
             raise ValueError('Registry v1 requires a nonempty machine inventory')
+        semantic_owner = 'kb_platform/semantic_pages_v2.py'
+        if (root / semantic_owner).exists() or any(machine.get('id') == 'authority_publication'
+                                                 for machine in registry['machines']):
+            source = local_file(root, semantic_owner).read_text('utf-8')
+            errors.extend('authority_publication: ' + error for error in semantic_manifest_violations(source))
+        workflow_owner = 'kb_platform/knowledge_turn.py'
+        if (root / workflow_owner).exists() or any(machine.get('id') == 'knowledge_workflow'
+                                                 for machine in registry['machines']):
+            source = local_file(root, workflow_owner).read_text('utf-8')
+            errors.extend('knowledge_workflow: ' + error for error in knowledge_workflow_violations(source))
         ids = set()
         bindings = set()
         model_files = {spec[key] for spec in control_specs() for key in ('module', 'config')}
         for machine in registry['machines']:
             identity = machine['id']
+            if identity == 'storage_registry':
+                errors.extend(storage_grant_violations(root))
             if identity in ids or not re.fullmatch(r'[a-z][a-z0-9_-]+', identity):
                 raise ValueError(f'Duplicate or invalid machine id: {identity}')
             ids.add(identity)
+            if identity == 'provider_receipts':
+                for path, check in (('kb_platform/provider_runtime.py', receipt_transition_violations),
+                                    ('kb_platform/database_providers/sqlite_guard.py', sqlite_guard_violations)):
+                    errors.extend(f'{identity}: {error}' for error in check(local_file(root, path).read_text('utf-8')))
+                if 'kb_platform/provider_receipt_database.py' in machine['owners']:
+                    for path, check in (('kb_platform/provider_receipt_database.py', receipt_database_violations),
+                                        ('kb_platform/provider_runtime.py', receipt_database_transition_violations),
+                                        ('kb_platform/remote.py', receipt_send_order_violations)):
+                        errors.extend(f'{identity}: {error}' for error in check(local_file(root, path).read_text('utf-8')))
+            if identity == 'remote_retry_ownership':
+                from kb_platform.rag_testing.remote_retry_lint import OWNER, SDK, remote_retry_source_violations
+                errors.extend(f'{identity}: {error}' for error in remote_retry_source_violations(
+                    local_file(root, OWNER).read_text('utf-8'), local_file(root, SDK).read_text('utf-8')))
+            if identity == 'provider_admission':
+                source = local_file(root, 'kb_platform/remote.py').read_text('utf-8')
+                errors.extend(f'{identity}: {error}' for error in presend_admission_violations(source))
             if machine['status'] not in {'partial', 'unmodeled'}:
                 raise ValueError(f'{identity}: unknown coverage status')
             for key in ('owners', 'states', 'transitions', 'invariants', 'assumptions', 'exclusions', 'source_bindings'):
@@ -154,8 +229,42 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                 actual = source_digest(root, binding)
                 if not re.fullmatch('[0-9a-f]{64}', binding['sha256']) or actual != binding['sha256']:
                     errors.append(f'{identity}: source review drift at {key[0]}:{key[1]}')
+            if identity == 'tool_executor':
+                from kb_platform.rag_testing.tool_retry_lint import OWNER, CALLER, FIXTURE, tool_retry_source_violations, tool_fixture_source_violations
+                errors.extend(f'tool_executor: {error}' for error in tool_retry_source_violations(
+                    local_file(root, OWNER).read_text('utf-8'), local_file(root, CALLER).read_text('utf-8')))
+                errors.extend(f'tool_executor: {error}' for error in tool_fixture_source_violations(
+                    local_file(root, FIXTURE).read_text('utf-8')))
+            if identity == 'native_storage_sessions' and machine['models']:
+                from kb_platform.rag_testing.native_sessions_lint import native_sessions_violations
+                errors.extend(f'native_storage_sessions: {error}' for error in native_sessions_violations(
+                    local_file(root, 'rust/storage-service/src/service.rs').read_text('utf-8'),
+                    local_file(root, 'formal/native_sessions/NativeSessions.tla').read_text('utf-8')))
             models = machine['models']
             controls = machine['negative_controls']
+            limitations = machine.get('known_limitations', [])
+            if not all(isinstance(items, list) for items in (models, controls, limitations)):
+                raise ValueError(f'{identity}: models, negative controls and known limitations must be lists')
+            if identity == 'llm_multiblock' and models:
+                from kb_platform.rag_testing.multiblock_lint import multiblock_source_violations
+                errors.extend(f'llm_multiblock: {error}' for error in multiblock_source_violations(
+                    local_file(root, 'rust/llm-service/src/assembler.rs').read_text('utf-8'),
+                    local_file(root, 'formal/llm_multiblock/MultiblockAssembler.tla').read_text('utf-8')))
+            if identity == 'llm_stream' and models:
+                from kb_platform.rag_testing.llm_stream_lint import stream_source_violations
+                errors.extend(f'llm_stream: {error}' for error in stream_source_violations(
+                    local_file(root, 'rust/llm-service/src/service.rs').read_text('utf-8'),
+                    local_file(root, 'rust/llm-service/src/assembler.rs').read_text('utf-8')))
+            if identity == 'llm_registry' and models:
+                from kb_platform.rag_testing.llm_registry_lint import registry_source_violations
+                errors.extend(f'llm_registry: {error}' for error in registry_source_violations(
+                    local_file(root, 'rust/llm-service/src/registry.rs').read_text('utf-8'),
+                    local_file(root, 'rust/llm-service/src/executor.rs').read_text('utf-8'),
+                    local_file(root, 'kb_platform/model_service.py').read_text('utf-8')))
+            if identity == 'host_process' and models:
+                from kb_platform.rag_testing.host_process_lint import PATHS, host_source_violations
+                errors.extend(f'host_process: {error}' for error in host_source_violations(
+                    {path: local_file(root, path).read_text('utf-8') for path in PATHS}))
             if (machine['status'] == 'partial') != bool(models):
                 errors.append(f'{identity}: partial requires actual models; unmodeled cannot claim models')
             if models and (not isinstance(machine.get('remaining_obligations'), list) or
@@ -166,7 +275,21 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                 errors.append(f'{identity}: modeled machines require a seeded negative control')
             if any(control.get('kind', 'negative') not in {'negative', 'liveness-negative'} for control in controls):
                 errors.append(f'{identity}: negative controls cannot change their expected failure kind')
-            for model in models + controls:
+            if any(control.get('known_limitation', False) for control in controls):
+                errors.append(f'{identity}: known limitations cannot count as negative controls')
+            for limitation in limitations:
+                associated = [model for model in models if model['id'] == limitation.get('model_id')]
+                if (limitation.get('kind') != 'limitation' or len(associated) != 1 or
+                        associated[0]['module'] != limitation.get('module')):
+                    errors.append(f'{identity}: known limitation must name a positive model using the same module')
+                elif configuration_behavior(local_file(root, limitation['config']).read_text('utf-8')) != (
+                        configuration_behavior(local_file(root, associated[0]['config']).read_text('utf-8'))):
+                    errors.append(f'{identity}: known limitation must preserve its positive model configuration behavior')
+                if not isinstance(limitation.get('purpose'), str) or not limitation['purpose'].strip():
+                    errors.append(f'{identity}: known limitation requires an explicit explanation')
+                if limitation.get('config') in {model['config'] for model in models + controls}:
+                    errors.append(f'{identity}: known limitation requires a separate configuration')
+            for model in models + controls + limitations:
                 if not re.fullmatch(r'[a-z][a-z0-9_-]+', model['id']):
                     raise ValueError(f'{identity}: invalid model run id')
                 module = local_file(root, model['module'])
@@ -193,11 +316,41 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                     properties = configured_operators(text, {'PROPERTY', 'PROPERTIES'})
                     if set(model['properties']) != properties:
                         errors.append(f'{identity}: configured temporal properties differ from registry')
+                elif model in limitations:
+                    if (not operator_names([model['expected_invariant']], allow_empty=False) or
+                            configured != {model['expected_invariant']} or
+                            configured_operators(text, {'PROPERTY', 'PROPERTIES'}) or model.get('expected_property')):
+                        errors.append(f'{identity}: known limitation must isolate its named safety invariant')
                 elif model.get('kind') == 'liveness-negative':
                     if configured_operators(text, {'PROPERTY', 'PROPERTIES'}) != {model['expected_property']}:
                         errors.append(f'{identity}: liveness negative control must isolate its named property')
                 elif model['expected_invariant'] not in configured:
                     errors.append(f'{identity}: negative control must target a configured invariant')
+        from scripts.postflight_model_checks import postflight_model_violations
+
+        errors.extend(postflight_model_violations(root, registry))
+        if {'acceptance_binding_publication', 'acceptance_client_execution'} & ids:
+            from .acceptance_output_rules import acceptance_output_violations
+            errors.extend(acceptance_output_violations(root))
+        if 'acceptance_workflow' in ids:
+            from .acceptance_workflow_rules import acceptance_workflow_violations
+            errors.extend(acceptance_workflow_violations(root))
+        if 'ingestion_migration' in ids:
+            from .ingestion_migration_rules import ingestion_migration_violations
+            errors.extend(ingestion_migration_violations(root))
+        if 'provider_admission' in ids:
+            from .provider_admission_rules import provider_admission_violations
+
+            errors.extend(provider_admission_violations(root))
+        from scripts.session_catalog_checks import session_catalog_violations
+
+        errors.extend(session_catalog_violations(root, registry))
+        from scripts.durable_session_checks import durable_session_violations
+
+        errors.extend(durable_session_violations(root, registry))
+        if 'page_recovery' in ids:
+            from .page_recovery_rules import page_recovery_violations
+            errors.extend(page_recovery_violations(root))
         exclusions = registry['discovery']['exclusions']
         excluded = {(row['path'], row['symbol']) for row in exclusions if row.get('reason', '').strip()}
         if len(excluded) != len(exclusions):
@@ -213,7 +366,31 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
         for path in sorted((root / 'formal').rglob('*')):
             if path.suffix in {'.tla', '.cfg'}:
                 if path.relative_to(root).as_posix() not in model_files:
-                    errors.append(f'Unregistered model input: {path.relative_to(root)}')
+                    errors.append(f'Unregistered model input: {path.relative_to(root).as_posix()}')
+        from scripts.error_projection_model_checks import error_projection_model_violations
+
+        errors.extend(error_projection_model_violations(root, registry))
+        from scripts.rpc_transfer_owner_checks import rpc_transfer_owner_violations
+
+        errors.extend(rpc_transfer_owner_violations(root, registry))
+        receipt_owner = root / 'kb_platform/knowledge_contracts.py'
+        if receipt_owner.is_file():
+            from scripts.check_project import (
+                model_capacity_outcome_violations, model_error_projection_violations,
+                model_receipt_cleanup_violations, model_receipt_violations,
+            )
+
+            tree = ast.parse(receipt_owner.read_text('utf-8'))
+            errors.extend(f'model receipts: {error}' for check in
+                          (model_receipt_violations, model_capacity_outcome_violations,
+                           model_receipt_cleanup_violations, model_error_projection_violations) for error in check(tree))
+        if any(model['module'].startswith('formal/plugin_ownership/') for machine in registry.get('machines', [])
+               for model in machine.get('models', [])):
+            from .formal_plugin_ownership import ownership_violations
+            errors.extend(ownership_violations(root))
+        if any(machine['id'] == 'python_host_lifecycles' for machine in registry.get('machines', [])):
+            from .formal_python_host import ownership_violations
+            errors.extend(ownership_violations(root))
     except (KeyError, TypeError, ValueError, OSError, SyntaxError) as exc:
         errors.append(f'Invalid formal registry: {exc}')
     return sorted(set(errors))
@@ -269,6 +446,8 @@ def control_specs() -> list[dict]:
 
 
 def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
+    if spec['kind'] not in {'positive', 'negative', 'liveness-negative', 'invalid', 'limitation'}:
+        raise ValueError('Unknown formal run kind')
     directory = output / spec['id']
     directory.mkdir()
     inputs = directory / 'inputs'
@@ -284,6 +463,9 @@ def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
     properties = configured_operators(config.read_text('utf-8'), {'PROPERTY', 'PROPERTIES'})
     if spec['kind'] == 'liveness-negative' and properties != {spec['expected_property']}:
         raise ValueError('Liveness negative control must isolate its named temporal property')
+    if spec['kind'] == 'limitation' and (properties or spec.get('expected_property') or
+            configured_operators(config.read_text('utf-8'), {'INVARIANT', 'INVARIANTS'}) != {spec['expected_invariant']}):
+        raise ValueError('Known limitation must isolate its named safety invariant')
     shutil.copy2(config, inputs / config.name)
     snapshots[spec['config']] = digest(config.read_bytes())
     command = ['java', f'-Xmx{spec["heap_mb"]}m', '-XX:MaxMetaspaceSize=128m', '-XX:+UseParallelGC',
@@ -309,20 +491,101 @@ def run_model(root: Path, jar: Path, output: Path, spec: dict) -> dict:
         accepted = accepted and {2192, 2267} <= {frame['code'] for frame in parse_tlc(log)['frames']}
     if spec['kind'] == 'invalid':
         accepted = not timed_out and returncode in {150, 151, 75} and not tlc_verdict(log, returncode, expected)
-    record = {'id': spec['id'], 'kind': spec['kind'], 'decision': 'PASS' if accepted else 'FAIL',
+    decision = ('OBSERVED_LIMITATION' if spec['kind'] == 'limitation' else 'PASS') if accepted else 'FAIL'
+    record = {'id': spec['id'], 'kind': spec['kind'], 'decision': decision,
               'returncode': returncode, 'timeout': timed_out, 'seconds': time.monotonic() - started,
               'command': command, 'input_sha256': snapshots, 'expected_invariant': expected,
               'expected_property': expected_property,
               'parsed': parse_tlc(log), 'log': (directory / 'tlc.log').relative_to(output).as_posix()}
+    if spec['kind'] == 'limitation':
+        record.update(model_id=spec['model_id'], purpose=spec['purpose'])
     (directory / 'result.json').write_text(json.dumps(record, indent=2), encoding='utf-8')
     return record
+
+
+def run_inline_export(jar: Path, output: Path, inputs: Path, identity: str, module: str,
+                      snapshots: dict, expected: list[tuple]) -> dict:
+    directory = output / identity
+    directory.mkdir()
+    scratch = directory / 'tmp'
+    scratch.mkdir()
+    command = ['java', '-Xmx256m', '-XX:MaxMetaspaceSize=128m', '-XX:+UseParallelGC',
+               '-XX:+ExitOnOutOfMemoryError', f'-Djava.io.tmpdir={scratch}', '-cp', str(jar),
+               'tla2sany.xml.XMLExporter', '-o', str(inputs / f'{module}.tla')]
+    record = {'id': identity, 'module': module, 'decision': 'ERROR', 'timeout': False,
+              'returncode': None, 'command': command, 'input_sha256': snapshots,
+              'expected_findings': [list(item) for item in expected], 'findings': None,
+              'xml': (directory / 'module.xml').relative_to(output).as_posix(),
+              'log': (directory / 'sany.log').relative_to(output).as_posix(),
+              'timeout_seconds': 30, 'heap_mb': 256}
+    started = time.monotonic()
+    try:
+        with (directory / 'module.xml').open('wb') as xml, (directory / 'sany.log').open('wb') as log:
+            result = subprocess.run(command, cwd=inputs, stdout=xml, stderr=log, timeout=30, check=False)
+        record['returncode'] = result.returncode
+        if result.returncode:
+            raise ValueError('Official SANY XML export failed; see preserved stderr')
+        xml = (directory / 'module.xml').read_bytes()
+        record['xml_sha256'] = digest(xml)
+        record['findings'] = inline_boolean_findings(xml, module)
+        actual = finding_signature(record['findings'])
+        record['decision'] = 'PASS' if actual == expected else 'FAIL'
+        if actual != expected:
+            record['blocker'] = 'Inline Boolean assignment review did not match the required findings'
+    except subprocess.TimeoutExpired:
+        record.update(timeout=True, blocker='Official SANY XML export timed out')
+    except (OSError, ValueError) as exc:
+        record['blocker'] = str(exc)
+    if (directory / 'module.xml').is_file():
+        record['xml_sha256'] = digest((directory / 'module.xml').read_bytes())
+    record['seconds'] = time.monotonic() - started
+    (directory / 'result.json').write_text(json.dumps(record, indent=2), encoding='utf-8')
+    return record
+
+
+def run_inline_review(root: Path, jar: Path, output: Path, specs: list[dict]) -> dict:
+    output.mkdir()
+    inputs = output / 'inputs'
+    inputs.mkdir()
+    snapshots = {}
+    for path in sorted((root / 'formal').rglob('*.tla')):
+        target = inputs / path.name
+        if target.exists():
+            raise ValueError(f'Duplicate TLA module filename: {path.name}')
+        shutil.copy2(path, target)
+        snapshots[path.relative_to(root).as_posix()] = digest(path.read_bytes())
+    modules = sorted({spec['module'] for spec in specs})
+    fixtures = inline_control_fixtures(root)
+    report = {'decision': 'FAIL', 'expected_modules': modules,
+              'expected_controls': [fixture['id'] for fixture in fixtures], 'modules': [], 'controls': [],
+              'scope': 'Direct same-line conjunction review from official SANY XML; '
+                       'not intent inference, branch coverage or implementation refinement.'}
+    for module in modules:
+        identity = 'model-' + Path(module).stem
+        row = run_inline_export(jar, output, inputs, identity, Path(module).stem, snapshots, [])
+        row['source_path'] = module
+        report['modules'].append(row)
+    for fixture in fixtures:
+        identity = 'control-' + fixture['id']
+        control_inputs = output / (identity + '-inputs')
+        control_inputs.mkdir()
+        (control_inputs / f'{fixture["module"]}.tla').write_bytes(fixture['source'])
+        row = run_inline_export(jar, output, control_inputs, identity, fixture['module'],
+            {fixture['source_path']: fixture['source_sha256']}, fixture['expected'])
+        row['fixture_id'] = fixture['id']
+        row['fixture_xml_sha256'] = fixture['xml_sha256']
+        report['controls'].append(row)
+    rows = report['modules'] + report['controls']
+    report['decision'] = 'PASS' if rows and all(row['decision'] == 'PASS' for row in rows) else 'FAIL'
+    (output / 'summary.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+    return report
 
 
 def run_formal(root: Path, output: Path, jar: Path | None = None) -> int:
     output.mkdir(parents=True, exist_ok=False)
     errors = registry_violations(root)
     report = {'decision': 'FAIL',
-              'violations': errors, 'results': [], 'new_provider_calls': 0,
+              'violations': errors, 'results': [], 'known_limitations': [], 'new_provider_calls': 0,
               'scope': 'Finite TLC abstractions plus source review-drift lint; not implementation refinement or all-state-machine proof.'}
     try:
         if errors:
@@ -342,16 +605,26 @@ def run_formal(root: Path, output: Path, jar: Path | None = None) -> int:
         if version.returncode or not re.search(r'version "' + str(lock['java_major']) + r'(?:\.|\")', report['java_version']):
             raise ValueError(f'Java {lock["java_major"]} is required; observed runtime saved in report')
         specs = control_specs()
+        limitations = []
         for machine in registry['machines']:
             specs.extend(dict(model, kind='positive') for model in machine['models'])
             specs.extend(dict(model, kind=model.get('kind', 'negative')) for model in machine['negative_controls'])
-        if len({spec['id'] for spec in specs}) != len(specs):
+            limitations.extend(dict(model, kind='limitation') for model in machine.get('known_limitations', []))
+        if len({spec['id'] for spec in specs + limitations}) != len(specs) + len(limitations):
             raise ValueError('Every model/control run requires a unique id')
         if not any(machine['status'] == 'partial' for machine in registry['machines']):
             raise ValueError('At least one real registered machine model is required; control fixtures are not coverage')
         report['expected_runs'] = {spec['id']: spec['kind'] for spec in specs}
+        report['expected_limitations'] = {spec['id']: {
+            key: spec[key] for key in ('model_id', 'expected_invariant', 'purpose')} for spec in limitations}
+        report['registered_model_count'] = sum(len(machine['models']) for machine in registry['machines'])
+        report['inline_boolean_review'] = run_inline_review(root, jar, output / 'inline-boolean-review', specs)
+        if report['inline_boolean_review']['decision'] != 'PASS':
+            raise ValueError('Official SANY inline Boolean assignment review failed; TLC is not claimed as executed')
         for spec in specs:
             report['results'].append(run_model(root, jar, output, spec))
+        for spec in limitations:
+            report['known_limitations'].append(run_model(root, jar, output, spec))
         from kb_platform.rag_testing.formal_state_machine_contracts import live_suite
         stream = io.StringIO()
         result = unittest.TextTestRunner(stream=stream, verbosity=2).run(live_suite(report))

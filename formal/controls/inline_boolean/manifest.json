@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "exporter_jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+  "exporter_class": "tla2sany.xml.XMLExporter",
+  "exporter_arguments": [
+    "-o"
+  ],
+  "fixtures": {
+    "postflight-bad": {
+      "module": "PostflightAuthority",
+      "source_sha256": "e96a2b319453fe4cae40ca41df129bbbb66771ec11dd3962f3513fceb7f3eb17",
+      "xml_sha256": "0b5d936a9ae4599f0c54919ce8fee72447d8f435e7d39bd6119d77003667fa3f",
+      "origin": {
+        "kind": "immutable_repository_model",
+        "commit": "aa909eef335cc95f75cff3fc5e76e6f87b723b51",
+        "path": "formal/session_authority/PostflightAuthority.tla"
+      }
+    },
+    "postflight-good": {
+      "module": "PostflightAuthority",
+      "source_sha256": "993b0076cecca3a3c5c4edea931d9423d1de91dee62a080d7d2e39a9e47c00f6",
+      "xml_sha256": "9e8611bf9f84bd60e59515482738e2dfc43374bac1bcdd2568999c23f179c180",
+      "origin": {
+        "kind": "immutable_repository_model",
+        "commit": "e716efcf4544e994888dce6eea22f152e2e95455",
+        "path": "formal/session_authority/PostflightAuthority.tla"
+      }
+    },
+    "projection-bad": {
+      "module": "ErrorProjection",
+      "source_sha256": "c8ee71e419bd87c9150b200de3015fe9b72d12b804d410ab59f2033ee3fab558",
+      "xml_sha256": "1038e4605b61f0dc9e39426e910a420aa9921f0dc90d37fffa06e7de20991544",
+      "origin": {
+        "kind": "immutable_repository_model",
+        "commit": "2e03546346b05b5f95a4c2f3f07672db1075cf54",
+        "path": "formal/cache_evidence/ErrorProjection.tla"
+      }
+    },
+    "projection-good": {
+      "module": "ErrorProjection",
+      "source_sha256": "1a4d45267371141c544111057235362fda53cb6415f6df4772d1396e6b8813ef",
+      "xml_sha256": "35c7329ad24be31f725af42ad19d00150e0744fd1ad575086c9c04a19545717d",
+      "origin": {
+        "kind": "immutable_repository_model",
+        "commit": "21af9c5232816dbd34af60dd62baa8efb2167d89",
+        "path": "formal/cache_evidence/ErrorProjection.tla"
+      }
+    },
+    "safe-shapes": {
+      "module": "InlineSafeShapes",
+      "source_sha256": "c9687de57e329fe9d85d6fa9280070094951b489c9fa29e243314a0cfa45221f",
+      "xml_sha256": "26f78a4ea8e5d07d109117295442a5c5e3d00d86e003cece23a9ed75de26bdd8",
+      "origin": {
+        "kind": "synthetic_rule_control",
+        "not_product_coverage": true
+      }
+    },
+    "intentional-guard": {
+      "module": "InlineIntentionalGuard",
+      "source_sha256": "10ed42a94055368adb7c90e24ba428ba1d161b535faf256734b49b2bce78f909",
+      "xml_sha256": "6c2f640957d53f05d1256a260f41fb4bc3ccb4006061c74faf5bfcaa046873a7",
+      "origin": {
+        "kind": "synthetic_rule_control",
+        "not_product_coverage": true
+      }
+    },
+    "scope-limits": {
+      "module": "InlineScopeLimits",
+      "source_sha256": "981b0f0be1b3ccc4e099a2bd06bcee9bede5092350a0da7606c1b5a2a1a444e9",
+      "xml_sha256": "2801d9da731371c5fe535b0ecdee241536a84262a17b308ad6bf6c3caca1e07f",
+      "origin": {
+        "kind": "synthetic_rule_control",
+        "not_product_coverage": true
+      }
+    }
+  }
+}

@@ -44,10 +44,22 @@ class _Handle:
         self._manager, self._seconds, self._finished = manager, seconds, finished
         self._queue, self._ready, self._stopped = Queue(maxsize=64), Future(), Event()
         self._state_lock = RLock()
+        self._launched = False
         self._thread = Thread(target=self._run, name='storage-' + self.id[:8], daemon=True)
 
     def start(self):
-        self._thread.start()
+        with self._state_lock:
+            if self._stopped.is_set():
+                raise DatabaseError('STORAGE_HANDLE_CLOSED')
+            if self._launched:
+                raise DatabaseError('STORAGE_HANDLE_BUSY')
+            try:
+                self._thread.start()
+            except Exception:
+                self._stopped.set()
+                self._finished(self.id, {'status': 'UNKNOWN', 'operation_id': self.operation_id})
+                raise
+            self._launched = True
         try:
             self._ready.result(timeout=self._seconds + 1)
         except TimeoutError:
@@ -56,7 +68,7 @@ class _Handle:
 
     def _run(self):
         manager, active, pending, completed, failure = None, False, None, None, None
-        outcome = {'status': 'ROLLED_BACK', 'operation_id': self.operation_id}
+        outcome = {'status': 'UNKNOWN', 'operation_id': self.operation_id}
         try:
             manager = self._manager()
             resource = manager.__enter__()
@@ -82,6 +94,7 @@ class _Handle:
                     else:
                         error = _Rollback()
                         manager.__exit__(_Rollback, error, None)
+                        outcome['status'] = 'ROLLED_BACK'
                     completed, pending = pending, None
                     break
                 if action == 'ping':
@@ -94,16 +107,14 @@ class _Handle:
                 pending.set_result(result)
                 pending = None
         except BaseException as error:
-            if isinstance(error, CommitUnknown):
-                outcome['status'] = 'UNKNOWN'
             if active:
                 active = False
                 try:
                     manager.__exit__(type(error), error, error.__traceback__)
+                    if not isinstance(error, CommitUnknown):
+                        outcome['status'] = 'ROLLED_BACK'
                 except BaseException as cleanup_error:
                     error = cleanup_error
-                    if isinstance(cleanup_error, CommitUnknown):
-                        outcome['status'] = 'UNKNOWN'
             if not self._ready.done():
                 self._ready.set_exception(error)
             if pending is not None and not pending.done():
@@ -113,6 +124,7 @@ class _Handle:
                 try:
                     error = _Rollback()
                     manager.__exit__(_Rollback, error, None)
+                    outcome['status'] = 'ROLLED_BACK'
                 except BaseException:
                     outcome['status'] = 'UNKNOWN'
             with self._state_lock:
@@ -120,7 +132,7 @@ class _Handle:
                 while True:
                     try:
                         _, queued = self._queue.get_nowait()
-                        if not queued.done():
+                        if queued.set_running_or_notify_cancel():
                             queued.set_exception(DatabaseError('STORAGE_HANDLE_CLOSED'))
                     except Empty:
                         break
@@ -147,6 +159,12 @@ class _Handle:
             raise DatabaseError('STORAGE_HANDLE_TIMEOUT') from None
 
     def close(self):
+        with self._state_lock:
+            if not self._launched:
+                if not self._stopped.is_set():
+                    self._stopped.set()
+                    self._finished(self.id, {'status': 'UNKNOWN', 'operation_id': self.operation_id})
+                return
         if not self._stopped.is_set():
             try:
                 self.call('rollback')
@@ -166,6 +184,7 @@ class PortableStructuredEndpoint:
         validate_identity(asdict(store.identity))
         self._lock, self._handles, self._outcomes = RLock(), {}, {}
         self._package, self._sealed, self._closed = None, False, False
+        self._prepared_schema = None
         self._transport = StorageJsonEndpoint(self._execute, self._validate_transfer_transaction)
 
     def _finished(self, token, outcome):
@@ -205,18 +224,20 @@ class PortableStructuredEndpoint:
             if operation == 'schemas':
                 return _wire({'schemas': [schema_descriptor(item) for item in self._schemas]})
             if operation == 'prepare':
+                requested = (request['owner'], request['schema_version'], request['digest'])
                 selected = next((item for item in self._schemas if item.owner == request['owner']
                                  and item.version == request['schema_version'] and item.digest == request['digest']), None)
                 if selected is None:
                     raise DatabaseError('STORAGE_WIRE_SCHEMA_UNDECLARED')
                 if self._package is not None:
-                    if self._package.digest != selected.digest:
+                    if self._prepared_schema != requested:
                         raise DatabaseError('STORAGE_STRUCTURED_SCHEMA_MISMATCH')
                     return {'status': 'PREPARED'}
                 if self._sealed:
                     raise DatabaseError('DATABASE_PREPARE_CLOSED')
                 self._store.prepare(selected)
                 self._package = selected
+                self._prepared_schema = requested
                 return {'status': 'PREPARED'}
             if self._package is None:
                 raise DatabaseError('STORAGE_STRUCTURED_SCHEMA_REQUIRED')
@@ -330,12 +351,16 @@ class PortableStructuredClient:
         matches = [item for item in advertised['schemas'] if schema_semantics(item) == expected]
         if (len(matches) != 1 or type(matches[0].get('digest')) is not str or not matches[0]['digest']):
             raise DatabaseError('STORAGE_WIRE_SCHEMA_UNDECLARED')
-        self._call({'op': 'prepare', 'owner': package.owner, 'schema_version': package.version,
-                    'digest': matches[0]['digest']})
+        response = self._call({'op': 'prepare', 'owner': package.owner, 'schema_version': package.version,
+                               'digest': matches[0]['digest']})
+        if response != {'status': 'PREPARED'}:
+            raise DatabaseError('STORAGE_WIRE_SCHEMA_INVALID')
         return self
 
     def seal(self):
-        self._call({'op': 'seal'})
+        response = self._call({'op': 'seal'})
+        if response != {'status': 'SEALED'}:
+            raise DatabaseError('STORAGE_WIRE_SCHEMA_INVALID')
         return self
 
     @contextmanager
@@ -376,9 +401,10 @@ class PortableStructuredClient:
                     return
 
         worker = Thread(target=heartbeat, name='storage-guard-heartbeat', daemon=True)
-        worker.start()
-        failure = None
+        failure, launched = None, False
         try:
+            worker.start()
+            launched = True
             yield
             if failures:
                 raise failures[0]
@@ -387,7 +413,8 @@ class PortableStructuredClient:
             raise
         finally:
             stopped.set()
-            worker.join(timeout=1)
+            if launched:
+                worker.join(timeout=1)
             try:
                 result = self._call({'op': 'finish', 'handle': token, 'commit': True})
                 if result['status'] != 'RELEASED':

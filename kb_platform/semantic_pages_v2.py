@@ -183,6 +183,7 @@ class SemanticPageService:
                     or manifest['authority_revision'] != state['authority_revision']):
                 raise PlatformError('SEMANTIC_PAGE_INDEX_STALE',
                     'Build or authority changed; explicitly rebuild semantic Pages', 409)
+            self.gateway._unchanged(actor, kb_id, state)
             return manifest, pointer['sha256']
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise PlatformError('SEMANTIC_PAGE_INDEX_UNAVAILABLE', 'Build a verified semantic Page index explicitly', 409) from exc

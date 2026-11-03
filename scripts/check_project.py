@@ -278,6 +278,15 @@ def source_quality_violations(root: Path) -> list[str]:
             module = relative.removesuffix('.py').replace('/', '.')
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
+            if relative == 'kb_platform/rag_testing/search_router_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in search_stage_diagnostic_violations(tree))
+            if relative == 'kb_platform/rag_testing/embedded_search_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in embedded_stage_diagnostic_violations(tree))
+            if relative == 'kb_platform/knowledge_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in model_receipt_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_capacity_outcome_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_receipt_cleanup_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_error_projection_violations(tree))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -291,6 +300,142 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def search_stage_diagnostic_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse('def stage(self):\n'
+        '    try:\n'
+        '        self.router.stage(self.index, self.units, vector_dimension=3)\n'
+        '    except Exception as error:\n'
+        '        note_stage_failure(error, self.root)\n'
+        '        raise\n').body[0]
+    stages = [node for owner in tree.body if isinstance(owner, ast.ClassDef)
+              and owner.name == 'SearchRouterContracts' for node in owner.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == 'stage']
+    if len(stages) != 1 or ast.dump(stages[0]) != ast.dump(expected):
+        return ['search-stage diagnostics require one original call, failure-only note, and bare raise without retry']
+    return []
+
+
+def embedded_stage_diagnostic_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse('def _stage(self, backend, index, units, vector_dimension):\n'
+        '    try:\n'
+        '        return backend.stage(index, units, vector_dimension)\n'
+        '    except Exception as error:\n'
+        '        note_stage_failure(error, Path(self.folder.name))\n'
+        '        raise\n').body[0]
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'EmbeddedSearchContracts']
+    if len(owners) != 1:
+        return ['embedded-stage diagnostics require the original fixture owner']
+    stages = [node for node in owners[0].body if isinstance(node, ast.FunctionDef) and node.name == '_stage']
+    if len(stages) != 1 or ast.dump(stages[0]) != ast.dump(expected):
+        return ['embedded-stage diagnostics require one original call, owned-root failure-only note, and bare raise without retry']
+    direct = [node for node in ast.walk(owners[0]) if isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Attribute) and node.func.attr == 'stage']
+    if len(direct) != 1 or direct[0] not in tuple(ast.walk(stages[0])):
+        return ['every embedded fixture stage call must use the failure-only wrapper, including setup and generation loop']
+    expected_calls = {
+        'setUp': 'self._stage(self.backend, self.index, self.authority.units, 3)',
+        'test_exact_vectors_and_seal': 'self._stage(self.backend, self.index, self.authority.units, 3)',
+        'test_failed_staging_not_visible': "self._stage(self.backend, index, [{**self.authority.units[0], 'vector': [float('inf'), 0, 0]}], 3)",
+        'test_pages_do_not_change_block_scores': "self._stage(self.backend, index, [u for u in self.authority.units if u['kind'] != 'Page'], 3)",
+        'test_closed_immutable_readers_release_generations_for_immediate_removal': 'self._stage(backend, index, self.authority.units, 3)',
+    }
+    actual = {node.name: [ast.dump(call) for call in ast.walk(node) if isinstance(call, ast.Call)
+                         and isinstance(call.func, ast.Attribute) and call.func.attr == '_stage']
+              for node in owners[0].body if isinstance(node, ast.FunctionDef) and node.name != '_stage'}
+    actual = {name: calls for name, calls in actual.items() if calls}
+    expected_calls = {name: [ast.dump(ast.parse(call, mode='eval').body)] for name, call in expected_calls.items()}
+    if actual != expected_calls:
+        return ['all five original embedded stage call sites must retain their original receiver, arguments and call count']
+    return []
+def model_receipt_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    candidates = [node.value for method in methods for node in ast.walk(method)
+                  if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                      and target.id == 'expired' for target in node.targets)]
+    expected = {'envelope is not None', 'deadline < monotonic()'}
+
+    def conjuncts(node):
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
+            return {value for child in node.values for value in conjuncts(child)}
+        return {ast.unparse(node)}
+
+    if len(candidates) == 1 and isinstance(candidates[0], ast.ListComp):
+        candidate = candidates[0]
+        if len(candidate.generators) == 1:
+            generator = candidate.generators[0]
+            conditions = {value for condition in generator.ifs for value in conjuncts(condition)}
+            if (ast.unparse(generator.iter) == 'self._pending.items()'
+                    and ast.unparse(generator.target) == '(key, (deadline, envelope))'
+                    and ast.unparse(candidate.elt) == 'key' and expected <= conditions):
+                return []
+    return ['model receipt expiry must retain in-flight placeholders and only prune expired completed envelopes']
+
+
+def model_capacity_outcome_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    guards = [node for method in methods for node in ast.walk(method)
+              if isinstance(node, ast.If) and ast.unparse(node.test) == 'len(self._pending) >= 64']
+    invocations = [node for method in methods for node in ast.walk(method)
+                   if isinstance(node, ast.Call) and ast.unparse(node.func) == 'self._model.complete']
+    if (len(guards) == len(invocations) == 1 and guards[0].lineno < invocations[0].lineno
+            and len(guards[0].body) == 1 and isinstance(guards[0].body[0], ast.Raise)):
+        call = guards[0].body[0].exc
+        if isinstance(call, ast.Call) and ast.unparse(call.func) == 'ContractError':
+            for keyword in call.keywords:
+                if keyword.arg == 'details':
+                    try:
+                        details = ast.literal_eval(keyword.value)
+                    except (ValueError, TypeError):
+                        break
+                    if (isinstance(details, dict) and details.get('model_sent') is False
+                            and isinstance(details.get('call_record'), dict)
+                            and type(details['call_record'].get('attempts')) is int
+                            and details['call_record']['attempts'] == 0
+                            and details['call_record'].get('model_sent') is False):
+                        return []
+    return ['model receipt capacity refusal must expose known-unsent zero attempts before model invocation']
+
+
+def model_receipt_cleanup_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    blocks = [node for method in methods for node in method.body if isinstance(node, ast.Try)]
+    if len(blocks) == 1 and len(blocks[0].handlers) == 1:
+        handler = blocks[0].handlers[0]
+        expected = ast.parse('with self._lock:\n    self._pending.pop(token, None)\n'
+                             'if not isinstance(error, Exception):\n    raise\n').body
+        if (handler.type is not None and ast.unparse(handler.type) == 'BaseException'
+                and handler.name == 'error' and len(handler.body) >= 2
+                and all(ast.dump(actual, include_attributes=False) == ast.dump(required, include_attributes=False)
+                        for actual, required in zip(handler.body[:2], expected, strict=True))):
+            return []
+    return ['model receipt failures must clean BaseException placeholders then bare-raise cancellation identity']
+
+
+def model_error_projection_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    blocks = [node for method in methods for node in method.body if isinstance(node, ast.Try)]
+    expected = ast.parse('from .model_errors import error_details\n'
+        'details = error_details(error)\n'
+        "if not hasattr(error, 'code'):\n"
+        "    raise ContractError('CONTRACT_IMPLEMENTATION_FAILED', 'Service implementation failed',\n"
+        "        details={**details, 'code': 'CONTRACT_IMPLEMENTATION_FAILED'}) from error\n").body
+    if len(blocks) == 1 and len(blocks[0].handlers) == 1:
+        handler = blocks[0].handlers[0]
+        if (len(handler.body) >= 5
+                and all(ast.dump(actual, include_attributes=False) == ast.dump(required, include_attributes=False)
+                        for actual, required in zip(handler.body[2:5], expected, strict=True))):
+            return []
+    return ['generic model failures must preserve canonical facts with fixed safe public code and message']
 
 
 def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
@@ -803,6 +948,8 @@ def main() -> int:
         results.append(run_check('formal-lint', [sys.executable, '-B', '-m',
             'kb_platform.rag_testing.formal_state_machines', '--lint-only',
             '--output', str(output / 'formal-lint')], output, env))
+        results.append(run_check('browser-source-lint', [sys.executable, '-B', '-m',
+            'kb_platform.rag_testing.browser_sources'], output, env))
         target = ROOT / "target/checks" / uuid4().hex
         cargo = ["cargo", "--color", "never"]
         results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))

@@ -297,3 +297,51 @@ fn session_cache_short_circuits_all_new_model_tool_and_append_effects() {
         }
     }
 }
+
+#[test]
+fn result_append_acknowledgment_precedes_direct_completion() {
+    let mut registry = LoopRegistry::with_builtins();
+    let id = create(&mut registry, "single-tool", false);
+    effect(&mut registry, &id, "session.start", json!({}));
+    effect(&mut registry, &id, "session.append", Value::Null);
+    effect(&mut registry, &id, "echo", json!("delivered"));
+    assert_eq!(registry.snapshot(&id).unwrap()["phase"], "session");
+    let instruction = serde_json::to_value(registry.next(&id).unwrap()).unwrap();
+    assert_eq!(instruction["name"], "session.append");
+    assert_eq!(instruction["effect_id"], 4);
+    assert_eq!(registry.snapshot(&id).unwrap()["pending_effect"], 4);
+    registry.accept(&id, 4, Value::Null).unwrap();
+    let complete = registry.snapshot(&id).unwrap();
+    for _ in 0..3 {
+        assert_eq!(
+            registry.next(&id).unwrap(),
+            Instruction::Complete {
+                value: json!("delivered")
+            }
+        );
+        assert_eq!(registry.snapshot(&id).unwrap(), complete);
+    }
+    assert_eq!(
+        registry.accept(&id, 4, Value::Null).unwrap_err().code,
+        "LOOP_CORRELATION"
+    );
+    assert_eq!(registry.snapshot(&id).unwrap_err().code, "LOOP_NOT_FOUND");
+}
+
+#[test]
+fn exhausted_effect_identity_closes_loop_without_wrapping() {
+    let mut registry = LoopRegistry::with_builtins();
+    let mut program = ServiceLoop::create(config("model-tools", false), false).unwrap();
+    program.sequence = u64::MAX;
+    registry
+        .programs
+        .insert("exhausted".into(), Box::new(program));
+    assert_eq!(
+        registry.next("exhausted").unwrap_err().code,
+        "LOOP_ID_EXHAUSTED"
+    );
+    assert_eq!(
+        registry.snapshot("exhausted").unwrap_err().code,
+        "LOOP_NOT_FOUND"
+    );
+}

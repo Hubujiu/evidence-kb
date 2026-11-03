@@ -193,12 +193,12 @@ class OpenAICompatibleAdapter:
             response = self.client.send(outbound, follow_redirects=False)
 
             state = 'COMPLETE' if response.is_success else 'ERROR'
-            self.ledger.finish(identity, status=state,
-                               usage={'requests': 1} if 'requests' in self.reservation else None,
-                               diagnostic=f'HTTP_{response.status_code}')
             record.update(status=state, http_status=response.status_code)
             if response.status_code == 403:
                 self.admission.block(identity, payload_sha256=payload_hash, category=category)
+            self.ledger.finish(identity, status=state,
+                               usage={'requests': 1} if 'requests' in self.reservation else None,
+                               diagnostic=f'HTTP_{response.status_code}')
             save()
         except BaseException as exc:
             known_unsent = response is None and (

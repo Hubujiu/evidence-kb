@@ -14,7 +14,7 @@
 {"version":1,"op":"prepare","owner":"sessions","schema_version":1,"digest":"<advertised digest>"}
 ```
 
-成功返回 `{"status":"PREPARED"}`。之后发送 `{"version":1,"op":"seal"}`，返回 `{"status":"SEALED"}`。同一 schema 的重复初始化幂等；不在配置授权列表中的 schema 被拒绝。表结构不匹配时停止启动，不迁移历史数据。
+成功返回 `{"status":"PREPARED"}`。之后发送 `{"version":1,"op":"seal"}`，返回 `{"status":"SEALED"}`。同一 schema 的重复初始化幂等；已成功准备的身份固定为 `owner`、`version` 和提供商 `digest`，不随配置对象后续变化而改变。不在配置授权列表中的 schema 被拒绝。客户端只把精确的 `PREPARED` / `SEALED` 响应当作相应操作成功；丢失或无效响应不证明服务端未执行，也不会触发自动重发。表结构不匹配时停止启动，不迁移历史数据。`prepare` 完成后修改已注册元数据不是受支持的在线 schema 更新；需要显式迁移/新的初始化流程。原 `Table` 身份保持不变。
 
 列类型有 `null`、`bigint`、`integer`、`boolean`、`float`、`decimal`、`bytes`、`date`、`text`、`json`、`datetime`、`string` 和 `exact_string`。字符串类型可带 `length`，`exact_string` 必须声明长度。`decimal` 必须携带 `precision`、`scale`、`as_decimal` 和 `decimal_return_scale`：未指定的精度、小数位和返回位数为 `null`，`as_decimal` 为布尔值。指定的精度在 1–1000 之间，小数位和返回位数在 0–1000 之间，小数位不能超过已指定的精度；具体后端仍可拒绝自身不支持的组合。这些字段参与 schema 比较和字面值恢复，`decimal(12,2)` 不会与 `decimal(6,4)` 协商成同一结构。默认值使用下文的表达式格式，不接受 SQL 文本。
 

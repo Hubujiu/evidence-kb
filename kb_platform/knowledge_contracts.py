@@ -359,26 +359,33 @@ class ModelEndpoint:
     def complete(self, request):
         token = uuid4().hex
         with self._lock:
-            expired = [key for key, (deadline, _) in self._pending.items() if deadline < monotonic()]
+            expired = [key for key, (deadline, envelope) in self._pending.items()
+                       if envelope is not None and deadline < monotonic()]
             for key in expired:
                 del self._pending[key]
             if len(self._pending) >= 64:
-                raise ContractError('MODEL_VALIDATION_CAPACITY', 'Too many pending model validations', status_code=503)
+                raise ContractError('MODEL_VALIDATION_CAPACITY', 'Too many pending model validations',
+                    status_code=503, details={'model_sent': False,
+                                             'call_record': {'attempts': 0, 'model_sent': False}})
             self._pending[token] = (monotonic() + 900, None)
         try:
             envelope = self._model.complete(**request, cache_result=False)
             with self._lock:
                 self._pending[token] = (monotonic() + 900, envelope)
             return {'completion': envelope.to_dict(), 'token': token}
-        except Exception as error:
+        except BaseException as error:
             with self._lock:
                 self._pending.pop(token, None)
-            if not hasattr(error, 'code'):
+            if not isinstance(error, Exception):
                 raise
             from .model_errors import error_details
 
-            details = {'kind': 'model', **error_details(error)}
-            raise ContractError(error.code, str(error), status_code=502, details=details) from error
+            details = error_details(error)
+            if not hasattr(error, 'code'):
+                raise ContractError('CONTRACT_IMPLEMENTATION_FAILED', 'Service implementation failed',
+                    details={**details, 'code': 'CONTRACT_IMPLEMENTATION_FAILED'}) from error
+            raise ContractError(error.code, str(error), status_code=502,
+                                details={'kind': 'model', **details}) from error
 
     def settle(self, request):
         with self._lock:
