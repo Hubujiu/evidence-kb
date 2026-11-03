@@ -11,6 +11,7 @@ import io
 import tokenize
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import subprocess
@@ -275,6 +276,8 @@ def source_quality_violations(root: Path) -> list[str]:
             source = path.read_text('utf-8-sig')
             tree = ast.parse(source, filename=relative)
             module = relative.removesuffix('.py').replace('/', '.')
+            if relative == 'scripts/check_project.py':
+                errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -290,15 +293,70 @@ def source_quality_violations(root: Path) -> list[str]:
     return errors
 
 
+def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
+    errors = []
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    expected_seal = ast.parse('machine = platform.machine()\nsys.addaudithook(deny_external_io)\nreturn machine').body
+    expected_prefix = ast.parse("if kind == 'contracts' and shard is None:\n    return run_contract_workers(output)\n"
+        'sys.path.insert(0, str(ROOT))\nmachine = seal_offline_worker()').body
+    def dump(nodes):
+        return [ast.dump(node, include_attributes=False) for node in nodes]
+    seal = functions.get('seal_offline_worker')
+    worker = functions.get('run_worker')
+    no_args = ast.parse('def seal_offline_worker(): pass').body[0].args
+    if seal is None or dump([seal.args]) != dump([no_args]) or seal.decorator_list or dump(seal.body) != dump(expected_seal):
+        errors.append('offline bootstrap must read only real stdlib metadata then install the unchanged audit hook')
+    if worker is None or worker.decorator_list or dump(worker.body[:len(expected_prefix)]) != dump(expected_prefix):
+        errors.append('offline workers must finish bootstrap and seal before any project/test discovery')
+    startup = []
+
+    def collect_startup(node):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for child in node.decorator_list + node.args.defaults + [value for value in node.args.kw_defaults if value is not None]:
+                collect_startup(child)
+            return
+        startup.append(node)
+        for child in ast.iter_child_nodes(node):
+            collect_startup(child)
+
+    for node in tree.body:
+        collect_startup(node)
+    for node in startup:
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            modules = [node.module or '']
+        else:
+            modules = []
+        if any(module.split('.')[0] not in sys.stdlib_module_names for module in modules):
+            errors.append('checker startup cannot import project or third-party modules before the audit seal')
+        if isinstance(node, ast.Call) and (
+                isinstance(node.func, ast.Name) and node.func.id == '__import__' or
+                isinstance(node.func, ast.Attribute) and node.func.attr in
+                {'import_module', 'loadTestsFromName', 'loadTestsFromModule', 'discover'}):
+            errors.append('checker startup cannot dynamically import or discover modules before the audit seal')
+    coordinator = functions.get('run_contract_workers')
+    if coordinator is not None:
+        for node in ast.walk(coordinator):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                errors.append('the unsealed contract coordinator cannot import project/test modules')
+            if isinstance(node, ast.Call) and (
+                    isinstance(node.func, ast.Attribute) and node.func.attr in
+                    {'loadTestsFromName', 'loadTestsFromModule', 'discover', 'import_module'} or
+                    isinstance(node.func, ast.Name) and node.func.id == '__import__'):
+                errors.append('contract discovery belongs only in the sealed worker')
+    return sorted(set(errors))
+
+
 def workflow_violations(workflow):
     jobs = workflow.get('jobs', {})
     integration = jobs.get('integration', {})
     required = jobs.get('required', {})
     errors = []
     dependencies = {'quality': 'QUALITY_RESULT', 'secrets': 'SECRETS_RESULT',
-                    'integration': 'INTEGRATION_RESULT'}
+                    'integration': 'INTEGRATION_RESULT', 'formal': 'FORMAL_RESULT'}
     if not dependencies.keys() <= set(required.get('needs', [])):
-        errors.append('required must depend on quality, secrets and integration')
+        errors.append('required must depend on quality, secrets, integration and formal')
     if required.get('if') != 'always()' or required.get('continue-on-error', False):
         errors.append('required must always evaluate every job result')
     if not integration or 'if' in integration or integration.get('continue-on-error', False):
@@ -312,7 +370,16 @@ def workflow_violations(workflow):
             errors.append('integration must run required command: ' + command)
     checks = [step for step in required.get('steps', [])
               if 'if' not in step and not step.get('continue-on-error', False)]
-    aggregate = 'test "$QUALITY_RESULT" = success && test "$SECRETS_RESULT" = success && test "$INTEGRATION_RESULT" = success'
+    formal = jobs.get('formal', {})
+    if not formal or 'if' in formal or formal.get('continue-on-error', False):
+        errors.append('formal model validation must run as a mandatory job')
+    formal_commands = [step.get('run', '') for step in formal.get('steps', [])
+                       if 'if' not in step and not step.get('continue-on-error', False)]
+    command = 'uv run --no-sync python scripts/check_project.py --formal-only --output reports/ci/formal'
+    if command not in formal_commands:
+        errors.append('formal must run the bounded model validation command')
+    aggregate = ('test "$QUALITY_RESULT" = success && test "$SECRETS_RESULT" = success && '
+                 'test "$INTEGRATION_RESULT" = success && test "$FORMAL_RESULT" = success')
     if not any(all(step.get('env', {}).get(variable) == '${{ needs.' + job + '.result }}'
                    for job, variable in dependencies.items())
                and step.get('run', '') == aggregate for step in checks):
@@ -441,6 +508,12 @@ def deny_external_io(event, args):
         raise RuntimeError(f"OFFLINE_CHECK_FORBIDS_{event}")
 
 
+def seal_offline_worker():
+    machine = platform.machine()
+    sys.addaudithook(deny_external_io)
+    return machine
+
+
 def write_json(path: Path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -528,7 +601,10 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
     if kind == 'contracts' and shard is None:
         return run_contract_workers(output)
     sys.path.insert(0, str(ROOT))
-    sys.addaudithook(deny_external_io)
+    machine = seal_offline_worker()
+    write_json(output / 'worker-bootstrap.json', {'platform_machine': machine,
+        'states': ['BOOTSTRAP', 'SEALED', 'DISCOVER'], 'audit_policy': 'deny_external_io',
+        'scope': 'Only real stdlib platform.machine metadata is read before sealing; project/test imports follow the seal.'})
     if kind == "contracts":
         faulthandler.dump_traceback_later(150)
         try:
@@ -675,11 +751,15 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=ROOT / ".local/checks" / uuid4().hex)
     parser.add_argument("--worker", choices=("contracts", "scorer"), help=argparse.SUPPRESS)
     parser.add_argument('--contract-shard', type=int, choices=range(4), help=argparse.SUPPRESS)
+    parser.add_argument('--formal-only', action='store_true',
+                        help='Run the additional bounded TLC gate; this does not run or replace ordinary quality gates.')
     parser.add_argument('--local-integration', action='store_true',
                         help='Run controlled loopback HTTP/parser/PostgreSQL checks using KB_INTEGRATION_DSN.')
     parser.add_argument('--storage-integration', action='store_true',
                         help='Run controlled actual PostgreSQL/MySQL/SQLite/S3 storage acceptance using KB_STORAGE_TEST_* variables.')
     args = parser.parse_args()
+    if args.formal_only and (args.worker or args.local_integration or args.storage_integration):
+        parser.error('--formal-only cannot be combined with other gate modes')
     integration_dsn = os.environ.get('KB_INTEGRATION_DSN') if args.local_integration else None
     integration_migration_dsn = os.environ.get('KB_INTEGRATION_MIGRATION_DSN') if args.local_integration else None
     if args.local_integration and not (integration_dsn and integration_migration_dsn):
@@ -692,6 +772,17 @@ def main() -> int:
         output.mkdir(parents=True, exist_ok=False)
     except FileExistsError:
         parser.error("--output must be a new directory; previous results are read-only")
+    if args.formal_only:
+        env = {key: value for key, value in os.environ.items()
+               if not key.startswith(("KB_", "EVIDENCE_KB_", "GOOGLE_", "OPENAI_", "ANTHROPIC_", "AZURE_"))}
+        env.update(KB_DEFER_DEFAULT_APP='1', KB_REMOTE_MODELS='0', KB_ENABLE_EMBEDDINGS='0', PYTHONDONTWRITEBYTECODE='1')
+        env.pop('PYTHONPATH', None)
+        result = run_check('formal', [sys.executable, '-B', '-m', 'kb_platform.rag_testing.formal_state_machines',
+            '--output', str(output / 'formal')], output, env, timeout=900)
+        write_json(output / 'summary.json', {'decision': 'PASS' if result.exit_code == 0 else 'FAIL',
+            'checks': [asdict(result)], 'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0,
+            'scope': 'Additional finite formal-model gate only; ordinary project checks are separately required.'})
+        return int(result.exit_code != 0)
     results = []
     try:
         violations = architecture_violations(ROOT)
@@ -709,8 +800,9 @@ def main() -> int:
                     "KB_STORAGE_ROOT": scratch, "KB_AGENT_ROOT": scratch, "KB_RESEARCH_ROOT": scratch,
                     "KB_IDENTITIES_FILE": str(Path(scratch) / "missing-identities.json")})
         env.pop("PYTHONPATH", None)
-
-
+        results.append(run_check('formal-lint', [sys.executable, '-B', '-m',
+            'kb_platform.rag_testing.formal_state_machines', '--lint-only',
+            '--output', str(output / 'formal-lint')], output, env))
         target = ROOT / "target/checks" / uuid4().hex
         cargo = ["cargo", "--color", "never"]
         results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))

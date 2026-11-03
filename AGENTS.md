@@ -6,6 +6,8 @@
 
 修改活动源码后运行 `uv run --no-sync python scripts/check_project.py`。新环境先执行 `uv sync --locked --group dev`。本地与 CI 使用同一入口；不能通过跳过合同、修改门槛或忽略退出码把失败变成通过。必要合同放在 `kb_platform/rag_testing/*_contracts.py`，每个模块必须能由 unittest 发现非零用例。删除测试须说明重复行为及保留用例。架构边界和远端合并约束见 `docs/architecture.md`、`docs/development.md`。
 
+状态机修改还须运行附加入口 `uv run --no-sync python scripts/check_project.py --formal-only`；它不替代普通检查。显式准备 Java 21 和 `scripts/install_formal_tools.py` 锁定的 TLC，检查不自动下载。更新转换后先审查模型、假设和未覆盖义务，再更新 `formal/registry-v1.json` 的源码绑定；哈希匹配不是源码精化证明。范围及必需 CI 门禁见 `docs/formal-state-machines.md`。
+
 本规范适用于本项目的检索、重排、上下文组装/压缩、多轮历史恢复、证据交付、生成与引用相关评测。后续 RAG 测试必须接入统一框架，优先复用已有结果和精确缓存，避免重复付费执行和另建临时测试体系。
 
 ### 统一实现与入口

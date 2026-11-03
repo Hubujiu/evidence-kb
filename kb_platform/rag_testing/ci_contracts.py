@@ -56,6 +56,33 @@ class CiContracts(unittest.TestCase):
         changed['jobs']['required']['steps'][0]['run'] = 'true'
         self.assertTrue(workflow_violations(changed))
 
+    def test_formal_job_cannot_be_removed_skipped_or_allowed_to_fail(self):
+        for mutation in ('delete', 'skip', 'ignore'):
+            changed = deepcopy(self.workflow)
+            if mutation == 'delete':
+                del changed['jobs']['formal']
+            else:
+                changed['jobs']['formal']['if' if mutation == 'skip' else 'continue-on-error'] = (
+                    'false' if mutation == 'skip' else True)
+            with self.subTest(mutation=mutation):
+                self.assertTrue(workflow_violations(changed))
+
+    def test_formal_command_and_required_result_cannot_be_bypassed(self):
+        for mutation in ('delete', 'skip', 'ignore', 'literal-result'):
+            changed = deepcopy(self.workflow)
+            steps = changed['jobs']['formal']['steps']
+            step = next(row for row in steps if '--formal-only' in row.get('run', ''))
+            if mutation == 'delete':
+                steps.remove(step)
+            elif mutation == 'skip':
+                step['if'] = 'false'
+            elif mutation == 'ignore':
+                step['continue-on-error'] = True
+            else:
+                changed['jobs']['required']['steps'][0]['env']['FORMAL_RESULT'] = 'success'
+            with self.subTest(mutation=mutation):
+                self.assertTrue(workflow_violations(changed))
+
     def test_actual_storage_gate_cannot_be_removed_from_required_command(self):
         changed = deepcopy(self.workflow)
         step = next(step for step in changed['jobs']['integration']['steps']
