@@ -50,6 +50,16 @@
         "path": "kb_platform/rag_testing/storage_integration.py",
         "symbol": "run",
         "reason": "Storage integration test runner aggregates test PASS/FAIL and cleanup evidence, not a product state machine."
+      },
+      {
+        "path": "kb_platform/rag_testing/acceptance_workflow_integration.py",
+        "symbol": "AcceptanceWorkflowIntegration.test_process_death_after_scope_commit_does_not_replay_after_restart",
+        "reason": "Controlled real loopback/SQLite regression observes or seeds test-owned receipt state; not a production lifecycle owner. Production ownership is acceptance_workflow."
+      },
+      {
+        "path": "kb_platform/rag_testing/acceptance_workflow_integration.py",
+        "symbol": "AcceptanceWorkflowIntegration.test_two_process_preparers_cannot_create_two_scopes_for_one_operation",
+        "reason": "Controlled real loopback/SQLite regression observes or seeds test-owned receipt state; not a production lifecycle owner. Production ownership is acceptance_workflow."
       }
     ]
   },
@@ -151,13 +161,13 @@
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "RequestReceipts.begin",
-          "sha256": "72784a2a41c0418ed583e16af0566d04cb9138736fb042ba719020b8c63ab4b1"
+          "sha256": "4f6bbbed75281b5f75ab86c7d054686e97f1080d468598a92d17d9d54467b76a"
         },
         {
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "RequestReceipts.finish",
-          "sha256": "2a5262fd35e3396b520059ef6579b6810e277349bee40aabf379f6dd487ede0a"
+          "sha256": "17cade226b0be4710f504c28630e43efb8e98e3f695689f47a01c73717e576b7"
         },
         {
           "path": "kb_platform/provider_receipt_database.py",
@@ -618,11 +628,12 @@
     },
     {
       "id": "provider_receipts",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
         "kb_platform/provider_runtime.py",
         "kb_platform/provider_receipt_database.py",
-        "kb_platform/remote.py"
+        "kb_platform/remote.py",
+        "kb_platform/database_providers/sqlite_guard.py"
       ],
       "states": [
         "no receipt → STARTED → COMPLETE / ERROR / UNKNOWN"
@@ -631,37 +642,40 @@
         "RequestReceipts.begin",
         "RequestReceipts.finish",
         "RequestReceipts.reconcile",
-        "ReceiptDatabase.transition"
+        "ReceiptDatabase.transition",
+        "sqlite_guard"
       ],
       "invariants": [
         "Single pending logical request; new retry gets new physical ID; file `.pending`, physical JSON, `.terminal`, unlink are separate crash windows; DB version has row-locked transaction."
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "The file receipt model bounds one logical ID, two concurrent actors and three allocated physical IDs; file replacement operations are atomic and process death releases the SQLite lock.",
+        "All file receipt writers cooperate through the same stable SQLite guard; HTTP execution is outside the guard. Begin allocation precedes admission; valid retry links are abstracted.",
+        "ReceiptDatabase row transactions and remote provider send/retry behavior remain inventoried but are not modeled by FileReceipts."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No Rust/Python-to-TLA+ refinement proof, liveness or eventual recovery claim.",
+        "Torn writes, power loss, directory durability, UUID collisions, invalid retry inputs, mixed old writers and broken filesystem/SQLite locking are excluded.",
+        "The database-backed receipt implementation and remote transport remain unmodeled; external provider/DB/filesystem/OS correctness and unbounded data domains are not established."
       ],
       "source_bindings": [
         {
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "RequestReceipts.begin",
-          "sha256": "72784a2a41c0418ed583e16af0566d04cb9138736fb042ba719020b8c63ab4b1"
+          "sha256": "4f6bbbed75281b5f75ab86c7d054686e97f1080d468598a92d17d9d54467b76a"
         },
         {
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "RequestReceipts.finish",
-          "sha256": "2a5262fd35e3396b520059ef6579b6810e277349bee40aabf379f6dd487ede0a"
+          "sha256": "17cade226b0be4710f504c28630e43efb8e98e3f695689f47a01c73717e576b7"
         },
         {
           "path": "kb_platform/provider_runtime.py",
           "language": "python",
           "symbol": "RequestReceipts.reconcile",
-          "sha256": "1be9a3e0348dc6d1267f6c39914bc7b281f564977e9088862e4584366d192ac9"
+          "sha256": "c552600764b4e8c05d7ab3408a0b3bca4cf3bd0c31878b4e1b087cec8324360b"
         },
         {
           "path": "kb_platform/provider_receipt_database.py",
@@ -674,10 +688,58 @@
           "language": "python",
           "symbol": "_Transport._send_attempt",
           "sha256": "c4354fd45b218db3d783ae0716eab5f93ce8328fe6384b49c627cd59e6f18ddc"
+        },
+        {
+          "path": "kb_platform/database_providers/sqlite_guard.py",
+          "language": "python",
+          "symbol": "sqlite_guard",
+          "sha256": "bb125a768790d51560ad6bedcbb5e998904cf1461a1bd9fcc899ee6e2dcd9b9b"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "module": "formal/file_receipts/FileReceipts.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "file-receipts",
+          "config": "formal/file_receipts/FileReceipts.cfg",
+          "invariants": [
+            "TypeOK",
+            "SingleUnresolved",
+            "PendingCoversUnresolved",
+            "TerminalImmutable"
+          ],
+          "properties": [],
+          "bounds": {
+            "logical_ids": 1,
+            "actors": 2,
+            "physical_ids": 3
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/file_receipts/FileReceipts.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "file-receipts-legacy-terminal",
+          "config": "formal/file_receipts/FileReceiptsLegacy.cfg",
+          "expected_invariant": "TerminalImmutable"
+        },
+        {
+          "module": "formal/file_receipts/FileReceipts.tla",
+          "timeout_seconds": 120,
+          "heap_mb": 512,
+          "id": "file-receipts-legacy-overlap",
+          "config": "formal/file_receipts/FileReceiptsOverlap.cfg",
+          "expected_invariant": "SingleUnresolved"
+        }
+      ],
+      "remaining_obligations": [
+        "Model database-backed receipt transitions, retry metadata validation and remote transport coordination without losing current inventory.",
+        "Establish implementation refinement and crash durability beyond completed atomic file replacements; assess unbounded IDs and additional actors.",
+        "Persistent UNKNOWN and interrupted publication can remain blocked indefinitely; no liveness claim is made."
+      ]
     },
     {
       "id": "turn_budget",
@@ -2289,34 +2351,38 @@
     },
     {
       "id": "acceptance_workflow",
-      "status": "unmodeled",
+      "status": "partial",
       "purpose": "Durable HTTP preparation/rebinding and acceptance execution receipts; STARTED/UNKNOWN operations cannot silently replay; publication and authority binding phases are separately persisted.",
       "owners": [
         "kb_platform/rag_testing/delivery_http.py"
       ],
       "states": [
-        "unprepared",
-        "prepared",
-        "bound",
-        "STARTED",
-        "COMPLETE",
-        "ERROR",
-        "UNKNOWN"
+        "prepare owner idle/acquired/read/claimed/sent/observed/released/crashed; one process restart",
+        "durable operation ABSENT/STARTED/COMPLETE/ERROR/UNKNOWN; binding phases remain explicit"
       ],
       "transitions": [
         "prepare_http",
+        "_prepare_http_locked",
+        "_prepare_http_locked.once",
         "rebind_http",
+        "_atomic_json",
         "DeliveryHTTPAdapter.run"
       ],
       "invariants": [
-        "A durable STARTED/UNKNOWN request is not silently replayed; authority/request bindings are explicit before physical execution."
+        "For one output directory and operation, at most one HTTP effect; owner guard spans reload, durable STARTED, send, receipt and binding.",
+        "Process death releases the SQLite guard but cannot clear STARTED/UNKNOWN/ERROR; only COMPLETE operation receipts may be reused.",
+        "A competing rebind never overwrites an existing output; source receipts remain read-only."
       ],
       "assumptions": [
-        "Inventory only; durable state updates and external HTTP completion are separate failure domains."
+        "Finite model: two producer identities, one operation, at most one restart each; no liveness/fairness claim.",
+        "SQLite BEGIN IMMEDIATE supplies process-exclusion and releases its lock after process death. The guard file is never deleted by the protocol.",
+        "A successful file fsync and atomic rename survive process death; OS/power-loss directory persistence, malicious filesystem changes, network shares and SQLite/filesystem correctness are not proved.",
+        "HTTP send and receipt persistence are separate atomicity domains. A completed remote operation may lack a local COMPLETE receipt.",
+        "Physical capture and budget-ledger settlement are separate authorities; the preparation guard does not establish cross-ledger settlement or replace provider admission."
       ],
       "exclusions": [
-        "No finite TLA+ model exists for this family yet.",
-        "Provider, database and operating-system correctness are outside this inventory."
+        "No Python-to-TLA+ refinement proof or all-state-machine completeness claim.",
+        "Binding artifacts/authority drift, model request settlement, arbitrary operation sequences and DeliveryHTTPAdapter.run outcomes are outside this finite model."
       ],
       "source_bindings": [
         {
@@ -2335,17 +2401,73 @@
           "path": "kb_platform/rag_testing/delivery_http.py",
           "language": "python",
           "symbol": "prepare_http",
-          "sha256": "61c745c7ace11a28ad94bc0169db43f46a805a4f6062801711dc459c00da133a"
+          "sha256": "2135d590a79b24606329496c836ba47ed0b9efb00ec62663c65982b637a2b917"
         },
         {
           "path": "kb_platform/rag_testing/delivery_http.py",
           "language": "python",
           "symbol": "rebind_http",
-          "sha256": "37a781b2791496d09f7da162918c72dac46897232e4e98bd96a8b0fe5b283456"
+          "sha256": "fedb88dd8c474125aa4572f154e155f3ebf93f48f3a8ce03750c399886d46e9f"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_prepare_http_locked",
+          "sha256": "58d3f789489a69da81e61e3b354443f95d7faf3e2e11f7c8d84282bdb2aa7fbb"
+        },
+        {
+          "path": "kb_platform/rag_testing/delivery_http.py",
+          "language": "python",
+          "symbol": "_atomic_json",
+          "sha256": "9b352af2332b5a5bd83a95bb9c88c70df826ef79f89078790a182234ac70b82b"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "acceptance-owner-positive",
+          "module": "formal/acceptance_workflow/AcceptanceWorkflow.tla",
+          "config": "formal/acceptance_workflow/AcceptanceWorkflow.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoDuplicateEffect",
+            "MarkerBeforeEffect",
+            "ExclusiveOwner",
+            "CompleteHasEffect"
+          ],
+          "properties": [],
+          "bounds": {
+            "owners": 2,
+            "operations": 1,
+            "restarts_per_owner": 1,
+            "effect_bound": 4
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "acceptance-owner-no-guard",
+          "module": "formal/acceptance_workflow/AcceptanceWorkflow.tla",
+          "config": "formal/acceptance_workflow/AcceptanceWorkflowNoGuard.cfg",
+          "expected_invariant": "NoDuplicateEffect",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "acceptance-owner-forget-pending",
+          "module": "formal/acceptance_workflow/AcceptanceWorkflow.tla",
+          "config": "formal/acceptance_workflow/AcceptanceWorkflowForgetPending.cfg",
+          "expected_invariant": "NoDuplicateEffect",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Model authority binding/rebind artifact publication and acceptance execution receipts beyond exclusive output ownership.",
+        "Compose provider/physical-budget admission and settlement models; capture status alone is not cross-ledger confirmation.",
+        "OS crash durability (including directory fsync), remote filesystems, arbitrary input sizes and adversarial modifications remain unproved."
+      ]
     }
   ]
 }

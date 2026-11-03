@@ -10,12 +10,13 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
-    from . import foundation_consumer_integration, foundation_knowledge_integration, foundation_transport_integration
+    from . import (acceptance_workflow_integration, foundation_consumer_integration,
+                   foundation_knowledge_integration, foundation_transport_integration, receipt_process_integration)
     from .delivery_status_contracts import live_suite as delivery_status_suite
 
     suite = unittest.TestSuite()
     for module in (foundation_consumer_integration, foundation_knowledge_integration,
-                   foundation_transport_integration):
+                   foundation_transport_integration, receipt_process_integration, acceptance_workflow_integration):
         suite.addTests(unittest.defaultTestLoader.loadTestsFromModule(module))
     suite.addTests(delivery_status_suite())
     planned = suite.countTestCases()
@@ -27,7 +28,9 @@ def main():
         'skipped': len(result.skipped), 'expected_failures': len(result.expectedFailures),
         'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0,
         'scope': 'Standalone foundation consumer, controlled localhost OpenAI/Anthropic/S3 SDK wire, '
-                 'knowledge application composition, send-time authorization and ASGI delivery status; current native library; '
+                 'knowledge application composition, send-time authorization, ASGI delivery status, file receipt process/crash exclusion '
+                 'and acceptance preparation owner exclusion; '
+                 'current native library; '
                  'synthetic component fixtures, no live provider or production RAG quality claim'}
     (args.output / 'summary.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), 'utf-8')
     return 0 if passed else 1
