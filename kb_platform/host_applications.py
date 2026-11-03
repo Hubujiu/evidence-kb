@@ -31,8 +31,10 @@ class HttpApplication:
         self.server.should_exit = True
 
     def close(self):
+        # FastAPI retains the legacy shutdown dispatcher after Starlette removed
+        # Router.shutdown. Do not enter lifespan here: startup must not run on close.
         if not self._finished:
-            asyncio.run(self.app.router.shutdown())
+            asyncio.run(self.app.router._shutdown())
             self._finished = True
 
 
@@ -54,7 +56,7 @@ def api(config):
     try:
         return HttpApplication(app, selected)
     except BaseException:
-        asyncio.run(app.router.shutdown())
+        asyncio.run(app.router._shutdown())
         raise
 
 
@@ -67,7 +69,7 @@ def delivery(config):
     try:
         return HttpApplication(app, selected)
     except BaseException:
-        asyncio.run(app.router.shutdown())
+        asyncio.run(app.router._shutdown())
         raise
 
 

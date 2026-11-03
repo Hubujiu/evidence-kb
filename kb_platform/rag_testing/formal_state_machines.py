@@ -218,6 +218,9 @@ def registry_violations(root: Path, registry: dict | None = None) -> list[str]:
                for model in machine.get('models', [])):
             from .formal_plugin_ownership import ownership_violations
             errors.extend(ownership_violations(root))
+        if any(machine['id'] == 'python_host_lifecycles' for machine in registry.get('machines', [])):
+            from .formal_python_host import ownership_violations
+            errors.extend(ownership_violations(root))
     except (KeyError, TypeError, ValueError, OSError, SyntaxError) as exc:
         errors.append(f'Invalid formal registry: {exc}')
     return sorted(set(errors))
