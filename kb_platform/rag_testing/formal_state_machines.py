@@ -136,7 +136,8 @@ def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
                             name = target.slice.value
                         if name in STATE_NAMES:
                             found.add((relative, symbol))
-                    body.extend(ast.iter_child_nodes(item))
+                    if not isinstance(item, ast.expr):
+                        body.extend(ast.iter_child_nodes(item))
         for path in sorted(base.rglob('*.rs')):
             if path.name == 'tests.rs' or 'tests' in path.relative_to(base).parts:
                 continue
