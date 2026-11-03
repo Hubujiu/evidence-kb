@@ -679,10 +679,6 @@ impl Coordinator {
                     instance.phase = Phase::Active;
                 } else {
                     instance.phase = Phase::Draining;
-                    // A dependency change can supersede initialization without
-                    // replacing this instance's own manifest. Its late failure
-                    // still needs cleanup, but must not poison the next target.
-                    // Explicit cancellation already records its terminal cause.
                     if !success && current {
                         instance.failed_init = true;
                         instance.failure = completion

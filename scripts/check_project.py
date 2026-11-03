@@ -270,8 +270,10 @@ def native_architecture_violations(root: Path) -> list[str]:
 def source_quality_violations(root: Path) -> list[str]:
     errors = []
     retired = {'kb_platform.agent_store', 'kb_platform.search_compat'}
-    for directory in ('kb_platform', 'scripts'):
+    for directory in ('kb_platform', 'scripts', 'e2e', 'examples'):
         for path in sorted((root / directory).rglob('*.py')):
+            if 'node_modules' in path.parts:
+                continue
             relative = path.relative_to(root).as_posix()
             source = path.read_text('utf-8-sig')
             tree = ast.parse(source, filename=relative)
@@ -359,13 +361,18 @@ def workflow_violations(workflow):
         errors.append('required must depend on quality, secrets, integration and formal')
     if required.get('if') != 'always()' or required.get('continue-on-error', False):
         errors.append('required must always evaluate every job result')
-    if not integration or 'if' in integration or integration.get('continue-on-error', False):
-        errors.append('integration must run as a mandatory job')
+    for name in ('quality', 'integration'):
+        job = jobs.get(name, {})
+        if not job or 'if' in job or job.get('continue-on-error', False):
+            errors.append(f'{name} must run as a mandatory job')
+    quality_commands = [step.get('run', '') for step in jobs.get('quality', {}).get('steps', [])
+                        if 'if' not in step and not step.get('continue-on-error', False)]
+    if 'uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}' not in quality_commands:
+        errors.append('quality must run the complete checker including lint')
     commands = [step.get('run', '') for step in integration.get('steps', [])
                 if 'if' not in step and not step.get('continue-on-error', False)]
     for command in (
-            'uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --output reports/ci/integration-check',
-            'uv run --no-sync python -m kb_platform.rag_testing.browser_integration --checker-summary reports/ci/integration-check/summary.json --output reports/ci/browser'):
+            'uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --browser-integration --output reports/ci/integration-check',):
         if command not in commands:
             errors.append('integration must run required command: ' + command)
     checks = [step for step in required.get('steps', [])
@@ -749,6 +756,7 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description='Run local and CI quality gates without provider credentials or live services.')
     parser.add_argument("--output", type=Path, default=ROOT / ".local/checks" / uuid4().hex)
+    parser.add_argument('--list', action='store_true', help='List discovered contract modules without executing checks.')
     parser.add_argument("--worker", choices=("contracts", "scorer"), help=argparse.SUPPRESS)
     parser.add_argument('--contract-shard', type=int, choices=range(4), help=argparse.SUPPRESS)
     parser.add_argument('--formal-only', action='store_true',
@@ -757,9 +765,19 @@ def main() -> int:
                         help='Run controlled loopback HTTP/parser/PostgreSQL checks using KB_INTEGRATION_DSN.')
     parser.add_argument('--storage-integration', action='store_true',
                         help='Run controlled actual PostgreSQL/MySQL/SQLite/S3 storage acceptance using KB_STORAGE_TEST_* variables.')
+    parser.add_argument('--browser-integration', action='store_true',
+                        help='Run deterministic browser acceptance after all gates pass; requires --local-integration.')
     args = parser.parse_args()
-    if args.formal_only and (args.worker or args.local_integration or args.storage_integration):
+    if args.formal_only and (args.worker or args.local_integration or args.storage_integration or args.browser_integration):
         parser.error('--formal-only cannot be combined with other gate modes')
+    if args.list:
+        print(json.dumps({'contract_modules': contract_modules(),
+                          'default': 'all offline gates and controlled local process integrations',
+                          'optional': ['--local-integration', '--storage-integration', '--browser-integration']},
+                         indent=2))
+        return 0
+    if args.browser_integration and not args.local_integration:
+        parser.error('--browser-integration requires --local-integration')
     integration_dsn = os.environ.get('KB_INTEGRATION_DSN') if args.local_integration else None
     integration_migration_dsn = os.environ.get('KB_INTEGRATION_MIGRATION_DSN') if args.local_integration else None
     if args.local_integration and not (integration_dsn and integration_migration_dsn):
@@ -870,7 +888,10 @@ def main() -> int:
                 results.append(run_check('storage-integration',
                     [sys.executable, '-B', '-m', 'kb_platform.rag_testing.storage_integration',
                      '--output', str(output / 'storage-integration')], output, {**env, **storage_env}, timeout=600))
-        results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts"], output, env))
+        results.append(run_check("lint", [sys.executable, "-m", "ruff", "check", "kb_platform", "scripts", "e2e", "examples"], output, env))
+        results.append(run_check('source-lint', ['node', str(ROOT / 'scripts/check_source.mjs')], output, env))
+        results.append(run_check('source-lint-contracts',
+                                 ['node', '--test', str(ROOT / 'scripts/check_source.test.mjs')], output, env))
         for kind in ("contracts", "scorer"):
             if kind == "contracts" and native_library is None:
                 results.append(blocked_contracts(output, block_reason))
@@ -878,7 +899,7 @@ def main() -> int:
             results.append(run_check(kind, [sys.executable, "-B", str(Path(__file__).resolve()),
                                            "--worker", kind, "--output", str(output)], output, env))
     passed = all(result.exit_code == 0 for result in results)
-    write_json(output / "summary.json", {"decision": "PASS" if passed else "FAIL",
+    summary = {"decision": "PASS" if passed else "FAIL",
         "checks": [asdict(result) for result in results], "new_model_calls": 0,
         "new_embedding_calls": 0, "new_judge_calls": 0,
         "native_library": str(native_library) if native_library is not None else None,
@@ -888,7 +909,24 @@ def main() -> int:
         "controlled_storage_integration": args.storage_integration,
         "scope": ("offline gates plus foundation application and controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
                   if args.local_integration else
-                  "offline contracts plus controlled localhost host and foundation application integration; component checks and scorer controls reported separately")})
+                  "offline contracts plus controlled localhost host and foundation application integration; component checks and scorer controls reported separately")}
+    if args.browser_integration:
+        write_json(output / 'prerequisites.json', summary)
+    if args.browser_integration:
+        if passed:
+            browser_env = {**env, 'KB_INTEGRATION_DSN': integration_dsn,
+                           'KB_INTEGRATION_MIGRATION_DSN': integration_migration_dsn}
+            results.append(run_check('browser-integration',
+                [sys.executable, '-B', '-m', 'kb_platform.rag_testing.browser_integration',
+                 '--checker-summary', str(output / 'prerequisites.json'),
+                 '--output', str(output / 'browser-integration')], output, browser_env, timeout=300))
+        else:
+            (output / 'browser-integration.log').write_text('BLOCKED: prerequisite gates failed\n', encoding='utf-8')
+            results.append(CheckResult('browser-integration', 2, 'browser-integration.log'))
+    passed = all(result.exit_code == 0 for result in results)
+    summary.update(decision='PASS' if passed else 'FAIL', checks=[asdict(result) for result in results],
+                   controlled_browser_integration=args.browser_integration)
+    write_json(output / 'summary.json', summary)
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1
 

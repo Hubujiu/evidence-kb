@@ -1,9 +1,3 @@
-//! Default agent services. The lifecycle runtime does not depend on this crate.
-//!
-//! A composition may use these loop/graph implementations or replace their
-//! public services. This crate owns only per-execution control state; session
-//! authority, tools, model calls and persistence belong to their own plugins.
-
 pub mod agent_loop;
 pub mod graph;
 

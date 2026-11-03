@@ -1,9 +1,3 @@
-//! Public storage contracts, independent of the plugin runtime and database drivers.
-//!
-//! The host owns plugin lifetime. Drivers own connections and transaction execution.
-//! This crate owns the portable capability, identity, value and receipt semantics;
-//! it never retries a write or maintains a second transaction/accounting ledger.
-
 pub mod contracts;
 pub mod operations;
 pub mod service;
@@ -72,7 +66,6 @@ pub(crate) fn object<'a>(
     value.as_object().ok_or_else(|| StorageError::new(code))
 }
 
-/// Adapter entry point for the existing native transport, outside the runtime kernel.
 pub fn dispatch(command: &str, mut arguments: Map<String, Value>) -> Result<Value, StorageError> {
     if arguments
         .remove("protocol")

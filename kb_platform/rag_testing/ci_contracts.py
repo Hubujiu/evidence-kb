@@ -37,7 +37,7 @@ class CiContracts(unittest.TestCase):
                 self.assertTrue(workflow_violations(workflow))
 
     def test_missing_skipped_or_ignored_gate_is_rejected(self):
-        for target in ('scripts/check_project.py', 'kb_platform.rag_testing.browser_integration'):
+        for target in ('scripts/check_project.py',):
             for mutation in ('delete', 'skip', 'ignore'):
                 changed = deepcopy(self.workflow)
                 steps = changed['jobs']['integration']['steps']
@@ -84,11 +84,30 @@ class CiContracts(unittest.TestCase):
                 self.assertTrue(workflow_violations(changed))
 
     def test_actual_storage_gate_cannot_be_removed_from_required_command(self):
-        changed = deepcopy(self.workflow)
-        step = next(step for step in changed['jobs']['integration']['steps']
-                    if 'scripts/check_project.py' in step.get('run', ''))
-        step['run'] = step['run'].replace(' --storage-integration', '')
-        self.assertTrue(workflow_violations(changed))
+        for flag in ('--storage-integration', '--browser-integration', '--local-integration'):
+            changed = deepcopy(self.workflow)
+            step = next(step for step in changed['jobs']['integration']['steps']
+                        if 'scripts/check_project.py' in step.get('run', ''))
+            step['run'] = step['run'].replace(' ' + flag, '')
+            with self.subTest(flag=flag):
+                self.assertTrue(workflow_violations(changed))
+
+    def test_quality_and_its_lint_cannot_be_skipped_or_ignored(self):
+        for scope in ('job', 'step'):
+            for mutation in ('delete', 'skip', 'ignore'):
+                changed = deepcopy(self.workflow)
+                job = changed['jobs']['quality']
+                step = next(step for step in job['steps'] if 'scripts/check_project.py' in step.get('run', ''))
+                target = job if scope == 'job' else step
+                if mutation == 'delete':
+                    if scope == 'job':
+                        del changed['jobs']['quality']
+                    else:
+                        job['steps'].remove(step)
+                else:
+                    target['if' if mutation == 'skip' else 'continue-on-error'] = 'false' if mutation == 'skip' else True
+                with self.subTest(scope=scope, mutation=mutation):
+                    self.assertTrue(workflow_violations(changed))
 
     def test_required_cannot_replace_quality_or_secrets_with_literal_success(self):
         changed = deepcopy(self.workflow)

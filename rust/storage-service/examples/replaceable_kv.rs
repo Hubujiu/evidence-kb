@@ -7,9 +7,6 @@ use storage_service::{
     values::StorageValue,
 };
 
-// A provider example: the consumer only knows the KV contract and exact dataset.
-// It does not import the plugin runtime or a database vendor. A process executor
-// can expose this service using the same JSON methods as a Python KV provider.
 struct MemoryKv {
     dataset: String,
     entries: BTreeMap<String, StorageValue>,

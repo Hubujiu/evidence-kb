@@ -6,8 +6,6 @@ use serde_json::Value;
 use crate::contracts::identifier;
 use crate::{StorageError, fields, object};
 
-/// Payload-free control metadata. SQL expressions and data stay in the driver's
-/// finite expression codec; even a 64 MiB logical write has a small control header.
 pub fn validate_header(value: &Value) -> Result<(), StorageError> {
     let header = object(value, "STORAGE_EXPRESSION_INVALID")?;
     fields(
@@ -151,8 +149,6 @@ pub struct CommitReceipt {
     pub replay_allowed: bool,
 }
 
-/// Missing, malformed or mismatched evidence cannot prove either commit or rollback.
-/// An operation ID correlates evidence; it does not promise provider idempotency.
 pub fn resolve_commit(operation_id: &str, response: &Value) -> CommitReceipt {
     let status = if response.get("operation_id").and_then(Value::as_str) == Some(operation_id) {
         match response.get("status").and_then(Value::as_str) {

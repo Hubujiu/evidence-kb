@@ -66,7 +66,7 @@ class PostgresSearch:
 
     @contextmanager
     def _connection(self, tenant=None, kb=None):
-        if getattr(self, 'database', None) is not None:
+        if self.database is not None:
             from .database_providers.postgres import pg_transaction
 
             with pg_transaction(self.database, tenant or '', kb or '') as connection:
@@ -165,7 +165,7 @@ class PostgresSearch:
         with self._connection(tenant_id, kb_id) as conn:
             conn.execute("SELECT set_config('app.tenant_id',%s,true),set_config('app.kb_id',%s,true)", (tenant_id, kb_id))
             row = conn.execute(sql.SQL('SELECT manifest,checksum FROM {} WHERE tenant_id=%s AND kb_id=%s').format(
-                sql.Identifier(getattr(self, 'schema', 'public'), 'search_manifests')),
+                sql.Identifier(self.schema, 'search_manifests')),
                                (tenant_id, kb_id)).fetchone()
         if not row:
             raise FileNotFoundError('No published semantic manifest')
