@@ -2433,6 +2433,500 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "platform_upload_snapshots",
+      "status": "partial",
+      "owners": [
+        "kb_platform/knowledge_platform_contract.py",
+        "kb_platform/platform_transfers.py",
+        "kb_platform/rag_testing/platform_transfer_owner_contracts.py",
+        "kb_platform/rag_testing/knowledge_platform_contracts.py",
+        "scripts/rpc_transfer_owner_checks.py",
+        "kb_platform/rag_testing/rpc_transfer_owner_lint_contracts.py"
+      ],
+      "states": [
+        "upload new/open/consumed/discarded; claimed/running/effect/result-publication failure",
+        "snapshot reserved/local spool/published/captured/authorized/disposed; one authority change"
+      ],
+      "transitions": [
+        "PlatformEndpoint.ingest_begin",
+        "PlatformEndpoint.ingest_append",
+        "PlatformEndpoint.ingest_finish",
+        "PlatformEndpoint.ingest_cancel",
+        "PlatformEndpoint.read_original_begin",
+        "PlatformSnapshots.reserve",
+        "PlatformSnapshots.publish",
+        "PlatformSnapshots.read",
+        "PlatformSnapshots.cancel",
+        "PlatformSnapshots.close"
+      ],
+      "invariants": [
+        "Integrity then result reservation then one-shot upload consumption before unlocked ingest; failed result publication never restores consumed work.",
+        "Actor/kind and sampled authorization bind ordered reads; relock/recheck live snapshot before touching stream; reservation and local/published stream ownership retained until explicit terminal release."
+      ],
+      "assumptions": [
+        "Two fresh nonreused opaque handles, two ordered chunks, one-slot symbolic capacity. Hash/actor/kind equivalence classes represent already schema-validated inputs.",
+        "Atomic Python lock sections; local provider/authorization work is outside locks. No fairness or provider-progress guarantee.",
+        "Upload expiry uses strict deadline < monotonic; snapshot expiry uses deadline <= monotonic. Symbolic Age represents crossing the applicable boundary, not a real-clock proof.",
+        "PlatformEndpoint and AuxiliaryModelEndpoint close occur after host leases drain. Snapshot resource close may interleave with its own lock-free authorization or spool construction."
+      ],
+      "exclusions": [
+        "Not generic JsonEndpoint or ObjectTransferEndpoint ownership, page-local OCR recovery, external OCR correctness, transport exactly-once, token entropy/hash collisions, or Python-to-TLA refinement.",
+        "No instantaneous authorization revocation, cancellation rollback of consumed invocations, implicit provider retry, or proof of every concrete slot/byte limit."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/knowledge_platform_contract.py",
+          "language": "python",
+          "symbol": "PlatformEndpoint",
+          "sha256": "1a49bcacf20d08308d8eb861ae762e3325e7423d8efc8185f873eac04a26c7fb"
+        },
+        {
+          "path": "kb_platform/platform_transfers.py",
+          "language": "python",
+          "symbol": "PlatformSnapshots",
+          "sha256": "d3ca853728b67633c2cf7f0adc681040d60333a0bf52074f288cb4f26d7ee2db"
+        },
+        {
+          "path": "kb_platform/rag_testing/platform_transfer_owner_contracts.py",
+          "language": "python",
+          "symbol": "PlatformTransferOwnerContracts",
+          "sha256": "ea9c785b68dcb11fe172bfb18d2a355970f24457d130ca4884fc6603cc200225"
+        },
+        {
+          "path": "kb_platform/rag_testing/knowledge_platform_contracts.py",
+          "language": "python",
+          "symbol": "KnowledgePlatformContracts",
+          "sha256": "cab6150edce2abbe646fd14c73e556fe067a4d3ec9dfeb2ad7cededd8a1aa601"
+        },
+        {
+          "path": "scripts/rpc_transfer_owner_checks.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "bfff4b72ea28ed7c16666cdc76908861d9252f35fd47902be07e1081677db0ce"
+        },
+        {
+          "path": "kb_platform/rag_testing/rpc_transfer_owner_lint_contracts.py",
+          "language": "python",
+          "symbol": "RPCTransferOwnerLintContracts",
+          "sha256": "36bc278e2e8960a8d38e795f95b9d41825eceaa30aa284fd866eb1c0cada1bf8"
+        }
+      ],
+      "models": [
+        {
+          "id": "platform_ingest_upload",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUpload.cfg",
+          "invariants": [
+            "TypeOK",
+            "CompleteBeforeDispatch",
+            "ReserveBeforeDispatch",
+            "ConsumedBeforeDispatch",
+            "AtMostOnce",
+            "CapacityBound",
+            "FailedRetainsConsumption",
+            "ClosedOwnsNothing",
+            "UploadCapacityBound"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 2,
+            "chunks": 2,
+            "capacity": 1,
+            "authority_changes": 0
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshots.cfg",
+          "invariants": [
+            "TypeOK",
+            "ActorAndKindBound",
+            "AuthorizationAtSample",
+            "NoStaleStreamAccess",
+            "OwnedStreamsOnly",
+            "ClosedOwnsNothing",
+            "CapacityBound",
+            "FailedBuildReleasesStream",
+            "ExactOffset"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 2,
+            "chunks": 2,
+            "capacity": 1,
+            "authority_changes": 1
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "platform_ingest_upload_integrity_negative",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUploadIntegrityNegative.cfg",
+          "expected_invariant": "CompleteBeforeDispatch",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_ingest_upload_reservation_negative",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUploadReservationNegative.cfg",
+          "expected_invariant": "ReserveBeforeDispatch",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_ingest_upload_consumption_negative",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUploadConsumptionNegative.cfg",
+          "expected_invariant": "ConsumedBeforeDispatch",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_ingest_upload_reopen_negative",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUploadReopenNegative.cfg",
+          "expected_invariant": "FailedRetainsConsumption",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_ingest_upload_capacity_negative",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUploadCapacityNegative.cfg",
+          "expected_invariant": "UploadCapacityBound",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_ingest_upload_published_witness",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUploadPublishedWitness.cfg",
+          "expected_invariant": "NoPublishedWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_ingest_upload_committedfailure_witness",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUploadCommittedFailureWitness.cfg",
+          "expected_invariant": "NoCommittedFailureWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_ingest_upload_transferheld_witness",
+          "module": "formal/rpc_transfer_owners/PlatformUpload.tla",
+          "config": "formal/rpc_transfer_owners/PlatformUploadTransferHeldWitness.cfg",
+          "expected_invariant": "NoTransferHeldWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_binding_negative",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsBindingNegative.cfg",
+          "expected_invariant": "ActorAndKindBound",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_authorization_negative",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsAuthorizationNegative.cfg",
+          "expected_invariant": "AuthorizationAtSample",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_recheck_negative",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsRecheckNegative.cfg",
+          "expected_invariant": "NoStaleStreamAccess",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_stream_negative",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsStreamNegative.cfg",
+          "expected_invariant": "OwnedStreamsOnly",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_capacity_negative",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsCapacityNegative.cfg",
+          "expected_invariant": "CapacityBound",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_buildstream_negative",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsBuildStreamNegative.cfg",
+          "expected_invariant": "FailedBuildReleasesStream",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_offset_negative",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsOffsetNegative.cfg",
+          "expected_invariant": "ExactOffset",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_completed_witness",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsCompletedWitness.cfg",
+          "expected_invariant": "NoCompletedWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_revoked_witness",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsRevokedWitness.cfg",
+          "expected_invariant": "NoRevokedWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_closedread_witness",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsClosedReadWitness.cfg",
+          "expected_invariant": "NoClosedReadWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "platform_authorized_snapshots_closedbuild_witness",
+          "module": "formal/rpc_transfer_owners/PlatformSnapshots.tla",
+          "config": "formal/rpc_transfer_owners/PlatformSnapshotsClosedBuildWitness.cfg",
+          "expected_invariant": "NoClosedBuildWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Unbounded handles/bytes, real clocks, arbitrary serialization failures and memory/filesystem cleanup failure behavior.",
+        "Formal composition with the separate host-lease, provider receipt, authority and durable-ingest state machines; actual deterministic contracts provide bounded bridge evidence.",
+        "Nonreused opaque tokens abstract object identity; exact Python `is snapshot` guard is independently checked by mandatory AST lint, not a UUID collision/replacement proof.",
+        "Two sequential read chunks per handle; actual contracts additionally cover concurrent readers with the same offset. Snapshot authority is sampled before read, not at delivery."
+      ]
+    },
+    {
+      "id": "auxiliary_ocr_upload",
+      "status": "partial",
+      "owners": [
+        "kb_platform/knowledge_model_ports.py",
+        "kb_platform/rag_testing/auxiliary_ocr_transfer_contracts.py",
+        "kb_platform/knowledge_capabilities.py",
+        "kb_platform/plugin_host.py",
+        "scripts/rpc_transfer_owner_checks.py",
+        "kb_platform/rag_testing/rpc_transfer_owner_lint_contracts.py"
+      ],
+      "states": [
+        "upload new/open/consumed/discarded; claimed/provider/validated-return/failure; quiescent host close"
+      ],
+      "transitions": [
+        "AuxiliaryModelEndpoint.ocr_begin",
+        "AuxiliaryModelEndpoint.ocr_append",
+        "AuxiliaryModelEndpoint.ocr",
+        "AuxiliaryModelEndpoint.ocr_cancel",
+        "AuxiliaryModelEndpoint.close"
+      ],
+      "invariants": [
+        "Complete ordered image length/hash before one-shot consumption; provider runs outside upload lock; failure/cancel does not restore the upload; return only validated OCR result."
+      ],
+      "assumptions": [
+        "Two fresh nonreused opaque handles, two ordered chunks, one-slot symbolic capacity. Hash/actor/kind equivalence classes represent already schema-validated inputs.",
+        "Atomic Python lock sections; local provider/authorization work is outside locks. No fairness or provider-progress guarantee.",
+        "Upload expiry uses strict deadline < monotonic; snapshot expiry uses deadline <= monotonic. Symbolic Age represents crossing the applicable boundary, not a real-clock proof.",
+        "PlatformEndpoint and AuxiliaryModelEndpoint close occur after host leases drain. Snapshot resource close may interleave with its own lock-free authorization or spool construction."
+      ],
+      "exclusions": [
+        "Not generic JsonEndpoint or ObjectTransferEndpoint ownership, page-local OCR recovery, external OCR correctness, transport exactly-once, token entropy/hash collisions, or Python-to-TLA refinement.",
+        "No instantaneous authorization revocation, cancellation rollback of consumed invocations, implicit provider retry, or proof of every concrete slot/byte limit."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/knowledge_model_ports.py",
+          "language": "python",
+          "symbol": "AuxiliaryModelEndpoint",
+          "sha256": "a0c30f8dd235c8a1467b92a41f6a7cc3f5ec2346ab76d08380ea0316d059bbf2"
+        },
+        {
+          "path": "kb_platform/rag_testing/auxiliary_ocr_transfer_contracts.py",
+          "language": "python",
+          "symbol": "AuxiliaryOCRTransferContracts",
+          "sha256": "8c647f8311241c14089571a9c8e7a6ed5223a0a115230964af9f1699a351f7ba"
+        },
+        {
+          "path": "kb_platform/knowledge_capabilities.py",
+          "language": "python",
+          "symbol": "build_knowledge_application.model",
+          "sha256": "87a5f7544f035b0e3fb46d79dd6da56577205662e0a83a355c2199470bcb9fec"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "language": "python",
+          "symbol": "PluginHost._invoke",
+          "sha256": "92730ff511fc6368de9d94dfd026e5fa10c69c614ed597e85a7b70a5202cea0e"
+        },
+        {
+          "path": "kb_platform/plugin_host.py",
+          "language": "python",
+          "symbol": "PluginHost.close",
+          "sha256": "bd0160a8dd51690543016a2f94817f7f5eefcccdd28a6412f862a797d635250e"
+        },
+        {
+          "path": "scripts/rpc_transfer_owner_checks.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "bfff4b72ea28ed7c16666cdc76908861d9252f35fd47902be07e1081677db0ce"
+        },
+        {
+          "path": "kb_platform/rag_testing/rpc_transfer_owner_lint_contracts.py",
+          "language": "python",
+          "symbol": "RPCTransferOwnerLintContracts",
+          "sha256": "36bc278e2e8960a8d38e795f95b9d41825eceaa30aa284fd866eb1c0cada1bf8"
+        }
+      ],
+      "models": [
+        {
+          "id": "auxiliary_ocr_upload",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUpload.cfg",
+          "invariants": [
+            "TypeOK",
+            "CompleteBeforeProvider",
+            "ConsumedBeforeProvider",
+            "AtMostOnce",
+            "ResultValidated",
+            "FailureNeverReopens",
+            "ClosedOwnsNothing",
+            "UploadCapacityBound"
+          ],
+          "properties": [],
+          "bounds": {
+            "handles": 2,
+            "chunks": 2,
+            "capacity": 1,
+            "authority_changes": 0
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "auxiliary_ocr_upload_integrity_negative",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUploadIntegrityNegative.cfg",
+          "expected_invariant": "CompleteBeforeProvider",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "auxiliary_ocr_upload_consumption_negative",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUploadConsumptionNegative.cfg",
+          "expected_invariant": "ConsumedBeforeProvider",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "auxiliary_ocr_upload_reopen_negative",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUploadReopenNegative.cfg",
+          "expected_invariant": "FailureNeverReopens",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "auxiliary_ocr_upload_result_negative",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUploadResultNegative.cfg",
+          "expected_invariant": "ResultValidated",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "auxiliary_ocr_upload_capacity_negative",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUploadCapacityNegative.cfg",
+          "expected_invariant": "UploadCapacityBound",
+          "purpose": "Seeded semantic mutation, not an observed production defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "auxiliary_ocr_upload_returned_witness",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUploadReturnedWitness.cfg",
+          "expected_invariant": "NoReturnedWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "auxiliary_ocr_upload_failed_witness",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUploadFailedWitness.cfg",
+          "expected_invariant": "NoFailedWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "auxiliary_ocr_upload_drainedclose_witness",
+          "module": "formal/rpc_transfer_owners/OCRUpload.tla",
+          "config": "formal/rpc_transfer_owners/OCRUploadDrainedCloseWitness.cfg",
+          "expected_invariant": "NoDrainedCloseWitness",
+          "purpose": "Positive terminal reachability witness; all safety flags enabled, not a seeded defect.",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Unbounded handles/bytes, real clocks, arbitrary serialization failures and memory/filesystem cleanup failure behavior.",
+        "Formal composition with the separate host-lease, provider receipt, authority and durable-ingest state machines; actual deterministic contracts provide bounded bridge evidence."
+      ]
     }
   ]
 }
