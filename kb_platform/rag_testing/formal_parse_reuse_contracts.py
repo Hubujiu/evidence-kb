@@ -173,6 +173,9 @@ class FormalParseReuseContracts(unittest.TestCase):
             ('if isinstance(source, ast.AST):', 'if False:'),
             ('if not isinstance(item, ast.expr):', 'if not isinstance(item, ast.stmt):'),
             ('lru_cache(maxsize=128)', 'lru_cache(maxsize=None)'),
+            ('lru_cache(maxsize=512)', 'lru_cache(maxsize=None)'),
+            ('> 256 * 1024', '> 512 * 1024'),
+            ('candidate_symbols(source, frozenset(STATE_NAMES))', 'candidate_symbols(source, frozenset())'),
             ("source = path.read_text('utf-8')", "source = str(path)"),
             ('symbols = parse_symbols(source)', 'symbols = parse_symbols(str(path))'),
             ('actual = reviewed_digest(root, binding)', 'actual = source_digest(root, binding)'),
@@ -374,3 +377,79 @@ def nested_expression():
             self.assertEqual('<external>/private.py', formal_profile.source_label(str(root.parent / 'private.py'), root))
             self.assertNotIn('/private/person', formal_profile.safe_error('error /private/person/secret.py', root))
             self.assertNotIn('C:\\Users', formal_profile.safe_error('error C:\\Users\\person\\secret.py', root))
+
+    def test_candidate_cache_preserves_reads_rules_and_error_boundaries(self):
+        formal._cached_candidate_symbols.cache_clear()
+        self.addCleanup(formal._cached_candidate_symbols.cache_clear)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = fixtures.FormalRegistryContracts().fixture(root)
+            source = root / 'kb_platform/lifecycle.py'
+            original = source.read_text('utf-8')
+            stamp = source.stat()
+            real_read = Path.read_text
+            with patch.object(formal, '_candidate_symbols_uncached', wraps=formal._candidate_symbols_uncached) as parsed:
+                with patch.object(Path, 'read_text', autospec=True, side_effect=real_read) as reads:
+                    first = formal.state_candidates(root, ['kb_platform'])
+                    second = formal.state_candidates(root, ['kb_platform'])
+                    self.assertEqual(2, reads.call_count)
+                self.assertEqual(first, second)
+                self.assertEqual(1, parsed.call_count)
+            for text in (original, original.replace('self.state', 'self.other'), original.replace('ready', 'later')):
+                source.write_text(text, 'utf-8')
+                os.utime(source, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+                with patch.object(formal, 'candidate_symbols', formal._candidate_symbols_uncached):
+                    expected = formal.registry_violations(root, registry)
+                self.assertEqual(expected, formal.registry_violations(root, registry))
+            source.write_text(original.replace('self.state', 'self.other'), 'utf-8')
+            self.assertEqual(set(), formal.state_candidates(root, ['kb_platform']))
+            with patch.object(formal, 'STATE_NAMES', frozenset({'other'})):
+                self.assertEqual({('kb_platform/lifecycle.py', 'Runtime.step')}, formal.state_candidates(root, ['kb_platform']))
+            with patch.object(Path, 'read_text', side_effect=PermissionError('synthetic denied read')):
+                with self.assertRaises(PermissionError):
+                    formal.state_candidates(root, ['kb_platform'])
+            with self.assertRaises(ValueError):
+                formal.state_candidates(root, ['..'])
+            real_resolve = Path.resolve
+            def resolve_link(path, *args, **kwargs):
+                return root.parent if path == root / 'link' else real_resolve(path, *args, **kwargs)
+            with patch.object(Path, 'resolve', autospec=True, side_effect=resolve_link):
+                with self.assertRaises(ValueError):
+                    formal.state_candidates(root, ['link'])
+            source.unlink()
+            self.assertEqual(set(), formal.state_candidates(root, ['kb_platform']))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'fresh.py').write_text('class FreshState: pass\n', 'utf-8')
+            self.assertEqual({('fresh.py', 'FreshState')}, formal.state_candidates(root, ['.']))
+
+    def test_candidate_cache_is_immutable_bounded_and_never_eagerly_hashes_other_symbols(self):
+        formal._cached_candidate_symbols.cache_clear()
+        self.addCleanup(formal._cached_candidate_symbols.cache_clear)
+        names = frozenset(formal.STATE_NAMES)
+        source = 'class Runtime:\n def step(self): self.state = 1\n'
+        result = formal.candidate_symbols(source, names)
+        self.assertIsInstance(result, frozenset)
+        self.assertEqual(frozenset({'Runtime.step'}), result)
+        self.assertLessEqual(formal._candidate_payload_bytes(source, names, result), 256 * 1024)
+        for _ in range(2):
+            with self.assertRaises(SyntaxError):
+                formal.candidate_symbols('def syntax(', names)
+        self.assertEqual(1, formal._cached_candidate_symbols.cache_info().currsize)
+        large = '#' + ('x' * (256 * 1024)) + '\n' + source
+        with patch.object(formal, '_candidate_symbols_uncached', wraps=formal._candidate_symbols_uncached) as parsed:
+            self.assertEqual(result, formal.candidate_symbols(large, names))
+            self.assertEqual(result, formal.candidate_symbols(large, names))
+            self.assertEqual(2, parsed.call_count)
+        self.assertEqual(1, formal._cached_candidate_symbols.cache_info().currsize)
+        for index in range(513):
+            self.assertEqual(frozenset(), formal.candidate_symbols(f'value = {index}\n', names))
+        self.assertEqual(512, formal._cached_candidate_symbols.cache_info().currsize)
+        with patch.object(formal, '_candidate_symbols_uncached', wraps=formal._candidate_symbols_uncached) as parsed:
+            self.assertEqual(result, formal.candidate_symbols(source, names))
+            self.assertEqual(1, parsed.call_count)
+        deep = 'value = ' + '+'.join(['1'] * 1500) + '\n' + source
+        with self.assertRaises(RecursionError):
+            ast.dump(formal.python_symbols(deep)['<module>'])
+        self.assertEqual(result, formal.candidate_symbols(deep, names))
+        self.assertTrue(ast.dump(formal.python_symbols(deep)['Runtime.step']))
