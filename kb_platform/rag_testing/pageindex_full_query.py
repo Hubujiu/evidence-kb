@@ -343,15 +343,15 @@ def main():
     gateway = SDKGateway(
         Path(".local/providers.json"), ledger, args.output, recovery=args.recover, dependencies=dependencies
     )
-    client = PageIndexClient(
-        index_model="openai/" + gateway.provider.model,
-        chat_model="openai/" + gateway.provider.model,
-        storage_path=str((args.index / "store").resolve()),
-        index_backend=gateway.backend,
-        chat_backend=gateway.backend,
-    )
     summary = {}
     try:
+        client = PageIndexClient(
+            index_model="openai/" + gateway.provider.model,
+            chat_model="openai/" + gateway.provider.model,
+            storage_path=str((args.index / "store").resolve()),
+            index_backend=gateway.backend,
+            chat_backend=gateway.backend,
+        )
         for variant in ("bm25", "official-pageindex"):
             adapter = PDFAdapter(gateway, client, index_results, args.output, variant, args.max_turns)
             report = run(

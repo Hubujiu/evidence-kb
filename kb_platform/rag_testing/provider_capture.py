@@ -173,6 +173,7 @@ class MeteredTransport(httpx.BaseTransport):
             state = 'COMPLETE' if 200 <= response.status_code < 300 else 'ERROR'
             record.update(http_status=response.status_code, response=body)
             settle(state, actual, None if state == 'COMPLETE' else f'HTTP_{response.status_code}')
+            response.extensions['_kb_physical_request_id'] = identity
             return response
         except BaseException as exc:
             failed = True

@@ -64,7 +64,6 @@
         "kb_platform/google_semantic_provider.py",
         "kb_platform/model_http.py",
         "kb_platform/rag_testing/delivery_http.py",
-        "kb_platform/rag_testing/sdk_gateway.py",
         "kb_platform/rag_testing/reader_diagnostic.py",
         "kb_platform/rag_testing/pageindex_probe.py",
         "kb_platform/rag_testing/pageindex_full_query.py",
@@ -127,7 +126,7 @@
           "path": "kb_platform/rag_testing/provider_capture.py",
           "language": "python",
           "symbol": "MeteredTransport._handle_admitted",
-          "sha256": "85d8fcdbb1240f8628336e99d15c27472102e28a01da3ce22ef0c92d311f23a5"
+          "sha256": "eae4778c8c8d683af4d28744063c98130f704fe3863ebca2d30acaac01e86a0e"
         },
         {
           "path": "kb_platform/embeddings.py",
@@ -194,12 +193,6 @@
           "language": "python",
           "symbol": "capture_final",
           "sha256": "7768beeed3c5fdfc70cac528279a57ff4e3020b0c27ab6237a9cc59a3505fb63"
-        },
-        {
-          "path": "kb_platform/rag_testing/sdk_gateway.py",
-          "language": "python",
-          "symbol": "SDKGateway.__init__",
-          "sha256": "061cab55e0567eae922984676805438651ad1bff982ec0ce55b7cfc84d5b84db"
         },
         {
           "path": "kb_platform/rag_testing/reader_diagnostic.py",
@@ -2346,6 +2339,373 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "sdk_gateway",
+      "status": "partial",
+      "owners": [
+        "kb_platform/rag_testing/sdk_gateway.py",
+        "kb_platform/rag_testing/pageindex_full_index.py",
+        "kb_platform/rag_testing/pageindex_full_query.py"
+      ],
+      "states": [
+        "OPEN -> DRAINING -> CLOSED, distinct from close invocation.",
+        "Request admitted -> physical sent -> provider observed -> settlement confirmed/unconfirmed -> cache or failure projection -> handler finished.",
+        "Recovery capture STARTED/COMPLETE/ERROR/UNKNOWN, HTTP observation, and ledger settlement remain distinct.",
+        "Exact-context/payload seen identities, committed response cache, explicit retry lineage, and terminal global blocked gate."
+      ],
+      "transitions": [
+        "SDKGateway.__init__: validate recovery capture, exact key groups, single COMPLETE or full acyclic ERROR lineage.",
+        "SDKGateway.__init__.Handler.do_POST: snapshot context and atomically gate/deduplicate/reuse or send, bind actual transport physical identity, project any local failure as HTTP failure.",
+        "SDKGateway.context getter/setter: copied request context under the handler lock.",
+        "SDKGateway.close: acquire handler lock to close admission, shutdown server, join non-daemon handlers and serving loop before owned client/cache closure.",
+        "pageindex_full_index.main: update per-document context and close before budget-after publication.",
+        "pageindex_full_query.main: SDK construction is protected by gateway-close finally, which drains before budget reporting."
+      ],
+      "invariants": [
+        "An error body caused by local cache/report/identity failure is not reported as HTTP 200.",
+        "Cache reuse binds the exact context/payload to a committed COMPLETE 200 capture and the actual transport-issued physical identity.",
+        "Per-request capture and reporting retain their frozen context even if a reentrant callback updates the configured context.",
+        "No new admission after blocked/closing linearization; pre-admitted work is not treated as rolled back.",
+        "Returning closed implies owned handler/capture quiescence.",
+        "Unresolved predecessor records never authorize a physical resend; known response is not settlement acknowledgment.",
+        "An explicit terminal HTTP-error recovery uses a fresh physical identity and exact retry origin.",
+        "All-error groups select the unique acyclic full-chain leaf, not filename order; multiple completed results are ambiguous."
+      ],
+      "assumptions": [
+        "Each abstract context denotes the full normalized context identity, including stage/document and input limits; payload identity is exact.",
+        "Request model uses two payloads/two contexts/two physical attempts/two operations and one close invocation; physical admission reservation is a separate owner.",
+        "Recovery model uses one prior physical id plus one new id; lineage model uses at most two supplied prior ids and both input orders.",
+        "A context mutation during an active handler conservatively models a reentrant same-thread callback; ordinary setters serialize through the lock.",
+        "Close invocation precedes closing-gate linearization; the latter occurs only after handler capture/cache/report work releases the lock.",
+        "Lineage inputs are already integrity-checked, terminal and confirmed. An absent predecessor is an opaque external historical root.",
+        "The loopback gateway has the project trusted-local-caller contract; these models do not introduce or prove a browser/authentication boundary.",
+        "Only production constructors in pageindex_full_index.main and pageindex_full_query.main require new output directories; recovery imports physical captures, not old StageCache databases.",
+        "The controlling thread closes the gateway; third-party SDK operations must not dispatch background calls after returning. Timeouts do not prove a hard shutdown deadline."
+      ],
+      "exclusions": [
+        "No machine-checked source refinement or unbounded/liveness proof.",
+        "No OS/thread scheduler, HTTP wire delivery, malformed framing, provider, SQLite/filesystem durability or cryptographic hash proof.",
+        "No claim that all capture ERROR records mean an observed HTTP error; the recovery model terminal-error path is deliberately the narrower HTTP-response case.",
+        "A successful response coexisting with prior ERROR records follows the unique-COMPLETE policy; chronological validity of such a mixed group is not proved."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/rag_testing/sdk_gateway.py",
+          "language": "python",
+          "symbol": "SDKGateway",
+          "sha256": "daf5582b61c6cf360fb34605a9e9b7ad5e67f63e9b565987a04c62690889d9be"
+        },
+        {
+          "path": "kb_platform/rag_testing/pageindex_full_index.py",
+          "language": "python",
+          "symbol": "main",
+          "sha256": "4879beff18080fea70bc8e5c2475690ae5bf757d2cd6c9ae9ed56ec98697bcc7"
+        },
+        {
+          "path": "scripts/sdk_gateway_lint.py",
+          "language": "python",
+          "symbol": "<module>",
+          "sha256": "1e36ca9ac233e26370e4ba8cf6d8c22e64b04ee25f5de9aa862f8bf02dc52992"
+        },
+        {
+          "path": "kb_platform/rag_testing/sdk_gateway_contracts.py",
+          "language": "python",
+          "symbol": "SDKGatewayContracts",
+          "sha256": "809a6ac6ee86fec08551dedbcca6b5448d41bd044a2fcde680b3e4723517fecb"
+        },
+        {
+          "path": "kb_platform/rag_testing/sdk_gateway_contracts.py",
+          "language": "python",
+          "symbol": "live_suite",
+          "sha256": "65eb865022435bc8420c7112f14a24cd5d1254287c37dde18c9885df83a83e0b"
+        },
+        {
+          "path": "kb_platform/rag_testing/sdk_gateway_lint_contracts.py",
+          "language": "python",
+          "symbol": "SDKGatewayLintContracts",
+          "sha256": "b450809298d0250563592915d3c1202434e8a2410249989a2f1144b0652df159"
+        },
+        {
+          "path": "kb_platform/rag_testing/pageindex_full_query.py",
+          "language": "python",
+          "symbol": "main",
+          "sha256": "9b8d8e6fb33ca42303d7ed5dabbf6cca6e52ec48e437892f51074d11fc345ff3"
+        }
+      ],
+      "models": [
+        {
+          "id": "sdk_gateway_lineage",
+          "module": "formal/sdk-gateway/SDKGatewayLineage.tla",
+          "config": "formal/sdk-gateway/SDKGatewayLineage.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "invariants": [
+            "TypeOK",
+            "RetrySelectsUniqueLineageLeaf",
+            "ReplaySelectsUniqueComplete",
+            "AmbiguousResultsRejected"
+          ],
+          "properties": [],
+          "bounds": {
+            "Contexts": [
+              "index",
+              "summary"
+            ],
+            "Payloads": [
+              "payload-a",
+              "payload-b"
+            ],
+            "old_physical_identities": 2,
+            "records_in_exact_key_group": "one or two",
+            "record_outcomes": [
+              "COMPLETE",
+              "ERROR"
+            ],
+            "record_orders": "both permutations",
+            "lineage_edges": "same group identities or opaque external root"
+          }
+        },
+        {
+          "id": "sdk_gateway_recovery",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecovery.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "invariants": [
+            "TypeOK",
+            "UnresolvedRecoveryRejected",
+            "NoUnknownResend",
+            "Non200CompleteRejected",
+            "ReuseOnlyExactCommittedResponse",
+            "RetryHasExactTerminalOrigin",
+            "FreshPhysicalRetry",
+            "RejectedDoesNotSend"
+          ],
+          "properties": [],
+          "bounds": {
+            "Contexts": [
+              "index",
+              "summary"
+            ],
+            "Payloads": [
+              "payload-a",
+              "payload-b"
+            ],
+            "old_physical_identity": 1,
+            "possible_new_physical_identity": 2,
+            "recoveries": 1,
+            "crashes": "optional once before capture settlement",
+            "old_http_observations": [
+              "OK",
+              "OTHER_SUCCESS",
+              "HTTP_ERROR",
+              "UNKNOWN"
+            ]
+          }
+        },
+        {
+          "id": "sdk_gateway_request",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequest.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "invariants": [
+            "TypeOK",
+            "ErrorBodyIsFailure",
+            "ExactCacheBinding",
+            "CapturedContextStable",
+            "ReportedContextStable",
+            "NoSpuriousCrossContextRejection",
+            "ClosedIsQuiescent",
+            "NoAdmissionAfterGate",
+            "NoDuplicatePhysicalSend"
+          ],
+          "properties": [],
+          "bounds": {
+            "Contexts": [
+              "index",
+              "summary"
+            ],
+            "Payloads": [
+              "payload-a",
+              "payload-b"
+            ],
+            "physical_attempts": 2,
+            "handler_operations": 2,
+            "close_invocations": 1,
+            "fairness": "none; safety only"
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "sdk_gateway_lineage_filename_order",
+          "module": "formal/sdk-gateway/SDKGatewayLineage.tla",
+          "config": "formal/sdk-gateway/SDKGatewayLineageFilenameOrder.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "RetrySelectsUniqueLineageLeaf"
+        },
+        {
+          "id": "sdk_gateway_lineage_leaf_witness",
+          "module": "formal/sdk-gateway/SDKGatewayLineage.tla",
+          "config": "formal/sdk-gateway/SDKGatewayLineageLeafWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverSelectedReverseOrderedLeaf"
+        },
+        {
+          "id": "sdk_gateway_lineage_reject_witness",
+          "module": "formal/sdk-gateway/SDKGatewayLineage.tla",
+          "config": "formal/sdk-gateway/SDKGatewayLineageRejectWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverRejectedDisconnectedCycle"
+        },
+        {
+          "id": "sdk_gateway_lineage_unique_leaf_only",
+          "module": "formal/sdk-gateway/SDKGatewayLineage.tla",
+          "config": "formal/sdk-gateway/SDKGatewayLineageUniqueLeafOnly.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "RetrySelectsUniqueLineageLeaf"
+        },
+        {
+          "id": "sdk_gateway_recovery_identity_replay",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryIdentityReplay.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "FreshPhysicalRetry"
+        },
+        {
+          "id": "sdk_gateway_recovery_payload_only",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryPayloadOnly.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "ReuseOnlyExactCommittedResponse"
+        },
+        {
+          "id": "sdk_gateway_recovery_retry_unknown",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryRetryUnknown.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NoUnknownResend"
+        },
+        {
+          "id": "sdk_gateway_recovery_retry_witness",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryRetryWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverRetriedHttpError"
+        },
+        {
+          "id": "sdk_gateway_recovery_reuse_witness",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryReuseWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverReusedComplete"
+        },
+        {
+          "id": "sdk_gateway_recovery_trust_status",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryTrustStatus.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "UnresolvedRecoveryRejected"
+        },
+        {
+          "id": "sdk_gateway_recovery_unconfirmed_witness",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryUnconfirmedWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverRejectedKnownUnconfirmed"
+        },
+        {
+          "id": "sdk_gateway_recovery_unknown_witness",
+          "module": "formal/sdk-gateway/SDKGatewayRecovery.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRecoveryUnknownWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverRejectedUnknown"
+        },
+        {
+          "id": "sdk_gateway_request_drain_witness",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequestDrainWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverDrainedCapture"
+        },
+        {
+          "id": "sdk_gateway_request_early_close",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequestEarlyClose.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "ClosedIsQuiescent"
+        },
+        {
+          "id": "sdk_gateway_request_ignore_gate",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequestIgnoreGate.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NoAdmissionAfterGate"
+        },
+        {
+          "id": "sdk_gateway_request_mutable_context",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequestMutableContext.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "ReportedContextStable"
+        },
+        {
+          "id": "sdk_gateway_request_replay_witness",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequestReplayWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverReplayed"
+        },
+        {
+          "id": "sdk_gateway_request_stale_status",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequestStaleStatus.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "ErrorBodyIsFailure"
+        },
+        {
+          "id": "sdk_gateway_request_two_contexts_witness",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequestTwoContextsWitness.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NeverTwoContextsCaptured"
+        },
+        {
+          "id": "sdk_gateway_request_weak_binding",
+          "module": "formal/sdk-gateway/SDKGatewayRequest.tla",
+          "config": "formal/sdk-gateway/SDKGatewayRequestWeakBinding.cfg",
+          "timeout_seconds": 30,
+          "heap_mb": 256,
+          "expected_invariant": "NoSpuriousCrossContextRejection"
+        }
+      ],
+      "remaining_obligations": [
+        "Real SQLite budget/StageCache, MockTransport, exact physical identity and local loopback regressions must accompany the finite models.",
+        "Digest/key normalization, source/PDF authorization, raw response/capture integrity, and source-to-model mapping remain executable-contract and lint obligations.",
+        "Real concurrent handlers, queued sockets, close failures, capture persistence failures, known-zero-send errors, larger retry chains and adversarial/partial HTTP input remain outside these finite abstractions.",
+        "Transport reservation/settlement durability and multidimensional accounting stay with the physical-budget family; these models do not re-prove them."
+      ]
     }
   ]
 }
