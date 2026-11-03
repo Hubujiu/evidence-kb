@@ -1,0 +1,8 @@
+test_close_and_cancel_preserve_inflight_dispatch_stream_until_handler_finishes (kb_platform.rag_testing.storage_protocol_ownership_contracts.StorageProtocolOwnershipContracts.test_close_and_cancel_preserve_inflight_dispatch_stream_until_handler_finishes) ... ok
+test_lost_native_validator_after_real_write_preserves_completion_without_replay (kb_platform.rag_testing.storage_protocol_ownership_contracts.StorageProtocolOwnershipContracts.test_lost_native_validator_after_real_write_preserves_completion_without_replay) ... ok
+test_submission_marker_is_not_proof_of_handler_execution (kb_platform.rag_testing.storage_protocol_ownership_contracts.StorageProtocolOwnershipContracts.test_submission_marker_is_not_proof_of_handler_execution) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.086s
+
+OK

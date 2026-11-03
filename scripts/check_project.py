@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 import faulthandler
 import importlib.util
+import hashlib
 import json
 import io
 import tokenize
@@ -278,6 +279,11 @@ def source_quality_violations(root: Path) -> list[str]:
             module = relative.removesuffix('.py').replace('/', '.')
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
+            if relative == 'kb_platform/rag_testing/search_router_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in search_stage_diagnostic_violations(tree))
+            if relative == 'kb_platform/rag_testing/embedded_search_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in embedded_stage_diagnostic_violations(tree))
+            errors.extend(f'{relative}: {error}' for error in search_probe_diagnostic_violations(tree, relative))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -291,6 +297,74 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def search_diagnostic_digest(node):
+    options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
+    return hashlib.sha256(ast.dump(node, include_attributes=False, **options).encode()).hexdigest()
+
+
+def search_probe_diagnostic_violations(tree: ast.AST, relative: str) -> list[str]:
+    bindings = {'kb_platform/rag_testing/search_stage_probe.py': ('<module>', '3923c10cd2a749a43029ef30cbe72690ff8e44b4d177ea12368b24523252e5aa'), 'kb_platform/rag_testing/search_stage_diagnostics.py': ('<module>', '6f54daeb406baa015c0d0ae9d7b92cfbf39d22e671d535ec841c3762f7d2cb6f'), 'kb_platform/rag_testing/search_stage_probe_contracts.py': ('SearchStageProbeContracts.test_real_three_case_single_pass_retains_stage_observations', '09623de92d7ecb79f2be3ada1065475844a98d21668ec126c4b5716050e550f7')}
+    expected = bindings.get(relative)
+    if expected is None:
+        return []
+    nodes = [tree] if expected[0] == '<module>' else [
+        node for owner in tree.body if isinstance(owner, ast.ClassDef) and owner.name == 'SearchStageProbeContracts'
+        for node in owner.body if isinstance(node, ast.FunctionDef)
+        and node.name == 'test_real_three_case_single_pass_retains_stage_observations']
+    if len(nodes) != 1 or search_diagnostic_digest(nodes[0]) != expected[1]:
+        return ['controlled search diagnostics require reviewed bounded metadata, single-pass stage order and original errors']
+    return []
+
+
+def search_stage_diagnostic_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse('def stage(self):\n'
+        '    try:\n'
+        '        self.router.stage(self.index, self.units, vector_dimension=3)\n'
+        '    except Exception as error:\n'
+        '        note_stage_failure(error, self.root)\n'
+        '        raise\n').body[0]
+    stages = [node for owner in tree.body if isinstance(owner, ast.ClassDef)
+              and owner.name == 'SearchRouterContracts' for node in owner.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == 'stage']
+    if len(stages) != 1 or ast.dump(stages[0]) != ast.dump(expected):
+        return ['search-stage diagnostics require one original call, failure-only note, and bare raise without retry']
+    return []
+
+
+def embedded_stage_diagnostic_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse('def _stage(self, backend, index, units, vector_dimension):\n'
+        '    try:\n'
+        '        return backend.stage(index, units, vector_dimension)\n'
+        '    except Exception as error:\n'
+        '        note_stage_failure(error, Path(self.folder.name))\n'
+        '        raise\n').body[0]
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'EmbeddedSearchContracts']
+    if len(owners) != 1:
+        return ['embedded-stage diagnostics require the original fixture owner']
+    stages = [node for node in owners[0].body if isinstance(node, ast.FunctionDef) and node.name == '_stage']
+    if len(stages) != 1 or ast.dump(stages[0]) != ast.dump(expected):
+        return ['embedded-stage diagnostics require one original call, owned-root failure-only note, and bare raise without retry']
+    direct = [node for node in ast.walk(owners[0]) if isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Attribute) and node.func.attr == 'stage']
+    if len(direct) != 1 or direct[0] not in tuple(ast.walk(stages[0])):
+        return ['every embedded fixture stage call must use the failure-only wrapper, including setup and generation loop']
+    expected_calls = {
+        'setUp': 'self._stage(self.backend, self.index, self.authority.units, 3)',
+        'test_exact_vectors_and_seal': 'self._stage(self.backend, self.index, self.authority.units, 3)',
+        'test_failed_staging_not_visible': "self._stage(self.backend, index, [{**self.authority.units[0], 'vector': [float('inf'), 0, 0]}], 3)",
+        'test_pages_do_not_change_block_scores': "self._stage(self.backend, index, [u for u in self.authority.units if u['kind'] != 'Page'], 3)",
+        'test_closed_immutable_readers_release_generations_for_immediate_removal': 'self._stage(backend, index, self.authority.units, 3)',
+    }
+    actual = {node.name: [ast.dump(call) for call in ast.walk(node) if isinstance(call, ast.Call)
+                         and isinstance(call.func, ast.Attribute) and call.func.attr == '_stage']
+              for node in owners[0].body if isinstance(node, ast.FunctionDef) and node.name != '_stage'}
+    actual = {name: calls for name, calls in actual.items() if calls}
+    expected_calls = {name: [ast.dump(ast.parse(call, mode='eval').body)] for name, call in expected_calls.items()}
+    if actual != expected_calls:
+        return ['all five original embedded stage call sites must retain their original receiver, arguments and call count']
+    return []
 
 
 def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
