@@ -1962,6 +1962,161 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "llm_multiblock",
+      "status": "partial",
+      "owners": [
+        "rust/llm-service/src/assembler.rs"
+      ],
+      "states": [
+        "Two indexed blocks with kind, fixed tool identity, complete arguments and closure; independent insertion order",
+        "No terminal, stop, tools, max, error, abort; response and replay projection"
+      ],
+      "transitions": [
+        "Assembler::ensure",
+        "Assembler::push",
+        "Assembler::push_checked",
+        "Assembler::validate_finish",
+        "Assembler::response"
+      ],
+      "invariants": [
+        "Rejected pushes preserve the snapshot; terminal tool IDs are complete and unique.",
+        "Response/replay use the same positional mask; malformed envelope length discards replay."
+      ],
+      "assumptions": [
+        "Two distinct symbolic indexes represent sparse native indexes; two opaque tool IDs; JSON completeness is abstracted as a boolean.",
+        "Clone validation and assignment are atomic within one serialized Assembler owner. Snapshot DTO validation remains a native contract."
+      ],
+      "exclusions": [
+        "No provider transport, billing, unbounded byte domain, opaque adapter response semantics or refinement proof."
+      ],
+      "source_bindings": [
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::ensure",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        },
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::push",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        },
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::push_checked",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        },
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::validate_finish",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        },
+        {
+          "path": "rust/llm-service/src/assembler.rs",
+          "language": "rust",
+          "symbol": "Assembler::response",
+          "sha256": "925fcb7fb3bcd2bc8a0ec2c643bc0303c7fd8cbc1332b1dcc1be2d5aeb31f156"
+        }
+      ],
+      "models": [
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-positive",
+          "config": "formal/llm_multiblock/Positive.cfg",
+          "bounds": {
+            "blocks": 2,
+            "tool_ids": 2,
+            "project_operations": 1
+          },
+          "invariants": [
+            "TypeOK",
+            "UniqueIndexes",
+            "RejectedUnchanged",
+            "ExecutableUnique",
+            "ReplayAligned",
+            "ReplayLengthGuard",
+            "SafeFailure"
+          ],
+          "properties": []
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-rollback",
+          "config": "formal/llm_multiblock/Rollback.cfg",
+          "expected_invariant": "RejectedUnchanged"
+        },
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-duplicate",
+          "config": "formal/llm_multiblock/Duplicate.cfg",
+          "expected_invariant": "ExecutableUnique"
+        },
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-mask",
+          "config": "formal/llm_multiblock/Mask.cfg",
+          "expected_invariant": "ReplayAligned"
+        },
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-length",
+          "config": "formal/llm_multiblock/Length.cfg",
+          "expected_invariant": "ReplayLengthGuard"
+        },
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-witnessdistincttools",
+          "config": "formal/llm_multiblock/WitnessDistinctTools.cfg",
+          "expected_invariant": "WitnessDistinctTools"
+        },
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-witnessfiltered",
+          "config": "formal/llm_multiblock/WitnessFiltered.cfg",
+          "expected_invariant": "WitnessFiltered"
+        },
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-witnessrejectedclose",
+          "config": "formal/llm_multiblock/WitnessRejectedClose.cfg",
+          "expected_invariant": "WitnessRejectedClose"
+        },
+        {
+          "module": "formal/llm_multiblock/MultiblockAssembler.tla",
+          "heap_mb": 256,
+          "timeout_seconds": 120,
+          "id": "multiblock-witnessreordered",
+          "config": "formal/llm_multiblock/WitnessReordered.cfg",
+          "expected_invariant": "WitnessReordered"
+        }
+      ],
+      "remaining_obligations": [
+        "Native deterministic contracts cover malformed JSON, sparse indexes, terminal rejection and snapshot equality; finite model is not executable-code refinement.",
+        "Replay response metadata is opaque and adapter-owned; only per-block positional projection is checked."
+      ]
     }
   ]
 }
