@@ -2346,6 +2346,210 @@
       ],
       "models": [],
       "negative_controls": []
+    },
+    {
+      "id": "canonical_page_publication",
+      "status": "partial",
+      "owners": [
+        "kb_platform/semantic_page_ingestion.py",
+        "kb_platform/google_semantic_provider.py"
+      ],
+      "states": [
+        "fresh directory → plan → per-batch observation/validated receipt → source capsule/write/readback → aggregate → optional build → result; failure and interruption retain prior physical effects"
+      ],
+      "transitions": [
+        "CanonicalPageIngestion.run",
+        "CanonicalPageIngestion._receipt",
+        "write_google_page_capsule",
+        "GoogleSemanticProvider.import_capsule"
+      ],
+      "invariants": [
+        "A reported complete run references every validated source capsule; a capsule is complete only after zero-call verified readback.",
+        "Physical costs and unknown reservation are never cleared by workflow failure; existing output is never blindly replayed."
+      ],
+      "assumptions": [
+        "Public library API is included although no current repository CLI call site was found. This is not a claim of CLI delivery.",
+        "Two ordered sources and two batches per source; observations abstract exact receipt checks; synthetic providers and real SQLite/files supply concrete contracts.",
+        "Provider admission and ledger durable settlement follow their separate physical-budget contract. Authorization is sampled and may change between checks."
+      ],
+      "exclusions": [
+        "No provider/vector-quality proof, cryptographic collision proof, arbitrary code injection, filesystem fsync/power-loss atomicity or external build implementation proof.",
+        "No automatic recovery/replay, no fairness/eventual-success promise, no instantaneous authorization revocation."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/semantic_page_ingestion.py",
+          "symbol": "<module>",
+          "language": "python",
+          "sha256": "ed824c8a5c3157b6573c5f05961256e9e3eaa1562bf540b81b4e842fcb4eb315"
+        },
+        {
+          "path": "kb_platform/google_semantic_provider.py",
+          "symbol": "write_google_page_capsule",
+          "language": "python",
+          "sha256": "d6878f3c0101e69051a7bf6e9b81f15aa9105c0aaee1b1354241eabda3aa90ec"
+        },
+        {
+          "path": "kb_platform/google_semantic_provider.py",
+          "symbol": "GoogleSemanticProvider.import_capsule",
+          "language": "python",
+          "sha256": "82a40ff0118b0a11615739b1f7ccb2e83e174e91ac6882477ca5498924429cb9"
+        }
+      ],
+      "models": [
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_page_canonicalpublication",
+          "config": "formal/canonical_pages/CanonicalPublication.cfg",
+          "invariants": [
+            "TypeOK",
+            "ChargePreserved",
+            "ReceiptBeforeUse",
+            "CapsuleComplete",
+            "BuildAfterAll",
+            "CompletionBound",
+            "AdmissionObserved",
+            "NoReplay"
+          ],
+          "properties": [],
+          "bounds": {
+            "sources": 2,
+            "batches_per_source": 2,
+            "automatic_retries": 0,
+            "build_required": true
+          }
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_page_canonicalnobuild",
+          "config": "formal/canonical_pages/CanonicalNoBuild.cfg",
+          "invariants": [
+            "TypeOK",
+            "ChargePreserved",
+            "ReceiptBeforeUse",
+            "CapsuleComplete",
+            "BuildAfterAll",
+            "CompletionBound",
+            "AdmissionObserved",
+            "NoReplay"
+          ],
+          "properties": [],
+          "bounds": {
+            "sources": 2,
+            "batches_per_source": 2,
+            "automatic_retries": 0,
+            "build_required": false
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_bug_unknown",
+          "config": "formal/canonical_pages/CanonicalBugUnknown.cfg",
+          "expected_invariant": "ChargePreserved"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_bug_receipt",
+          "config": "formal/canonical_pages/CanonicalBugReceipt.cfg",
+          "expected_invariant": "ReceiptBeforeUse"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_bug_capsule",
+          "config": "formal/canonical_pages/CanonicalBugCapsule.cfg",
+          "expected_invariant": "CapsuleComplete"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_bug_readback",
+          "config": "formal/canonical_pages/CanonicalBugReadback.cfg",
+          "expected_invariant": "CompletionBound"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_bug_build",
+          "config": "formal/canonical_pages/CanonicalBugBuild.cfg",
+          "expected_invariant": "BuildAfterAll"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_bug_authority",
+          "config": "formal/canonical_pages/CanonicalBugAuthority.cfg",
+          "expected_invariant": "AdmissionObserved"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_bug_replay",
+          "config": "formal/canonical_pages/CanonicalBugReplay.cfg",
+          "expected_invariant": "NoReplay"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_witness_complete",
+          "config": "formal/canonical_pages/CanonicalWitnessComplete.cfg",
+          "expected_invariant": "NotCompleteWitness"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_witness_partial",
+          "config": "formal/canonical_pages/CanonicalWitnessPartial.cfg",
+          "expected_invariant": "NotPartialFailureWitness"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_witness_unknown",
+          "config": "formal/canonical_pages/CanonicalWitnessUnknown.cfg",
+          "expected_invariant": "NotUnknownWitness"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_witness_interrupted",
+          "config": "formal/canonical_pages/CanonicalWitnessInterrupted.cfg",
+          "expected_invariant": "NotInterruptedWitness"
+        },
+        {
+          "module": "formal/canonical_pages/CanonicalPublication.tla",
+          "timeout_seconds": 60,
+          "heap_mb": 128,
+          "id": "canonical_witness_buildfailure",
+          "config": "formal/canonical_pages/CanonicalWitnessBuildFailure.cfg",
+          "expected_invariant": "NotBuildFailureWitness"
+        }
+      ],
+      "remaining_obligations": [
+        "Finite abstraction, not machine-checked refinement or unbounded absence of bugs.",
+        "A process can stop with a partial plan/receipt/capsule/result file; a pre-existing output is refused. Operator inspection/new explicit output is required.",
+        "A final authorization check does not lock external authority through publication; model allows revocation after that check.",
+        "Seeded unsafe variants and reachability witnesses are controls, not discovered production bugs."
+      ]
     }
   ]
 }
