@@ -1,4 +1,5 @@
 import ast
+import re
 from pathlib import Path
 
 from .formal_state_machines import python_symbols
@@ -64,8 +65,7 @@ def ownership_violations(root: Path) -> list[str]:
                                   and n.func.attr == 'pop' for n in ast.walk(ast.Module(body=callbacks[0].finalbody, type_ignores=[]))):
         errors.append('python host ownership: failed disposer must retain callback for explicit retry')
     lease_model = (root / 'formal/python_host_lifecycles/PythonLease.tla').read_text('utf-8')
-    if 'phase = "done" /\\ nestedSeen /\\ ~failedSetup /\\ timer = "stopped"' not in lease_model:
-        errors.append('python host ownership: nested invocation witness must require real nesting')
+    errors.extend(lease_witness_violations(lease_model))
     foundation = (root / 'kb_platform/rag_testing/foundation_integration.py').read_text('utf-8')
     if 'foundation_transport_integration, http_lifespan_integration' not in foundation:
         errors.append('python host ownership: actual HTTP lifespan cases require mandatory foundation stage')
@@ -74,4 +74,20 @@ def ownership_violations(root: Path) -> list[str]:
                      "if dispatcher is not None and dispatcher['decision'] != 'PASS':\n    raise RuntimeError('PROCESS_DISPATCHER_OBSERVATION_CONTRACT_FAILED')"]:
         if dump(ast.parse(fragment).body[0]) not in run_nodes:
             errors.append('python host ownership: mandatory dispatcher barrier contract changed')
+    return errors
+
+
+def lease_witness_violations(source: str) -> list[str]:
+    compact = re.sub(r"\s+", "", source)
+    fragments = [
+        'vars == <<phase,users,native,token,signal,timer,settled,badRelease,failedSetup,nestedSeen,invokedSeen>>',
+        'nestedSeen = FALSE /\\ invokedSeen = FALSE',
+        'Nest == /\\ phase = "body" /\\ users = 1 /\\ phase\' = "nested" /\\ users\' = 2 /\\ nestedSeen\' = TRUE',
+        'Invoke == /\\ phase \\in {"body","body-end"} /\\ phase\' = "invoking" /\\ signal\' = TRUE /\\ timer\' = "started" /\\ invokedSeen\' = TRUE',
+        'NestedInvocationSettledUnreachable == ~(phase = "done" /\\ nestedSeen /\\ invokedSeen /\\ ~failedSetup /\\ timer = "stopped" /\\ settled = 1)',
+    ]
+    errors = ["python host ownership: nested invocation witness must require actual Nest and Invoke"
+              for fragment in fragments if re.sub(r"\s+", "", fragment) not in compact]
+    if compact.count("invokedSeen'=") != 1 or compact.count("nestedSeen'=") != 1:
+        errors.append("python host ownership: witness history may only be set by its actual event")
     return errors

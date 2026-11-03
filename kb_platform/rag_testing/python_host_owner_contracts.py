@@ -231,7 +231,12 @@ class PythonHostOwnershipLintContracts(unittest.TestCase):
             (http, 'if not self._finished:', 'if True:'),
             (http, 'self._entered = True', 'self._entered = False'),
             (http, 'router._shutdown()', 'router.shutdown()'),
-            ('formal/python_host_lifecycles/PythonLease.tla', 'nestedSeen /\\ ~failedSetup', '~failedSetup'),
+            ('formal/python_host_lifecycles/PythonLease.tla', 'nestedSeen /\\ invokedSeen', 'invokedSeen'),
+            ('formal/python_host_lifecycles/PythonLease.tla', 'invokedSeen /\\ ~failedSetup', '~failedSetup'),
+            ('formal/python_host_lifecycles/PythonLease.tla', "invokedSeen' = TRUE", "invokedSeen' = FALSE"),
+            ('formal/python_host_lifecycles/PythonLease.tla', 'invokedSeen = FALSE', 'invokedSeen = TRUE'),
+            ('formal/python_host_lifecycles/PythonLease.tla', "nestedSeen' = TRUE", "nestedSeen' = FALSE"),
+            ('formal/python_host_lifecycles/PythonLease.tla', 'failedSetup,nestedSeen,invokedSeen>>', 'failedSetup,nestedSeen>>'),
         ]
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)

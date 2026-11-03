@@ -102,3 +102,19 @@ The protocol follows Python `threading.Event` semantics: an event signals its ow
 operation, not completion of unrelated work after `set()`; completion must be
 observed at the owning dispatcher. AST guards and refreshed-hash mutations reject
 restoring the early predicate, omitting the queue, or bypassing the barrier gate.
+
+
+### Nested invocation reachability correction
+
+The nested witness previously required `Nest` but could reach settlement directly
+through `Finish`, without executing `Invoke`: that action also stops an absent
+timer. Following the explicit transition/history distinction in
+[Lamport's Specifying Systems, chapter 8](https://lamport.azurewebsites.net/tla/book-02-08-08.pdf),
+`invokedSeen` is initialized false and set only by the actual `Invoke` action.
+The witness now requires both real nesting and real invocation before settlement.
+Normal release without invocation remains valid. Mandatory model-shape checks and
+mutants reject missing witness predicates, fabricated initial history, missing
+Nest/Invoke event updates, and omitted history state. This strengthens evidence
+for the existing finite `PluginHost._invoke`/lease abstraction, not a new claim
+of a production bug or a source refinement proof. Existing live source contracts,
+model bounds, safety conditions and execution deadlines are unchanged.
