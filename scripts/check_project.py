@@ -323,6 +323,65 @@ def formal_parse_reuse_violations(tree: ast.AST) -> list[str]:
     collect(symbols['<module>'], '')
     return symbols
 
+class _OversizedCandidates(Exception):
+    def __init__(self, result):
+        self.result = result
+
+
+def _candidate_symbols_uncached(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    found = set()
+    for symbol, node in python_symbols(source).items():
+        if isinstance(node, ast.ClassDef) and re.search(r'(State|Status|Phase)$', node.name):
+            found.add(symbol)
+        body = [node]
+        while body:
+            item = body.pop()
+            if item is not node and isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            targets = item.targets if isinstance(item, ast.Assign) else (
+                [item.target] if isinstance(item, (ast.AnnAssign, ast.AugAssign)) else [])
+            for target in targets:
+                name = target.attr if isinstance(target, ast.Attribute) else (
+                    target.id if isinstance(target, ast.Name) else None)
+                if isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant):
+                    name = target.slice.value
+                if name in state_names:
+                    found.add(symbol)
+            if not isinstance(item, ast.expr):
+                body.extend(ast.iter_child_nodes(item))
+    return frozenset(found)
+
+
+def _candidate_payload_bytes(source, state_names, result):
+    pending = [(source, state_names, result)]
+    seen = set()
+    total = 0
+    while pending:
+        value = pending.pop()
+        if id(value) in seen:
+            continue
+        seen.add(id(value))
+        total += sys.getsizeof(value)
+        if isinstance(value, (tuple, frozenset)):
+            pending.extend(value)
+    return total
+
+
+@lru_cache(maxsize=512)
+def _cached_candidate_symbols(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    result = _candidate_symbols_uncached(source, state_names)
+    if _candidate_payload_bytes(source, state_names, result) > 256 * 1024:
+        raise _OversizedCandidates(result)
+    return result
+
+
+def candidate_symbols(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    try:
+        return _cached_candidate_symbols(source, state_names)
+    except _OversizedCandidates as error:
+        return error.result
+
+
 def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
     found = set()
     for directory in roots:
@@ -333,26 +392,8 @@ def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
             if path.name.endswith('_contracts.py') or '__pycache__' in path.parts:
                 continue
             relative = path.relative_to(root).as_posix()
-            symbols = python_symbols(path.read_text('utf-8'))
-            for symbol, node in symbols.items():
-                if isinstance(node, ast.ClassDef) and re.search(r'(State|Status|Phase)$', node.name):
-                    found.add((relative, symbol))
-                body = [node]
-                while body:
-                    item = body.pop()
-                    if item is not node and isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                        continue
-                    targets = item.targets if isinstance(item, ast.Assign) else (
-                        [item.target] if isinstance(item, (ast.AnnAssign, ast.AugAssign)) else [])
-                    for target in targets:
-                        name = target.attr if isinstance(target, ast.Attribute) else (
-                            target.id if isinstance(target, ast.Name) else None)
-                        if isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant):
-                            name = target.slice.value
-                        if name in STATE_NAMES:
-                            found.add((relative, symbol))
-                    if not isinstance(item, ast.expr):
-                        body.extend(ast.iter_child_nodes(item))
+            source = path.read_text('utf-8')
+            found.update((relative, symbol) for symbol in candidate_symbols(source, frozenset(STATE_NAMES)))
         for path in sorted(base.rglob('*.rs')):
             if path.name == 'tests.rs' or 'tests' in path.relative_to(base).parts:
                 continue
@@ -412,7 +453,7 @@ def registry_violations(root: Path, registry: dict | None=None) -> list[str]:
     errors = []
     protected = {node.name for node in expected.body}
     for reference in expected.body:
-        actual = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+        actual = [node for node in tree.body if isinstance(node, type(reference))
                   and node.name == reference.name]
         if len(actual) != 1 or ast.dump(actual[0]) != ast.dump(reference):
             errors.append(f'formal parse reuse: preserve fresh reads and invocation-local content cache in {reference.name}')
@@ -641,11 +682,36 @@ def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
     return sorted(set(errors))
 
 
+def registry_profile_workflow_violations(quality):
+    steps = quality.get('steps', [])
+    names = [step.get('name') for step in steps]
+    expected = {
+        'name': 'Profile registry after Windows failure',
+        'if': "failure() && runner.os == 'Windows'",
+        'timeout-minutes': 3,
+        'run': 'uv run --no-sync python -m kb_platform.rag_testing.formal_profile --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}/registry-profile.json',
+    }
+    name = expected['name']
+    if names.count(name) != 1 or steps[names.index(name)] != expected:
+        return ['registry profile must be bounded, failure-only, Windows-only and observational']
+    position = names.index(name)
+    check = {'name': 'Run offline quality gates',
+             'run': 'uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}'}
+    if position == 0 or steps[position - 1] != check or position + 1 >= len(steps):
+        return ['registry profile must follow unchanged mandatory checks']
+    upload = steps[position + 1]
+    if upload.get('name') != 'Upload gate evidence' or upload.get('if') != 'always()':
+        return ['registry profile must precede unconditional evidence upload']
+    if quality.get('continue-on-error', False) or 'if' in quality:
+        return ['quality cannot be optional for registry diagnostics']
+    return []
+
+
 def workflow_violations(workflow):
     jobs = workflow.get('jobs', {})
     integration = jobs.get('integration', {})
     required = jobs.get('required', {})
-    errors = []
+    errors = registry_profile_workflow_violations(jobs.get('quality', {}))
     dependencies = {'quality': 'QUALITY_RESULT', 'secrets': 'SECRETS_RESULT',
                     'integration': 'INTEGRATION_RESULT', 'formal': 'FORMAL_RESULT'}
     if not dependencies.keys() <= set(required.get('needs', [])):

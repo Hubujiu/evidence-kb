@@ -179,6 +179,35 @@ class FormalCombinationContracts(unittest.TestCase):
                     self.assertEqual(shared_entry_point_violations(root, bindings),
                                      [f'Shared entry point changed: {path}:_registry_violations'])
 
+    def test_discovery_wrapper_cannot_hide_candidate_body_cache_or_payload_mutation(self):
+        path = 'kb_platform/rag_testing/formal_state_machines.py'
+        symbols = ('state_candidates', '_OversizedCandidates', '_candidate_symbols_uncached',
+                   '_candidate_payload_bytes', '_cached_candidate_symbols', 'candidate_symbols')
+        bindings = [next(row for row in self.manifest['shared_entry_points']
+                         if row['path'] == path and row['symbol'] == symbol) for symbol in symbols]
+        original = (ROOT / path).read_text('utf-8')
+        mutations = (
+            ('_OversizedCandidates', 'self.result = result', 'self.result = frozenset()'),
+            ('_candidate_symbols_uncached', 'if name in state_names:', 'if False:'),
+            ('_candidate_payload_bytes', 'total += sys.getsizeof(value)', 'total += 0'),
+            ('_cached_candidate_symbols', '@lru_cache(maxsize=512)', '@lru_cache(maxsize=513)'),
+            ('candidate_symbols', 'return _cached_candidate_symbols(source, state_names)',
+             'return frozenset()'),
+        )
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / path
+            target.parent.mkdir(parents=True)
+            target.write_text(original, encoding='utf-8')
+            self.assertEqual(shared_entry_point_violations(root, bindings), [])
+            for symbol, before, after in mutations:
+                with self.subTest(symbol=symbol):
+                    self.assertEqual(original.count(before), 1)
+                    target.write_text(original.replace(before, after, 1), encoding='utf-8')
+                    self.assertEqual(source_digest(root, bindings[0]), bindings[0]['sha256'])
+                    self.assertEqual(shared_entry_point_violations(root, bindings),
+                                     [f'Shared entry point changed: {path}:{symbol}'])
+
     def test_historical_fingerprint_scope_cannot_expand_to_other_commits_files_rules_or_lines(self):
         original = (ROOT / '.gitleaksignore').read_text('utf-8').splitlines()
         self.assertEqual(len(original), 11)

@@ -45,6 +45,32 @@ Its final public follow-up applies the same source-grammar pruning to state-cand
 
 Independent model review found that PR63 replay rejection and PR71 nested-invocation witnesses needed actual execution history rather than preset observation flags. Their published follow-ups now use per-token execution counts and actual invocation history, with mandatory source/model controls. The two model files are exact public inputs, not combination-specific weakened variants. Their new formal/runtime/CI results and final combined checks remain acceptance obligations; earlier green results are not reused for the changed models.
 
+## Bounded candidate-value reuse follow-up
+
+The later public PR76 candidate caches only immutable candidate-name sets, keyed
+by freshly read source content and the explicit frozen state-name set. Every
+directory enumeration, path validation and source read remains outside the
+cache. The LRU admits at most 512 entries and rejects entries above 256 KiB of
+source/key/result payload; it retains no cross-call AST. Oversized entries still
+compute their result without being stored. The extracted candidate body,
+payload accounting, cache wrapper and exception carrier have separate shared
+bindings. Combination controls mutate each while leaving the discovery wrapper
+unchanged and require rejection. The combination's own contract IDs are also
+required by the static manifest.
+
+A three-minute, single-call registry profile runs only after failed Windows
+quality checks and before unconditional artifact upload. It sanitizes paths and
+does not retry tests, change deadlines, alter shards or make quality optional.
+Its ordering and exact failure-only scope are guarded.
+
+The earlier exact combined head `5378c9b` remains FAIL: all 1,587 offline cases
+completed locally, but host integration exceeded its original 180-second total
+budget; Windows CI exceeded the unchanged 170-second shard budget. Independent
+local and CI formal evidence passed, with both observed limitations retained.
+Those completed checks do not validate this changed follow-up tree. New
+targeted checks, exact CI and separately scheduled ordinary/formal checks are
+required before any new acceptance statement.
+
 ## Narrow historical secret-scan dispositions
 
 The eleven historical findings in public commit `6efd45e2129b0c0a2afa7a6d51fa60a561f69bc4` were independently reproduced as Git findings and recomputed against the declared public TLA/CFG bytes. With explicit authorization, `.gitleaksignore` records only their exact commit/file/rule/line fingerprints: ten `generic-api-key` findings and one `sentry-access-token` finding in the former model-input mapping. No file, directory, rule or history range is exempted. The mandatory architecture guard rejects any missing, duplicated, broadened or altered entry, including another commit, path, rule or line.

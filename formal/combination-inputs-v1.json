@@ -386,8 +386,8 @@
     },
     {
       "pr": 76,
-      "head": "1c0df4f903d95356f913411fe09a1c7238964ef0",
-      "tree": "bb3a1c5dfa7803ecb8c243de608252e17ebcd071",
+      "head": "323aaac17d31d5a88484a3a7bae6c5d2ac4cd396",
+      "tree": "f6424080002e9f6de541aa7d14757d160907e564",
       "base": "6efd45e2129b0c0a2afa7a6d51fa60a561f69bc4",
       "base_tree": "6759e022b45822c7c198e542fdd58b77a4571f1f",
       "head_branch": "feat/formal-content-parse-reuse",
@@ -6466,6 +6466,19 @@
       "ErrorProjectionModelContracts.test_actual_projection_requires_registered_terminal_witnesses",
       "ErrorProjectionModelContracts.test_old_rhs_and_weakened_or_unregistered_witnesses_fail_mandatory_lint_after_source_refresh"
     ],
+    "kb_platform/rag_testing/formal_combination_contracts.py": [
+      "FormalCombinationContracts.test_changed_control_invariant_is_rejected_without_changing_any_id",
+      "FormalCombinationContracts.test_discovery_wrapper_cannot_hide_candidate_body_cache_or_payload_mutation",
+      "FormalCombinationContracts.test_frozen_public_inputs_require_exact_registered_definitions_not_counts",
+      "FormalCombinationContracts.test_historical_fingerprint_scope_cannot_expand_to_other_commits_files_rules_or_lines",
+      "FormalCombinationContracts.test_model_input_digest_allows_only_checkout_crlf_normalization",
+      "FormalCombinationContracts.test_model_input_inventory_rejects_shape_identity_duplicates_and_changed_bytes",
+      "FormalCombinationContracts.test_public_contract_case_identities_are_retained",
+      "FormalCombinationContracts.test_registry_wrapper_cannot_hide_removed_worker_hook_or_binding_validation",
+      "FormalCombinationContracts.test_removed_positive_negative_or_known_limitation_cannot_hide_in_same_size_inventory",
+      "FormalCombinationContracts.test_required_tla_and_cfg_inputs_are_exact_reviewed_public_bytes",
+      "FormalCombinationContracts.test_shared_entry_points_keep_the_reviewed_combination_of_mandatory_hooks"
+    ],
     "kb_platform/rag_testing/formal_inline_boolean_contracts.py": [
       "InlineExportEvidenceContracts.test_negative_control_requires_exact_named_locations_not_any_diagnostic",
       "InlineExportEvidenceContracts.test_parse_failure_nonzero_exit_and_timeout_cannot_satisfy_negative_control",
@@ -6487,8 +6500,11 @@
       "OfficialInlineBooleanContracts.test_wrong_root_module_is_rejected"
     ],
     "kb_platform/rag_testing/formal_parse_reuse_contracts.py": [
+      "FormalParseReuseContracts.test_candidate_cache_is_immutable_bounded_and_never_eagerly_hashes_other_symbols",
+      "FormalParseReuseContracts.test_candidate_cache_preserves_reads_rules_and_error_boundaries",
       "FormalParseReuseContracts.test_content_reuse_preserves_each_path_check_and_read",
       "FormalParseReuseContracts.test_errors_and_path_escape_are_not_cached",
+      "FormalParseReuseContracts.test_failure_only_profile_is_bounded_and_cannot_replace_required_checks",
       "FormalParseReuseContracts.test_fresh_content_same_size_mtime_and_different_roots",
       "FormalParseReuseContracts.test_lint_rejects_cache_lifetime_and_read_bypasses",
       "FormalParseReuseContracts.test_manifest_binds_registry_body_and_rejects_removed_hooks",
@@ -7078,7 +7094,37 @@
       "path": "kb_platform/rag_testing/formal_state_machines.py",
       "symbol": "state_candidates",
       "language": "python",
-      "sha256": "6569761182f6456303f934ff8d5bff4f48023005c5316b5a4f5ba9c6a2aaddbc"
+      "sha256": "809221229bb496d1858e7b9bdb66a512a4f3e7720a9a60f323269c9d37f4ebf1"
+    },
+    {
+      "path": "kb_platform/rag_testing/formal_state_machines.py",
+      "symbol": "_OversizedCandidates",
+      "language": "python",
+      "sha256": "7899427f5041431f2590b139961134c2a2e5f9f2bf8322888ef50f7b066aaa40"
+    },
+    {
+      "path": "kb_platform/rag_testing/formal_state_machines.py",
+      "symbol": "_candidate_symbols_uncached",
+      "language": "python",
+      "sha256": "e7fc137e7b84c8e91f92d500bcc393b33e9ea81f5673519068faed1b341e1c9d"
+    },
+    {
+      "path": "kb_platform/rag_testing/formal_state_machines.py",
+      "symbol": "_candidate_payload_bytes",
+      "language": "python",
+      "sha256": "9a497658658af951bca22e7022c4e7b6a590279f627ebee1eac10397c35ff51a"
+    },
+    {
+      "path": "kb_platform/rag_testing/formal_state_machines.py",
+      "symbol": "_cached_candidate_symbols",
+      "language": "python",
+      "sha256": "2f85f171453320f14969cab10efbcee3992b44156ea7cc670913e4191cd6d705"
+    },
+    {
+      "path": "kb_platform/rag_testing/formal_state_machines.py",
+      "symbol": "candidate_symbols",
+      "language": "python",
+      "sha256": "c03e6ade606fd1fccc611b9e917132bf654cc22d62b5247b86fff6d962f379ea"
     },
     {
       "path": "kb_platform/rag_testing/formal_state_machines.py",
@@ -7102,7 +7148,19 @@
       "path": "scripts/check_project.py",
       "symbol": "formal_parse_reuse_violations",
       "language": "python",
-      "sha256": "39cb7707d6b7d5857840f102a106c279e4ef6cf3486bd3273e036dfed6a7eaf1"
+      "sha256": "cb39cbff0812c097098cc4870ebf1e0c070d86ae4af7e83d74ab6b7dd8da9999"
+    },
+    {
+      "path": "scripts/check_project.py",
+      "symbol": "registry_profile_workflow_violations",
+      "language": "python",
+      "sha256": "537eb93966a1e909f6806d529369538ac152e5da7fb62b2cbbeb8b8c01a6e41b"
+    },
+    {
+      "path": "scripts/check_project.py",
+      "symbol": "workflow_violations",
+      "language": "python",
+      "sha256": "3b17c0a49338a8a6e94a135be3e019e60aa83182488be6a568f8bfb8bbbe77cf"
     },
     {
       "path": "scripts/check_project.py",
