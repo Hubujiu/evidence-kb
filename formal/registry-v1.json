@@ -3269,6 +3269,24 @@
           "symbol": "delivery",
           "language": "python",
           "sha256": "aee4d87b4fde339d7b9e14c9c421cdb37752b0a766aae930bc12adc187022c7f"
+        },
+        {
+          "path": "kb_platform/rag_testing/plugin_process_integration.py",
+          "symbol": "idle_exit_dispatcher_settled",
+          "language": "python",
+          "sha256": "b708cc98141bde0e6e6890f07fa27e7eb8346fcb542eb0b45c72b6aec200e1bb"
+        },
+        {
+          "path": "kb_platform/rag_testing/plugin_process_integration.py",
+          "symbol": "idle_exit_case",
+          "language": "python",
+          "sha256": "d046cfcfc4d26dcae5ab2984f91dd9019e15f455699722dd4b34aa05937535d1"
+        },
+        {
+          "path": "kb_platform/rag_testing/process_dispatcher_integration.py",
+          "symbol": "verify_idle_exit_dispatcher",
+          "language": "python",
+          "sha256": "e1d4f08ed2daa37d0864e4cb98b9481da5c356d63b4a9c69bc8b9b68b3534913"
         }
       ],
       "models": [

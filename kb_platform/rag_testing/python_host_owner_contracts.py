@@ -162,6 +162,41 @@ class PythonHostOwnershipLintContracts(unittest.TestCase):
         self.assertEqual({Path(m['module']).stem for m in owner['models']},
                          {'PythonLease', 'PythonPump', 'PythonConfiguration', 'HttpLifespan'})
 
+    def test_dispatcher_observation_requires_all_terminal_counters_and_threads(self):
+        from copy import deepcopy
+        from threading import Event
+        from types import SimpleNamespace
+        from .plugin_process_integration import idle_exit_dispatcher_settled
+        snapshot = {'state': 'pending', 'leases': 0,
+            'counts': dict.fromkeys(('resources', 'operations', 'pending_operations', 'queued_actions'), 0)}
+        host = SimpleNamespace(inspect=lambda: snapshot)
+        alive = {'reader': False, 'writer': False, 'child': False}
+        transport = SimpleNamespace(_closed=True,
+            _reader=SimpleNamespace(is_alive=lambda: alive['reader']),
+            _writer=SimpleNamespace(is_alive=lambda: alive['writer']),
+            _process=SimpleNamespace(poll=lambda: None if alive['child'] else 0))
+        disposed = Event()
+        disposed.set()
+        self.assertTrue(idle_exit_dispatcher_settled(host, transport, disposed))
+        clean = deepcopy(snapshot)
+        for key in snapshot['counts']:
+            with self.subTest(counter=key):
+                snapshot['counts'][key] = 1
+                self.assertFalse(idle_exit_dispatcher_settled(host, transport, disposed))
+                snapshot = deepcopy(clean)
+        snapshot['leases'] = 1
+        self.assertFalse(idle_exit_dispatcher_settled(host, transport, disposed))
+        snapshot['leases'] = 0
+        for key in alive:
+            alive[key] = True
+            self.assertFalse(idle_exit_dispatcher_settled(host, transport, disposed))
+            alive[key] = False
+        transport._closed = False
+        self.assertFalse(idle_exit_dispatcher_settled(host, transport, disposed))
+        transport._closed = True
+        disposed.clear()
+        self.assertFalse(idle_exit_dispatcher_settled(host, transport, disposed))
+
     def test_hash_refresh_cannot_hide_local_ownership_mutations(self):
         from copy import deepcopy
         import json
@@ -175,7 +210,11 @@ class PythonHostOwnershipLintContracts(unittest.TestCase):
         registry['discovery'] = {'roots': [], 'exclusions': []}
         plugin = 'kb_platform/plugin_host.py'
         http = 'kb_platform/host_applications.py'
+        process = 'kb_platform/rag_testing/plugin_process_integration.py'
         mutations = [
+            (process, "('resources', 'operations', 'pending_operations', 'queued_actions')", "('resources', 'operations', 'pending_operations')"),
+            (process, 'idle_exit_dispatcher_settled(host, transport, disposed), 3)', 'transport._closed and disposed.is_set(), 3)'),
+            (process, "if dispatcher is not None and dispatcher['decision'] != 'PASS':", 'if False:'),
             (plugin, 'if root._pump_owner is not None or root._final_snapshot is not None:',
              'if root._pump_owner is None or root._final_snapshot is not None:'),
             (plugin, 'if root._pump_owner is owner:', 'if root._pump_owner is not owner:'),
