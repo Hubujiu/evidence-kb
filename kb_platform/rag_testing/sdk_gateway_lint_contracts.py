@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from scripts.physical_settlement_lint import CAPTURE_CONSUMERS, OWNERS
-from scripts.sdk_gateway_lint import CAPTURE, GATEWAY, MAIN, QUERY, violations
+from scripts.sdk_gateway_lint import ADMISSION, CAPTURE, GATEWAY, MAIN, QUERY, violations
 from .formal_state_machines import registry_violations, source_digest
 
 
@@ -17,7 +17,7 @@ class SDKGatewayLintContracts(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         root = Path(directory.name)
         (root / 'formal').mkdir()
-        paths = sorted({GATEWAY, CAPTURE, MAIN, *(row[0] for row in OWNERS),
+        paths = sorted({ADMISSION, GATEWAY, CAPTURE, MAIN, *(row[0] for row in OWNERS),
                         *(row[0] for row in CAPTURE_CONSUMERS)})
         bindings = []
         for path in paths:
@@ -152,6 +152,18 @@ class SDKGatewayLintContracts(unittest.TestCase):
         errors = registry_violations(root, registry)
         self.assertTrue(any('PageIndexClient construction must be protected' in error for error in errors), errors)
         self.assertFalse(any('source review drift' in error for error in errors), errors)
+
+    def test_provider_scope_guard_survives_refreshed_hashes(self):
+        self.check_mutation(ADMISSION,
+            "'endpoint_sha256': digest(provider.manifest.get('endpoint', provider.base_url))",
+            "'endpoint_sha256': 'shared'", 'provider/model/endpoint scope')
+        self.check_mutation(ADMISSION, "'model': provider.model", "'model': 'shared'",
+                            'provider/model/endpoint scope')
+        self.check_mutation(GATEWAY,
+            'if any(old.get("provider_scope") != admission.scope_hash for old in self.recovered_records):',
+            'if False:', 'semantic provider scope')
+        self.check_mutation(GATEWAY, 'or record["provider_scope"] != admission.scope_hash', 'or False',
+                            'exact new physical identity')
 
     def test_query_main_cleanup_survives_refreshed_hashes(self):
         self.check_mutation(QUERY, '        gateway.close()', '        pass',

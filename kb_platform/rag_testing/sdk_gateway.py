@@ -27,6 +27,7 @@ class SDKGateway:
         self.retry_of = {}
         self.cache_hits = []
         self.recovered_records = []
+        admission = None
         if recovery:
             if self.recovery_cache is None:
                 raise ValueError("RECOVERY_DEPENDENCIES_REQUIRED")
@@ -51,6 +52,9 @@ class SDKGateway:
                     raise ValueError("CONFLICTING_RECOVERY_PHYSICAL_IDENTITY")
                 identities[identity] = old
                 groups.setdefault(digest(key), (key, {}))[1][identity] = old
+            admission = ProviderAdmission(self.provider, self.provider.cache_dir / "provider-admission")
+            if any(old.get("provider_scope") != admission.scope_hash for old in self.recovered_records):
+                raise ValueError("RECOVERY_PROVIDER_SCOPE_CHANGED_OR_MISSING")
             for key_hash, (key, group) in groups.items():
                 completed = [old for old in group.values() if old["status"] == "COMPLETE"]
                 if completed:
@@ -73,7 +77,8 @@ class SDKGateway:
                     if linked != set(group) or current in linked:
                         raise ValueError("AMBIGUOUS_RECOVERY_RETRY_LINEAGE")
                     self.retry_of[key_hash] = latest
-        admission = ProviderAdmission(self.provider, self.provider.cache_dir / "provider-admission")
+        if admission is None:
+            admission = ProviderAdmission(self.provider, self.provider.cache_dir / "provider-admission")
         self.client = httpx.Client(
             transport=MeteredTransport(
                 httpx.HTTPTransport(retries=0),
@@ -153,7 +158,8 @@ class SDKGateway:
                                         or record["payload_sha256"] != digest(payload)
                                         or record["payload"] != payload or record["context"] != physical_context
                                         or record["status"] != "COMPLETE" or capture_unresolved(record)
-                                        or record["http_status"] != 200 or record["response"] != body):
+                                        or record["http_status"] != 200 or record["response"] != body
+                                        or record["provider_scope"] != admission.scope_hash):
                                     raise ValueError("NEW_REQUEST_CACHE_BINDING_MISMATCH")
                                 gateway.recovery_cache.put(stage_key, dict(response=body, physical_id=physical_id))
                         if status >= 400:
