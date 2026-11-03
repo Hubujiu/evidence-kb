@@ -11,7 +11,7 @@ Acquire == /\ phase = "idle" /\ phase' = "setup" /\ native' = TRUE /\ users' = 1
 Setup(ok) == /\ phase = "setup" /\ ok \in BOOLEAN
              /\ phase' = (IF ok THEN "body" ELSE IF SetupFinally THEN "release" ELSE "done")
              /\ token' = ok /\ failedSetup' = ~ok
-             /\ UNCHANGED <<users,native,signal,timer,settled,badRelease,nestedSeen>>
+             /\ UNCHANGED <<users,native,signal,timer,settled,badRelease,nestedSeen,invokedSeen>>
 Nest == /\ phase = "body" /\ users = 1 /\ phase' = "nested" /\ users' = 2 /\ nestedSeen' = TRUE
         /\ UNCHANGED <<native,token,signal,timer,settled,badRelease,failedSetup,invokedSeen>>
 NestedExit == /\ phase = "nested" /\ phase' = "body-end" /\ users' = 1

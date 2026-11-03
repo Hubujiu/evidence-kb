@@ -237,6 +237,7 @@ class PythonHostOwnershipLintContracts(unittest.TestCase):
             ('formal/python_host_lifecycles/PythonLease.tla', 'invokedSeen = FALSE', 'invokedSeen = TRUE'),
             ('formal/python_host_lifecycles/PythonLease.tla', "nestedSeen' = TRUE", "nestedSeen' = FALSE"),
             ('formal/python_host_lifecycles/PythonLease.tla', 'failedSetup,nestedSeen,invokedSeen>>', 'failedSetup,nestedSeen>>'),
+            ('formal/python_host_lifecycles/PythonLease.tla', 'badRelease,nestedSeen,invokedSeen>>', 'badRelease,nestedSeen>>'),
         ]
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)

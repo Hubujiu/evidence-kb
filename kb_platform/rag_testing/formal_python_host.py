@@ -90,4 +90,10 @@ def lease_witness_violations(source: str) -> list[str]:
               for fragment in fragments if re.sub(r"\s+", "", fragment) not in compact]
     if compact.count("invokedSeen'=") != 1 or compact.count("nestedSeen'=") != 1:
         errors.append("python host ownership: witness history may only be set by its actual event")
+    actions = re.split(r'(?m)^(\w+)(?:\([^\n]*\))?\s*==', source)
+    bodies = dict(zip(actions[1::2], actions[2::2]))
+    for name in ('Acquire', 'Setup', 'Nest', 'NestedExit', 'TimerFire', 'TimerDone', 'Finish', 'Release'):
+        unchanged = re.findall(r'UNCHANGED\s*<<([^>]*)>>', bodies.get(name, ''))
+        if not any('invokedSeen' in re.findall(r'\w+', fields) for fields in unchanged):
+            errors.append(f'python host ownership: {name} must preserve invocation history')
     return errors
