@@ -31,7 +31,9 @@ from .formal_inline_boolean import inline_boolean_findings, inline_control_fixtu
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = 'formal/registry-v1.json'
 LOCK = 'formal/toolchain-v1.json'
-STATE_NAMES = frozenset({'state', 'status', 'phase'})
+STATE_NAMES = frozenset({'state', 'status', 'phase', '_closed', '_closing', '_active',
+    '_pending', '_running', '_sealed', '_started', '_stopped', '_finished', '_entered',
+    '_ready', '_cancelled', '_generation', '_lease', '_outcome', '_done'})
 FRAME = re.compile(r'@!@!@STARTMSG (\d+):(\d+) @!@!@\r?\n(.*?)@!@!@ENDMSG \1 @!@!@', re.S)
 CFG_SECTIONS = frozenset({'SPECIFICATION', 'INIT', 'NEXT', 'CONSTANT', 'CONSTANTS',
     'INVARIANT', 'INVARIANTS', 'PROPERTY', 'PROPERTIES', 'CONSTRAINT', 'CONSTRAINTS',
@@ -243,9 +245,15 @@ def _registry_violations(root: Path, registry: dict | None, reviewed_digest) -> 
                             ('kb_platform/rag_testing/local_rerank.py', local_ranker_settlement_violations)):
             if (root / path).exists():
                 errors.extend(check((root / path).read_text('utf-8')))
+        production_registry = registry is None
         registry = registry if registry is not None else json.loads(local_file(root, REGISTRY).read_text('utf-8'))
-        if registry.get('schema_version') != 1 or not registry.get('machines'):
-            raise ValueError('Registry v1 requires a nonempty machine inventory')
+        if registry.get('schema_version') not in {1, 2} or not registry.get('machines'):
+            raise ValueError('Registry v1/v2 requires a nonempty machine inventory')
+        if production_registry and registry['schema_version'] != 2:
+            errors.append('Production registry requires schema v2 composition validation')
+        if registry['schema_version'] == 2:
+            from .formal_composition import composition_violations
+            errors.extend(composition_violations(root, registry))
         semantic_owner = 'kb_platform/semantic_pages_v2.py'
         if (root / semantic_owner).exists() or any(machine.get('id') == 'authority_publication'
                                                  for machine in registry['machines']):

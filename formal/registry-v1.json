@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "discovery": {
     "roots": [
       "kb_platform",
-      "rust"
+      "rust",
+      "scripts"
     ],
     "exclusions": [
       {
@@ -70,6 +71,56 @@
         "path": "kb_platform/rag_testing/console_browser_integration.py",
         "symbol": "run_cases",
         "reason": "Controlled browser regression runner records test and artifact status plus observed usage; not a production state owner."
+      },
+      {
+        "path": "scripts/check_project.py",
+        "symbol": "ContractTimingResult.stopTest",
+        "reason": "Test-result reporter projects unittest outcomes into timing JSON; no production execution lifecycle or resource transition is owned by this reporter."
+      },
+      {
+        "path": "scripts/check_project.py",
+        "symbol": "run_worker",
+        "reason": "Candidate is the local status value returned by the diagnostic watchdog cancel/validation and converted into test reporting. Worker process ownership is separately modeled by check_process_owner; this discovery match is not a second process owner."
+      },
+      {
+        "path": "scripts/delivery_server_app.py",
+        "symbol": "main",
+        "reason": "Read-only CLI configuration check stores the returned validation DTO in state and prints its projection; it neither creates an application nor transitions a service lifecycle."
+      },
+      {
+        "path": "scripts/fixtures/cordis-reference-loader.mjs",
+        "symbol": "<module>",
+        "reason": "Stateless Node fixture import resolver redirects one module path; it owns no lifecycle and is only used by the controlled Cordis reference generator."
+      },
+      {
+        "path": "scripts/fixtures/cordis-reference-runner.mjs",
+        "symbol": "<module>",
+        "reason": "Controlled external Cordis reference test driver records assertions and scenario observations; production plugin ownership is modeled separately. This fixture does not implement the production lifecycle."
+      },
+      {
+        "path": "scripts/migrate_postgres_search.py",
+        "symbol": "main",
+        "reason": "The status assignment is the final migration report outcome, not the stored search-generation state. Actual durable generation transitions remain owned by PostgresSearch.stage/verify in search_generation; this CLI aggregates immutable readback and unchanged-pointer checks."
+      },
+      {
+        "path": "scripts/replay_delivery_context.py",
+        "symbol": "freeze",
+        "reason": "Local state is an archived prepared projection read unchanged into replay fixtures; it grants no current authority and owns no execution lifecycle."
+      },
+      {
+        "path": "scripts/snapshot_delivery.py",
+        "symbol": "verify",
+        "reason": "Local state reads a preexisting snapshot completion receipt for hash verification; no write or transition of that receipt occurs in verify."
+      },
+      {
+        "path": "scripts/verify_delivery_operations.py",
+        "symbol": "verify_operations",
+        "reason": "Read-only operational probe aggregates test outcomes and observed status projections; it does not mutate service/session/provider lifecycle state."
+      },
+      {
+        "path": "scripts/verify_delivery_operations.py",
+        "symbol": "verify_operations.validate",
+        "reason": "Nested verifier changes only the controlled checks report PASS/FAIL after reading observations, not a production state owner."
       }
     ]
   },
@@ -3268,6 +3319,12 @@
           "language": "rust",
           "symbol": "Group::status",
           "sha256": "965b2bf7d3bd48c758977c7afaeb31391ae300f5fff7a559ed52c79b585ecdec"
+        },
+        {
+          "path": "kb_platform/host_protocol.py",
+          "language": "python",
+          "symbol": "HostConnection.__init__",
+          "sha256": "9f9d7cf243666374a356516730a12fdf769ca7f4394f0ad90c47b0ba87e7f18f"
         }
       ],
       "models": [
@@ -4463,6 +4520,12 @@
           "language": "python",
           "symbol": "BoundDatabase._lease",
           "sha256": "c6e49a733f6194b71c640e8f4646f3324bd5da06b11ee67195ac34371727c8f7"
+        },
+        {
+          "path": "kb_platform/storage_service.py",
+          "language": "python",
+          "symbol": "StorageService.__init__",
+          "sha256": "0d8a5fff5b33a3ee83db6b5bae6d7abbe4ccab37afb68ce0fc84125ac2ea2ecd"
         }
       ],
       "models": [
@@ -6122,28 +6185,36 @@
     },
     {
       "id": "circuit_tool_retry",
-      "status": "unmodeled",
+      "status": "partial",
       "owners": [
-        "kb_platform/provider_runtime.py"
+        "kb_platform/provider_runtime.py",
+        "kb_platform/remote.py",
+        "kb_platform/knowledge_planning.py"
       ],
       "states": [
-        "CLOSED→OPEN→HALF_OPEN probe→CLOSED/OPEN"
+        "outer callback -> circuit permit -> bounded physical attempts -> receipt and permit settlement -> terminal replay"
       ],
       "transitions": [
-        "ProviderCircuit.acquire",
-        "ProviderCircuit.finish",
-        "ToolExecutor.execute"
+        "ToolExecutor.execute callback/retry/terminal reuse",
+        "_provider_guard acquire/settle",
+        "physical request reserve/send/settle"
       ],
       "invariants": [
-        "One half-open probe; retries only permitted/read-only classes; one request fingerprint; interruption and late result not success; deadline and total-wait budget. Tool idempotency is memory-only and cannot be represented as durable restart guarantee."
+        "NoMutableOuterReplay",
+        "NoUnknownReplay",
+        "PermitBalance",
+        "PhysicalBound",
+        "PhysicalNeedsPermit",
+        "TerminalNoWork",
+        "TypeOK",
+        "UnknownRetainsCharge"
       ],
       "assumptions": [
-        "Inventory from main 8160c051e63952278c5f8a80d1b024ebbe3cea17; abstract states not model-checked.",
-        "Owner serialization, persistence atomicity, clock semantics, failure boundaries and finite bounds must be explicitly specified by the model."
+        "Two outer callbacks, two physical attempts per callback, four unique physical identities.",
+        "Circuit admission and physical receipt transitions are owned atomic abstractions; read_only is a caller declaration."
       ],
       "exclusions": [
-        "No model or formal proof exists for this inventory entry yet.",
-        "External provider/DB/filesystem/OS correctness and unbounded data domains are not established by inventory."
+        "No durable tool restart idempotency, unbounded histories, provider completion or full implementation refinement."
       ],
       "source_bindings": [
         {
@@ -6175,10 +6246,106 @@
           "language": "python",
           "symbol": "ToolOutcome",
           "sha256": "8a6dfd586c7b05a2d632e7c1a7302b6a9d7934cb19b1a92c9e1a281caf04472a"
+        },
+        {
+          "path": "kb_platform/remote.py",
+          "language": "python",
+          "symbol": "_provider_guard",
+          "sha256": "5f7adc324979d5ccc034135fdea36536461567e6b9262210dbf7b5dce5abbf75"
+        },
+        {
+          "path": "kb_platform/knowledge_planning.py",
+          "language": "python",
+          "symbol": "KnowledgePlanning.invoke_tool",
+          "sha256": "3b8c340f434df376c2669117861dadf669e0b0dfb2f3ae3d68e7e3eafe490b56"
         }
       ],
-      "models": [],
-      "negative_controls": []
+      "models": [
+        {
+          "id": "nested_request_ownership",
+          "module": "formal/circuit_tool_retry/NestedRequestOwnership.tla",
+          "config": "formal/circuit_tool_retry/NestedRequestOwnership.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "invariants": [
+            "NoMutableOuterReplay",
+            "NoUnknownReplay",
+            "PermitBalance",
+            "PhysicalBound",
+            "PhysicalNeedsPermit",
+            "TerminalNoWork",
+            "TypeOK",
+            "UnknownRetainsCharge"
+          ],
+          "properties": [],
+          "bounds": {
+            "outer_callbacks": 2,
+            "physical_attempts_per_callback": 2,
+            "physical_identities": 4
+          }
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "nested_dropunknowncharge",
+          "module": "formal/circuit_tool_retry/NestedRequestOwnership.tla",
+          "config": "formal/circuit_tool_retry/DropUnknownCharge.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "UnknownRetainsCharge"
+        },
+        {
+          "id": "nested_innerretrywitness",
+          "module": "formal/circuit_tool_retry/NestedRequestOwnership.tla",
+          "config": "formal/circuit_tool_retry/InnerRetryWitness.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "NoInnerRetryWitness"
+        },
+        {
+          "id": "nested_outerretrywitness",
+          "module": "formal/circuit_tool_retry/NestedRequestOwnership.tla",
+          "config": "formal/circuit_tool_retry/OuterRetryWitness.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "NoOuterRetryWitness"
+        },
+        {
+          "id": "nested_replayterminal",
+          "module": "formal/circuit_tool_retry/NestedRequestOwnership.tla",
+          "config": "formal/circuit_tool_retry/ReplayTerminal.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "TerminalNoWork"
+        },
+        {
+          "id": "nested_retryunknown",
+          "module": "formal/circuit_tool_retry/NestedRequestOwnership.tla",
+          "config": "formal/circuit_tool_retry/RetryUnknown.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "NoUnknownReplay"
+        },
+        {
+          "id": "nested_skippermit",
+          "module": "formal/circuit_tool_retry/NestedRequestOwnership.tla",
+          "config": "formal/circuit_tool_retry/SkipPermit.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "PhysicalNeedsPermit"
+        },
+        {
+          "id": "nested_unknownwitness",
+          "module": "formal/circuit_tool_retry/NestedRequestOwnership.tla",
+          "config": "formal/circuit_tool_retry/UnknownWitness.cfg",
+          "timeout_seconds": 60,
+          "heap_mb": 256,
+          "expected_invariant": "NoUnknownWitness"
+        }
+      ],
+      "remaining_obligations": [
+        "Validate concrete nested provider paths and physical receipt assumptions through executable contracts; bounded joint model is not a general composition theorem."
+      ]
     },
     {
       "id": "cache_evidence",
@@ -9536,7 +9703,8 @@
         "Finite models use two same-version schema contents, two owners, three handles/prepare attempts and one physical dataset; no SQL engine is reimplemented.",
         "Endpoint calls serialize under its existing RLock; direct bound/structured handle initialization is caller-serialized.",
         "Metadata may be constructed before prepare, but changing it after prepare is unsupported live configuration; the adversarial re-prepare control tests that such a change is not falsely acknowledged as the same identity.",
-        "A valid exact provider acknowledgement is trusted; corrupt or missing acknowledgements are not success."
+        "A valid exact provider acknowledgement is trusted; corrupt or missing acknowledgements are not success.",
+        "Raw _SqlSpace allows a transaction without prior prepare; valid transaction seals before physical entry, including entry failure."
       ],
       "exclusions": [
         "No proof of SQLAlchemy/DB migration atomicity, backend honesty, driver/OS failure semantics, cross-model refinement or unbounded executions.",
@@ -9638,6 +9806,12 @@
           "language": "python",
           "symbol": "prepare",
           "sha256": "ec1d605762bef6e0741359c38dd1e5af9fa45ba25d84ca9a23aee9dbf56cfd36"
+        },
+        {
+          "path": "kb_platform/storage_adapters/sql.py",
+          "language": "python",
+          "symbol": "_SqlSpace",
+          "sha256": "289865e5ac9173c917546df4278a88f3fecbfd3f0a1d8bcc088ced4ea5562409"
         }
       ],
       "models": [
@@ -9714,6 +9888,24 @@
             "identity_tuples": 2,
             "consumer_name_matches": 2
           }
+        },
+        {
+          "id": "rawsqllifecycle_safety",
+          "module": "formal/discovered_lifecycles/RawSqlLifecycle.tla",
+          "config": "formal/discovered_lifecycles/RawSqlLifecycle.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoPrepareAfterSeal",
+            "TransactionSeals",
+            "InvalidModePreservesAdmission"
+          ],
+          "properties": [],
+          "bounds": {
+            "owner": 1,
+            "operations": "at most two append/prepare/transaction actions; one launch and stop where applicable"
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
         }
       ],
       "negative_controls": [
@@ -9908,6 +10100,46 @@
           "heap_mb": 128,
           "timeout_seconds": 60,
           "expected_invariant": "NoConsumerRejectionWitness"
+        },
+        {
+          "id": "rawprepareafterseal",
+          "module": "formal/discovered_lifecycles/RawSqlLifecycle.tla",
+          "config": "formal/discovered_lifecycles/RawPrepareAfterSeal.cfg",
+          "expected_invariant": "NoPrepareAfterSeal",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "rawskipseal",
+          "module": "formal/discovered_lifecycles/RawSqlLifecycle.tla",
+          "config": "formal/discovered_lifecycles/RawSkipSeal.cfg",
+          "expected_invariant": "TransactionSeals",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "rawinvalidseals",
+          "module": "formal/discovered_lifecycles/RawSqlLifecycle.tla",
+          "config": "formal/discovered_lifecycles/RawInvalidSeals.cfg",
+          "expected_invariant": "InvalidModePreservesAdmission",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "rawunpreparedwitness",
+          "module": "formal/discovered_lifecycles/RawSqlLifecycle.tla",
+          "config": "formal/discovered_lifecycles/RawUnpreparedWitness.cfg",
+          "expected_invariant": "WitnessUnpreparedTransaction",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "rawfailedenterwitness",
+          "module": "formal/discovered_lifecycles/RawSqlLifecycle.tla",
+          "config": "formal/discovered_lifecycles/RawFailedEnterWitness.cfg",
+          "expected_invariant": "WitnessFailedEnterSeals",
+          "timeout_seconds": 60,
+          "heap_mb": 256
         }
       ],
       "remaining_obligations": [
@@ -12825,6 +13057,573 @@
           "timeout_seconds": 120,
           "heap_mb": 256
         }
+      ]
+    },
+    {
+      "id": "memory_session",
+      "status": "partial",
+      "owners": [
+        "kb_platform/harness_sessions.py"
+      ],
+      "states": [
+        "open -> append/snapshot -> finish/fail -> closed cleared"
+      ],
+      "transitions": [
+        "MemorySession",
+        "MemorySessions"
+      ],
+      "invariants": [
+        "TypeOK",
+        "NoClosedAppend",
+        "ClosedClearsRecords"
+      ],
+      "assumptions": [
+        "Sequential calls; two append actions; record values abstracted by count and independent snapshot."
+      ],
+      "exclusions": [
+        "No durable restart, cross-process ownership or arbitrary deepcopy-failure claim."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "MemorySession",
+          "sha256": "b891035ef65c3215891956be9dd6811e5353c7c56a687074853516d6a8ed589a"
+        },
+        {
+          "path": "kb_platform/harness_sessions.py",
+          "language": "python",
+          "symbol": "MemorySessions",
+          "sha256": "aa24e686813ae9c2fb2fd6a4e18640e6e2a0697c08a768a9d23fbf88a5304d97"
+        }
+      ],
+      "models": [
+        {
+          "id": "memorysession_safety",
+          "module": "formal/discovered_lifecycles/MemorySession.tla",
+          "config": "formal/discovered_lifecycles/MemorySession.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoClosedAppend",
+            "ClosedClearsRecords"
+          ],
+          "properties": [],
+          "bounds": {
+            "owner": 1,
+            "operations": "at most two append/prepare/transaction actions; one launch and stop where applicable"
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "memoryclosedappend",
+          "module": "formal/discovered_lifecycles/MemorySession.tla",
+          "config": "formal/discovered_lifecycles/MemoryClosedAppend.cfg",
+          "expected_invariant": "NoClosedAppend",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "memoryskippedclear",
+          "module": "formal/discovered_lifecycles/MemorySession.tla",
+          "config": "formal/discovered_lifecycles/MemorySkippedClear.cfg",
+          "expected_invariant": "ClosedClearsRecords",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "memoryfinishedwitness",
+          "module": "formal/discovered_lifecycles/MemorySession.tla",
+          "config": "formal/discovered_lifecycles/MemoryFinishedWitness.cfg",
+          "expected_invariant": "WitnessFinishedSnapshot",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "memoryfailedwitness",
+          "module": "formal/discovered_lifecycles/MemorySession.tla",
+          "config": "formal/discovered_lifecycles/MemoryFailedWitness.cfg",
+          "expected_invariant": "WitnessFailure",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Bounded abstraction and reviewed AST lint are not executable refinement or unbounded absence-of-bugs proof."
+      ]
+    },
+    {
+      "id": "delivery_control",
+      "status": "partial",
+      "owners": [
+        "scripts/delivery_control.py"
+      ],
+      "states": [
+        "suspended -> handle -> receipt -> release -> exact liveness",
+        "receipt -> process identity -> private marker -> observed exit or timeout"
+      ],
+      "transitions": [
+        "start",
+        "stop",
+        "process_start",
+        "write_receipt"
+      ],
+      "invariants": [
+        "TypeOK",
+        "ReleaseRequiresReceipt",
+        "MarkerRequiresIdentity",
+        "ExactInstanceLiveness"
+      ],
+      "assumptions": [
+        "One suspended child and one stop request; pidfd refers to acquired process identity; exclusive child ownership during launch.",
+        "Filesystem rename and OS pidfd contracts are assumed; missing acknowledgement is never inferred as stopped."
+      ],
+      "exclusions": [
+        "No dependency-service cleanup or process-tree proof; Docker timeout stays unresolved.",
+        "No real wall-clock progress, arbitrary OS failures or hostile concurrent filesystem replacement proof."
+      ],
+      "source_bindings": [
+        {
+          "path": "scripts/delivery_control.py",
+          "language": "python",
+          "symbol": "start",
+          "sha256": "5135fdd8d7a68f56550975629f9d7865e15107c37904f7d12d29598be7989896"
+        },
+        {
+          "path": "scripts/delivery_control.py",
+          "language": "python",
+          "symbol": "stop",
+          "sha256": "c08911dce2155e4803c1910395572a53eee806b5eea831577dfeff8119f47e95"
+        },
+        {
+          "path": "scripts/delivery_control.py",
+          "language": "python",
+          "symbol": "process_start",
+          "sha256": "4d79ad3af97f0339e5519d49588a6dbccab470c39a85b99d2303a8ca21b4420d"
+        },
+        {
+          "path": "scripts/delivery_control.py",
+          "language": "python",
+          "symbol": "write_receipt",
+          "sha256": "d61e8fa89251954727c0c521b9cb8d328865ae6803b70e18844c09c61b0c5528"
+        }
+      ],
+      "models": [
+        {
+          "id": "deliverycontrol_safety",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryControl.cfg",
+          "invariants": [
+            "TypeOK",
+            "ReleaseRequiresReceipt",
+            "MarkerRequiresIdentity",
+            "ExactInstanceLiveness"
+          ],
+          "properties": [],
+          "bounds": {
+            "owner": 1,
+            "operations": "at most two append/prepare/transaction actions; one launch and stop where applicable"
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "deliveryearlyrelease",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryEarlyRelease.cfg",
+          "expected_invariant": "ReleaseRequiresReceipt",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "deliverywrongprocess",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryWrongProcess.cfg",
+          "expected_invariant": "MarkerRequiresIdentity",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "deliverybadmarker",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryBadMarker.cfg",
+          "expected_invariant": "MarkerRequiresIdentity",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "deliverywronginstance",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryWrongInstance.cfg",
+          "expected_invariant": "ExactInstanceLiveness",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "deliverylaunchedwitness",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryLaunchedWitness.cfg",
+          "expected_invariant": "WitnessLaunched",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "deliveryunknownwitness",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryUnknownWitness.cfg",
+          "expected_invariant": "WitnessUnknownLaunch",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "deliverystalewitness",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryStaleWitness.cfg",
+          "expected_invariant": "WitnessStaleRefusal",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "deliverytimeoutwitness",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryTimeoutWitness.cfg",
+          "expected_invariant": "WitnessStopTimeout",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "deliverystoppedwitness",
+          "module": "formal/discovered_lifecycles/DeliveryControl.tla",
+          "config": "formal/discovered_lifecycles/DeliveryStoppedWitness.cfg",
+          "expected_invariant": "WitnessStopped",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "remaining_obligations": [
+        "Bounded abstraction and reviewed AST lint are not executable refinement or unbounded absence-of-bugs proof."
+      ]
+    },
+    {
+      "status": "partial",
+      "states": [
+        "open",
+        "closing",
+        "physical cleanup running",
+        "failed pending retry",
+        "acknowledged",
+        "removed"
+      ],
+      "transitions": [
+        "Seal admission",
+        "Drain active calls",
+        "Physical cleanup succeeds or fails",
+        "Explicit retry",
+        "Remove successfully closed owner"
+      ],
+      "assumptions": [
+        "RLock excludes competing threads; finally balances ordinary exception paths",
+        "Owned cleanup resources are not mutated outside the owner",
+        "Other providers and registry normal returns acknowledge actual cleanup"
+      ],
+      "exclusions": [
+        "Abrupt process termination",
+        "Redis network recovery",
+        "Unbounded resources and eventual cleanup"
+      ],
+      "remaining_obligations": [
+        "Finite abstraction has no source-to-TLA refinement proof",
+        "Third-party provider cleanup contracts require independent admission evidence"
+      ],
+      "id": "application_storage",
+      "owners": [
+        "kb_platform/application_storage.py"
+      ],
+      "invariants": [
+        "RetainedUntilClean",
+        "NoCleanupDuringOperation",
+        "CompleteOwnsNothing"
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/application_storage.py",
+          "language": "python",
+          "symbol": "ApplicationStorage.__init__",
+          "sha256": "dc7cdc9f5d36e0c245d58ec5b3a406b9da830f27db46ed5e7ed40e05f410fd1d"
+        },
+        {
+          "path": "kb_platform/application_storage.py",
+          "language": "python",
+          "symbol": "ApplicationStorage._operation",
+          "sha256": "c9a4fc9d0b0c5e8eb6a47a1136bc2889923bb0aa19043cb41afd0ce3f89afdca"
+        },
+        {
+          "path": "kb_platform/application_storage.py",
+          "language": "python",
+          "symbol": "ApplicationStorage.close",
+          "sha256": "fe33c8f0032e1f2714a11698dcc321a6562c28e14160493dc7eaa83f89aa2269"
+        },
+        {
+          "path": "kb_platform/storage_adapters/redis_cache.py",
+          "language": "python",
+          "symbol": "RedisCacheProvider.close",
+          "sha256": "21135461034ea0ab89e7c9510d2b06fe0cf4b7a67521392e7c0efe76cab85cf3"
+        }
+      ],
+      "models": [
+        {
+          "id": "application_storage_shutdown",
+          "module": "formal/storage_shutdown/StorageShutdown.tla",
+          "config": "formal/storage_shutdown/StorageShutdown.cfg",
+          "invariants": [
+            "TypeOK",
+            "AcknowledgedCleanup",
+            "RetainedUntilClean",
+            "NoCleanupDuringOperation",
+            "NoReentrantCleanup",
+            "CompleteOwnsNothing"
+          ],
+          "properties": [],
+          "bounds": {
+            "providers": 2,
+            "endpoints": 1,
+            "active": [
+              0,
+              1,
+              2
+            ],
+            "attempts_per_provider": [
+              0,
+              1,
+              2
+            ],
+            "EarlyAck": false,
+            "EarlyPop": false,
+            "AllowReentry": false
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "application_storage_early_pop",
+          "module": "formal/storage_shutdown/StorageShutdown.tla",
+          "config": "formal/storage_shutdown/EarlyPop.cfg",
+          "expected_invariant": "RetainedUntilClean",
+          "kind": "negative",
+          "purpose": "Seed premature consumer removal before physical cleanup acknowledgement",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "application_storage_retry_witness",
+          "module": "formal/storage_shutdown/StorageShutdown.tla",
+          "config": "formal/storage_shutdown/ReachRetry.cfg",
+          "expected_invariant": "NoRetryWitness",
+          "kind": "negative",
+          "purpose": "Reachability witness: two failed closes are retried and application completes; not a seeded defect",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "application_storage_busy_witness",
+          "module": "formal/storage_shutdown/StorageShutdown.tla",
+          "config": "formal/storage_shutdown/ReachBusyDrain.cfg",
+          "expected_invariant": "NoBusyDrainWitness",
+          "kind": "negative",
+          "purpose": "Reachability witness: closing admission retains two active operations; not a seeded defect",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ]
+    },
+    {
+      "status": "partial",
+      "states": [
+        "open",
+        "closing",
+        "physical cleanup running",
+        "failed pending retry",
+        "acknowledged",
+        "removed"
+      ],
+      "transitions": [
+        "Seal admission",
+        "Drain active calls",
+        "Physical cleanup succeeds or fails",
+        "Explicit retry",
+        "Remove successfully closed owner"
+      ],
+      "assumptions": [
+        "RLock excludes competing threads; finally balances ordinary exception paths",
+        "Owned cleanup resources are not mutated outside the owner",
+        "Other providers and registry normal returns acknowledge actual cleanup"
+      ],
+      "exclusions": [
+        "Abrupt process termination",
+        "Redis network recovery",
+        "Unbounded resources and eventual cleanup"
+      ],
+      "remaining_obligations": [
+        "Finite abstraction has no source-to-TLA refinement proof",
+        "Third-party provider cleanup contracts require independent admission evidence"
+      ],
+      "id": "redis_cache_provider",
+      "owners": [
+        "kb_platform/storage_adapters/redis_cache.py"
+      ],
+      "invariants": [
+        "AcknowledgedCleanup",
+        "NoReentrantCleanup"
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/storage_adapters/redis_cache.py",
+          "language": "python",
+          "symbol": "RedisCacheProvider.__init__",
+          "sha256": "28916bcc5c063e5372c1f1bafd945e46819a4b97ad5e7317a53708ba891c97e1"
+        },
+        {
+          "path": "kb_platform/storage_adapters/redis_cache.py",
+          "language": "python",
+          "symbol": "RedisCacheProvider._connection",
+          "sha256": "be51bf5a0ac7f235cefccbf1fb9efb1a784a5733a728aed2241228d2683e10b8"
+        },
+        {
+          "path": "kb_platform/storage_adapters/redis_cache.py",
+          "language": "python",
+          "symbol": "RedisCacheProvider.close",
+          "sha256": "21135461034ea0ab89e7c9510d2b06fe0cf4b7a67521392e7c0efe76cab85cf3"
+        }
+      ],
+      "models": [
+        {
+          "id": "redis_cache_cleanup",
+          "module": "formal/storage_shutdown/StorageShutdown.tla",
+          "config": "formal/storage_shutdown/RedisCleanup.cfg",
+          "invariants": [
+            "TypeOK",
+            "AcknowledgedCleanup",
+            "NoReentrantCleanup"
+          ],
+          "properties": [],
+          "bounds": {
+            "providers": 2,
+            "endpoints": 1,
+            "active": [
+              0,
+              1,
+              2
+            ],
+            "attempts_per_provider": [
+              0,
+              1,
+              2
+            ],
+            "EarlyAck": false,
+            "EarlyPop": false,
+            "AllowReentry": false
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "redis_cleanup_early_ack",
+          "module": "formal/storage_shutdown/StorageShutdown.tla",
+          "config": "formal/storage_shutdown/EarlyAck.cfg",
+          "expected_invariant": "AcknowledgedCleanup",
+          "kind": "negative",
+          "purpose": "Seed historical closed flag before physical close succeeds",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "redis_cleanup_reentrant",
+          "module": "formal/storage_shutdown/StorageShutdown.tla",
+          "config": "formal/storage_shutdown/Reentrant.cfg",
+          "expected_invariant": "NoReentrantCleanup",
+          "kind": "negative",
+          "purpose": "Seed omission of active-depth refusal during physical cleanup",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        }
+      ]
+    }
+  ],
+  "composition_edges": [
+    {
+      "id": "nested-request-ownership",
+      "participants": [
+        "circuit_tool_retry",
+        "provider_circuit",
+        "tool_executor",
+        "provider_receipts",
+        "physical_budget"
+      ],
+      "model": "nested_request_ownership",
+      "guarantees": [
+        "PermitBalance",
+        "PhysicalNeedsPermit",
+        "NoUnknownReplay",
+        "UnknownRetainsCharge",
+        "TerminalNoWork"
+      ],
+      "assumptions": [
+        "Physical receipt ownership and conservative settlement remain in their existing owners; read_only is declared, not inferred from ERROR."
+      ],
+      "contracts": [
+        "kb_platform/rag_testing/formal_composition_contracts.py:FormalCompositionContracts.test_inner_retry_owns_two_physical_requests_under_one_circuit_permit",
+        "kb_platform/rag_testing/formal_composition_contracts.py:FormalCompositionContracts.test_outer_readonly_retry_acquires_a_new_permit_and_preserves_both_bills",
+        "kb_platform/rag_testing/formal_composition_contracts.py:FormalCompositionContracts.test_unknown_keeps_reserved_cost_and_is_not_retried_at_either_layer",
+        "kb_platform/rag_testing/formal_composition_contracts.py:FormalCompositionContracts.test_terminal_tool_reuse_never_reenters_circuit_receipts_or_ledger"
+      ]
+    },
+    {
+      "id": "storage-cleanup-acknowledgement",
+      "participants": [
+        "application_storage",
+        "redis_cache_provider",
+        "storage_registry"
+      ],
+      "model": "application_storage_shutdown",
+      "guarantees": [
+        "AcknowledgedCleanup",
+        "RetainedUntilClean",
+        "NoCleanupDuringOperation"
+      ],
+      "assumptions": [
+        "Third-party child cleanup normal return acknowledges actual cleanup; RLock plus active owner excludes reentrant teardown."
+      ],
+      "contracts": [
+        "kb_platform/rag_testing/storage_shutdown_contracts.py:StorageShutdownContracts.test_application_retains_actual_redis_provider_after_failed_physical_close"
+      ]
+    },
+    {
+      "id": "authority-session-commit",
+      "participants": [
+        "knowledge_atomic_commit",
+        "session_commit",
+        "storage_transaction",
+        "authority_publication"
+      ],
+      "model": "knowledge_atomic_authority_commit",
+      "guarantees": [
+        "CurrentAuthorityAtCommit",
+        "AtomicCompletion",
+        "NoUnknownRetry"
+      ],
+      "assumptions": [
+        "Authority/session database transactions share physical dataset and backend lock semantics; UNKNOWN is not rollback."
+      ],
+      "contracts": [
+        "kb_platform/rag_testing/knowledge_commit_contracts.py:KnowledgeCommitContracts.test_commit_holds_authority_until_physical_commit_against_an_independent_client"
       ]
     }
   ]

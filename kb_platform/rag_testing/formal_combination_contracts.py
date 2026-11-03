@@ -12,7 +12,7 @@ from .formal_state_machines import source_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / 'formal/combination-inputs-authority-v3.json'
+MANIFEST = ROOT / 'formal/combination-inputs-composition-v4.json'
 
 
 def model_input_digest(data):
@@ -162,7 +162,8 @@ class FormalCombinationContracts(unittest.TestCase):
 
     def test_authority_revision_preserves_unrelated_linux_obligations_and_records_each_change(self):
         previous = json.loads((ROOT / 'formal/combination-inputs-linux-v2.json').read_text('utf-8'))
-        changes = self.manifest['reviewed_changes_from_linux_v2']
+        authority = json.loads((ROOT / 'formal/combination-inputs-authority-v3.json').read_text('utf-8'))
+        changes = authority['reviewed_changes_from_linux_v2']
         for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
             rows = deepcopy(previous[field])
             change = changes[field]
@@ -172,7 +173,7 @@ class FormalCombinationContracts(unittest.TestCase):
                 rows.remove(pair['before'])
                 rows.append(pair['after'])
             rows.extend(change['added'])
-            self.assertCountEqual(rows, self.manifest[field])
+            self.assertCountEqual(rows, authority[field])
         runs = changes['required_runs']
         historical = {'knowledge_authority_commit_limitation', 'knowledge_postflight_witness_evidencerevokedcommit'}
         self.assertEqual({row['id'] for row in runs['removed']}, historical)
@@ -187,6 +188,23 @@ class FormalCombinationContracts(unittest.TestCase):
             for row in models['added']))
         self.assertTrue(all(row['after']['path'].startswith('formal/session_authority/PostflightAuthority')
             for row in models['changed']))
+        for path, cases in previous['required_contract_cases'].items():
+            self.assertTrue(set(cases) <= set(authority['required_contract_cases'][path]))
+
+    def test_composition_revision_preserves_authority_evidence_and_records_each_change(self):
+        previous = json.loads((ROOT / 'formal/combination-inputs-authority-v3.json').read_text('utf-8'))
+        changes = self.manifest['reviewed_changes_from_authority_v3']
+        for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
+            rows = deepcopy(previous[field])
+            change = changes[field]
+            self.assertEqual(change['removed'], [])
+            for pair in change['changed']:
+                rows.remove(pair['before'])
+                rows.append(pair['after'])
+            rows.extend(change['added'])
+            self.assertCountEqual(rows, self.manifest[field])
+        self.assertEqual(changes['required_runs']['changed'], [])
+        self.assertEqual(changes['model_inputs']['changed'], [])
         for path, cases in previous['required_contract_cases'].items():
             self.assertTrue(set(cases) <= set(self.manifest['required_contract_cases'][path]))
 

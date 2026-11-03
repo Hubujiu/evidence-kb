@@ -26,6 +26,38 @@ def sample_log(*, violation=None, success=True):
 
 
 class FormalRegistryContracts(unittest.TestCase):
+    def test_lifecycle_booleans_and_executable_scripts_are_discovered(self):
+        from .formal_state_machines import state_candidates
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'scripts').mkdir()
+            (root / 'scripts/service.py').write_text(
+                'class Service:\n    def close(self):\n        self._closed = True\n'
+                '    def enter(self):\n        self._active += 1\n', encoding='utf-8')
+            self.assertEqual(state_candidates(root, ['scripts']), {
+                ('scripts/service.py', 'Service.close'), ('scripts/service.py', 'Service.enter')})
+
+    def test_schema_two_invokes_composition_gate_without_changing_schema_one_fixtures(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = self.fixture(root)
+            with patch('kb_platform.rag_testing.formal_composition.composition_violations',
+                       return_value=['composition: rejected fixture']) as check:
+                self.assertEqual(registry_violations(root, registry), [])
+                check.assert_not_called()
+                registry['schema_version'] = 2
+                self.assertIn('composition: rejected fixture', registry_violations(root, registry))
+                check.assert_called_once_with(root, registry)
+
+    def test_production_registry_cannot_downgrade_to_fixture_schema(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = self.fixture(root)
+            (root / 'formal/registry-v1.json').write_text(json.dumps(registry), encoding='utf-8')
+            self.assertIn('Production registry requires schema v2 composition validation',
+                          registry_violations(root))
+
     def fixture(self, root):
         (root / 'kb_platform').mkdir()
         (root / 'formal').mkdir()
