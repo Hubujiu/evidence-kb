@@ -13,11 +13,13 @@ from .rag_testing.contracts import digest
 
 class CaptureAdmissionError(RuntimeError):
     code = 'RAG_PHYSICAL_REQUEST_ADMISSION_FAILED'
+    model_sent = False
 
 
 class CapturePreflightError(CaptureAdmissionError):
     def __init__(self, reason):
         self.reason = reason
+        self.preflight_code = reason
         super().__init__(reason)
 
 
@@ -128,8 +130,11 @@ class ProviderAdmission:
     def require_available(self):
         try:
             blocked = self.snapshot()['state'] == 'BLOCKED'
-        except (ValueError, OSError, KeyError, TypeError) as exc:
-            raise CaptureAdmissionError('Provider admission state is unavailable; no request was sent') from exc
+        except BaseException as exc:
+            exc.model_sent = False
+            if isinstance(exc, (ValueError, OSError, KeyError, TypeError)):
+                raise CaptureAdmissionError('Provider admission state is unavailable; no request was sent') from exc
+            raise
         if blocked:
             raise CaptureAdmissionError('Provider is blocked after received HTTP 403; operator acknowledgement required; no request was sent')
 
