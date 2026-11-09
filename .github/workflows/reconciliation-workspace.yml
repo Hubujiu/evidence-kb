@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  candidate:
+  candidates:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -20,44 +20,44 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '22.23.1'
-      - name: Decode and verify reviewed source generator
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Prepare exact frontend follow-up
         run: |
           set -euo pipefail
-          mkdir -p /tmp/reconciliation-result
-          gh api repos/Hubujiu/evidence-kb/git/blobs/4e33b680922bebdb7a461025800a347432aa77ac > /tmp/reconciliation-result/transport.json
-          python - <<'PY'
-          import base64, gzip, hashlib, json
-          from pathlib import Path
-          data = json.loads(Path('/tmp/reconciliation-result/transport.json').read_text())
-          encoded = ''.join(data['content'].split()).replace('fniwnebMM/nF', 'fniwnebM/nF')
-          source = gzip.decompress(base64.b64decode(encoded + '=' * (-len(encoded) % 4)))
-          assert hashlib.sha256(source).hexdigest() == 'b8e35c4b2372d432b85dcf12fcfb64f866aefd3096b9424ce32dc499caab345f'
-          Path('/tmp/reconciliation-result/generate.py').write_bytes(source)
-          PY
-          cp reconciliation_web_followup.py /tmp/reconciliation-result/followup.py
-      - name: Build exact candidate without changing main or the original PR
+          mkdir -p /tmp/reconciliation-round2
+          cp reconciliation_round2.py /tmp/reconciliation-round2/patch.py
+          git fetch origin c289a1f3ad7f6f4c97c8656ae79c8d64eeb7ebc0
+          git worktree add -b codex/web-registry-followup-20261109 /tmp/web-followup c289a1f3ad7f6f4c97c8656ae79c8d64eeb7ebc0
+          cd /tmp/web-followup
+          python /tmp/reconciliation-round2/patch.py
+          git diff --check
+          python -m compileall -q e2e kb_platform/rag_testing/web_runner_contracts.py
+          node --experimental-strip-types --test scripts/web_ownership.test.mjs | tee /tmp/reconciliation-round2/owner-tests.log
+          git add web/package-lock.json kb_platform/rag_testing/web_runner_contracts.py
+          git -c user.name=ChatGPT -c user.email=noreply@openai.com commit -m 'fix(ci): use official npm tarballs without changing locked versions or integrity'
+          git push origin HEAD:refs/heads/codex/web-registry-followup-20261109
+          git rev-parse HEAD > /tmp/reconciliation-round2/web-head.txt
+      - name: Prepare independent pinned action updates on latest main
         run: |
           set -euo pipefail
-          git fetch origin 13d2cf9000da998307553a1451bb929a54ad7376
-          git worktree add -b codex/fix-web-async-ownership-20261109 /tmp/web-candidate 13d2cf9000da998307553a1451bb929a54ad7376
-          cd /tmp/web-candidate
-          python /tmp/reconciliation-result/generate.py
-          python /tmp/reconciliation-result/followup.py
-          git add -A
-          test "$(git write-tree)" = ec7fc02f573eb1561035f6160479b8c7dee463bc
-          git diff --cached --check
-          python -m compileall -q e2e scripts
-          node --experimental-strip-types --test scripts/web_ownership.test.mjs | tee /tmp/reconciliation-result/owner-tests.log
-          git -c user.name=ChatGPT -c user.email=noreply@openai.com commit -m 'fix(web): fence async workbench requests by identity scope and view generation'
-          git push origin HEAD:refs/heads/codex/fix-web-async-ownership-20261109
-          git rev-parse HEAD > /tmp/reconciliation-result/head.txt
-          git show --stat --oneline HEAD > /tmp/reconciliation-result/changes.txt
+          git fetch origin main b39a0a40c6af7d0dde7d69e9023e5a3008d1f3b8 d0cd0ad3112643cddde59dcd8e7a03ea8f9db7c6
+          test "$(git rev-parse origin/main)" = 69bc7d4d9868289a649b70c8946bd292f8951eb1
+          git worktree add -b codex/ci-toolchain-reconciliation-20261109 /tmp/ci-candidate 69bc7d4d9868289a649b70c8946bd292f8951eb1
+          cd /tmp/ci-candidate
+          git config user.name ChatGPT
+          git config user.email noreply@openai.com
+          git merge --no-ff --no-commit b39a0a40c6af7d0dde7d69e9023e5a3008d1f3b8
+          git commit -m 'build(ci): retain verified setup-java 6.1.0 update from PR79'
+          git merge --no-ff --no-commit d0cd0ad3112643cddde59dcd8e7a03ea8f9db7c6
+          git commit -m 'build(ci): retain setup-node 7.1.0 update from PR80'
+          test "$(git diff --name-only 69bc7d4d9868289a649b70c8946bd292f8951eb1 HEAD)" = .github/workflows/ci.yml
+          git diff --check 69bc7d4d9868289a649b70c8946bd292f8951eb1 HEAD
+          git diff 69bc7d4d9868289a649b70c8946bd292f8951eb1 HEAD > /tmp/reconciliation-round2/ci-actions.diff
+          git rev-parse HEAD > /tmp/reconciliation-round2/ci-head.txt
+          git push origin HEAD:refs/heads/codex/ci-toolchain-reconciliation-20261109
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: reconciliation-candidate
-          path: /tmp/reconciliation-result/
+          name: reconciliation-round2
+          path: /tmp/reconciliation-round2/
           retention-days: 3
           if-no-files-found: error
