@@ -118,10 +118,12 @@ class ContractApplicationContracts(unittest.TestCase):
         application = composition.application
         session = application.create(self.actor, scope)
         request = dict(message='What is the original rule?', request_id='durable-request', expected_revision=0,
-                       constraints=['Use only the original rule'])
+                       constraints=['Use only the original rule'],
+                       context_budget={'limit': 16000, 'unit': 'unicode_codepoints'})
         result = application.turn(self.actor, session['session_id'], **request)
         self.assertEqual(result['status'], 'answered', result)
         self.assertEqual(result['answer'], 'Original rule value 42.')
+        self.assertEqual(result['trace']['budget']['request_budget']['limit'], 16000)
         self.assertEqual(len(self.physical), 4)
         self.assertEqual(application.turn(self.actor, session['session_id'], **request), result)
         self.assertEqual(len(self.physical), 4)

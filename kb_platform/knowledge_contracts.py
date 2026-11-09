@@ -14,6 +14,12 @@ from .plugin_configuration import CONTEXT_PROPERTIES
 from .session_identity import Actor, PlatformError
 
 
+REQUEST_BUDGET_SCHEMA = {'type': ['object', 'null'], 'properties': {
+    'limit': {'type': 'integer', 'minimum': 1},
+    'unit': {'enum': ['unicode_codepoints']},
+    'scope': {'enum': ['messages', 'evidence']}},
+    'required': ['limit', 'unit'], 'additionalProperties': False}
+
 TEXT = {'type': 'string', 'minLength': 1}
 OBJECT = {'type': 'object'}
 ARRAY = {'type': 'array'}
@@ -80,7 +86,7 @@ def operation(names, *, optional=None, response=OBJECT):
     defaults = {'actor': ACTOR, 'state': OBJECT, 'response': OBJECT, 'payload': OBJECT,
                 'body': OBJECT, 'policy': NULL_OBJECT, 'source_policy': OBJECT,
                 'config': NULL_OBJECT, 'constraints': {'type': ['array', 'null'], 'items': TEXT},
-                'workflow_state': NULL_OBJECT,
+                'workflow_state': NULL_OBJECT, 'context_budget': REQUEST_BUDGET_SCHEMA,
                 'evidence': ARRAY, 'citation_ids': ARRAY, 'exclude_citation_ids': ARRAY,
                 'readers': ARRAY, 'filters': {'type': ['array', 'null'], 'items': OBJECT},
                 'column': {'type': ['string', 'null']}, 'current_step': {'type': ['string', 'null']},
@@ -115,7 +121,7 @@ EVIDENCE_OPERATIONS = {
     'search': operation('actor scope_id query policy', optional='limit exclude_citation_ids granularity', response=ARRAY),
     'search_pages': operation('actor scope_id query policy', optional='limit exclude_citation_ids', response=ARRAY),
     'search_tables': operation('actor scope_id query policy', optional='limit exclude_citation_ids', response=ARRAY),
-    'search_pipeline': operation('actor scope_id query policy', optional='config exclude_citation_ids'),
+    'search_pipeline': operation('actor scope_id query policy', optional='config exclude_citation_ids assessment_question'),
     'pipeline_capabilities': operation('actor scope_id policy'),
     'navigate_references': operation('actor scope_id citation_ids policy', optional='hops document_limit fragment_limit'),
     'table': operation('actor scope_id citation_id policy', optional='operation column filters'),
@@ -132,7 +138,7 @@ APPLICATION_OPERATIONS = {
     'authority': operation('actor scope_id'),
     'list_sessions': operation('actor', optional='limit offset'),
     'turn': operation('actor session_id message request_id expected_revision',
-                      optional='policy constraints workflow_state'),
+                      optional='policy constraints workflow_state context_budget'),
     'model_status': operation(''),
 }
 
@@ -234,7 +240,7 @@ class EvidenceEndpoint(ObjectEndpoint):
         values['actor'] = Actor(**values['actor'])
         pending = staged(self._implementation, **values)
         try:
-            candidates = next(pending)
+            prepared = next(pending)
         except StopIteration as completed:
             return {'result': json.loads(json.dumps(completed.value, allow_nan=False))}
         with self._lock:
@@ -246,7 +252,7 @@ class EvidenceEndpoint(ObjectEndpoint):
                 raise PlatformError('RETRIEVAL_STAGE_CAPACITY', 'Too many pending retrieval stages', 503)
             token = uuid4().hex
             self._pending[token] = (request['actor'], monotonic() + 900, pending)
-        return {'token': token, 'candidates': candidates}
+        return {'token': token, **prepared}
 
     def finish_pipeline(self, request):
         with self._lock:
@@ -299,9 +305,11 @@ class EvidenceClient(ObjectClient):
 
             self.pipeline_reranker = LunaCandidateReranker(RerankTextClient(model, metadata))
 
-    def search_pipeline(self, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=()):
+    def search_pipeline(self, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=(), assessment_question=None):
         request = {'actor': asdict(actor), 'scope_id': scope_id, 'query': query, 'policy': policy,
                    'config': config, 'exclude_citation_ids': list(exclude_citation_ids)}
+        if assessment_question is not None:
+            request['assessment_question'] = assessment_question
         prepared = domain_call(self._dependency.prepare_pipeline, request)
         if 'result' in prepared:
             return prepared['result']
@@ -309,7 +317,8 @@ class EvidenceClient(ObjectClient):
         try:
             if self.pipeline_reranker is None:
                 raise PlatformError('RERANKER_NOT_CONFIGURED', 'No reranker is bound to this workflow', 409)
-            ranking = self.pipeline_reranker.rank(query, prepared['candidates'])
+            ranker = self.pipeline_reranker
+            ranking = getattr(ranker, 'assess', ranker.rank)(prepared['assessment_input'], prepared['candidates'])
         except BaseException:
             domain_call(self._dependency.finish_pipeline, {**continuation, 'cancel': True})
             raise
@@ -320,9 +329,11 @@ EVIDENCE_METHODS = {**methods(EVIDENCE_OPERATIONS),
     'metadata': Method(EMPTY, OBJECT),
     'prepare_pipeline': Method(EVIDENCE_OPERATIONS['search_pipeline'].method().request,
         {'oneOf': [object_schema({'result': OBJECT}),
-                   object_schema({'token': TEXT, 'candidates': ARRAY})]}),
+                   object_schema({'token': TEXT, 'candidates': ARRAY, 'assessment_input': TEXT})]}),
     'finish_pipeline': Method({'oneOf': [
-        object_schema({'actor': ACTOR, 'token': TEXT, 'ranking': ARRAY}),
+        object_schema({'actor': ACTOR, 'token': TEXT, 'ranking': {'oneOf': [ARRAY,
+            object_schema({'ranking': ARRAY, 'coverage': ARRAY}),
+            object_schema({'ranking': ARRAY, 'coverage': ARRAY, 'coverage_protocol': TEXT})]}}),
         object_schema({'actor': ACTOR, 'token': TEXT, 'cancel': {'const': True}})]}, OBJECT)}
 
 
@@ -437,12 +448,14 @@ class ModelClient:
                 from .model_errors import RemoteModelError
 
                 converted = RemoteModelError('INVALID_AGENT_OUTPUT')
+                converted.output_diagnostics = {'validator_reason': str(error)}
                 converted.call_record = dict(known)
                 converted.call_record.update(error='INVALID_AGENT_OUTPUT', validator_reason=str(error))
                 if settlement_error is not None:
                     converted.call_record['cache_settlement_error'] = settlement_error
                 if hasattr(error, 'issue'):
                     converted.call_record['validator_issue'] = error.issue
+                    converted.output_diagnostics['validator_issue'] = error.issue
                 raise converted from error
             error.call_record = {**(getattr(error, 'call_record', None) or {}), **known}
             if settlement_error is not None:

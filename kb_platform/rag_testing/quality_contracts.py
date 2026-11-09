@@ -341,7 +341,7 @@ class OfflinePolicyContracts(unittest.TestCase):
 class NativeBuildGateContracts(unittest.TestCase):
 
 
-    def run_gate(self, root, output, *, build_code=0, publish=True, publish_host=True):
+    def run_gate(self, root, output, *, build_code=0, publish=True, publish_host=True, arguments=(), fail_check=None):
         calls = []
         source = None
 
@@ -365,16 +365,51 @@ class NativeBuildGateContracts(unittest.TestCase):
             if name == 'rust-tests' and source is not None and source.exists():
 
                 source.write_bytes(b'later build artifact')
-            return check_project.CheckResult(name, 0, name + '.log')
+            return check_project.CheckResult(name, int(name == fail_check), name + '.log')
 
         with patch.object(check_project, 'ROOT', root), \
                 patch.object(check_project, 'architecture_violations', return_value=[]), \
                 patch.object(check_project, 'run_check', side_effect=controlled_check), \
-                patch.object(check_project.sys, 'argv', ['check_project.py', '--output', str(output)]), \
+                patch.object(check_project.sys, 'argv', ['check_project.py', '--output', str(output), *arguments]), \
                 patch('builtins.print'):
             code = check_project.main()
         summary = json.loads((output / 'summary.json').read_text('utf-8'))
         return code, summary, calls
+
+    def test_browser_uses_current_prerequisites_and_failure_fails_the_command(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(check_project.os.environ, {
+                'KB_INTEGRATION_DSN': 'synthetic', 'KB_INTEGRATION_MIGRATION_DSN': 'synthetic'}):
+            root = Path(directory)
+            code, summary, calls = self.run_gate(root, root / 'browser',
+                arguments=('--local-integration', '--browser-integration'), fail_check='browser-integration')
+            self.assertEqual(1, code)
+            self.assertEqual('FAIL', summary['decision'])
+            command = next(command for name, command, env in calls if name == 'browser-integration')
+            prerequisites = Path(command[command.index('--checker-summary') + 1])
+            self.assertEqual('PASS', json.loads(prerequisites.read_text('utf-8'))['decision'])
+            self.assertEqual(summary['native_library'], json.loads(prerequisites.read_text('utf-8'))['native_library'])
+
+    def test_lint_failure_blocks_browser_without_erasing_the_requested_stage(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(check_project.os.environ, {
+                'KB_INTEGRATION_DSN': 'synthetic', 'KB_INTEGRATION_MIGRATION_DSN': 'synthetic'}):
+            root = Path(directory)
+            code, summary, calls = self.run_gate(root, root / 'failed-lint',
+                arguments=('--local-integration', '--browser-integration'), fail_check='lint')
+            self.assertEqual(1, code)
+            self.assertNotIn('browser-integration', [name for name, command, env in calls])
+            self.assertTrue(any(row['name'] == 'browser-integration' and row['exit_code'] != 0
+                                for row in summary['checks']))
+
+    def test_listing_does_not_run_checks_or_create_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'unused'
+            with patch.object(check_project.sys, 'argv', ['check_project.py', '--list', '--output', str(output)]), \
+                    patch.object(check_project, 'run_check') as run, patch('builtins.print') as printed:
+                self.assertEqual(0, check_project.main())
+            self.assertFalse(output.exists())
+            run.assert_not_called()
+            self.assertIn('kb_platform.rag_testing.quality_contracts',
+                          json.loads(printed.call_args.args[0])['contract_modules'])
 
     def test_failed_rebuild_cannot_run_contracts_with_a_previous_library(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -449,6 +484,8 @@ class NativeBuildGateContracts(unittest.TestCase):
                     if name == 'host-integration':
                         self.assertEqual(str(binary), env['KB_PLUGIN_HOST_BINARY'])
                 self.assertIn('rust-clippy', [name for name, _, _ in calls])
+                self.assertTrue({'lint', 'source-lint', 'source-lint-contracts', 'web-types'} <=
+                                {name for name, _, _ in calls})
             self.assertNotEqual(targets[0], targets[1])
             self.assertNotEqual(libraries[0], libraries[1])
             self.assertEqual(b'current release library', libraries[0].read_bytes())

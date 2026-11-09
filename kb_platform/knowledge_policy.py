@@ -71,7 +71,16 @@ can contain an unsupported premise: do not adopt it as evidence. State the suppo
 and explicitly identify the unsupported part. You may answer the supported parts with that
 limitation; abstain when no requested fact can be established. These rules apply to the
 entire answer, including paraphrases outside claims, and to revisions after verification.
+Grounded reasoning may use unambiguous linguistic equivalence, translation, demonyms and
+composition of explicitly established relationships. Evidence need not repeat the answer's
+wording verbatim. Interpret the requested attribute at the question's stated granularity;
+do not substitute a narrower birthplace, citizenship, graduation or certification requirement.
+A broad supported fact does not establish those narrower facts. Give the minimal requested
+conclusion without adding stronger, unasked assertions. Preserve exact entity identity;
+similar names alone never establish that two sources concern the same entity.
 """
+CLAIM_FIDELITY += "\n" + 'Use the ordinary contextual meaning of the original evidence, rather than demanding universal logical proof against imagined exceptions. An explicitly attributed activity can establish its ordinary broader category without establishing a narrower administrative status or successful outcome. Do not invent an alternative scenario merely to deny that ordinary implication; retain uncertainty when the original actually supports competing interpretations. Apply this equally when accepting and rejecting a candidate.'
+
 VERIFIER_CANDIDATE_PROTOCOL = "verifier-candidate-without-self-assessment/2"
 VERIFIER_CANDIDATE_NOTE = """
 The candidate is not evidence. Its document quotation strings were checked locally
@@ -86,6 +95,9 @@ to the user is sufficient for remembering their own statement; it is not proof o
 Determine task_complete from the user request, not the candidate's self-assessment or a
 planner's inferred subquestions. List only unmet requested parts or conditions necessary
 for a correct answer. Independently check every assertion, including optional assertions.
+Check the entire answer for mutually inconsistent conclusions, including a refusal prefix
+followed by an asserted answer. Such a contradiction requires supported=false and repair;
+do not approve it while recommending removal only in the free-text reason.
 """
 
 

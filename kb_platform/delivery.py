@@ -18,6 +18,7 @@ from kb_platform.rag_testing.budget_batches import ReviewedPredecessorLedger, va
 from kb_platform.rag_testing.provider_capture import CapturedLuna, observe_client, request_context
 from kb_platform.rag_testing.contracts import digest
 from kb_platform.embeddings import EmbeddingError
+from kb_platform.database_contracts import DatabaseError
 from kb_platform.remote import RemoteModelError
 from kb_platform.settings import Settings
 
@@ -29,6 +30,13 @@ WINDOW = {'total': 131072, 'input': 118784, 'output': 4096, 'safety': 8192,
           'counting': 'conservative_utf8_estimate'}
 RUNTIME_CAPS = {'model': 120, 'input_tokens': 1500000, 'output_tokens': 200000,
                 'remote_embedding_calls': 32, 'embedding_input_tokens': 60000}
+
+
+def validate_runtime_caps(caps):
+    if (not isinstance(caps, dict) or set(caps) != CAP_DIMENSIONS or
+            any(type(value) is not int or value < 1 for value in caps.values())):
+        raise ValueError('INVALID_RUNTIME_BUDGET_CAPS')
+    return caps
 
 
 class DeliveryConfigurationError(ValueError):
@@ -63,7 +71,7 @@ def load_profile(config_path=None, providers_path=None, run_root=None):
     config_path = _path(config_path or os.getenv('KB_DELIVERY_CONFIG', 'config/delivery-local-v1.json'))
     try:
         config = json.loads(config_path.read_text('utf-8'))
-        if (config.get('protocol') != 'enterprise-kb-delivery/1'
+        if (config.get('protocol') not in {'enterprise-kb-delivery/1', 'enterprise-kb-delivery/2'}
                 or not re.fullmatch(r'delivery-[a-zA-Z0-9-]{1,100}', config.get('id', ''))
                 or config.get('window') != WINDOW
                 or config.get('scope', {}).get('cross_session_memory') is not False
@@ -77,8 +85,10 @@ def load_profile(config_path=None, providers_path=None, run_root=None):
         selected = json.loads(provider_path.read_text('utf-8'))
         luna, google = selected['luna'], selected['google']
         expected_embedding = f"google_gemini:{google['model']}:{google['dimension']}"
-        if (config['models'].get('generation') != 'codex/gpt-6-luna'
-                or luna.get('model') != config['models']['generation']
+        generation = config['models'].get('generation')
+        if (not isinstance(generation, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}', generation)
+                or (config['protocol'] == 'enterprise-kb-delivery/1' and generation != 'codex/gpt-6-luna')
+                or luna.get('model') != generation
                 or config['models'].get('embedding') != expected_embedding
                 or google.get('model') != 'gemini-embedding-2' or google.get('dimension') != 768
                 or config['models'].get('model_comparison') is not False):
@@ -153,9 +163,9 @@ def load_budget_batch(profile, path):
         value = json.loads(path.read_text('utf-8'))
         if (value.get('protocol') != 'delivery-runtime-budget-batch/1'
                 or value.get('tenant_id') != profile.config['id']
-                or not re.fullmatch(r'runtime-[a-zA-Z0-9-]{1,80}', value.get('id', ''))
-                or value.get('caps') != RUNTIME_CAPS):
+                or not re.fullmatch(r'runtime-[a-zA-Z0-9-]{1,80}', value.get('id', ''))):
             raise ValueError()
+        validate_runtime_caps(value.get('caps'))
         predecessors = value['predecessors']
         paths = [str(_path(parent['path'])) for parent in predecessors]
         original = str(profile.root / 'physical-calls.sqlite3')
@@ -386,37 +396,41 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
         if batch:
             try:
                 cumulative = ledger.cumulative_summary()
-            except (OSError, ValueError, sqlite3.Error):
+            except (OSError, ValueError, sqlite3.Error, DatabaseError):
                 blocked_reason = 'PREDECESSOR_LEDGER_UNAVAILABLE'
         try:
             usage = ledger.summary()
-        except (OSError, ValueError, sqlite3.Error):
-            blocked_reason = blocked_reason or 'PREDECESSOR_LEDGER_CHANGED'
-            usage = cumulative['new_batch']['summary'] if cumulative else ledger.ledger.summary()
-        pending = cumulative['cumulative']['pending_or_unknown'] if cumulative else usage['pending_or_unknown']
+        except (OSError, ValueError, sqlite3.Error, DatabaseError):
+            blocked_reason = blocked_reason or 'BUDGET_READ_UNAVAILABLE'
+            usage = None
+        pending = (cumulative['cumulative']['pending_or_unknown'] if cumulative else
+                   usage['pending_or_unknown'] if usage is not None else None)
         admission_pending = cumulative.get('admission_pending_or_unknown', pending) if cumulative else pending
-        budget_blocked = bool(blocked_reason or admission_pending or usage['over_budget'] or
+        budget_blocked = bool(blocked_reason or admission_pending or (usage is not None and usage['over_budget']) or
                               cumulative and cumulative['status'] == 'BLOCKED')
         blocked = provider_blocked or budget_blocked
-        remaining = {key: max(0, ledger.caps[key] - used)
-                     for key, used in usage['effective_usage_or_reserved'].items()}
-        model_exhausted = any(remaining[key] == 0 for key in ('model', 'input_tokens', 'output_tokens'))
+        remaining = ({key: max(0, ledger.caps[key] - used)
+                      for key, used in usage['effective_usage_or_reserved'].items()} if usage is not None else None)
+        model_exhausted = remaining is not None and any(
+            remaining[key] == 0 for key in ('model', 'input_tokens', 'output_tokens'))
         return {'configured': True, 'profile': profile.config['id'], 'mode': 'runtime_batch' if batch else 'delivery',
             'batch_id': batch['id'] if batch else None,
             'status': 'BLOCKED' if blocked else 'BUDGET_EXHAUSTED' if model_exhausted else 'AVAILABLE',
             'budget_status': 'BLOCKED' if budget_blocked else 'BUDGET_EXHAUSTED' if model_exhausted else 'AVAILABLE',
-            'caps': ledger.caps, 'effective_usage_or_reserved': usage['effective_usage_or_reserved'],
+            'caps': ledger.caps, 'usage_available': usage is not None,
+            'effective_usage_or_reserved': usage['effective_usage_or_reserved'] if usage is not None else None,
             'remaining': remaining,
             'provider_blocked': provider_blocked, 'provider_channels': provider_channels,
-            'pending_or_unknown': pending, 'unknown_usage_requests': usage['unknown_usage_requests'],
+            'pending_or_unknown': pending,
+            'unknown_usage_requests': usage['unknown_usage_requests'] if usage is not None else None,
             'reviewed_unknown_requests': cumulative.get('reviewed_unknown_requests', 0) if cumulative else 0,
             'cumulative_unknown_usage_requests': cumulative['cumulative']['unknown_usage_requests']
-                if cumulative else None if batch else usage['unknown_usage_requests'],
+                if cumulative else None if batch or usage is None else usage['unknown_usage_requests'],
             'blocked_reason': blocked_reason or ('UNRESOLVED_PHYSICAL_REQUEST' if admission_pending else
                                                 'PROVIDER_PERMISSION_BLOCKED' if provider_blocked else
                                                 'BUDGET_EXHAUSTED' if model_exhausted else None),
             'cumulative_effective_usage_or_reserved': (cumulative['cumulative']['effective_usage_or_reserved']
-                if cumulative else None if batch else usage['effective_usage_or_reserved']),
+                if cumulative else None if batch or usage is None else usage['effective_usage_or_reserved']),
             'scope': 'single local delivery identity; independent phase caps; unknown reservations retained',
             'model_calls_from_status': 0}
 

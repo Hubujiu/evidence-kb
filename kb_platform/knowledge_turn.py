@@ -8,6 +8,7 @@ from .agent_tool_registry import advanced_tools
 from .session_store import digest
 from .agent_builtin_tools import BuiltinTools
 from .agent_call_budget import CallBudget
+from .context_budget import RequestBudget
 from .agent_work_state import begin_work_state, finish_work_state
 from .core import PlatformError
 from .knowledge_policy import VERSION, CONFIGS, CLAIM_FIDELITY, _active_evidence_limit, source_policy
@@ -34,7 +35,10 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
         policy=None,
         constraints=None,
         workflow_state=None,
+        context_budget=None,
     ):
+        RequestBudget.parse(context_budget)
+        self.context_budget = deepcopy(context_budget)
         self.actor = actor
         self.session_id = session_id
         self.message = message
@@ -91,6 +95,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
             "constraints": constraints,
             "runtime_protocol": self.service.runtime.protocol,
         }
+        if context_budget is not None:
+            request_content["context_budget"] = self.context_budget
         if self.service.plugins.names():
             request_content["plugins"] = self.service.plugins.manifest()
         if workflow_state is not None:
@@ -245,6 +251,12 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                 manifest = getattr(selected_reranker, 'manifest', {})
 
                 def rank(inner, query, candidates):
+                    return inner._rank(query, candidates, False)
+
+                def assess(inner, query, candidates):
+                    return inner._rank(query, candidates, True)
+
+                def _rank(inner, query, candidates, include_coverage):
                     ids = [item["citation_id"] for item in candidates]
                     if not ids:
                         return []
@@ -268,7 +280,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
 
                     bind = getattr(selected_reranker, 'bind_turn', None)
                     reranker = bind(complete) if bind is not None else selected_reranker
-                    ranked = reranker.rank(query, candidates)
+                    operation = getattr(reranker, 'assess', reranker.rank) if include_coverage else reranker.rank
+                    ranked = operation(query, candidates)
                     self.check_execution()
                     return ranked
 
@@ -336,6 +349,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                 semantic_pages=self.service.semantic_pages,
                 retrieval_config=self.service.retrieval_config,
                 store=self.service.store,
+                assessment_question=self.message,
             )
             self.trace["graph"] = {"protocol": GRAPH_PROTOCOL, "nodes": [], "automatic_replay": False}
             program = self.service.workflow_factory(
@@ -427,7 +441,7 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
             group = self.request_id
         return self.service.store.append(self.actor, self.session_id, self.token, kind, payload, group, agent)
 
-    def save_evidence(self, items):
+    def save_evidence(self, items, *, prioritize=False):
         if items:
             artifact = self.service.store.artifact(
                 self.actor, self.session_id, self.token, {"evidence": items}
@@ -455,7 +469,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
             retained = incoming[: self.max_active_evidence]
             prior = [cid for cid in self.state["evidence_order"] if cid not in incoming]
             spare = self.max_active_evidence - len(retained)
-            active = retained + (prior[-spare:] if spare else [])
+            previous = prior[-spare:] if spare else []
+            active = retained + previous if prioritize else previous + retained
             if set(self.state["evidence"]) - set(active):
                 self.state["checkpoints"] = {}
             self.state["evidence"] = {

@@ -9,6 +9,10 @@ from kb_platform.agent_model import AgentModel, BudgetLedger
 from . import agent_graph_contracts as fixtures
 from .budget import BudgetLedger as PhysicalLedger
 from .provider_capture import CapturedLuna, observe_client
+from kb_platform.knowledge_contracts import MODEL_METHODS, ModelClient, ModelEndpoint
+from kb_platform.plugin_contracts import ServiceEndpoint
+from kb_platform.model_configuration import TextView
+from kb_platform.retrieval_pipeline import LunaCandidateReranker
 
 
 def read_decision(messages):
@@ -27,7 +31,7 @@ class ModelOperationContracts(unittest.TestCase):
     setup_service = fixtures.AgentGraphContracts.setup_service
     turn = fixtures.AgentGraphContracts.turn
 
-    def model_case(self, outputs, *, config=None):
+    def model_case(self, outputs, *, config=None, through_contract=False):
         case = self.setup_service(config=config)
         configuration = case.root / 'provider.json'
         configuration.write_text(json.dumps({'cache_dir': str(case.root / 'cache'),
@@ -46,7 +50,7 @@ class ModelOperationContracts(unittest.TestCase):
             if isinstance(value, BaseException):
                 raise value
             return httpx.Response(200, json={'choices': [{'message': {
-                'content': value if isinstance(value, str) else json.dumps(value)},
+                'content': value if value is None or isinstance(value, str) else json.dumps(value)},
                 'finish_reason': 'stop'}], 'usage': {
                     'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}})
 
@@ -58,6 +62,10 @@ class ModelOperationContracts(unittest.TestCase):
         budget = BudgetLedger(max_calls=100, max_tokens=5_000_000)
         case.service.model = AgentModel(LunaModelProvider(client),
                                        policy=case.service.context_policy, ledger=budget)
+        if through_contract:
+            endpoint = ModelEndpoint(case.service.model)
+            self.addCleanup(endpoint.close)
+            case.service.model = ModelClient(ServiceEndpoint(endpoint, MODEL_METHODS))
         return SimpleNamespace(case=case, pending=pending, sent=sent, budget=budget, physical=physical)
 
     def test_independent_planner_operations_each_correct_once_with_strict_output_validation(self):
@@ -131,6 +139,56 @@ class ModelOperationContracts(unittest.TestCase):
         self.assertNotIn('format_repairs', result['trace'])
         self.assertEqual(len(run.sent), 1)
         self.assertEqual(len(run.pending), 1)
+
+    def test_received_null_content_gets_one_new_accounted_generation(self):
+        run = self.model_case([None, fixtures.decision(), fixtures.decision('answer'),
+                              fixtures.cited_answer, fixtures.verdict()], through_contract=True)
+        result = self.turn(run.case)
+        self.assertEqual(result['status'], 'answered', result)
+        repair, = result['trace']['format_repairs']
+        self.assertEqual(repair['reason'], 'AGENT_NON_TEXT_OUTPUT')
+        self.assertNotEqual(repair['failed_call_id'], repair['new_call_id'])
+        self.assertEqual(run.physical.summary()['physical_requests'], 5)
+        self.assertEqual(run.budget.snapshot()['calls'], 5)
+        self.assertEqual(result['trace']['calls'][0]['usage']['total_tokens'], 15)
+
+    def test_repeated_null_content_stops_after_one_correction(self):
+        run = self.model_case([None, None, fixtures.decision()])
+        result = self.turn(run.case)
+        self.assertEqual(result['status'], 'error', result)
+        self.assertEqual(len(result['trace']['format_repairs']), 1)
+        self.assertEqual(run.physical.summary()['physical_requests'], 2)
+        self.assertEqual(run.case.authority.calls, [])
+
+    def test_rerank_quote_correction_crosses_model_contract_and_remains_bounded(self):
+        for correct_second in (True, False):
+            with self.subTest(correct_second=correct_second):
+                def ranking(valid):
+                    def respond(messages):
+                        documents = json.loads(messages[-1]['content'])['documents']
+                        return {'scores': [0.9] * len(documents), 'requirements': [
+                            {'need': 'original rule', 'supported': True, 'evidence': [
+                                {'ref': documents[0]['ref'], 'quote': documents[0]['text']
+                                 if valid else 'He stated a paraphrase absent from the original.'}]}]}
+                    return respond
+
+                run = self.model_case([fixtures.decision('search_pipeline'), ranking(False),
+                    ranking(correct_second), fixtures.decision('answer'), fixtures.cited_answer,
+                    fixtures.verdict()], through_contract=True)
+                models = SimpleNamespace(catalog=lambda: {'generation': SimpleNamespace(
+                    provider='magpie_luna', model='synthetic', revision=1)})
+                run.case.gateway.pipeline_reranker = LunaCandidateReranker(
+                    TextView(models, run.case.service.model), protocol='coverage-array/1')
+                run.case.service.retrieval_config = {'channels': ['bm25'], 'rerank': True,
+                                                     'parent': 'none'}
+                result = self.turn(run.case)
+                self.assertEqual(result['status'], 'answered' if correct_second else 'error', result)
+                repair, = result['trace']['format_repairs']
+                self.assertEqual(repair['reason'], 'INVALID_RERANK_QUOTE')
+                self.assertNotEqual(repair['failed_call_id'], repair['new_call_id'])
+                self.assertEqual(run.physical.summary()['physical_requests'], 6 if correct_second else 3)
+                self.assertEqual(run.budget.snapshot()['calls'], 6 if correct_second else 3)
+                self.assertEqual(result['trace']['calls'][1]['usage']['total_tokens'], 15)
 
 
 if __name__ == '__main__':

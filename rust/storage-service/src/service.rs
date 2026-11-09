@@ -80,8 +80,6 @@ impl PreparedOperation {
     }
 }
 
-/// Drivers own backend execution. The service prepares one public operation,
-/// invokes it once, and validates its returned value without replaying effects.
 pub trait Driver {
     fn descriptor(&self) -> Descriptor;
     fn invoke(

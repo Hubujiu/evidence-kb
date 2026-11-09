@@ -91,3 +91,30 @@ Ruff 拒绝可变默认参数、无效表达式、重复类型条件、可直接
 项目只支持当前数据和配置格式，不新增历史字段回退、旧格式自动升级或历史 hash 放行表。合法性校验放在输入边界，内部函数复用已验证的合同；权限复核、事务租约和外部响应验证仍按实际边界执行。新增 hash 必须有明确消费者及用途，例如内容完整性、精确缓存或请求幂等；不能只写入诊断输出。审查必须检查这些语义约束，lint 不保证识别跨函数重复校验或判断 hash 是否有业务价值。
 
 本轮删除的旧存储选择入口、失效性能脚本及构建恢复用例迁移映射见 [存储能力清理](storage-capability-cleanup.md)。当前验收不调用 `postgres_operations` 或 `embedded_operations`，旧报告中的这些名称属于历史入口。
+
+## 统一 CLI 与确定性验收
+
+首次安装开发环境时执行 `uv sync --locked --group dev` 和 `npm ci --ignore-scripts --prefix web`。Node 使用 CI 固定的 22.23.1。默认命令仍为 `uv run --no-sync python scripts/check_project.py`，执行全部离线合同、评分器控制、Rust 检查、受控进程集成、Ruff、跨语言无注释检查、解析器合同和 TypeScript 检查。
+
+`uv run --no-sync python scripts/check_project.py --list` 只列出自动发现的合同模块和可选阶段，不导入产品、不执行测试、不创建输出目录。它不是验收结果。
+
+额外阶段通过同一入口执行。所有选项保留默认完整门禁，不提供跳过失败检查的开关。
+
+| 选项 | 验证范围 | 前置条件 |
+| --- | --- | --- |
+| `--local-integration` | HTTP、解析和 PostgreSQL | 两个隔离验收 DSN |
+| `--storage-integration` | 实际存储提供商及其浏览器验收 | `KB_STORAGE_TEST_*` 受控资源 |
+| `--browser-integration` | Rust 主宿主、HTTP、PostgreSQL 浏览器验收 | `--local-integration`，已安装 e2e 依赖与 Chromium |
+| `--web-integration` | 合成聊天与工作台浏览器验收 | 已安装 web、e2e 依赖与 Chromium |
+
+安装浏览器依赖使用 `npm ci --ignore-scripts --prefix e2e`，随后从 e2e 目录执行 `node node_modules/@e2e-dev/web/dist/bin.js install chromium --with-deps`。Web 阶段会构建当前前端，并使用本轮 Rust 快照。浏览器阶段仅在前置门禁通过后执行，使用不可变的 `prerequisites.json`。最终 `summary.json` 包含请求执行的阶段，前置失败时记录 BLOCKED，不遗失该阶段。
+
+CI 的 integration 任务使用同一命令并开启全部四个选项。删除质量检查步骤、将任务变为可选或移除任一集成选项，都会使 CI 配置合同失败。远端分支保护仍由仓库管理员配置，不能仅凭工作流文件宣称已经启用。
+
+无注释检查覆盖 Python、Rust、JS、TS、TSX、CSS 和 HTML 内嵌脚本。字符串中的 URL、Markdown、注释字符和测试夹具合法。第三方许可证、依赖、构建产物与冻结证据不作为活动源码扫描。Python 禁止 docstring，接口说明放在文档。前端类型检查同时拒绝未使用变量和参数。
+
+集成运行器要求执行前计划非零、实际数量相等，且无失败、错误、跳过、预期失败或意外成功。浏览器还要求单次尝试、非零确定性断言和零模型调用。这些合成合同证明测试协议及组件行为，不替代生产 RAG 质量评测。
+
+### 显式交付模型配置
+
+`enterprise-kb-delivery/1` 保留历史 Luna 固定模型约束。`enterprise-kb-delivery/2` 允许配置声明一个生成模型标识，并要求它与私有 provider 文件完全一致；容量、单并发、无自动重试、禁缓存和费用校验保持相同约束。版本2不暗示模型能力已验证，也不允许把不同模型结果当作相同模型的配对性能结论。模型选择只在交付配置边界处理，workflow、data 和答案插件不依赖具体模型名称。

@@ -85,7 +85,7 @@ class TurnBudgetContracts(unittest.TestCase):
     def test_actual_turn_retry_rerank_and_format_repair_cannot_send_twenty_first_request(self):
         case = self.setup_service(config={'novelty_search': False})
         script = [fixtures.decision('search_pipeline')]
-        script.extend(fixtures.decision('search', query=f'follow-up {index}') for index in range(5))
+        script.extend(fixtures.decision('calculator', expression=f'{index}+1') for index in range(5))
         script.extend([fixtures.decision('answer'), '{', fixtures.cited_answer, fixtures.verdict()])
         physical = PhysicalLedger(case.root / 'physical.sqlite', {
             'model': 100, 'input_tokens': 5_000_000, 'output_tokens': 500_000,
@@ -109,7 +109,7 @@ class TurnBudgetContracts(unittest.TestCase):
                 messages = json.loads(request.content)['messages']
                 value = script.pop(0) if name == 'generation' else {
                     'scores': [0.2, 0.9], 'requirements': [
-                        {'need': 'original', 'supported': False, 'evidence': []}]}
+                        {'need': 'original', 'supported': True, 'evidence': [{'ref': 'R001'}]}]}
                 value = value(messages) if callable(value) else value
                 return httpx.Response(200, json={'choices': [{'message': {
                     'content': value if isinstance(value, str) else json.dumps(value)},

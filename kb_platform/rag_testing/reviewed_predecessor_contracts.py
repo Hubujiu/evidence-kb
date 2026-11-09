@@ -47,6 +47,39 @@ class ReviewedPredecessorContracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'UNRESOLVED_PREDECESSOR'):
             freeze_predecessor(self.old.path)
 
+    def test_authorized_orphaned_started_preserves_old_record_and_reservation(self):
+        old = BudgetLedger(self.root / 'orphan' / 'physical-calls.sqlite3', self.caps)
+        self.addCleanup(old.close)
+        old.reserve('orphaned', self.reserved, category='generation:model')
+        record = old.path.parent / 'physical-requests' / 'orphaned.json'
+        record.parent.mkdir()
+        record.write_text(json.dumps(dict(physical_request_id='orphaned', status='STARTED',
+            category='generation:model', reserved=self.reserved)), 'utf-8')
+        review = {**self.review, 'schema': 'physical-model-outcomes-review/2',
+                  'snapshot': _snapshot(old.path), 'unknown_ids': ['orphaned'],
+                  'orphaned_started_ids': ['orphaned'],
+                  'records': {'orphaned': sha256(record.read_bytes()).hexdigest()}}
+        self.review_path.write_text(json.dumps(review), 'utf-8')
+        before = old.path.read_bytes(), record.read_bytes()
+        frozen = freeze_reviewed_predecessor(old.path, self.review_path)
+        ledger = ReviewedPredecessorLedger(self.root / 'continued.sqlite3', self.caps,
+                                           predecessors=[frozen])
+        self.addCleanup(ledger.ledger.close)
+        ledger.reserve('fresh', self.reserved)
+        ledger.finish('fresh', status='COMPLETE', usage=self.reserved)
+        summary = ledger.cumulative_summary()
+        self.assertEqual(summary['cumulative']['pending_or_unknown'], 1)
+        self.assertEqual(summary['admission_pending_or_unknown'], 0)
+        self.assertEqual(summary['cumulative']['effective_usage_or_reserved']['input_tokens'], 200)
+        self.assertEqual(before, (old.path.read_bytes(), record.read_bytes()))
+        with self.assertRaisesRegex(ValueError, 'BUDGET_PRODUCER_SEALED'):
+            old.reserve('late', self.reserved)
+        for changes in ({'producers_quiescent': False}, {'orphaned_started_ids': []},
+                        {'schema': 'physical-model-outcomes-review/1'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self.review_path.write_text(json.dumps({**review, **changes}), 'utf-8')
+                freeze_reviewed_predecessor(old.path, self.review_path)
+
     def test_review_retains_unknown_reservation_and_links_new_physical_request(self):
         before = self.old.path.read_bytes()
         ledger = ReviewedPredecessorLedger(self.root / 'new' / 'physical-calls.sqlite3', self.caps,
@@ -104,6 +137,17 @@ class ReviewedPredecessorContracts(unittest.TestCase):
             predecessors=[self.freeze(), freeze_predecessor(semantic.path)])), 'utf-8')
         profile = SimpleNamespace(root=self.old.path.parent, config={'id': 'tenant'})
         self.assertEqual(load_budget_batch(profile, batch)['id'], 'runtime-reviewed')
+        larger = {key: value * 4 for key, value in self.caps.items()}
+        value = json.loads(batch.read_text('utf-8'))
+        value['caps'] = dict(larger)
+        batch.write_text(json.dumps(value), 'utf-8')
+        self.assertEqual(load_budget_batch(profile, batch)['caps'], larger)
+        value['caps']['model'] = True
+        batch.write_text(json.dumps(value), 'utf-8')
+        with self.assertRaises(DeliveryConfigurationError):
+            load_budget_batch(profile, batch)
+        value['caps'] = larger
+        batch.write_text(json.dumps(value), 'utf-8')
         self.review['reason'] = 'different review after registration'
         self.review_path.write_text(json.dumps(self.review), 'utf-8')
         with self.assertRaises(DeliveryConfigurationError):

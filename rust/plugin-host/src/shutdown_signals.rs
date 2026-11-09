@@ -7,7 +7,6 @@ pub(crate) fn take_stop_request() -> bool {
     STOP_REQUESTED.swap(false, Ordering::Relaxed)
 }
 
-/// Keeps Unix termination signals on the host's normal shutdown path.
 pub struct ShutdownSignals {
     #[cfg(unix)]
     previous: Vec<(libc::c_int, libc::sigaction)>,
@@ -19,7 +18,6 @@ extern "C" fn request_stop(_: libc::c_int) {
 }
 
 impl ShutdownSignals {
-    /// Install once at the executable boundary, before starting any workers.
     pub fn install() -> io::Result<Self> {
         let signals = Self {
             #[cfg(unix)]
@@ -30,7 +28,6 @@ impl ShutdownSignals {
         STOP_REQUESTED.store(false, Ordering::Relaxed);
         #[cfg(unix)]
         for signal in [libc::SIGINT, libc::SIGTERM] {
-            // The handler only sets an atomic flag. All cleanup runs in the host loop.
             let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
             action.sa_sigaction = request_stop as *const () as usize;
             action.sa_flags = libc::SA_RESTART;

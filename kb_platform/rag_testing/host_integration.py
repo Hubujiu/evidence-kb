@@ -1,3 +1,5 @@
+from .test_outcomes import passed_contract_run
+
 import argparse
 from hashlib import sha256
 import io
@@ -488,10 +490,13 @@ def main():
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(HostIntegration)
     suite.addTests(authentication_suite())
+    planned = suite.countTestCases()
     result = unittest.TextTestRunner(stream=sys.stderr, verbosity=2).run(suite)
-    report = {'decision': 'PASS' if result.wasSuccessful() and not result.skipped else 'FAIL',
+    passed = passed_contract_run(result, planned)
+    report = {'decision': 'PASS' if passed else 'FAIL',
         'total': result.testsRun, 'failures': len(result.failures), 'errors': len(result.errors),
-        'skipped': len(result.skipped), 'captures': HostIntegration.captures,
+        'skipped': len(result.skipped), 'expected_failures': len(result.expectedFailures),
+        'planned': planned, 'not_run': planned - result.testsRun, 'captures': HostIntegration.captures,
         'new_model_calls': 0, 'new_embedding_calls': 0, 'new_judge_calls': 0,
         'scope': 'Rust main host with trusted Python worker, controlled localhost HTTP and ASGI authentication; '
                  'synthetic component fixtures and unified evidence scoring; '

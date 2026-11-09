@@ -1,0 +1,31 @@
+import { test } from '@e2e-dev/web';
+import { expect } from 'e2e';
+
+test('offline knowledge workspace from document to citation', async ({app, screen, browser}) => {
+ await app.open('/');
+ await screen.getByRole('button', '知识库管理').tap();
+ await browser.locator('.connect-banner button').tap();
+ await screen.getByLabel('访问令牌').fill('synthetic-web-token-for-offline-browser-acceptance');
+ await screen.getByRole('button', '连接知识库').tap();
+ await expect(screen.getByRole('button', '切换连接')).toBeVisible();
+ await screen.getByLabel('新知识库名称').fill('离线流程验证');
+ await screen.getByRole('button', '创建').tap();
+ await expect(screen.getByRole('status')).toContainText('知识库已创建');
+ await browser.locator('#work-file').setInputFiles('fixtures/source.md');
+ await screen.getByRole('button', '上传并解析').tap();
+ await expect(screen.getByRole('status')).toContainText('READY');
+ await screen.getByRole('button', '构建并发布索引').tap();
+ await expect(screen.getByRole('status')).toContainText('索引已发布');
+ await screen.getByLabel('检索问题或关键词').fill('QUARTZMARKER');
+ await screen.getByRole('button', '检索').tap();
+ await expect(browser.locator('.search-results')).toContainText('owner review before publication');
+ await screen.getByRole('button', '查看原文与定位').tap();
+ await expect(screen.getByRole('dialog')).toContainText('source.md');
+ await expect(screen.getByRole('dialog')).toContainText('owner review before publication');
+ await expect(browser.frameLocator('iframe[title="原文内容"]').locator('body')).toContainText('owner review before publication');
+ await screen.getByRole('button', '关闭').tap();
+ await screen.getByRole('button', '进入对话').tap();
+ await screen.getByLabel('向知识库提问').fill('这个流程是什么？');
+ await screen.getByRole('button', '发送问题').tap();
+ await expect(screen.getByRole('alert')).toContainText('对话服务尚未配置');
+});

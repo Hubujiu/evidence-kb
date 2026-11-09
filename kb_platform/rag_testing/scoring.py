@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import json
 from .contracts import Case, Plan, Suite, Trace, digest
+from ..context_budget import RequestBudget
 
 
 def corpus_hash(suite: Suite):
@@ -105,8 +106,9 @@ def score_case(suite: Suite, case: Case, trace: Trace | None, plan: Plan):
         if bound != set(range(len(trace.final))):
             reasons.append('fragment_absent_from_final_request:incomplete_wire_bindings')
 
-    context_size = (len(json.dumps(trace.request_messages, ensure_ascii=False))
-                    if trace.request_evidence_bindings else len(trace.final_context or ""))
+    budget = RequestBudget(case.input.context_budget, case.input.budget_unit)
+    context_size = (budget.measure_messages(trace.request_messages)
+                    if trace.request_evidence_bindings else budget.measure_text(trace.final_context or ""))
     if context_size > case.input.context_budget:
         reasons.append("context_budget_exceeded")
     result["context_size"] = context_size

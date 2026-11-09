@@ -7,6 +7,12 @@ from .planning_references import project_references
 from .session_identity import Actor, PlatformError
 
 
+REQUEST_BUDGET_SCHEMA = {'type': ['object', 'null'], 'properties': {
+    'limit': {'type': 'integer', 'minimum': 1},
+    'unit': {'enum': ['unicode_codepoints']},
+    'scope': {'enum': ['messages', 'evidence']}},
+    'required': ['limit', 'unit'], 'additionalProperties': False}
+
 ACTOR = {'type': 'object', 'properties': {
     'tenant_id': {'type': 'string', 'minLength': 1},
     'principal_id': {'type': 'string', 'minLength': 1}},
@@ -43,7 +49,8 @@ PREPARE_PROPERTIES = {
     'aliases': {'type': 'object', 'additionalProperties': {'type': 'string'}},
     'rerank_payload': {'type': ['object', 'null']},
 }
-PREPARE_REQUEST = {'type': 'object', 'properties': PREPARE_PROPERTIES,
+PREPARE_REQUEST = {'type': 'object',
+                   'properties': {**PREPARE_PROPERTIES, 'context_budget': REQUEST_BUDGET_SCHEMA},
                    'required': list(PREPARE_PROPERTIES), 'additionalProperties': False}
 
 
@@ -126,12 +133,14 @@ class KnowledgeContext:
                            and (request['reuse'] or not event['payload'].get('evidence_ids'))))]
         if self._evidence.authorize(source) != request['authority']:
             raise PlatformError('SCOPE_CHANGED', 'Authorization or manifest changed during context retrieval', 409)
+        budget_options = ({'request_budget': request['context_budget']}
+                          if request.get('context_budget') is not None else {})
         if request['rerank_payload'] is not None:
-            prepared = self._assembler.prepare_rerank(request['system'], evidence, request['rerank_payload'])
+            prepared = self._assembler.prepare_rerank(request['system'], evidence, request['rerank_payload'], **budget_options)
         else:
             aliases = request['aliases']
             prepared = self._assembler.prepare(request['role'], request['system'],
                 project_references(request['state'], aliases), project_references(history, aliases),
                 project_references(evidence, aliases), request['question'], request['checkpoint'],
-                selection_query=request['selection_query'])
+                selection_query=request['selection_query'], **budget_options)
         return {'prepared': prepared.to_dict(), 'evidence': evidence}

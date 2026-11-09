@@ -1,3 +1,5 @@
+from .test_outcomes import passed_contract_run
+
 import argparse
 from contextlib import contextmanager, ExitStack
 from copy import deepcopy
@@ -1078,10 +1080,11 @@ def run(output, environment=None):
             result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
         report.update({'tests': result.testsRun, 'failures': len(result.failures),
                        'errors': len(result.errors), 'skipped': len(result.skipped),
+                       'expected_failures': len(result.expectedFailures),
                        'not_run': len(planned) - result.testsRun,
                        'failure_details': [{'test': test.id(), 'traceback': detail}
                                            for test, detail in (*result.failures, *result.errors)]})
-        if result.wasSuccessful() and result.testsRun == len(planned) > 0 and not result.skipped:
+        if passed_contract_run(result, len(planned)):
             report['status'] = 'PASS'
     except Exception as error:
         report['error'] = type(error).__name__ + ': ' + str(error)

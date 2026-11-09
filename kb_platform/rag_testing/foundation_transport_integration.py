@@ -105,3 +105,64 @@ class FoundationTransportContracts(unittest.TestCase):
         self.assertIs(raised.exception.model_sent, False)
         self.assertEqual(self.wire.requests, [])
         self.assertEqual(self.ledger.summary()['physical_requests'], 0)
+
+    def test_http_runtime_status_remains_blocked_when_budget_storage_fails(self):
+        import asyncio
+        import httpx
+        from fastapi import FastAPI
+        from unittest.mock import Mock, patch
+        from kb_platform.agent_api import install_agent_routes
+        from kb_platform.database_contracts import DatabaseError
+        from kb_platform.delivery import create_delivery_app
+        from kb_platform.session_identity import Actor
+
+        run = self.root / 'delivery'
+        run.mkdir()
+        config = {'protocol': 'enterprise-kb-delivery/1', 'id': 'delivery-status-fixture',
+            'models': {'generation': 'codex/gpt-6-luna', 'embedding': 'google_gemini:gemini-embedding-2:768',
+                       'model_comparison': False},
+            'window': {'total': 131072, 'input': 118784, 'output': 4096, 'safety': 8192,
+                       'counting': 'conservative_utf8_estimate'},
+            'scope': {'cross_session_memory': False}, 'admission': {'concurrent_model_requests': 1},
+            'physical_call_caps': {'model': 2, 'input_tokens': 1000, 'output_tokens': 100,
+                                   'remote_embedding_calls': 2, 'embedding_input_tokens': 1000}}
+        providers = {'luna': {'model': 'codex/gpt-6-luna', 'cache_mode': 'disabled', 'retries': 0},
+            'google': {'model': 'gemini-embedding-2', 'dimension': 768, 'cache_mode': 'disabled', 'retries': 0},
+            'cache_dir': str(run / 'cache'), 'log_path': str(run / 'calls.jsonl')}
+        config_path, providers_path = run / 'config.json', run / 'providers.json'
+        config_path.write_text(json.dumps(config), 'utf-8')
+        providers_path.write_text(json.dumps(providers), 'utf-8')
+        admission = SimpleNamespace(scope_hash='local', directory=run, snapshot=lambda **kwargs: {'state': 'AVAILABLE'})
+        model = SimpleNamespace(provider_id='fixture', admission=admission, close=Mock())
+        embedding = SimpleNamespace(provider_id='google_gemini', admission=admission, close=Mock())
+        policy = SimpleNamespace(model_window=131072, input_budget=118784, output_reserve=4096, safety_reserve=8192)
+        agent = SimpleNamespace(model=SimpleNamespace(policy=policy), semantic_pages=None)
+        platform = SimpleNamespace(embedding_provider=embedding)
+        research = SimpleNamespace(embedding=embedding, configured=True)
+        actor = Actor('delivery-status-fixture', 'local')
+        app = FastAPI()
+        app.state.platform, app.state.research = platform, research
+        install_agent_routes(app, platform, research, lambda: actor, application=agent)
+        with patch('kb_platform.delivery.CapturedLuna', return_value=model), \
+                patch('kb_platform.remote.GoogleEmbeddingProvider', return_value=embedding), \
+                patch('kb_platform.delivery.observe_client'), patch('kb_platform.delivery._serialize_client_sends'):
+            create_delivery_app(config_path, providers_path, run, app_factory=lambda settings, **kwargs: app)
+        ledger = app.state.delivery['ledger']
+
+        async def request():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                         base_url='http://testserver') as client:
+                return await client.get('/agent/runtime-status')
+
+        try:
+            with patch.object(ledger, 'summary', side_effect=DatabaseError('BUDGET_READ_UNAVAILABLE')):
+                response = asyncio.run(request())
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()['status'], 'BLOCKED')
+            self.assertEqual(response.json()['blocked_reason'], 'BUDGET_READ_UNAVAILABLE')
+            self.assertIs(response.json()['usage_available'], False)
+            self.assertIsNone(response.json()['remaining'])
+            self.assertIsNone(response.json()['effective_usage_or_reserved'])
+        finally:
+            for close in app.router.on_shutdown:
+                close()

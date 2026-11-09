@@ -62,7 +62,8 @@ OPERATION_SCHEMAS = {name: object_schema({
     for name, properties in OPERATIONS.items()}
 _VALIDATORS = {name: schema_validator(schema) for name, schema in OPERATION_SCHEMAS.items()}
 ERROR_FIELDS = ('status', 'retry_after_seconds', 'model_sent', 'physical_request_id',
-                'request_id', 'call_record', 'preflight_code', 'output_diagnostics', 'observed_usage')
+                'request_id', 'call_record', 'preflight_code', 'output_diagnostics', 'observed_usage',
+                'budget_operation_id')
 _UNOBSERVED = object()
 
 
@@ -119,8 +120,8 @@ def error_details(error, *, dispatched=None, result=_UNOBSERVED, trace=None):
             details['physical_request_id'] = observed.get('physical_request_id')
         if details['request_id'] is None:
             details['request_id'] = observed.get('request_id')
-    elif details['model_sent'] is None and dispatched is not None:
-        details['model_sent'] = dispatched
+    elif details['model_sent'] is None and dispatched is False:
+        details['model_sent'] = False
     if details['model_sent'] is True:
         details['preflight_code'] = None
     if trace is not None:

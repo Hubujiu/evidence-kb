@@ -9,7 +9,7 @@ from threading import Lock
 import time
 from uuid import uuid4
 
-from .context_budget import ContextBudget as ContextPolicy, canonical, digest, estimate_messages
+from .context_budget import RequestBudget, ContextBudget as ContextPolicy, canonical, digest, estimate_messages
 from .model_errors import RemoteModelError
 from .agent_provider import ModelProvider
 from .agent_schema import compile_schema, validate_output
@@ -169,6 +169,9 @@ class AgentModel:
                 prepared[0]["content"] += "\n" + instruction
         else:
             prepared.insert(0, {"role": "system", "content": instruction})
+        request_budget = RequestBudget.parse(call_context.get("context_budget"))
+        if request_budget is not None:
+            request_budget.validate_messages(prepared)
         estimate = estimate_messages(prepared)
         limit = min(self.policy.input_budget, self.policy.model_window - output_limit - self.policy.safety_reserve)
         if estimate["tokens"] > limit:

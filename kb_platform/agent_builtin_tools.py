@@ -25,6 +25,7 @@ class BuiltinTools:
     semantic_pages: object
     retrieval_config: dict
     store: object
+    assessment_question: str
 
     def execute(self, action, args, group):
         handler = getattr(self, TOOLS[action].handler)
@@ -64,7 +65,10 @@ class BuiltinTools:
                     self.scope,
                     args["query"],
                     self.state["source_policy"],
-                    {"channels": ["bm25"], "rerank": False, "max_expanded_units": self.max_active_evidence},
+                    {**self.retrieval_config, "channels": ["bm25"],
+                     "max_expanded_units": min(self.retrieval_config.get("max_expanded_units", 50),
+                                               self.max_active_evidence)},
+                    assessment_question=self.assessment_question,
                     **search_options,
                 ),
                 empty=lambda value: not value["hits"],
@@ -124,6 +128,7 @@ class BuiltinTools:
                     args["query"],
                     self.state["source_policy"],
                     retrieval_config,
+                    assessment_question=self.assessment_question,
                     **pipeline_options,
                 ),
                 empty=lambda value: not value["hits"],
@@ -233,7 +238,7 @@ class BuiltinTools:
                 self.actor, self.scope, args["citation_ids"], self.state["source_policy"]
             ),
         )
-        self.save_evidence(items)
+        self.save_evidence(items, prioritize=True)
         self.seen_turn_evidence.update((x["citation_id"] for x in items))
         for item in items:
             self.state["evidence_offsets"][item["citation_id"]] = min(

@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from .core import PlatformError
+from .retrieval_assessment import assessment_input
 from .delivery_units import indexed_elements
 from .embeddings import EmbeddingError
 from .knowledge_embedding import embedding_audit
@@ -57,20 +58,25 @@ class PipelineConfig:
 class LunaCandidateReranker:
 
 
-    def __init__(self, luna):
+    def __init__(self, luna, *, protocol='coverage-contributions/3'):
         self.luna = luna
+        self.protocol = protocol
         self.provider_id = luna.provider_id
-        self.manifest = luna.manifest
+        self.manifest = {**luna.manifest, 'assessment_protocol': protocol}
 
     def bind_turn(self, completion):
-        return type(self)(self.luna.bind_turn(completion))
+        return type(self)(self.luna.bind_turn(completion), protocol=self.protocol)
 
     def rank(self, query, candidates):
+        return self.assess(query, candidates)['ranking']
+
+    def assess(self, query, candidates):
         from .reranking import rerank_documents
 
-        ranking, _ = rerank_documents(self.luna, query,
-            [{'doc_id': item['citation_id'], 'text': item['text']} for item in candidates])
-        return [{'citation_id': item['doc_id'], 'score': item['score']} for item in ranking]
+        ranking, coverage = rerank_documents(self.luna, query,
+            [{'doc_id': item['citation_id'], 'text': item['text']} for item in candidates], include_coverage=True, protocol=self.protocol)
+        return {'ranking': [{'citation_id': item['doc_id'], 'score': item['score']} for item in ranking],
+                'coverage': coverage, 'coverage_protocol': self.protocol}
 
 
 def _allowed_bindings(gateway, actor, bindings, policy):
@@ -87,10 +93,10 @@ def _catalog(gateway, actor, scope_id, state, allowed, *, mapping=None):
 
     allowed_rows = {tuple(row[key] for key in BINDING_FIELDS): row for row in allowed}
     allowed_keys = set(allowed_rows)
+    snapshot = gateway.platform._source_snapshot(actor, scope_id)
     with gateway.platform._tx(actor, scope_id) as conn:
-        gateway.platform._lock_authority(conn, actor)
-        gateway.platform._auth(conn, actor, scope_id)
-        rows = [row for row in gateway.platform._bindings(conn, actor, scope_id)
+        gateway.platform._check_source_snapshot(conn, actor, scope_id, snapshot)
+        rows = [row for row in snapshot['rows']
                 if tuple(row[key] for key in BINDING_FIELDS) in allowed_keys]
     gateway._unchanged(actor, scope_id, state)
     documents, units = [], {}
@@ -200,15 +206,16 @@ def _parents(seed, units, mode):
     return [unit['citation_id'] for unit in sorted(selected, key=lambda unit: (unit['start'], unit['end'], unit['citation_id']))]
 
 
-def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=()):
+def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=(), assessment_question=None):
     pending = staged(gateway, actor, scope_id, query, policy, config,
-                     exclude_citation_ids=exclude_citation_ids)
+                     exclude_citation_ids=exclude_citation_ids, assessment_question=assessment_question)
     try:
         request = next(pending)
     except StopIteration as completed:
         return completed.value
     try:
-        result = gateway.pipeline_reranker.rank(query, request)
+        ranker = gateway.pipeline_reranker
+        result = getattr(ranker, 'assess', ranker.rank)(request['assessment_input'], request['candidates'])
         pending.send(result)
     except StopIteration as completed:
         return completed.value
@@ -217,9 +224,10 @@ def execute(gateway, actor, scope_id, query, policy, config=None, *, exclude_cit
     raise RuntimeError('INVALID_RETRIEVAL_STAGE')
 
 
-def staged(gateway, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=()):
+def staged(gateway, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=(), assessment_question=None):
     from .agent_tools import EVIDENCE_FIELDS, _policy
 
+    assessment_input(query, assessment_question)
     policy, config = _policy(policy), PipelineConfig.parse(config)
     if not isinstance(query, str) or not query.strip() or len(query) > 2000:
         raise PlatformError('INVALID_QUERY', 'Invalid query', 422)
@@ -311,6 +319,8 @@ def staged(gateway, actor, scope_id, query, policy, config=None, *, exclude_cita
         -scores[key], key))[:config.fused_limit]
     ranked = [{**by_id[key], 'score': scores[key]} for key in fused_ids]
     fused_trace = [{'citation_id': item['citation_id'], 'score': item['score']} for item in ranked]
+    coverage = None
+    coverage_protocol = None
     if config.rerank and ranked:
         gateway._unchanged(actor, scope_id, state)
 
@@ -320,8 +330,13 @@ def staged(gateway, actor, scope_id, query, policy, config=None, *, exclude_cita
             if (not canonical['policy'].get('rerank', False) or
                     reranker.provider_id not in canonical['policy'].get('allowed_providers', [])):
                 raise PlatformError('PROCESSING_NOT_ALLOWED', 'Source does not permit this reranker', 409)
-        output = yield [{key: item[key] for key in EVIDENCE_FIELDS} for item in ranked]
+        output = yield {'assessment_input': assessment_input(query, assessment_question),
+                        'candidates': [{key: item[key] for key in EVIDENCE_FIELDS} for item in ranked]}
         gateway._unchanged(actor, scope_id, state)
+        from .retrieval_assessment import unpack_assessment
+
+        coverage_protocol = output.get('coverage_protocol', 'coverage-array/1') if isinstance(output, dict) else None
+        output, coverage = unpack_assessment(output, ranked)
         if (not isinstance(output, list) or len(output) != len(ranked) or
                 any(not isinstance(item, dict) or item.get('citation_id') not in fused_ids or
                     isinstance(item.get('score'), bool) or not isinstance(item.get('score'), (int, float)) or
@@ -333,7 +348,13 @@ def staged(gateway, actor, scope_id, query, policy, config=None, *, exclude_cita
                         key=lambda item: (bool(preferred) and item['source_id'] not in preferred,
                                           -item['score'], fused_ids.index(item['citation_id'])))
     reranked_trace = [{'citation_id': item['citation_id'], 'score': item['score']} for item in ranked]
-    delivery_ranked = ranked[:config.top_k]
+    eligible = ranked
+    if coverage is not None:
+        from .retrieval_assessment import supporting_ids
+
+        supported = supporting_ids(coverage, include_partial=coverage_protocol == 'coverage-contributions/3')
+        eligible = [item for item in ranked if item['citation_id'] in supported]
+    delivery_ranked = eligible[:config.top_k]
     selected, expansion = [], []
     admitted = 0
     for item in delivery_ranked:
@@ -364,7 +385,7 @@ def staged(gateway, actor, scope_id, query, policy, config=None, *, exclude_cita
                           'original_spans': [{'citation_id': key, 'parse_text_start': units[key]['start'],
                                               'parse_text_end': units[key]['end']} for key in original_parent_ids]})
     title_navigation = None
-    if config.title_navigation:
+    if config.title_navigation and coverage is None:
         from .title_packets import title_packet, linked_evidence_packet
 
         packet, edges = title_packet(query, documents, limit=min(20, config.top_k))
@@ -406,6 +427,11 @@ def staged(gateway, actor, scope_id, query, policy, config=None, *, exclude_cita
     hits = gateway.read(actor, scope_id, selected, policy)
     gateway._unchanged(actor, scope_id, state)
     return {'hits': [dict(item, retrieval_method=PROTOCOL) for item in hits],
+        'coverage': {'protocol': coverage_protocol, 'query': query, 'assessment_question': assessment_question, 'status': 'observed' if coverage is not None else 'unknown',
+            'requirements': [{'need': row['need'], 'supported': row['supported'],
+                'citation_ids': [quote['citation_id'] for quote in row['evidence']]}
+                for row in coverage or []], 'delivered_citation_ids': selected,
+            'unadmitted_citation_ids': [item['citation_id'] for item in ranked if item not in eligible]},
         'trace': {'protocol': PROTOCOL, 'config': asdict(config), 'manifest_id': state['manifest_id'],
             'rankings': {channel: [{'citation_id': item['citation_id'], 'score': item['score']} for item in rows]
                          for channel, rows in rankings.items()}, 'fused_ranking': fused_trace,
