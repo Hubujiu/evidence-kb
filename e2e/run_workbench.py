@@ -70,7 +70,7 @@ def main():
                     if time.monotonic() > deadline:
                         raise TimeoutError('API readiness deadline exceeded')
                     time.sleep(0.1)
-            return run_browser(node, runner, args.output, env)
+            return run_browser(node, runner, args.output, env, expected_tests=3)
         finally:
             stop.touch()
             try:

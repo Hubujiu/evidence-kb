@@ -802,6 +802,8 @@ def main() -> int:
         results.append(run_check('source-lint', ['node', str(ROOT / 'scripts/check_source.mjs')], output, env))
         results.append(run_check('source-lint-contracts',
                                  ['node', '--test', str(ROOT / 'scripts/check_source.test.mjs')], output, env))
+        results.append(run_check('web-ownership', ['node', '--experimental-strip-types', '--test',
+                                 str(ROOT / 'scripts/web_ownership.test.mjs')], output, env))
         results.append(run_check('web-types', ['node', str(ROOT / 'web/node_modules/typescript/bin/tsc'),
             '--project', str(ROOT / 'web/tsconfig.json'), '--noEmit', '--noUnusedLocals', '--noUnusedParameters'], output, env))
         for kind in ("contracts", "scorer"):
