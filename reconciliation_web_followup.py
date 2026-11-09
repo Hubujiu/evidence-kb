@@ -1,0 +1,37 @@
+from pathlib import Path
+root = Path.cwd()
+p = root / 'web/src/main.tsx'
+t = p.read_text()
+t = t.replace('scopeEpoch: number; token:', 'scopeEpoch: number; workbenchNotice: string; token:')
+t = t.replace("identityEpoch: 0, scopeEpoch: 0, token:", "identityEpoch: 0, scopeEpoch: 0, workbenchNotice: '', token:")
+t = t.replace("scopeEpoch: patch.scope !== undefined && patch.scope !== state.scope ? state.scopeEpoch + 1 : state.scopeEpoch", "scopeEpoch: patch.scope !== undefined && patch.scope !== state.scope ? state.scopeEpoch + 1 : state.scopeEpoch, workbenchNotice: patch.workbenchNotice ?? (patch.scope !== undefined && patch.scope !== state.scope ? '' : state.workbenchNotice)")
+t = t.replace('const { identityEpoch, scopeEpoch, token,', 'const { identityEpoch, scopeEpoch, workbenchNotice, token,')
+t = t.replace("identityEpoch: useApp.getState().identityEpoch + 1, token:", "identityEpoch: useApp.getState().identityEpoch + 1, workbenchNotice: '', token:")
+t = t.replace('scope={scope} busy={busy} isCurrent=', 'scope={scope} busy={busy} notice={workbenchNotice} isCurrent=')
+t = t.replace('onScopes={(next, id) =>', "onScopes={(next, id, notice = '') =>")
+t = t.replace('set({ scopes: next, scope: id, sources:', 'set({ scopes: next, scope: id, workbenchNotice: notice, sources:')
+p.write_text(t, encoding='utf-8')
+p = root / 'web/src/workbench.tsx'
+t = p.read_text()
+t = t.replace('scope, busy, isCurrent,', 'scope, busy, notice, isCurrent,')
+t = t.replace('busy: boolean; isCurrent:', 'busy: boolean; notice: string; isCurrent:')
+t = t.replace('onScopes: (scopes: Scope[], id: string) => void', 'onScopes: (scopes: Scope[], id: string, notice?: string) => void')
+t = t.replace("const [status, setStatus] = useState('')", 'const [status, setStatus] = useState(notice)')
+t = t.replace('onScopes(all, created.scope_id)', "onScopes(all, created.scope_id, '知识库已创建。添加文件后构建索引。')")
+p.write_text(t, encoding='utf-8')
+p = root / 'e2e/workbench.e2e.js'
+t = p.read_text().replace("expect(await browser.locator('#work-scope option').allTextContents()).toEqual(['Identity B']);", "expect(await browser.evaluate(() => Array.from(document.querySelectorAll('#work-scope option'), option => option.textContent))).toEqual(['Identity B']);")
+p.write_text(t, encoding='utf-8')
+p = root / 'e2e/run_web_chat.py'
+t = p.read_text()
+t = t.replace('def browser_verdict(output, expected_file):', 'def browser_verdict(output, expected_file, expected_tests=1):')
+t = t.replace("or len(results) != 1 or results[0]['file'] != expected_file\n            or results[0]['status'] != 'passed' or len(results[0]['attempts']) != 1\n            or results[0]['attempts'][0]['status'] != 'passed'", "or expected_tests < 1 or len(results) != expected_tests\n            or any(result['file'] != expected_file or result['status'] != 'passed'\n                   or len(result['attempts']) != 1 or result['attempts'][0]['status'] != 'passed'\n                   for result in results)")
+t = t.replace('Expected one passing browser case without skips, retries or model calls', 'Expected every declared browser case without skips, retries or model calls')
+t = t.replace("assertions = [step for step in results[0]['attempts'][0]['steps'] if step['kind'] == 'assertion']\n    if not assertions or any(step['status'] != 'passed' for step in assertions):", "assertions = [[step for step in result['attempts'][0]['steps'] if step['kind'] == 'assertion']\n                  for result in results]\n    if any(not group or any(step['status'] != 'passed' for step in group) for group in assertions):")
+t = t.replace("return {'tests': 1, 'assertions': len(assertions)", "return {'tests': len(results), 'assertions': sum(map(len, assertions))")
+t = t.replace('def run_browser(node, runner, output, env):', 'def run_browser(node, runner, output, env, *, expected_tests=1):')
+t = t.replace("browser_verdict(output / 'browser', env['KB_E2E_TESTS'])", "browser_verdict(output / 'browser', env['KB_E2E_TESTS'], expected_tests)")
+p.write_text(t, encoding='utf-8')
+p = root / 'e2e/run_workbench.py'
+t = p.read_text().replace('return run_browser(node, runner, args.output, env)', 'return run_browser(node, runner, args.output, env, expected_tests=3)')
+p.write_text(t, encoding='utf-8')
