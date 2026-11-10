@@ -89,8 +89,12 @@ def _source_digest(root: Path, binding: dict, parse_symbols) -> str:
         if path.suffix != '.mjs' or binding['symbol'] != '<module>':
             raise ValueError('JavaScript bindings require a complete .mjs module')
         return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+    if binding['language'] == 'typescript-module':
+        if path.suffix not in {'.ts', '.tsx'} or binding['symbol'] != '<module>':
+            raise ValueError('TypeScript bindings require a complete .ts or .tsx module')
+        return digest(path.read_bytes().replace(b'\r\n', b'\n'))
     if binding['language'] != 'rust':
-        raise ValueError('Source binding language must be python, rust or javascript-module')
+        raise ValueError('Source binding language must be python, rust, javascript-module or typescript-module')
     leaf = binding['symbol'].replace('::', '.').rsplit('.', 1)[-1]
     if leaf != '<module>' and not re.search(r'\b(?:fn|enum|struct)\s+' + re.escape(leaf) + r'\b', source):
         raise ValueError(f'Missing Rust declaration: {binding["symbol"]}')

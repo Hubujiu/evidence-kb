@@ -12,7 +12,7 @@ from .formal_state_machines import source_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / 'formal/combination-inputs-api-v6.json'
+MANIFEST = ROOT / 'formal/combination-inputs-chat-recovery-v7.json'
 
 
 def model_input_digest(data):
@@ -231,12 +231,13 @@ class FormalCombinationContracts(unittest.TestCase):
                             for row in changes['model_inputs']['changed']))
         for path, cases in previous['required_contract_cases'].items():
             self.assertTrue(set(cases) <= set(product['required_contract_cases'][path]), path)
-        changes = self.manifest['reviewed_changes_from_product_v5']
+        api = json.loads((ROOT / 'formal/combination-inputs-api-v6.json').read_text('utf-8'))
+        changes = api['reviewed_changes_from_product_v5']
         for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
             change = changes[field]
             self.assertEqual(change['removed'], [])
             self.assertEqual(change['changed'], [])
-            self.assertCountEqual([*product[field], *change['added']], self.manifest[field])
+            self.assertCountEqual([*product[field], *change['added']], api[field])
         self.assertEqual({row['id'] for row in changes['required_runs']['added']}, {
             'batch_recovery', 'batch_recovery_mutation', 'batch_recovery_authorization'})
         self.assertEqual({row['path'] for row in changes['model_inputs']['added']}, {
@@ -244,6 +245,35 @@ class FormalCombinationContracts(unittest.TestCase):
             'formal/budget_batches/BatchRecoveryMutationNegative.cfg',
             'formal/budget_batches/BatchRecoveryAuthorizationNegative.cfg'})
         for path, cases in product['required_contract_cases'].items():
+            self.assertTrue(set(cases) <= set(api['required_contract_cases'][path]), path)
+
+    def test_chat_recovery_preserves_every_api_v6_obligation(self):
+        previous = json.loads((ROOT / 'formal/combination-inputs-api-v6.json').read_text('utf-8'))
+        changes = self.manifest['reviewed_changes_from_api_v6']
+        for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
+            change = changes[field]
+            self.assertEqual(change['removed'], [])
+            if field != 'shared_entry_points':
+                self.assertEqual(change['changed'], [])
+            for item in change['changed']:
+                self.assertIn(item['before'], previous[field])
+            originals = [row for row in previous[field] if row not in [item['before'] for item in change['changed']]]
+            self.assertCountEqual([*originals, *[item['after'] for item in change['changed']], *change['added']], self.manifest[field])
+        self.assertEqual([(row['before']['path'], row['before']['symbol'])
+                          for row in changes['shared_entry_points']['changed']],
+                         [('scripts/check_project.py', 'formal_parse_reuse_violations')])
+        self.assertEqual({row['id'] for row in changes['required_runs']['added']}, {
+            'web_request_recovery', 'web_request_unknown_release', 'web_request_refresh_downgrade',
+            'web_request_stale_draft', 'web_request_stale_view', 'web_request_parked_session'})
+        self.assertEqual({row['path'] for row in changes['model_inputs']['added']}, {
+            'formal/web_request_recovery/WebRequestRecovery.tla',
+            'formal/web_request_recovery/WebRequestRecovery.cfg',
+            'formal/web_request_recovery/UnknownReleaseNegative.cfg',
+            'formal/web_request_recovery/RefreshDowngradeNegative.cfg',
+            'formal/web_request_recovery/StaleDraftNegative.cfg',
+            'formal/web_request_recovery/StaleViewNegative.cfg',
+            'formal/web_request_recovery/ParkedSessionNegative.cfg'})
+        for path, cases in previous['required_contract_cases'].items():
             self.assertTrue(set(cases) <= set(self.manifest['required_contract_cases'][path]), path)
 
     def test_changed_control_invariant_is_rejected_without_changing_any_id(self):

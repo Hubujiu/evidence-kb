@@ -1,0 +1,771 @@
+=== ParkedSessionNegative.log ===
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 43 and seed -5349094015221796459 with 1 worker on 9 cores with 128MB heap and 64MB offheap memory [pid: 6] (Linux 6.18.57 amd64, Debian 21.0.13 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/facb9bdc4683/evidence-kb-chat/formal/web_request_recovery/WebRequestRecovery.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module WebRequestRecovery
+Starting... (2026-11-10 07:56:34)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-11-10 07:56:34.
+Error: Invariant NoParkedSameSessionSend is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ phase = "idle"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 0
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = FALSE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 2: <Start line 25, col 5 to line 29, col 104 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 3: <Post line 44, col 5 to line 48, col 76 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 4: <LoseResponse line 51, col 5 to line 55, col 76 of module WebRequestRecovery>
+/\ phase = "unconfirmed"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "unknown"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 5: <Check line 58, col 5 to line 62, col 57 of module WebRequestRecovery>
+/\ phase = "checking"
+/\ reads = 1
+/\ lastReadId = 1
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "unknown"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 6: <Observe line 65, col 5 to line 70, col 76 of module WebRequestRecovery>
+/\ phase = "unconfirmed"
+/\ reads = 1
+/\ lastReadId = 1
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "not_found"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 7: <Park line 123, col 5 to line 129, col 55 of module WebRequestRecovery>
+/\ phase = "unconfirmed"
+/\ reads = 1
+/\ lastReadId = 1
+/\ parking = [started |-> FALSE, retained |-> TRUE, request |-> 0, session |-> 0]
+/\ draftOwner = 1
+/\ renderView = 0
+/\ view = 1
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "not_found"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 8: <NextDistinct line 132, col 5 to line 138, col 67 of module WebRequestRecovery>
+/\ phase = "unconfirmed"
+/\ reads = 1
+/\ lastReadId = 1
+/\ parking = [started |-> TRUE, retained |-> TRUE, request |-> 2, session |-> 1]
+/\ draftOwner = 1
+/\ renderView = 0
+/\ view = 1
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 2
+/\ status = "not_found"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+170 states generated, 111 distinct states found, 48 states left on queue.
+The depth of the complete state graph search is 8.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 8 and the 95th percentile is 4).
+Finished in 00s at (2026-11-10 07:56:35)
+
+=== RefreshDowngradeNegative.log ===
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 94 and seed -8738072614837867560 with 1 worker on 9 cores with 128MB heap and 64MB offheap memory [pid: 42] (Linux 6.18.57 amd64, Debian 21.0.13 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/facb9bdc4683/evidence-kb-chat/formal/web_request_recovery/WebRequestRecovery.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module WebRequestRecovery
+Starting... (2026-11-10 07:56:35)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-11-10 07:56:36.
+Error: Invariant KnownResultNeverUnknown is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ phase = "idle"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 0
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = FALSE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 2: <Start line 25, col 5 to line 29, col 104 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 3: <Post line 44, col 5 to line 48, col 76 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 4: <Receive line 73, col 5 to line 80, col 63 of module WebRequestRecovery>
+/\ phase = "confirmed"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = TRUE
+/\ submittedDraft = 0
+/\ renderAttempted = TRUE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = TRUE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 5: <Refresh line 83, col 5 to line 87, col 76 of module WebRequestRecovery>
+/\ phase = "refreshing"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = TRUE
+/\ submittedDraft = 0
+/\ renderAttempted = TRUE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = TRUE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 6: <RefreshFailure line 90, col 5 to line 94, col 76 of module WebRequestRecovery>
+/\ phase = "unconfirmed"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = TRUE
+/\ submittedDraft = 0
+/\ renderAttempted = TRUE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = TRUE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+55 states generated, 41 distinct states found, 17 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 8 and the 95th percentile is 4).
+Finished in 00s at (2026-11-10 07:56:36)
+
+=== StaleDraftNegative.log ===
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 96 and seed -4947235310138824962 with 1 worker on 9 cores with 128MB heap and 64MB offheap memory [pid: 78] (Linux 6.18.57 amd64, Debian 21.0.13 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/facb9bdc4683/evidence-kb-chat/formal/web_request_recovery/WebRequestRecovery.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module WebRequestRecovery
+Starting... (2026-11-10 07:56:36)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-11-10 07:56:37.
+Error: Invariant NoStaleDraftClear is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ phase = "idle"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 0
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = FALSE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 2: <Start line 25, col 5 to line 29, col 104 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 3: <Post line 44, col 5 to line 48, col 76 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 4: <Input line 109, col 5 to line 113, col 64 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 1
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 5: <Receive line 73, col 5 to line 80, col 63 of module WebRequestRecovery>
+/\ phase = "confirmed"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 1
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = TRUE
+/\ submittedDraft = 0
+/\ renderAttempted = TRUE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = TRUE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 1
+
+29 states generated, 24 distinct states found, 10 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 4 and the 95th percentile is 4).
+Finished in 00s at (2026-11-10 07:56:37)
+
+=== StaleViewNegative.log ===
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 41 and seed 8684001693773444565 with 1 worker on 9 cores with 128MB heap and 64MB offheap memory [pid: 114] (Linux 6.18.57 amd64, Debian 21.0.13 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/facb9bdc4683/evidence-kb-chat/formal/web_request_recovery/WebRequestRecovery.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module WebRequestRecovery
+Starting... (2026-11-10 07:56:37)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-11-10 07:56:38.
+Error: Invariant NoStaleRender is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ phase = "idle"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 0
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = FALSE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 2: <Start line 25, col 5 to line 29, col 104 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 3: <Post line 44, col 5 to line 48, col 76 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 4: <Navigate line 116, col 5 to line 120, col 76 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 1
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 5: <Receive line 73, col 5 to line 80, col 63 of module WebRequestRecovery>
+/\ phase = "confirmed"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 1
+/\ view = 1
+/\ draftCleared = TRUE
+/\ submittedDraft = 0
+/\ renderAttempted = TRUE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = TRUE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+32 states generated, 26 distinct states found, 11 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 4 and the 95th percentile is 4).
+Finished in 00s at (2026-11-10 07:56:38)
+
+=== UnknownReleaseNegative.log ===
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 81 and seed 4127068341580082928 with 1 worker on 9 cores with 128MB heap and 64MB offheap memory [pid: 150] (Linux 6.18.57 amd64, Debian 21.0.13 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/facb9bdc4683/evidence-kb-chat/formal/web_request_recovery/WebRequestRecovery.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module WebRequestRecovery
+Starting... (2026-11-10 07:56:38)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-11-10 07:56:39.
+Error: Invariant NoUnconfirmedNextSend is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ phase = "idle"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 0
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = FALSE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 2: <Start line 25, col 5 to line 29, col 104 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = FALSE
+/\ known = FALSE
+/\ posts = 0
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 3: <Post line 44, col 5 to line 48, col 76 of module WebRequestRecovery>
+/\ phase = "submitting"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "none"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 4: <LoseResponse line 51, col 5 to line 55, col 76 of module WebRequestRecovery>
+/\ phase = "unconfirmed"
+/\ reads = 0
+/\ lastReadId = 0
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "unknown"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 5: <Check line 58, col 5 to line 62, col 57 of module WebRequestRecovery>
+/\ phase = "checking"
+/\ reads = 1
+/\ lastReadId = 1
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "unknown"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 6: <Observe line 65, col 5 to line 70, col 76 of module WebRequestRecovery>
+/\ phase = "complete"
+/\ reads = 1
+/\ lastReadId = 1
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 1
+/\ status = "unknown"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+State 7: <NextTurn line 103, col 5 to line 106, col 76 of module WebRequestRecovery>
+/\ phase = "next"
+/\ reads = 1
+/\ lastReadId = 1
+/\ parking = [started |-> FALSE, retained |-> FALSE, request |-> 0, session |-> 0]
+/\ draftOwner = 0
+/\ renderView = 0
+/\ view = 0
+/\ draftCleared = FALSE
+/\ submittedDraft = 0
+/\ renderAttempted = FALSE
+/\ requestId = 1
+/\ sent = TRUE
+/\ known = FALSE
+/\ posts = 2
+/\ status = "unknown"
+/\ started = TRUE
+/\ implicit = FALSE
+/\ clearedOwner = 0
+
+72 states generated, 53 distinct states found, 20 states left on queue.
+The depth of the complete state graph search is 7.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 8 and the 95th percentile is 4).
+Finished in 00s at (2026-11-10 07:56:39)
+
+=== WebRequestRecovery.log ===
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 27 and seed -8227541306519318274 with 1 worker on 9 cores with 128MB heap and 64MB offheap memory [pid: 186] (Linux 6.18.57 amd64, Debian 21.0.13 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /workspace/scratch/facb9bdc4683/evidence-kb-chat/formal/web_request_recovery/WebRequestRecovery.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module WebRequestRecovery
+Starting... (2026-11-10 07:56:40)
+Computing initial states...
+Finished computing initial states: 2 distinct states generated at 2026-11-10 07:56:40.
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 8.8E-15
+819 states generated, 338 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 14.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 8 and the 95th percentile is 3).
+Finished in 00s at (2026-11-10 07:56:40)

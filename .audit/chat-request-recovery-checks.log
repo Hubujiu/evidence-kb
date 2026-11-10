@@ -1,0 +1,183 @@
+=== build.log ===
+(node:5) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> build
+> tsc -b && vite build
+
+(node:18) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:50) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 2731 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.37 kB │ gzip:   0.29 kB
+dist/assets/index-BUHGIbrv.css   49.87 kB │ gzip:  11.73 kB
+dist/assets/index-Bps5Fwsz.js   645.44 kB │ gzip: 203.04 kB
+
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 656ms
+
+=== contracts.log ===
+......................................................
+----------------------------------------------------------------------
+Ran 54 tests in 4.578s
+
+OK
+
+=== web-ownership.log ===
+(node:5) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+TAP version 13
+# (node:12) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: current operation can commit
+ok 1 - current operation can commit
+  ---
+  duration_ms: 1.497102
+  type: 'test'
+  ...
+# Subtest: supersession aborts transport and rejects stale result and error writes
+ok 2 - supersession aborts transport and rejects stale result and error writes
+  ---
+  duration_ms: 0.313989
+  type: 'test'
+  ...
+# Subtest: identity changes invalidate even an abort-ignoring response body
+ok 3 - identity changes invalidate even an abort-ignoring response body
+  ---
+  duration_ms: 0.603068
+  type: 'test'
+  ...
+# Subtest: returning to the same token does not restore the previous identity epoch
+ok 4 - returning to the same token does not restore the previous identity epoch
+  ---
+  duration_ms: 0.271958
+  type: 'test'
+  ...
+# Subtest: scope and page changes reject old callbacks before effect cleanup
+ok 5 - scope and page changes reject old callbacks before effect cleanup
+  ---
+  duration_ms: 0.605877
+  type: 'test'
+  ...
+# Subtest: unmount invalidation blocks late resource allocation
+ok 6 - unmount invalidation blocks late resource allocation
+  ---
+  duration_ms: 0.677212
+  type: 'test'
+  ...
+# Subtest: old completion cannot clear a newer operation
+ok 7 - old completion cannot clear a newer operation
+  ---
+  duration_ms: 1.163976
+  type: 'test'
+  ...
+# Subtest: restoring a previous scope or page never restores its old operation generation
+ok 8 - restoring a previous scope or page never restores its old operation generation
+  ---
+  duration_ms: 0.335314
+  type: 'test'
+  ...
+# Subtest: session creation has no submitted request until its own success
+ok 9 - session creation has no submitted request until its own success
+  ---
+  duration_ms: 0.750881
+  type: 'test'
+  ...
+# Subtest: a context change before the POST does not invent an uncertain send
+ok 10 - a context change before the POST does not invent an uncertain send
+  ---
+  duration_ms: 0.48721
+  type: 'test'
+  ...
+# Subtest: unconfirmed and every nonterminal recovery outcome retain identity and block new turns
+ok 11 - unconfirmed and every nonterminal recovery outcome retain identity and block new turns
+  ---
+  duration_ms: 2.00627
+  type: 'test'
+  ...
+# Subtest: a failed recovery read cannot release or replace the original request
+ok 12 - a failed recovery read cannot release or replace the original request
+  ---
+  duration_ms: 0.308526
+  type: 'test'
+  ...
+# Subtest: receiving a business error still confirms the stored request result
+ok 13 - receiving a business error still confirms the stored request result
+  ---
+  duration_ms: 0.32134
+  type: 'test'
+  ...
+# Subtest: refresh failure preserves confirmed answer and requires a safe session refresh
+ok 14 - refresh failure preserves confirmed answer and requires a safe session refresh
+  ---
+  duration_ms: 0.214452
+  type: 'test'
+  ...
+# Subtest: recovery can confirm a redacted result without pretending a new model send
+ok 15 - recovery can confirm a redacted result without pretending a new model send
+  ---
+  duration_ms: 0.349533
+  type: 'test'
+  ...
+# Subtest: a stale completion cannot mutate a later request or an identity reset
+ok 16 - a stale completion cannot mutate a later request or an identity reset
+  ---
+  duration_ms: 0.206342
+  type: 'test'
+  ...
+# Subtest: definite rejection is separate from an unknown or already received result
+ok 17 - definite rejection is separate from an unknown or already received result
+  ---
+  duration_ms: 0.222353
+  type: 'test'
+  ...
+# Subtest: only the exact pre-handler recovery guard proves this whole turn was not admitted
+ok 18 - only the exact pre-handler recovery guard proves this whole turn was not admitted
+  ---
+  duration_ms: 0.275984
+  type: 'test'
+  ...
+# Subtest: parking retains original identity and error facts while allowing only a distinct session
+ok 19 - parking retains original identity and error facts while allowing only a distinct session
+  ---
+  duration_ms: 0.666709
+  type: 'test'
+  ...
+# Subtest: each retained recovery updates only its own record and never replaces the active turn
+ok 20 - each retained recovery updates only its own record and never replaces the active turn
+  ---
+  duration_ms: 0.816763
+  type: 'test'
+  ...
+1..20
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 258.060187
+
+=== ruff.log ===
+All checks passed!
+
+=== source.log ===
+(node:5) [UNDICI-EHPA] Warning: EnvHttpProxyAgent is experimental, expect them to change at any time.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Source comment check PASS (83 files)
+
+=== registry.log ===
+{"decision": "PASS", "violations": []}
+
+=== architecture.json ===
+[]
