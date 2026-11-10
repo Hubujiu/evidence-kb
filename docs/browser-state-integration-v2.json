@@ -29,8 +29,9 @@
     {
       "path": "e2e/agent-draft-state.e2e.js",
       "baseline_sha256": "e45d955a8a2b11ecb0313519c36dce30991dbbb0d9cef6980bdd13dafaf06f5c",
-      "current_sha256": "0eb0ee087002a33b8c6f6c6f1f0ca4f7f9d24d5ed77c29e4716660d44ad61a7b",
-      "review": "Retain all five baseline cases and add unchanged implicit-session draft clearing as a positive control."
+      "current_sha256": "e438a9ff113092138815e0f6949aac3c2bdbfc235e52243195e567043ddcea0e",
+      "review": "Retain all five baseline cases and add unchanged implicit-session draft clearing as a positive control. The integrated diagnostic entry is explicit /agent/console; /agent serves the React build.",
+      "previous_fixed_sha256": "0eb0ee087002a33b8c6f6c6f1f0ca4f7f9d24d5ed77c29e4716660d44ad61a7b"
     },
     {
       "path": "e2e/knowledge.e2e.js",
@@ -79,8 +80,8 @@
   "integration_sources": {
     "web/src/operation-owner.ts": "3ff875f9b4b697ddc2ef97551db831c949cff352d948a36cea63118d540e9fb5",
     "web/src/main.tsx": "c3bc23aa03b9467a7488e3532025e47c1723f8aba515158587698ef1234a5c1d",
-    "web/src/workbench.tsx": "34465d3e6365eb5a76313c5fa134aae8d089bd459164d21aecafa11f5129b133",
-    "e2e/workbench.e2e.js": "c2f36e6613cfb3930be2e4f6adbdb2fa9fb40dd2b308bce943d86d099a5527ee",
+    "web/src/workbench.tsx": "0e8b0323d966478012fb81a76f9ccfca5a17603216ff80da6adbefebeb4a9941",
+    "e2e/workbench.e2e.js": "36cc6bb6c2382fff94bab07e75471c697fd049aa671a301a939ecb23a3604a2a",
     "e2e/web_chat.e2e.js": "e407c4aecfc26254890599f86c2487712c3d5870e9ac1ac3ee1ace7decebea96",
     "scripts/web_ownership.test.mjs": "e36653dc0c74c74eb5d18f8897f8dae3e5f1fc09929b32a7e60c5a6c42056e76"
   }
