@@ -21,21 +21,25 @@ async function fixture(app, screen, browser) {
       if (path === '/knowledge-bases') return controlled ? deferred('list') : ready([{kb_id: 'scope', name: 'Old scope'}]);
       if (path === '/knowledge-bases/scope/sources') return deferred('upload');
       if (path === '/knowledge-bases/scope/search') return deferred('search');
+      if (path === '/knowledge-bases/scope/builds') return deferred('build');
+      if (path === '/knowledge-bases/scope/builds/build-old/publish') return deferred('publish');
       throw Error('Unexpected scope fixture request: ' + path);
     };
     window.__scopeFixture = {
       commits, requests,
       arm: () => {
         controlled = true;
-        const target = document.querySelector('#ingest');
+        for (const selector of ['#ingest', '#message']) {
+        const target = document.querySelector(selector);
         const text = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
         Object.defineProperty(target, 'textContent', {
           get() { return text.get.call(this); },
           set(value) {
-            commits.push({scope: document.querySelector('#kb').value, text: value});
+            commits.push({scope: document.querySelector('#kb').value, text: value, ...(selector === '#message' ? {kind: 'message'} : {})});
             text.set.call(this, value);
           },
         });
+        }
       },
       wait: key => pending.has(key) ? pending.get(key).reading :
         new Promise(resolve => waiting.set(key, resolve)).then(() => pending.get(key).reading),
@@ -91,7 +95,7 @@ test('current upload still publishes its actual DOM result in the owning scope',
     return window.__scopeFixture.flush();
   });
   await expect(browser.locator('#ingest')).toContainText('source.md · READY · 1 个结构元素');
-  expect(await browser.evaluate(() => window.__scopeFixture.commits))
+  expect(await browser.evaluate(() => window.__scopeFixture.commits.filter(item => !item.kind)))
     .toEqual([{scope: 'scope', text: 'source.md · READY · 1 个结构元素'}]);
 });
 
@@ -110,4 +114,57 @@ test('concurrent create retains its later clear after an older search completion
   await expect(screen.getByRole('status')).toContainText('已创建知识库。');
   expect(await browser.evaluate(() => ({scope: document.querySelector('#kb').value,
     result: document.querySelector('#results').textContent}))).toEqual({scope: 'next', result: ''});
+});
+
+async function startPublish(screen, browser) {
+  await screen.getByRole('button', '构建并发布索引').tap();
+  await browser.evaluate(() => window.__scopeFixture.wait('build'));
+}
+
+test('concurrent create cancels the next publish mutation from an older build', async ({app, screen, browser}) => {
+  await fixture(app, screen, browser);
+  await startPublish(screen, browser);
+  await startCreate(screen, browser);
+  await browser.evaluate(() => {
+    const fixture = window.__scopeFixture;
+    fixture.resolve('list', [{kb_id: 'scope', name: 'Old scope'}, {kb_id: 'next', name: 'New scope'}]);
+    fixture.resolve('build', {build_id: 'build-old'});
+    return fixture.flush();
+  });
+  await expect(screen.getByRole('status')).toContainText('已创建知识库。');
+  expect(await browser.evaluate(() => window.__scopeFixture.requests.filter(item => item.path.endsWith('/publish')))).toEqual([]);
+  expect(await browser.evaluate(() => document.querySelector('#kb').value)).toBe('next');
+});
+
+test('concurrent create rejects the final status of an already sent publish', async ({app, screen, browser}) => {
+  await fixture(app, screen, browser);
+  await startPublish(screen, browser);
+  await browser.evaluate(() => window.__scopeFixture.resolve('build', {build_id: 'build-old'}));
+  await browser.evaluate(() => window.__scopeFixture.wait('publish'));
+  await startCreate(screen, browser);
+  await browser.evaluate(() => {
+    const fixture = window.__scopeFixture;
+    fixture.resolve('list', [{kb_id: 'scope', name: 'Old scope'}, {kb_id: 'next', name: 'New scope'}]);
+    fixture.resolve('publish', {manifest_id: 'old-manifest'});
+    return fixture.flush();
+  });
+  await expect(screen.getByRole('status')).toContainText('已创建知识库。');
+  const observed = await browser.evaluate(() => ({commits: window.__scopeFixture.commits,
+    requests: window.__scopeFixture.requests.filter(item => item.path.endsWith('/publish'))}));
+  expect(observed.requests).toEqual([{path: '/knowledge-bases/scope/builds/build-old/publish', method: 'POST', scope: 'scope'}]);
+  expect(observed.commits.filter(item => item.text.includes('old-manifest'))).toEqual([]);
+});
+
+test('current publish sends once and renders the acknowledged manifest', async ({app, screen, browser}) => {
+  await fixture(app, screen, browser);
+  await startPublish(screen, browser);
+  await browser.evaluate(() => window.__scopeFixture.resolve('build', {build_id: 'build-old'}));
+  await browser.evaluate(() => window.__scopeFixture.wait('publish'));
+  await browser.evaluate(() => {
+    window.__scopeFixture.resolve('publish', {manifest_id: 'old-manifest'});
+    return window.__scopeFixture.flush();
+  });
+  await expect(screen.getByRole('status')).toContainText('索引已发布。版本 old-manifest');
+  expect(await browser.evaluate(() => window.__scopeFixture.requests.filter(item => item.path.endsWith('/publish'))))
+    .toEqual([{path: '/knowledge-bases/scope/builds/build-old/publish', method: 'POST', scope: 'scope'}]);
 });

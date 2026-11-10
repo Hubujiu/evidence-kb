@@ -7829,7 +7829,7 @@
           "path": "kb_platform/console.mjs",
           "language": "javascript-module",
           "symbol": "<module>",
-          "sha256": "5520272272aaceabecfd3c5ef873fbfdc261cb89c40894cd9a0cc6cb388fba08"
+          "sha256": "da0fb80920fb32442e5c9ebd56f8d939ff194d0c4b46fa0dfa70151b5639b370"
         }
       ],
       "models": [
@@ -8058,7 +8058,7 @@
           "path": "kb_platform/console.mjs",
           "language": "javascript-module",
           "symbol": "<module>",
-          "sha256": "5520272272aaceabecfd3c5ef873fbfdc261cb89c40894cd9a0cc6cb388fba08"
+          "sha256": "da0fb80920fb32442e5c9ebd56f8d939ff194d0c4b46fa0dfa70151b5639b370"
         }
       ],
       "models": [
@@ -13980,6 +13980,96 @@
           "kind": "negative",
           "purpose": "Witness admission failure on exhausted BUSY budget"
         }
+      ]
+    },
+    {
+      "id": "console_publish",
+      "status": "partial",
+      "owners": [
+        "kb_platform/console.mjs"
+      ],
+      "states": [
+        "idle -> build-await -> body observed -> publish dispatch -> publish-await -> UI commit or discarded/failed",
+        "Concurrent Create refresh selects a new scope between queued continuations."
+      ],
+      "transitions": [
+        "capture original operation scope",
+        "receive build response",
+        "check original owner before second mutation",
+        "receive publish response",
+        "check original owner before UI commit",
+        "Create refresh/select/clear",
+        "reject response"
+      ],
+      "invariants": [
+        "TypeOK",
+        "NoStalePublishSend",
+        "NoStalePublishCommit",
+        "CurrentPublishRenders",
+        "NoRejectedPublishWrite"
+      ],
+      "assumptions": [
+        "One build/publish and one Create, two scopes, revisions 0/1 and at most two queued Promise reactions.",
+        "Ordinary tasks require an empty microtask queue; both response bodies may settle in the same task.",
+        "Guard and following mutation dispatch or synchronous UI write have no intervening await."
+      ],
+      "exclusions": [
+        "Manual source abstraction; not an automatic JavaScript refinement proof.",
+        "No backend publication transaction, cancellation rollback, token changes, multiple Create operations or liveness proof."
+      ],
+      "source_bindings": [
+        {
+          "path": "kb_platform/console.mjs",
+          "language": "javascript-module",
+          "symbol": "<module>",
+          "sha256": "da0fb80920fb32442e5c9ebd56f8d939ff194d0c4b46fa0dfa70151b5639b370"
+        }
+      ],
+      "models": [
+        {
+          "id": "console-publish-ownership",
+          "module": "formal/console_publish/ConsolePublish.tla",
+          "config": "formal/console_publish/ConsolePublish.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoStalePublishSend",
+            "NoStalePublishCommit",
+            "CurrentPublishRenders",
+            "NoRejectedPublishWrite"
+          ],
+          "properties": [],
+          "bounds": {
+            "publishes": 1,
+            "creates": 1,
+            "knowledge_bases": 2,
+            "revision_values": 2,
+            "queued_microtasks": 2
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "console-publish-missing-send-guard",
+          "module": "formal/console_publish/ConsolePublish.tla",
+          "config": "formal/console_publish/MissingPublishSendGuard.cfg",
+          "expected_invariant": "NoStalePublishSend",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "console-publish-missing-commit-guard",
+          "module": "formal/console_publish/ConsolePublish.tla",
+          "config": "formal/console_publish/MissingPublishCommitGuard.cfg",
+          "expected_invariant": "NoStalePublishCommit",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "Real browser regressions run in CI; local Chromium is blocked by socket EPERM.",
+        "Inspect other independent async operations; this does not prove all browser callbacks safe."
       ]
     }
   ],
