@@ -38,14 +38,14 @@ export function Workbench({ token, scopes, scope, busy, notice, isCurrent, onCon
  const owner = useRef(new OperationOwner())
  const running = useRef(false)
  const previewRef = useRef('')
- const downloads = useRef(new Set<string>())
+ const downloads = useRef(new Map<string, number>())
  const prefix = `/knowledge-bases/${encodeURIComponent(scope)}`
  const locked = working || busy || !token
  function releasePreview() { if (previewRef.current) URL.revokeObjectURL(previewRef.current); previewRef.current = '' }
  useEffect(() => {
   const operations = owner.current
   const urls = downloads.current
-  return () => { operations.invalidate(); releasePreview(); for (const url of urls) URL.revokeObjectURL(url); urls.clear() }
+  return () => { operations.invalidate(); releasePreview(); for (const [url, timer] of urls) { window.clearTimeout(timer); URL.revokeObjectURL(url) }; urls.clear() }
  }, [])
  async function run(action: (operation: OwnedOperation) => Promise<void>) {
   if (locked || running.current || !isCurrent()) return
@@ -102,9 +102,11 @@ export function Workbench({ token, scopes, scope, busy, notice, isCurrent, onCon
   await run(async operation => {
    const blob = await (await request(operation, token, `${prefix}/citations/${encodeURIComponent(citationId)}/original`)).blob()
    operation.commit(() => {
-    const url = URL.createObjectURL(blob); downloads.current.add(url)
+    const url = URL.createObjectURL(blob)
+    const timer = window.setTimeout(() => { URL.revokeObjectURL(url); downloads.current.delete(url) }, 1000)
+    downloads.current.set(url, timer)
     const link = document.createElement('a'); link.href = url; link.download = citation.filename
-    try { link.click() } finally { setTimeout(() => { URL.revokeObjectURL(url); downloads.current.delete(url) }, 1000) }
+    link.click()
    })
   })
  }

@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 BROWSER_ASSETS = (('/', 'web/dist/index.html', 'text/html'),
                   ('/console', 'kb_platform/console.html', 'text/html'),
                   ('/console.mjs', 'kb_platform/console.mjs', 'text/javascript'),
-                  ('/agent', 'kb_platform/agent_console.html', 'text/html'),
+                  ('/agent', 'web/dist/index.html', 'text/html'),
+                  ('/agent/console', 'kb_platform/agent_console.html', 'text/html'),
                   ('/agent_console.mjs', 'kb_platform/agent_console.mjs', 'text/javascript'))
 CASES = frozenset({
     'source upload, BM25 publication, citation and original download [chromium]',

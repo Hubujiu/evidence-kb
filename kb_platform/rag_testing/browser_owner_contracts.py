@@ -110,12 +110,13 @@ def live_suite():
                         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application.app),
                                 base_url='http://fixture', trust_env=False) as client:
                             for path, name, media in BROWSER_ASSETS:
-                                response = await client.get(path)
-                                self.assertEqual(response.status_code, 200, path)
-                                self.assertEqual(response.content, text_asset_bytes(ROOT / name), path)
-                                self.assertEqual(response.headers['content-type'].split(';')[0], media)
-                                self.assertEqual(response.headers['cache-control'], 'no-store')
-                                self.assertEqual(response.headers['x-content-type-options'], 'nosniff')
+                                with self.subTest(path=path):
+                                    response = await client.get(path)
+                                    self.assertEqual(response.status_code, 200, path)
+                                    self.assertEqual(response.content, text_asset_bytes(ROOT / name), path)
+                                    self.assertEqual(response.headers['content-type'].split(';')[0], media)
+                                    self.assertEqual(response.headers['cache-control'], 'no-store')
+                                    self.assertEqual(response.headers['x-content-type-options'], 'nosniff')
                             self.assertEqual((await client.get('/identity')).status_code, 401)
 
                 asyncio.run(requests())

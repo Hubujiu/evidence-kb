@@ -61,6 +61,10 @@ def install_agent_routes(app, platform, research, identity, *, service_factory=N
         return Response(Path(__file__).with_name('agent_console.mjs').read_text(encoding='utf-8'),
                         media_type='text/javascript')
 
+    @app.get('/agent/console', include_in_schema=False)
+    def diagnostic_console():
+        return HTMLResponse(Path(__file__).with_name('agent_console.html').read_text(encoding='utf-8'))
+
     @app.get('/agent/capabilities')
     def capabilities(actor: principal):
         return require().capabilities()

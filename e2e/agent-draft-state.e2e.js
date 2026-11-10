@@ -46,7 +46,7 @@ async function fixture(app, screen, browser, createSession = true) {
       flush: () => new Promise(requestAnimationFrame),
     };
   });
-  await app.open('/agent');
+  await app.open('/agent/console');
   await expect(screen.getByRole('status')).toContainText('已连接，可直接提问。');
   await browser.locator('details:has(#runtimeStatus) > summary').tap();
   await expect(browser.locator('#runtimeStatus')).toContainText('预算账本暂不可读取');

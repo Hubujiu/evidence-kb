@@ -92,6 +92,19 @@ test('late preview body cannot allocate a blob after leaving the workbench', asy
   let created = 0;
   let revoked = 0;
   let hold = true;
+  const pendingTimers = new Set();
+  let timerIdentity = -1;
+  const schedule = window.setTimeout.bind(window);
+  const cancelTimer = window.clearTimeout.bind(window);
+  window.setTimeout = (callback, delay, ...args) => {
+   if (delay !== 1000) return schedule(callback, delay, ...args);
+   const timer = timerIdentity--;
+   pendingTimers.add(timer);
+   return timer;
+  };
+  window.clearTimeout = timer => {
+   if (!pendingTimers.delete(timer)) cancelTimer(timer);
+  };
   const create = URL.createObjectURL.bind(URL);
   const revoke = URL.revokeObjectURL.bind(URL);
   URL.createObjectURL = blob => { created++; return create(blob); };
@@ -102,6 +115,8 @@ test('late preview body cannot allocate a blob after leaving the workbench', asy
    if (path === '/capabilities') return ready({agent_conversations: null});
    if (path.endsWith('/search')) return ready({hits: [{citation_id: 'c1', text: 'Evidence marker'}]});
    if (path.endsWith('/citations/c1')) return ready({filename: 'source.md', source_version_id: 'v1', text: 'Evidence marker', anchors: []});
+   if (path.endsWith('/original')) return Promise.resolve({ok: true, status: 200,
+    blob: async () => new Blob(['original'], {type: 'text/plain'})});
    if (path.endsWith('/preview')) return Promise.resolve({ok: true, status: 200, blob: () => {
     if (!hold) return Promise.resolve(new Blob(['preview'], {type: 'text/plain'}));
     const body = new Promise(resolve => { release = resolve; });
@@ -113,6 +128,7 @@ test('late preview body cannot allocate a blob after leaving the workbench', asy
    wait: () => waiting,
    release: () => { hold = false; release(new Blob(['late preview'], {type: 'text/plain'})); },
    counts: () => ({created, revoked}),
+   pendingDownloads: () => pendingTimers.size,
    flush: () => new Promise(requestAnimationFrame),
   };
  });
@@ -134,6 +150,13 @@ test('late preview body cannot allocate a blob after leaving the workbench', asy
  await screen.getByRole('button', '查看原文与定位').tap();
  await expect(screen.getByRole('dialog')).toContainText('source.md');
  expect(await browser.evaluate(() => window.workbenchRace.counts())).toEqual({created: 1, revoked: 0});
+ const download = await browser.waitForDownload(() => screen.getByRole('button', '下载原件').tap());
+ expect(download.suggestedFilename).toBe('source.md');
+ expect(await browser.evaluate(() => window.workbenchRace.pendingDownloads())).toBe(1);
  await screen.getByRole('button', '关闭').tap();
- expect(await browser.evaluate(() => window.workbenchRace.counts())).toEqual({created: 1, revoked: 1});
+ expect(await browser.evaluate(() => window.workbenchRace.counts())).toEqual({created: 2, revoked: 1});
+ await screen.getByRole('button', '知识库对话').tap();
+ await browser.evaluate(() => window.workbenchRace.flush());
+ expect(await browser.evaluate(() => window.workbenchRace.counts())).toEqual({created: 2, revoked: 2});
+ expect(await browser.evaluate(() => window.workbenchRace.pendingDownloads())).toBe(0);
 });
