@@ -125,7 +125,7 @@ class ConfigurationAssemblyDiagnosticContracts(unittest.TestCase):
             'KB_STORAGE_CONFIG': '/ignored/storage.json'}
         profile_path = fixture.root / 'selected-profile.json'
         profile_path.write_text(json.dumps(fixture.profile), 'utf-8')
-        for mode in ('explicit', 'environment', 'default', 'injected'):
+        for mode in ('explicit', 'environment', 'default', 'injected', 'configured_clients'):
             with self.subTest(mode=mode):
                 selected_environment, options = dict(environment), {'profile': deepcopy(fixture.profile)}
                 sources = {'application': 'explicit', 'models': 'application_profile', 'storage': 'application_profile'}
@@ -146,6 +146,15 @@ class ConfigurationAssemblyDiagnosticContracts(unittest.TestCase):
                     options['profile']['plugins']['llm']['config'] = {}
                     options.update(models=fixture.models, storage_configuration=storage)
                     sources.update(models='explicit', storage='explicit')
+                elif mode == 'configured_clients':
+                    ignored_client = SimpleNamespace(**{**vars(fixture.client), 'provider_id': 'ignored-client'})
+                    options['model_clients'] = (ignored_client, None)
+                    profile = options['profile']
+                    names = {name: 'selected-' + name for name in profile['plugins']}
+                    profile['plugins'] = {names[name]: value for name, value in profile['plugins'].items()}
+                    profile['bindings'] = {names[name]: {alias: {**target, 'plugin': names[target['plugin']]}
+                        for alias, target in bindings.items()} for name, bindings in profile['bindings'].items()}
+                    profile['entrypoint']['plugin'] = names[profile['entrypoint']['plugin']]
                 template = (patch('kb_platform.application_knowledge.DEFAULT_APPLICATION', profile_path)
                     if mode == 'default' else nullcontext())
                 with patch.dict('os.environ', selected_environment), template:

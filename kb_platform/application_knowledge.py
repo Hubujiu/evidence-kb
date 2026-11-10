@@ -115,9 +115,6 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
     if storage_configuration is not None:
         provenance['sources']['storage'] = 'explicit'
         provenance['used_environment'].discard('KB_STORAGE_CONFIG')
-    if models is not None or model_clients is not None and not selected['plugins']['llm']['config'].get('config_path'):
-        provenance['sources']['models'] = 'explicit'
-        provenance['used_environment'].difference_update({'KB_MODELS_CONFIG', 'KB_PROVIDERS_CONFIG'})
     if profile is None and models is not None and not any((environment or {}).get(name)
             for name in ('KB_MODELS_CONFIG', 'KB_PROVIDERS_CONFIG')):
         selected['plugins']['llm']['config'].pop('providers_config', None)
@@ -213,6 +210,15 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
 
     foundation = foundation_mounts(storage_configuration=storage_configuration, provider_catalog=provider_catalog,
         models=models, model_clients=model_clients, storage_requirements=REQUIREMENTS, storage_schemas=SCHEMAS)
+    mount_llm = foundation[('foundation.llm', '1')]
+
+    def llm(ctx, config):
+        mount_llm(ctx, config)
+        if models is not None or model_clients is not None and not config.get('config_path'):
+            provenance['sources']['models'] = 'explicit'
+            provenance['used_environment'].difference_update({'KB_MODELS_CONFIG', 'KB_PROVIDERS_CONFIG'})
+
+    foundation[('foundation.llm', '1')] = llm
     composed, application = build_knowledge_application(selected,
         foundation=foundation, session_factory=session_factory, data_factory=data_factory,
         model_factory=model_factory, authenticate=authenticate,

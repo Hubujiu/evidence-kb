@@ -1,0 +1,18 @@
+test_renamed_instances_accept_injected_clients_and_report_actual_source (kb_platform.rag_testing.contract_application_contracts.ContractApplicationContracts.test_renamed_instances_accept_injected_clients_and_report_actual_source) ... ERROR
+
+======================================================================
+ERROR: test_renamed_instances_accept_injected_clients_and_report_actual_source (kb_platform.rag_testing.contract_application_contracts.ContractApplicationContracts.test_renamed_instances_accept_injected_clients_and_report_actual_source)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/rag_testing/contract_application_contracts.py", line 109, in test_renamed_instances_accept_injected_clients_and_report_actual_source
+    composition = create_contract_knowledge(self.settings, profile=self.profile,
+        storage_configuration=self.storage, model_clients=(self.client, None))
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/application_knowledge.py", line 118, in create_contract_knowledge
+    if models is not None or model_clients is not None and not selected['plugins']['llm']['config'].get('config_path'):
+                                                               ~~~~~~~~~~~~~~~~~~~^^^^^^^
+KeyError: 'llm'
+
+----------------------------------------------------------------------
+Ran 1 test in 0.311s
+
+FAILED (errors=1)

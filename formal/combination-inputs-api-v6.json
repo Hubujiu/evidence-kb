@@ -8105,7 +8105,8 @@
       "ContractApplicationContracts.test_context_session_and_model_implementations_replace_by_configuration",
       "ContractApplicationContracts.test_default_application_accepts_explicit_borrowed_models",
       "ContractApplicationContracts.test_embedding_authority_rechecks_source_revocation_and_build_identity",
-      "ContractApplicationContracts.test_instance_names_are_selected_only_by_configuration"
+      "ContractApplicationContracts.test_instance_names_are_selected_only_by_configuration",
+      "ContractApplicationContracts.test_renamed_instances_accept_injected_clients_and_report_actual_source"
     ],
     "kb_platform/rag_testing/delivery_contracts.py": [
       "DeliveryContracts.test_check_reports_profile_without_creating_runtime_state",
