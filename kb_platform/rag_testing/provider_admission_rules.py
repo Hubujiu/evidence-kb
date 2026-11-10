@@ -47,25 +47,41 @@ def provider_admission_violations(root):
             errors.append('provider_admission: ' + message)
 
     try:
-        invoke = _function(root, 'kb_platform/model_http.py', 'OpenAICompatibleAdapter.invoke')
+        wrapper = _function(root, 'kb_platform/model_http.py', 'OpenAICompatibleAdapter.invoke')
+        require(any(isinstance(child, ast.With)
+                    and any(ast.unparse(item.context_expr) == 'self.ledger.admission()' for item in child.items)
+                    and len(_calls(child, 'self._invoke_admitted')) == 1 for child in _nodes(wrapper)),
+                'healthy in-flight ownership must remain held across invocation')
+        invoke = _function(root, 'kb_platform/model_http.py', 'OpenAICompatibleAdapter._invoke_admitted')
         send = _calls(invoke, 'self.client.send')[0]
-        owner = next(child for child in _nodes(invoke) if isinstance(child, ast.Try)
-                     and any(send is item for statement in child.body for item in _nodes(statement)))
-        block = _calls(owner, 'self.admission.block')[0]
-        settlement = next(call for call in _calls(owner, 'self.ledger.finish') if call.lineno > send.lineno)
-        response_guard = next(child for child in _nodes(owner) if isinstance(child, ast.If)
-                              and _shape(child.test) == _shape(ast.parse('response.status_code == 403', mode='eval').body))
-        require(len(response_guard.body) == 1 and isinstance(response_guard.body[0], ast.Expr)
-                and response_guard.body[0].value is block and send.lineno < block.lineno < settlement.lineno,
+        block = _calls(invoke, 'self.admission.block')[0]
+        settlements = _calls(invoke, 'self.ledger.finish')
+        settlement = settlements[0]
+        response_guard = next(child for child in _nodes(invoke) if isinstance(child, ast.If)
+                              and ast.unparse(child.test) == 'response is not None and response.status_code == 403')
+        latch = response_guard.body[0]
+        require(len(response_guard.body) == 1 and isinstance(latch, ast.Try)
+                and len(latch.body) == 1 and isinstance(latch.body[0], ast.Expr)
+                and latch.body[0].value is block and send.lineno < block.lineno < settlement.lineno,
                 'returned HTTP 403 must be durably blocked before attempting ledger settlement')
-        require(not any(send.lineno < call.lineno < block.lineno for call in _calls(owner, 'save')),
+        require(not any(send.lineno < call.lineno < block.lineno for call in _calls(invoke, 'save')),
                 'capture logging must not prevent blocking an already returned HTTP 403')
-        fallbacks = [child for handler in owner.handlers for child in _nodes(handler)
-                     if isinstance(child, ast.If) and ast.unparse(child.test) == 'response is None']
-        require(len(fallbacks) == 1 and len(_calls(fallbacks[0], 'self.ledger.finish')) == 1,
-                'a returned response settlement failure must not retry finish')
-        require(_contains(invoke, 'raise error from exc') is not None,
-                'settlement error cause and CommitUnknown identity must remain attached')
+        require(len(latch.handlers) == 1 and ast.unparse(latch.handlers[0].type) == 'BaseException'
+                and isinstance(latch.handlers[0].body[-1], ast.Raise)
+                and not _calls(latch.handlers[0], 'self.ledger.finish'),
+                'failed permission latch must retain its reservation and stop before settlement')
+        require(len(settlements) == 1 and not any(isinstance(child, (ast.For, ast.While))
+                    and _calls(child, 'self.ledger.finish') for child in _nodes(invoke)),
+                'each physical invocation has one non-looping settlement call')
+        settlement_owner = next(child for child in _nodes(invoke) if isinstance(child, ast.Try)
+                                and any(settlement is item for statement in child.body for item in _nodes(statement)))
+        require(len(settlement_owner.handlers) == 1
+                and not _calls(settlement_owner.handlers[0], 'self.ledger.finish')
+                and _contains(settlement_owner.handlers[0], 'preserve(error)') is not None
+                and _contains(settlement_owner.handlers[0],
+                    'if isinstance(error, CommitUnknown) or not isinstance(error, Exception):\n    raise') is not None
+                and _contains(settlement_owner.handlers[0], 'raise converted from error') is not None,
+                'settlement error facts and original CommitUnknown identity must remain attached')
 
         metered = _function(root, 'kb_platform/rag_testing/provider_capture.py', 'MeteredTransport._handle_admitted')
         received = _calls(metered, 'self.inner.handle_request')[0]
