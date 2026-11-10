@@ -23,7 +23,9 @@ ROOT = Path(__file__).resolve().parents[2]
 class BrowserSourceContracts(unittest.TestCase):
     def test_browser_baseline_and_fixed_source_review_snapshots_are_distinct(self):
         baseline = json.loads((ROOT / 'docs/browser-state-baseline-v1.json').read_text('utf-8'))
-        review = json.loads((ROOT / 'docs/browser-state-fix-v1.json').read_text('utf-8'))
+        fixed = ROOT / 'docs/browser-state-fix-v1.json'
+        review = json.loads((ROOT / 'docs/browser-state-integration-v2.json').read_text('utf-8'))
+        self.assertEqual(review['previous_review_sha256'], sha256(fixed.read_bytes().replace(b'\r\n', b'\n')).hexdigest())
         originals = {row['path']: row['sha256'] for row in baseline['production_files_and_existing_cases']}
         originals.update({'e2e/' + name: row['source_sha256'] for name, row in baseline['new_suites'].items()})
         self.assertEqual(set(originals), {'kb_platform/agent_console.html', 'kb_platform/console.html',
@@ -31,7 +33,7 @@ class BrowserSourceContracts(unittest.TestCase):
             'e2e/agent-draft-state.e2e.js', 'e2e/console-scope-state.e2e.js'})
         changed = {row['path']: row for row in review['source_reviews']}
         self.assertEqual(set(changed), {'kb_platform/agent_console.html', 'kb_platform/console.mjs',
-                                       'e2e/agent-draft-state.e2e.js'})
+                                       'e2e/agent-draft-state.e2e.js', 'e2e/knowledge.e2e.js'})
         for path, old_hash in originals.items():
             current = sha256((ROOT / path).read_text('utf-8').encode('utf-8')).hexdigest()
             if path in changed:
@@ -46,6 +48,10 @@ class BrowserSourceContracts(unittest.TestCase):
         self.assertEqual(baseline['new_suites']['agent-draft-state.e2e.js']['cases'], 5)
         for name, cases in (('agent-draft-state.e2e.js', DRAFT_CASES), ('console-scope-state.e2e.js', SCOPE_CASES)):
             self.assertEqual(review['current_suite_counts'][name], len(cases))
+        self.assertEqual(set(review['integration_sources']), {'web/src/operation-owner.ts', 'web/src/main.tsx',
+            'web/src/workbench.tsx', 'e2e/workbench.e2e.js', 'e2e/web_chat.e2e.js', 'scripts/web_ownership.test.mjs'})
+        for path, fingerprint in review['integration_sources'].items():
+            self.assertEqual(sha256((ROOT / path).read_text('utf-8').encode()).hexdigest(), fingerprint, path)
 
     def test_budget_disclosure_has_one_real_summary_for_visible_fixture_checks(self):
         class Disclosure(HTMLParser):

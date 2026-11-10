@@ -12,7 +12,7 @@ from .formal_state_machines import source_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / 'formal/combination-inputs-composition-v4.json'
+MANIFEST = ROOT / 'formal/combination-inputs-product-v5.json'
 
 
 def model_input_digest(data):
@@ -193,7 +193,25 @@ class FormalCombinationContracts(unittest.TestCase):
 
     def test_composition_revision_preserves_authority_evidence_and_records_each_change(self):
         previous = json.loads((ROOT / 'formal/combination-inputs-authority-v3.json').read_text('utf-8'))
-        changes = self.manifest['reviewed_changes_from_authority_v3']
+        composition = json.loads((ROOT / 'formal/combination-inputs-composition-v4.json').read_text('utf-8'))
+        changes = composition['reviewed_changes_from_authority_v3']
+        for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
+            rows = deepcopy(previous[field])
+            change = changes[field]
+            self.assertEqual(change['removed'], [])
+            for pair in change['changed']:
+                rows.remove(pair['before'])
+                rows.append(pair['after'])
+            rows.extend(change['added'])
+            self.assertCountEqual(rows, composition[field])
+        self.assertEqual(changes['required_runs']['changed'], [])
+        self.assertEqual(changes['model_inputs']['changed'], [])
+        for path, cases in previous['required_contract_cases'].items():
+            self.assertTrue(set(cases) <= set(composition['required_contract_cases'][path]))
+
+    def test_product_revision_retains_all_composition_obligations_and_records_exact_changes(self):
+        previous = json.loads((ROOT / 'formal/combination-inputs-composition-v4.json').read_text('utf-8'))
+        changes = self.manifest['reviewed_changes_from_composition_v4']
         for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
             rows = deepcopy(previous[field])
             change = changes[field]
@@ -203,10 +221,15 @@ class FormalCombinationContracts(unittest.TestCase):
                 rows.append(pair['after'])
             rows.extend(change['added'])
             self.assertCountEqual(rows, self.manifest[field])
-        self.assertEqual(changes['required_runs']['changed'], [])
-        self.assertEqual(changes['model_inputs']['changed'], [])
+        self.assertEqual({row['after']['id'] for row in changes['required_runs']['changed']},
+                         {'knowledge-workflow'})
+        self.assertEqual({row['id'] for row in changes['required_runs']['added']}, {
+            'knowledge-workflow-unsafe-input-correction', 'knowledge-workflow-repeated-input-correction',
+            'knowledge-workflow-input-correction-witness'})
+        self.assertTrue(all(row['after']['path'].startswith('formal/knowledge_workflow/')
+                            for row in changes['model_inputs']['changed']))
         for path, cases in previous['required_contract_cases'].items():
-            self.assertTrue(set(cases) <= set(self.manifest['required_contract_cases'][path]))
+            self.assertTrue(set(cases) <= set(self.manifest['required_contract_cases'][path]), path)
 
     def test_changed_control_invariant_is_rejected_without_changing_any_id(self):
         changed = deepcopy(self.registry)

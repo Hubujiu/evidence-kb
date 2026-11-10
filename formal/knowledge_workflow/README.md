@@ -10,6 +10,7 @@ graph implementation, or the session database.
 | --- | --- |
 | SourcePolicy, ValidateSources, epoch, derived, workEpoch | KnowledgeTurn.run source-policy/authority invalidation, evidence revalidation, and begin_work_state |
 | Plan, PlanExplorationStop, ToolSuccess, ToolFailure, RepeatedTool | KnowledgePlanning.plan_node / tool_node |
+| ToolCorrection, inputCorrections, correctionSafe | KnowledgePlanning.tool_node allows one recognized local input correction for a retry-safe, read-only operation with no cost, within the existing step and answer budgets |
 | Compose, Verify, RepairSuccess, RepairFailure, Deliver | KnowledgeAnswer nodes and KnowledgeWorkflow._choose_route |
 | BeginNode, AfterFailure, AcceptNode | KnowledgeTurn.before_node, Runtime.run, GraphProgram.execute / accept, Rust Graph::accept |
 | graphDone, RuntimeCompletionPass / Failure, post_runtime | graphDone is native route terminality after deliver acceptance; GraphProgram.next, kernel finish, and program close must still succeed before Runtime returns; exceptions go to failure |
@@ -25,6 +26,15 @@ boundary before last_answer, an assistant event, or a successful finish is
 written. The model deliberately retains the nonempty intermediate error
 payload; it does not assume redaction happened inside compose or generic graph
 completion.
+
+The product integration adds `ToolCorrection` for the bounded input-correction
+path. `eligible` abstracts the conjunction of the runtime predicates above,
+including remaining budget and the non-fast-calculation path. Existing
+`AgentGraphContracts` execute those predicates. The positive model checks
+`SingleInputCorrection` and `NoUnsafeInputCorrection` in addition to every
+previous invariant. Three controls reach an eligible correction, reject an
+unsafe correction with its guard removed, and reject a second correction with
+the guard removed at `MaxSteps=3`. The positive bound remains `MaxSteps=2`.
 
 ## Source-policy timing and repeated-tool boundary
 

@@ -15,7 +15,7 @@
 | llm_stream | 1 | 2 | `rust/llm-service/src/assembler.rs`, `rust/llm-service/src/service.rs` |
 | kernel_execution | 1 | 3 | `rust/agent-kernel/src/lib.rs`, `kb_platform/agent_native.py` |
 | loop_graph | 2 | 6 | `rust/agent-services/src/agent_loop.rs`, `rust/agent-services/src/graph.rs`, `kb_platform/harness_loop.py` |
-| knowledge_workflow | 1 | 3 | `kb_platform/knowledge_workflow.py`, `kb_platform/knowledge_turn.py`, `kb_platform/knowledge_state.py`, `kb_platform/agent_builtin_tools.py`, `kb_platform/agent_work_state.py`, `kb_platform/knowledge_answer.py`, `kb_platform/rag_testing/context_decisions.py`, `kb_platform/knowledge_planning.py`, `kb_platform/harness_graph.py`, `rust/agent-services/src/graph.rs` |
+| knowledge_workflow | 1 | 6 | `kb_platform/knowledge_workflow.py`, `kb_platform/knowledge_turn.py`, `kb_platform/knowledge_state.py`, `kb_platform/agent_builtin_tools.py`, `kb_platform/agent_work_state.py`, `kb_platform/knowledge_answer.py`, `kb_platform/rag_testing/context_decisions.py`, `kb_platform/knowledge_planning.py`, `kb_platform/harness_graph.py`, `rust/agent-services/src/graph.rs` |
 | storage_registry | 2 | 7 | `kb_platform/storage_service.py`, `kb_platform/database_service.py`, `kb_platform/blob_service.py` |
 | storage_transaction | 1 | 1 | `kb_platform/storage_structured_wire.py`, `rust/storage-service/src/transaction.rs`, `kb_platform/database_providers/base.py` |
 | storage_value_call | 1 | 1 | `rust/storage-service/src/service.rs`, `kb_platform/storage.py`, `kb_platform/storage_adapters/values.py`, `kb_platform/storage_protocol.py`, `kb_platform/storage_service.py`, `rust/storage-service/src/operations.rs` |

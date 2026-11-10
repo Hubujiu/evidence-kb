@@ -3,7 +3,8 @@ EXTENDS Naturals, FiniteSets, TLC
 
 (* One serialized turn. Generic graph token matching, provider accounting and
    the session transaction are interfaces, not reimplemented protocols here. *)
-CONSTANTS MaxSteps, FailBusinessErrors, BoundSemanticRepair, ClearSourceContext
+CONSTANTS MaxSteps, FailBusinessErrors, BoundSemanticRepair, ClearSourceContext,
+          GuardInputCorrection
 
 Nodes == {"plan", "tool", "compose", "verify", "repair", "deliver", "complete"}
 Phases == {"source_policy", "source_validation", "before", "executing", "after",
@@ -31,6 +32,7 @@ Init ==
         step : {0}, decision : {"answer"}, stop : {"none"},
         halted : {FALSE}, incompleteTool : {FALSE},
         repairEnabled : BOOLEAN, semanticRepairs : {0}, verdict : {"none"},
+        inputCorrections : {0}, correctionSafe : {TRUE},
         status : {"none"}, completion : {"none"}, payload : {EmptyPayload},
         lineage : {FALSE}, derivedTrace : {FALSE},
         receipts : {0}, receiptsAtFailure : {0},
@@ -120,6 +122,15 @@ ToolFailure ==
     /\ s' = [s EXCEPT !.phase = "after", !.step = @ + 1,
         !.receipts = @ + 1, !.halted = TRUE, !.stop = "tool_failure",
         !.nextNode = "compose"]
+
+ToolCorrection(eligible) ==
+    /\ s.phase = "executing" /\ s.node = "tool"
+    /\ s.step + 1 < MaxSteps
+    /\ eligible \in BOOLEAN
+    /\ (~GuardInputCorrection \/ (eligible /\ s.inputCorrections = 0))
+    /\ s' = [s EXCEPT !.phase = "after", !.step = @ + 1,
+        !.receipts = @ + 1, !.inputCorrections = @ + 1,
+        !.correctionSafe = (@ /\ eligible), !.nextNode = "plan"]
 
 RepeatedTool ==
     /\ s.phase = "executing" /\ s.node = "tool"
@@ -280,6 +291,7 @@ Next ==
     \/ PlanExplorationStop
     \/ \E incomplete \in BOOLEAN: ToolSuccess(incomplete)
     \/ ToolFailure \/ RepeatedTool
+    \/ \E eligible \in BOOLEAN: ToolCorrection(eligible)
     \/ \E mode \in {"cited", "uncited", "abstained"},
           completion \in {"complete", "partial", "conflict"}, verify \in BOOLEAN:
            Compose(mode, completion, verify)
@@ -302,6 +314,7 @@ TypeOK ==
         stop : {"none", "tool_failure", "step_limit", "repeated_action", "exploration_budget"},
         halted : BOOLEAN, incompleteTool : BOOLEAN,
         repairEnabled : BOOLEAN, semanticRepairs : 0..2, verdict : Verdicts,
+        inputCorrections : 0..MaxSteps, correctionSafe : BOOLEAN,
         status : Statuses, completion : Completions,
         payload : [answer : BOOLEAN, claims : BOOLEAN, evidence : BOOLEAN],
         lineage : BOOLEAN, derivedTrace : BOOLEAN,
@@ -333,6 +346,9 @@ NoFailedAnswerPromotion ==
         ~s.promotedAnswer /\ ~s.assistantEvent
 
 SingleSemanticRepair == s.semanticRepairs <= 1
+SingleInputCorrection == s.inputCorrections <= 1
+NoUnsafeInputCorrection == s.correctionSafe
+NoInputCorrectionWitness == s.inputCorrections = 0
 
 SourceEpochClearsDerivedContext ==
     /\ \A k \in DerivedKeys: s.derived[k] \in {EmptyEpoch, s.epoch}

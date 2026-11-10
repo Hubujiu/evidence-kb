@@ -1,5 +1,7 @@
 # 开发与合并检查
 
+后端和 CI 支持 Linux，Windows 用户在 WSL 中执行下述命令。原生 Windows 的进程监督和存储问题不在当前交付范围，Linux 验收不代表这些问题已经修复。
+
 ## 运行与 CI 相同的检查
 
 在项目根目录执行以下命令。
@@ -100,7 +102,7 @@ Ruff 拒绝可变默认参数、无效表达式、重复类型条件、可直接
 
 ## 统一 CLI 与确定性验收
 
-首次安装开发环境时执行 `uv sync --locked --group dev` 和 `npm ci --ignore-scripts --prefix web`。Node 使用 CI 固定的 22.23.1。默认命令仍为 `uv run --no-sync python scripts/check_project.py`，执行全部离线合同、评分器控制、Rust 检查、受控进程集成、Ruff、跨语言无注释检查、解析器合同和 TypeScript 检查。
+首次安装开发环境时执行 `uv sync --locked --group dev` 和 `npm ci --ignore-scripts --prefix web`。Node 使用 CI 固定的 22.23.1。默认命令仍为 `uv run --no-sync python scripts/check_project.py`，执行全部离线合同、评分器控制、Rust 检查、受控进程集成、Ruff、跨语言无注释检查、解析器合同和 TypeScript 检查。入口先构建当前前端，再执行会请求首页的应用集成，干净 checkout 无需预先保留 `web/dist`。
 
 `uv run --no-sync python scripts/check_project.py --list` 只列出自动发现的合同模块和可选阶段，不导入产品、不执行测试、不创建输出目录。它不是验收结果。
 

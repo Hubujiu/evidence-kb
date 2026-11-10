@@ -13,7 +13,7 @@ uv run --no-sync python scripts/check_project.py --formal-only
 
 TLC 需要 Java 21。安装脚本是显式联网准备步骤，检查过程中不会安装、下载、调用提供者或付费模型。也可设置 `TLA_TOOLS_JAR` 指向已有的已核验文件；内容仍须符合锁定的大小和 SHA-256。缺失 Java/jar、版本不符或校验失败均失败，不跳过。
 
-默认 checker 保留全部原有 Rust、组件合同、进程集成、lint 和评分控制门禁，并额外检查状态盘点及源码映射。`--formal-only` 是单独的附加门禁，不执行也不替代普通质量门禁。CI 的独立 `formal` job 避免在四个平台/Python 组合及数据库集成中重复 TLC；`required` 同时要求原有 quality/secrets/integration 和 formal 全部成功，取消、跳过或失败均不能通过。
+默认 checker 保留全部原有 Rust、组件合同、进程集成、lint 和评分控制门禁，并额外检查状态盘点及源码映射。`--formal-only` 是单独的附加门禁，不执行也不替代普通质量门禁。CI 的独立 `formal` job 避免在 Linux 的两个 Python 版本及数据库集成中重复 TLC；`required` 同时要求原有 quality/secrets/integration 和 formal 全部成功，取消、跳过或失败均不能通过。
 
 ## 固定工具与成熟模式
 
