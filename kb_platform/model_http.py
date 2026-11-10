@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import math
+from dataclasses import dataclass
 from pathlib import Path
 import time
 from uuid import uuid4
@@ -13,6 +14,14 @@ from .model_errors import ModelPreflightError, RemoteModelError
 from .model_sdk import Capability, Media, ModelInfo, ModelResult, preserve_result_failure
 from .provider_admission import ProviderAdmission
 from .provider_runtime import retry_after_seconds
+
+
+@dataclass(frozen=True)
+class _HttpCompletion:
+    result: ModelResult
+    status: int
+    provider_request_id: str | None
+    logical_request_id: str
 
 
 def validate_model_endpoint(endpoint):
@@ -126,6 +135,34 @@ class OpenAICompatibleAdapter:
         raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
 
     def invoke(self, request):
+        admitted, completion, failure = False, None, None
+        try:
+            with self.ledger.admission():
+                admitted = True
+                try:
+                    completion = self._invoke_admitted(request)
+                except BaseException as error:
+                    failure = error
+                    raise
+            return completion.result
+        except BaseException as error:
+            if failure is not None and error is not failure:
+                failure.add_note('Model producer release failed: ' + type(error).__name__)
+                raise failure
+            if completion is not None:
+                preserve_result_failure(error, completion.result.usage, result=completion.result)
+                error.status = completion.status
+                error.provider_request_id = completion.provider_request_id
+                error.request_id = completion.logical_request_id
+                error.ledger_settlement, error.capture_state = 'COMMITTED', 'COMMITTED'
+            elif not admitted:
+                error.model_sent = False
+                if isinstance(error, ValueError) and str(error) in {
+                        'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
+                    raise ModelPreflightError(str(error)) from error
+            raise
+
+    def _invoke_admitted(self, request):
         from .model_sdk import validate_request
 
         try:
@@ -169,9 +206,14 @@ class OpenAICompatibleAdapter:
                               and isinstance(value, str)}}
         target = self.audit_root / (identity + '.json')
         def save():
-            temporary = target.with_suffix('.tmp')
-            temporary.write_text(json.dumps(record), encoding='utf-8')
-            temporary.replace(target)
+            record['capture_state'] = 'COMMITTED'
+            try:
+                temporary = target.with_suffix('.tmp')
+                temporary.write_text(json.dumps(record), encoding='utf-8')
+                temporary.replace(target)
+            except BaseException:
+                record['capture_state'] = 'FAILED'
+                raise
 
         try:
             self.ledger.reserve(identity, self.reservation, category=category, require_settled=True)
@@ -187,7 +229,7 @@ class OpenAICompatibleAdapter:
                     'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
                 raise ModelPreflightError(str(exc)) from exc
             raise
-        response, sending = None, False
+        response, sending, usage, body, dispatch_error, parse_error = None, False, None, None, None, None
         try:
             record['status'] = 'STARTED'
             save()
@@ -196,61 +238,125 @@ class OpenAICompatibleAdapter:
             outbound.extensions['timeout'] = httpx.Timeout(remaining_timeout()).as_dict()
             sending = True
             response = self.client.send(outbound, follow_redirects=False)
-
-            state = 'COMPLETE' if response.is_success else 'ERROR'
-            record.update(status=state, http_status=response.status_code)
-            if response.status_code == 403:
-                self.admission.block(identity, payload_sha256=payload_hash, category=category)
-            self.ledger.finish(identity, status=state,
-                               usage={'requests': 1} if 'requests' in self.reservation else None,
-                               diagnostic=f'HTTP_{response.status_code}')
-            save()
         except BaseException as exc:
-            known_unsent = response is None and (
-                not sending or isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)))
-            code = ('PROVIDER_TRANSPORT_ERROR' if known_unsent else
-                    'PROVIDER_OUTCOME_UNKNOWN' if response is None else 'PROVIDER_LEDGER_ERROR')
+            dispatch_error = exc
+        known_unsent = response is None and (not sending or
+            isinstance(dispatch_error, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)))
+        if response is not None:
             try:
-                if response is None:
-                    self.ledger.finish(identity, status='ERROR' if known_unsent else 'UNKNOWN',
-                                       usage=dict.fromkeys(self.reservation, 0) if known_unsent else None,
-                                       diagnostic=type(exc).__name__)
-                    record.update(status='ERROR' if known_unsent else 'UNKNOWN', error=type(exc).__name__)
-                    save()
-            except BaseException as recording_error:
-                exc, code = recording_error, 'PROVIDER_LEDGER_ERROR'
-            else:
-                if not sending:
-                    exc.model_sent = False
-                    exc.physical_request_id = identity
-                    raise
-            error = RemoteModelError(code)
+                body = None if request.capability == Capability.SPEECH else response.json()
+                usage = self._response_usage(body)
+            except BaseException as exc:
+                parse_error = exc
+            record.update(status='COMPLETE' if response.is_success else 'ERROR',
+                http_status=response.status_code, usage=usage,
+                provider_request_id=response.headers.get('x-request-id') or response.headers.get('request-id'))
+        else:
+            record.update(status='ERROR' if known_unsent else 'UNKNOWN', error=type(dispatch_error).__name__)
+
+        def preserve(error):
             error.model_sent = not known_unsent
             error.physical_request_id = identity
-            raise error from exc
-        usage = None
+            error.request_id = request.call_context.get('request_id') or identity
+            error.ledger_settlement = record.get('ledger_settlement', 'NOT_ATTEMPTED')
+            error.capture_state = record.get('capture_state', 'FAILED')
+            if response is not None:
+                preserve_result_failure(error, usage, physical_request_id=identity)
+                error.status = response.status_code
+                error.provider_request_id = record['provider_request_id']
+                error.retry_after_seconds = retry_after_seconds(response.headers.get('Retry-After'))
+            operation = getattr(error, 'operation_id', None)
+            if operation is not None:
+                error.budget_operation_id = operation
+
+        record['ledger_settlement'] = 'NOT_ATTEMPTED'
+        if response is not None and response.status_code == 403:
+            try:
+                self.admission.block(identity, payload_sha256=payload_hash, category=category)
+            except BaseException as error:
+                try:
+                    save()
+                except BaseException as capture_error:
+                    error.add_note('Model capture persistence failed: ' + type(capture_error).__name__)
+                preserve(error)
+                if not isinstance(error, Exception):
+                    raise
+                converted = RemoteModelError('PROVIDER_LEDGER_ERROR')
+                preserve(converted)
+                raise converted from error
+        recording_error = None
+        record['ledger_settlement'] = 'UNCONFIRMED'
+        try:
+            save()
+        except BaseException as exc:
+            recording_error = exc
+        try:
+            self.ledger.finish(identity, status=record['status'],
+                usage=(dict.fromkeys(self.reservation, 0) if known_unsent else
+                       {'requests': 1} if response is not None and 'requests' in self.reservation else None),
+                diagnostic=f'HTTP_{response.status_code}' if response is not None else type(dispatch_error).__name__)
+        except BaseException as error:
+            record['ledger_error'] = getattr(error, 'code', type(error).__name__)
+            if getattr(error, 'operation_id', None) is not None:
+                record['ledger_operation_id'] = error.operation_id
+            try:
+                save()
+            except BaseException as capture_error:
+                error.add_note('Model capture persistence failed: ' + type(capture_error).__name__)
+            preserve(error)
+            from .database_contracts import CommitUnknown
+
+            if isinstance(error, CommitUnknown) or not isinstance(error, Exception):
+                raise
+            converted = RemoteModelError('PROVIDER_LEDGER_ERROR')
+            preserve(converted)
+            raise converted from error
+        record['ledger_settlement'] = 'COMMITTED'
+        try:
+            save()
+        except BaseException as exc:
+            if recording_error is None:
+                recording_error = exc
+        if recording_error is not None:
+            if not isinstance(recording_error, Exception):
+                preserve(recording_error)
+                raise recording_error
+            error = RemoteModelError('PROVIDER_LEDGER_ERROR')
+            preserve(error)
+            raise error from recording_error
+        if dispatch_error is not None:
+            if not sending or not isinstance(dispatch_error, Exception):
+                preserve(dispatch_error)
+                raise dispatch_error
+            error = RemoteModelError('PROVIDER_TRANSPORT_ERROR' if known_unsent else 'PROVIDER_OUTCOME_UNKNOWN')
+            preserve(error)
+            raise error from dispatch_error
         try:
             if not response.is_success:
                 raise RemoteModelError('PROVIDER_HTTP_ERROR', response.status_code,
                     retry_after_seconds=retry_after_seconds(response.headers.get('Retry-After')))
-            body = None if request.capability == Capability.SPEECH else response.json()
-            usage = self._response_usage(body)
+            if parse_error is not None:
+                raise parse_error
             data = self._decode(request, response, body)
         except BaseException as exc:
             if isinstance(exc, RemoteModelError):
-                preserve_result_failure(exc, usage, physical_request_id=identity)
+                preserve(exc)
+                raise
+            if not isinstance(exc, Exception):
+                preserve(exc)
                 raise
             error = RemoteModelError('INVALID_MODEL_RESPONSE')
-            preserve_result_failure(error, usage, physical_request_id=identity)
+            preserve(error)
             raise error from exc
         if execution is not None:
             try:
                 execution.check()
             except BaseException as exc:
-                preserve_result_failure(exc, usage, physical_request_id=identity)
+                preserve(exc)
                 raise
-        return ModelResult(self.info.provider, self.info.model, request.capability, data, usage, identity,
-                           physical_request_id=identity)
+        return _HttpCompletion(ModelResult(self.info.provider, self.info.model, request.capability,
+            data, usage, identity, physical_request_id=identity), response.status_code, record['provider_request_id'],
+            request.call_context.get('request_id') or identity)
 
     def _response_usage(self, body):
         return body.get('usage') if isinstance(body, dict) else None
@@ -336,12 +442,14 @@ class AnthropicAdapter(OpenAICompatibleAdapter):
 
     def _response_usage(self, body):
         raw = body.get('usage') if isinstance(body, dict) else None
-        if isinstance(raw, dict):
-            incoming, outgoing = raw.get('input_tokens'), raw.get('output_tokens')
-            if type(incoming) is int and type(outgoing) is int and incoming >= 0 and outgoing >= 0:
-                return {'prompt_tokens': incoming, 'completion_tokens': outgoing,
-                        'total_tokens': incoming + outgoing}
-        return None
+        if not isinstance(raw, dict):
+            return None
+        usage = {normalized: raw[key] for key, normalized in
+                 (('input_tokens', 'prompt_tokens'), ('output_tokens', 'completion_tokens'))
+                 if type(raw.get(key)) is int and raw[key] >= 0}
+        if set(usage) == {'prompt_tokens', 'completion_tokens'}:
+            usage['total_tokens'] = usage['prompt_tokens'] + usage['completion_tokens']
+        return usage
 
     def _decode(self, request, response, body):
         blocks = body['content']

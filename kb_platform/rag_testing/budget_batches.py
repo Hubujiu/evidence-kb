@@ -96,7 +96,10 @@ def _unique(rows_by_ledger):
 class LinkedBudgetLedger:
 
 
-    def __init__(self, path, caps, *, predecessors):
+    def __init__(self, path, caps, *, predecessors, allow_unresolved_child=False):
+        if type(allow_unresolved_child) is not bool:
+            raise ValueError('INVALID_RECOVERY_MODE')
+        self._recovery_only = allow_unresolved_child
         self.path, self.caps = Path(path).resolve(), deepcopy(caps)
         self.predecessors = deepcopy(list(predecessors))
         if not self.predecessors:
@@ -120,25 +123,30 @@ class LinkedBudgetLedger:
             child = _snapshot(self.path)
             if _unique([*((p['path'], p['rows']) for p in parents), (str(self.path), child['rows'])]):
                 raise ValueError('DUPLICATE_PHYSICAL_REQUEST_ID')
-            if child['summary']['pending_or_unknown']:
+            if child['summary']['pending_or_unknown'] and not self._recovery_only:
                 raise ValueError('UNRESOLVED_CHILD_LEDGER')
             for guard in guards.values():
                 guard.execute('INSERT OR IGNORE INTO producer VALUES (1, ?)', (str(self.path),))
 
     def admission(self):
+        if self._recovery_only:
+            raise ValueError('BUDGET_RECOVERY_READ_ONLY')
         return self.ledger.admission()
 
     def _parents(self):
         return [_validate_frozen(value) for value in self.predecessors]
 
     def reserve(self, request_id, resources, category='runtime'):
+        if self._recovery_only:
+            raise ValueError('BUDGET_RECOVERY_READ_ONLY')
         parents = self._parents()
         if any(request_id == row['id'] for parent in parents for row in parent['rows']):
             raise ValueError('DUPLICATE_PHYSICAL_REQUEST_ID')
         return self.ledger.reserve(request_id, resources, category=category, require_settled=True)
 
     def finish(self, request_id, *, status, usage=None, diagnostic=None):
-
+        if self._recovery_only:
+            raise ValueError('BUDGET_RECOVERY_READ_ONLY')
         return self.ledger.finish(request_id, status=status, usage=usage, diagnostic=diagnostic)
 
     def summary(self):

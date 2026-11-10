@@ -12,7 +12,10 @@ import secrets
 import sqlite3
 from threading import Lock
 
+import httpx
+
 from kb_platform.rag_testing.budget import BudgetLedger as PhysicalBudgetLedger
+from kb_platform.rag_testing.budget_batches import _snapshot as snapshot_budget
 from kb_platform.rag_testing.budget_batches import freeze_predecessor
 from kb_platform.rag_testing.budget_batches import ReviewedPredecessorLedger, validate_predecessor
 from kb_platform.rag_testing.provider_capture import CapturedLuna, observe_client, request_context
@@ -20,6 +23,7 @@ from kb_platform.rag_testing.contracts import digest
 from kb_platform.embeddings import EmbeddingError
 from kb_platform.remote import RemoteModelError
 from kb_platform.settings import Settings
+from kb_platform.provider_admission import CapturePreflightError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +33,57 @@ WINDOW = {'total': 131072, 'input': 118784, 'output': 4096, 'safety': 8192,
           'counting': 'conservative_utf8_estimate'}
 RUNTIME_CAPS = {'model': 120, 'input_tokens': 1500000, 'output_tokens': 200000,
                 'remote_embedding_calls': 32, 'embedding_input_tokens': 60000}
+RECOVERY_READ_ROUTES = frozenset({'/health', '/identity', '/capabilities', '/diagnostics', '/knowledge-bases', '/scopes',
+    '/knowledge-bases/{kb_id}/documents', '/knowledge-bases/{kb_id}/sources/{source_id}/versions',
+    '/knowledge-bases/{kb_id}/builds/{build_id}', '/knowledge-bases/{kb_id}/citations/{citation_id}',
+    '/knowledge-bases/{kb_id}/citations/{citation_id}/original',
+    '/knowledge-bases/{kb_id}/citations/{citation_id}/preview',
+    '/agent/capabilities', '/agent/runtime-status', '/agent/readiness', '/agent/sessions',
+    '/scopes/{scope_id}/agent-sources', '/scopes/{scope_id}/agent-authority',
+    '/agent/sessions/{session_id}', '/agent/sessions/{session_id}/history',
+    '/agent/sessions/{session_id}/export', '/agent/sessions/{session_id}/artifacts/{artifact_id}',
+    '/agent/sessions/{session_id}/requests/{request_id:path}'})
+
+
+def _deny_recovery_send(*args, **kwargs):
+    raise CapturePreflightError('DELIVERY_RECOVERY_REQUIRED')
+
+
+class RecoveryTransport(httpx.BaseTransport):
+    def handle_request(self, request):
+        return _deny_recovery_send()
+
+
+def _install_recovery_guard(app, require_actor):
+    from fastapi import Depends
+    from fastapi.dependencies.utils import get_dependant
+    from fastapi.responses import JSONResponse
+    from fastapi.routing import APIRoute
+
+    routes = [route for route in app.routes if isinstance(route, APIRoute)]
+    status_route = next((route for route in routes if route.path == '/agent/runtime-status'), None)
+    identity = next((dependency.call for dependency in status_route.dependant.dependencies
+                     if dependency.name == 'actor'), None) if status_route is not None else None
+    if identity is None:
+        raise DeliveryConfigurationError('DELIVERY_RECOVERY_AUTHENTICATION_UNAVAILABLE')
+
+    class RecoveryRequired(Exception):
+        pass
+
+    @app.exception_handler(RecoveryRequired)
+    async def recovery_error(request, exc):
+        return JSONResponse(status_code=503, content={'error': 'DELIVERY_RECOVERY_REQUIRED',
+            'mode': 'restricted_recovery', 'reason': 'UNRESOLVED_PHYSICAL_REQUEST',
+            'model_sent': False, 'automatic_retry': False,
+            'allowed_actions': ['inspect_request', 'inspect_history', 'export_session', 'reconcile_ledger']})
+
+    def require_recovery_read(actor=Depends(identity)):
+        require_actor(actor)
+        raise RecoveryRequired()
+
+    for route in routes:
+        if route.path not in RECOVERY_READ_ROUTES or not route.methods.issubset({'GET', 'HEAD'}):
+            route.dependant.dependencies.insert(0, get_dependant(path=route.path, call=require_recovery_read))
 
 
 def validate_runtime_caps(caps):
@@ -180,8 +235,8 @@ def load_budget_batch(profile, path):
         if str(ledger) in paths:
             raise ValueError()
         if ledger.exists():
-            child = freeze_predecessor(ledger)
-            if child['caps'] != value['caps']:
+            child = snapshot_budget(ledger)
+            if child['caps'] != value['caps'] or child['summary']['over_budget']:
                 raise ValueError()
         return {**value, 'manifest_path': str(path), 'manifest_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
                 'ledger_path': str(ledger), 'capture_root': str(path.parent / 'physical-requests')}
@@ -319,11 +374,13 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
     batch = load_budget_batch(profile, budget_batch or os.getenv('KB_DELIVERY_BUDGET_BATCH') or None)
     ensure_private_identity(profile)
     settings = configure_environment(profile, batch['caps'] if batch else None)
-    ledger = (ReviewedPredecessorLedger(batch['ledger_path'], batch['caps'], predecessors=batch['predecessors']) if batch else
+    recovery_required = bool(batch and Path(batch['ledger_path']).exists()
+                             and snapshot_budget(batch['ledger_path'])['summary']['pending_or_unknown'])
+    ledger = (ReviewedPredecessorLedger(batch['ledger_path'], batch['caps'], predecessors=batch['predecessors'],
+              allow_unresolved_child=recovery_required) if batch else
               PhysicalBudgetLedger(profile.root / 'physical-calls.sqlite3', profile.config['physical_call_caps']))
     capture_root = Path(batch['capture_root']) if batch else profile.root / 'physical-requests'
-    if ledger.summary()['pending_or_unknown']:
-        raise DeliveryConfigurationError('DELIVERY_HAS_UNRESOLVED_PHYSICAL_REQUESTS')
+    recovery_required = recovery_required or bool(ledger.summary()['pending_or_unknown'])
     public_application = app_factory is None
     if public_application:
         from kb_platform.api import create_app
@@ -349,10 +406,14 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
         if id(provider) in seen:
             return
         seen.add(id(provider))
-        inner = inner_factory(provider, category) if inner_factory is not None else None
+        inner = (RecoveryTransport() if recovery_required else
+                 inner_factory(provider, category) if inner_factory is not None else None)
         capture_category = f'runtime:{batch["id"]}:{category}' if batch else category
         observe_client(provider, ledger, capture_root, category=capture_category, inner=inner)
-        _serialize_client_sends(provider, lock)
+        if recovery_required:
+            provider.client.send = _deny_recovery_send
+        else:
+            _serialize_client_sends(provider, lock)
         providers.append(provider)
 
     def observe_semantic(service):
@@ -399,7 +460,7 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
             observe_semantic(semantic)
     app.state.delivery = {'profile': profile.public(), 'ledger': ledger,
                           'providers': providers, 'model': captured, 'budget_batch': batch,
-                          'capture_root': capture_root}
+                          'capture_root': capture_root, 'recovery_required': recovery_required}
 
     def require_delivery_actor(actor):
         if actor.tenant_id != profile.config['id'] or actor.principal_id != 'local':
@@ -420,9 +481,18 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
             if channel not in provider_channels:
                 provider_channels.append(channel)
         provider_blocked = any(channel['state'] == 'BLOCKED' for channel in provider_channels)
-        return {'configured': True, 'profile': profile.config['id'], 'mode': 'runtime_batch' if batch else 'delivery',
+        budget = _budget_status(ledger, provider_blocked=provider_blocked)
+        if recovery_required:
+            budget.update(status='BLOCKED', blocked_reason=budget['blocked_reason'] or 'UNRESOLVED_PHYSICAL_REQUEST')
+        return {'configured': True, 'profile': profile.config['id'],
+            'mode': 'restricted_recovery' if recovery_required else 'runtime_batch' if batch else 'delivery',
+            'recovery_required': recovery_required,
+            'recovery_reason': 'UNRESOLVED_PHYSICAL_REQUEST' if recovery_required else None,
+            'new_paid_requests_allowed': not recovery_required and budget['status'] == 'AVAILABLE',
+            'mutations_allowed': not recovery_required,
+            'recovery_requires_restart': recovery_required,
             'batch_id': batch['id'] if batch else None,
-            **_budget_status(ledger, provider_blocked=provider_blocked),
+            **budget,
             'provider_blocked': provider_blocked, 'provider_channels': provider_channels,
             'scope': 'single local delivery identity; independent phase caps; unknown reservations retained',
             'model_calls_from_status': 0}
@@ -430,11 +500,15 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
     def readiness(actor):
         require_delivery_actor(actor)
         dependencies = dependency_probe(settings) if dependency_probe else _dependency_probe(platform, actor)
-        return {'ready': bool(dependencies) and all(value['ready'] for value in dependencies.values()),
+        reads_ready = bool(dependencies) and all(value['ready'] for value in dependencies.values())
+        return {'ready': reads_ready and not recovery_required, 'read_only_ready': reads_ready,
+                'recovery_required': recovery_required,
                 'dependencies': dependencies, 'process_alive': True, 'model_calls': 0,
                 'scope': 'Mounted repository and visible published generations; empty search backends and answer quality not asserted'}
 
     app.state.delivery_status, app.state.delivery_readiness = status, readiness
+    if recovery_required:
+        _install_recovery_guard(app, require_delivery_actor)
 
     @app.middleware('http')
     async def identify_delivery_response(request, call_next):
@@ -448,6 +522,8 @@ def _create_delivery_app(config_path, providers_path, run_root, *, app_factory,
                 'provider_config_sha256': hashlib.sha256(profile.provider_path.read_bytes()).hexdigest(),
                 'physical_ledger': str(ledger.path), 'physical_capture_root': str(capture_root),
                 'active_physical_caps': ledger.caps,
+                'recovery_required': recovery_required,
+                'mode': 'restricted_recovery' if recovery_required else 'runtime_batch' if batch else 'delivery',
                 'budget_batch': None if batch is None else {key: batch[key] for key in
                     ('id', 'manifest_path', 'manifest_sha256', 'semantic_predecessor')},
                 'all_remote_requests_serialized': True, 'new_requests_at_startup': 0,
@@ -472,10 +548,13 @@ def check_delivery_configuration(config_path=None, providers_path=None, run_root
     state['budget_batch'] = None if batch is None else batch['id']
     semantic_config = os.getenv('KB_SEMANTIC_PAGE_CONFIG')
     state['semantic_page_runtime'] = validate_semantic_runtime(semantic_config) if semantic_config else None
-    snapshot = freeze_predecessor(path) if path.exists() else None
+    snapshot = snapshot_budget(path) if path.exists() else None
+    if snapshot and snapshot['summary']['over_budget']:
+        raise ValueError('PREDECESSOR_ALREADY_OVER_BUDGET')
     if snapshot and snapshot['caps'] != (batch['caps'] if batch else profile.config['physical_call_caps']):
         raise DeliveryConfigurationError('DELIVERY_PHYSICAL_CAPS_CHANGED')
     state['physical_ledger'] = snapshot['summary'] if snapshot else None
-    if state['physical_ledger'] and state['physical_ledger']['pending_or_unknown']:
-        raise DeliveryConfigurationError('DELIVERY_HAS_UNRESOLVED_PHYSICAL_REQUESTS')
+    state['recovery_required'] = bool(state['physical_ledger'] and state['physical_ledger']['pending_or_unknown'])
+    state['mode'] = 'restricted_recovery' if state['recovery_required'] else 'runtime_batch' if batch else 'delivery'
+    state['recovery_reason'] = 'UNRESOLVED_PHYSICAL_REQUEST' if state['recovery_required'] else None
     return state

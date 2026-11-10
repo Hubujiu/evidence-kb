@@ -26,7 +26,8 @@ class ModelPreflightError(ValueError):
 
 ERROR_FIELDS = ('status', 'retry_after_seconds', 'model_sent', 'physical_request_id',
                 'request_id', 'call_record', 'preflight_code', 'output_diagnostics', 'observed_usage', 'trace',
-                'operation_id', 'budget_operation_id', 'admission_receipt_id', 'known_zero_send')
+                'operation_id', 'budget_operation_id', 'admission_receipt_id', 'known_zero_send',
+                'provider_request_id', 'ledger_settlement', 'capture_state')
 UNOBSERVED_RESULT = object()
 
 

@@ -6,6 +6,8 @@ from fastapi import Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from .agent_responses import RequestStatusResponse, SessionResponse, TurnResponse
+
 
 class SessionCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -117,11 +119,11 @@ def install_agent_routes(app, platform, research, identity, *, service_factory=N
     def authority(scope_id: str, actor: principal):
         return require().authority(actor, scope_id)
 
-    @app.post('/scopes/{scope_id}/sessions', status_code=201)
+    @app.post('/scopes/{scope_id}/sessions', status_code=201, response_model=SessionResponse)
     def create(scope_id: str, body: SessionCreate, actor: principal):
         return require().create(actor, scope_id, body.source_policy, body.config_name)
 
-    @app.get('/agent/sessions/{session_id}')
+    @app.get('/agent/sessions/{session_id}', response_model=SessionResponse)
     def get(session_id: str, actor: principal):
         return require().get(actor, session_id)
 
@@ -129,7 +131,11 @@ def install_agent_routes(app, platform, research, identity, *, service_factory=N
     def history(session_id: str, actor: principal):
         return require().history(actor, session_id)
 
-    @app.post('/agent/sessions/{session_id}/turns')
+    @app.get('/agent/sessions/{session_id}/requests/{request_id:path}', response_model=RequestStatusResponse)
+    def request_status(session_id: str, request_id: str, actor: principal):
+        return require().request_status(actor, session_id, request_id)
+
+    @app.post('/agent/sessions/{session_id}/turns', response_model=TurnResponse)
     def turn(session_id: str, body: TurnRequest, actor: principal):
         return require().turn(actor, session_id, message=body.message, request_id=body.request_id,
                               expected_revision=body.expected_revision, policy=body.source_policy,

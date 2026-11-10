@@ -1,0 +1,6 @@
+test_renamed_instances_accept_injected_clients_and_report_actual_source (kb_platform.rag_testing.contract_application_contracts.ContractApplicationContracts.test_renamed_instances_accept_injected_clients_and_report_actual_source) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 2.718s
+
+OK

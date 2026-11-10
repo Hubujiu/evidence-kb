@@ -1,0 +1,171 @@
+test_builtin_search_uses_published_parse_through_update_publish_and_revocation (kb_platform.rag_testing.document_management_contracts.DocumentManagementContracts.test_builtin_search_uses_published_parse_through_update_publish_and_revocation) ... ERROR
+test_reparse_after_mutable_authorization_update_preserves_immutable_parse (kb_platform.rag_testing.document_management_contracts.DocumentManagementContracts.test_reparse_after_mutable_authorization_update_preserves_immutable_parse) ... ERROR
+test_http_diagnostics_report_profile_files_and_ignored_environment (kb_platform.rag_testing.configuration_diagnostic_contracts.ConfigurationAssemblyDiagnosticContracts.test_http_diagnostics_report_profile_files_and_ignored_environment) ... /opt/evidence-runs/api-delivery-20261110/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+FAIL
+
+======================================================================
+ERROR: test_builtin_search_uses_published_parse_through_update_publish_and_revocation (kb_platform.rag_testing.document_management_contracts.DocumentManagementContracts.test_builtin_search_uses_published_parse_through_update_publish_and_revocation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 143, in invoke
+    result = getattr(self._implementation, name)(request)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_contracts.py", line 308, in prepare_pipeline
+    prepared = next(pending)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/retrieval_pipeline.py", line 312, in staged
+    raise PlatformError('INDEX_EVIDENCE_VIOLATION', 'Child does not belong to the published parse', 503)
+kb_platform.session_identity.PlatformError: Child does not belong to the published parse
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_contracts.py", line 214, in domain_call
+    return call(request)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/rag_testing/document_management_contracts.py", line 107, in <lambda>
+    lambda request, method=method: contract.call('data', 'evidence', method, request)
+                                   ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 328, in call
+    return self.host.bind(service).invoke(method, args=(wire(request),), timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_host.py", line 241, in invoke
+    return self.host._invoke(dict(self.identity), method, args, kwargs or {}, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_host.py", line 559, in _invoke
+    result = getattr(self._implementation(binding), method)(*args, **kwargs)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 164, in invoke
+    raise ContractError(code, str(error), status_code=status, details=details) from error
+kb_platform.plugin_contracts.ContractError: Child does not belong to the published parse
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/rag_testing/document_management_contracts.py", line 133, in test_builtin_search_uses_published_parse_through_update_publish_and_revocation
+    retained = search()
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/rag_testing/document_management_contracts.py", line 121, in search
+    result = tool.execute('search', {'query': 'QUARTZMARKER'}, 'synthetic-search')
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/agent_builtin_tools.py", line 32, in execute
+    return handler(action, args, group)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/agent_builtin_tools.py", line 60, in search
+    search_result = self.invoke_tool(
+        action,
+    ...<12 lines>...
+        empty=lambda value: not value["hits"],
+    )
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/rag_testing/document_management_contracts.py", line 119, in <lambda>
+    tool.invoke_tool = lambda action, args, call, **options: call()
+                                                             ~~~~^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/agent_builtin_tools.py", line 63, in <lambda>
+    lambda: self.turn_gateway.search_pipeline(
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self.actor,
+        ^^^^^^^^^^^
+    ...<7 lines>...
+        **search_options,
+        ^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_contracts.py", line 378, in search_pipeline
+    prepared = domain_call(self._dependency.prepare_pipeline, request)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_contracts.py", line 227, in domain_call
+    raise converted from error
+kb_platform.session_identity.PlatformError: Child does not belong to the published parse
+
+======================================================================
+ERROR: test_reparse_after_mutable_authorization_update_preserves_immutable_parse (kb_platform.rag_testing.document_management_contracts.DocumentManagementContracts.test_reparse_after_mutable_authorization_update_preserves_immutable_parse)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 143, in invoke
+    result = getattr(self._implementation, name)(request)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_platform_contract.py", line 124, in <lambda>
+    return lambda request: _call(lambda: invoke(request))
+                           ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_platform_contract.py", line 94, in _call
+    return operation()
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_platform_contract.py", line 124, in <lambda>
+    return lambda request: _call(lambda: invoke(request))
+                                         ~~~~~~^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_contracts.py", line 243, in invoke
+    return json.loads(json.dumps(getattr(self._implementation, name)(**values), allow_nan=False))
+                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/core.py", line 380, in reparse_source
+    return self.ingest(actor, kb_id, metadata['filename'], data, source_id=source_id,
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        expected_revision=revision)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/core.py", line 177, in ingest
+    conn.execute(KnowledgeQuery.PARSE_INSERT,
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 (actor.tenant_id, source_id, digest, document['parse_snapshot_id'], document))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_storage.py", line 27, in execute
+    return execute_operation(self._transaction, query, values, write=self._write)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_sql.py", line 326, in execute_operation
+    raise PlatformError('SOURCE_INTEGRITY', 'Immutable source identity has different content', 409)
+kb_platform.session_identity.PlatformError: Immutable source identity has different content
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_contracts.py", line 214, in domain_call
+    return call(request)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/application_knowledge.py", line 199, in <lambda>
+    return lambda request: composed.run({'operation': 'platform',
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+        'request': {'method': name, 'request': request}})
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 320, in run
+    return self.call(self._entrypoint['plugin'], self._entrypoint['export'], 'run', request)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 328, in call
+    return self.host.bind(service).invoke(method, args=(wire(request),), timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_host.py", line 241, in invoke
+    return self.host._invoke(dict(self.identity), method, args, kwargs or {}, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_host.py", line 559, in _invoke
+    result = getattr(self._implementation(binding), method)(*args, **kwargs)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 143, in invoke
+    result = getattr(self._implementation, name)(request)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_capabilities.py", line 214, in run
+    return getattr(platform, call['method'])(call['request'])
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 183, in invoke
+    result = self._context.host._invoke(binding, name, (request,), {})
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_host.py", line 559, in _invoke
+    result = getattr(self._implementation(binding), method)(*args, **kwargs)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/plugin_contracts.py", line 164, in invoke
+    raise ContractError(code, str(error), status_code=status, details=details) from error
+kb_platform.plugin_contracts.ContractError: Immutable source identity has different content
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/rag_testing/document_management_contracts.py", line 158, in test_reparse_after_mutable_authorization_update_preserves_immutable_parse
+    reparsed = platform.reparse_source(self.actor, scope, first['source_id'],
+        expected_revision=current['authority_revision'])
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_contracts.py", line 269, in invoke
+    return domain_call(getattr(self._dependency, name), request)
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/knowledge_contracts.py", line 227, in domain_call
+    raise converted from error
+kb_platform.session_identity.PlatformError: Immutable source identity has different content
+
+======================================================================
+FAIL: test_http_diagnostics_report_profile_files_and_ignored_environment (kb_platform.rag_testing.configuration_diagnostic_contracts.ConfigurationAssemblyDiagnosticContracts.test_http_diagnostics_report_profile_files_and_ignored_environment)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/企业知识库/kb_platform/rag_testing/configuration_diagnostic_contracts.py", line 65, in test_http_diagnostics_report_profile_files_and_ignored_environment
+    self.assertEqual(result['configuration_sources'], {'application': 'explicit',
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        'models': 'application_profile', 'storage': 'application_profile'})
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'app[19 chars]t', 'storage': 'KB_STORAGE_CONFIG', 'models': [14 chars]FIG'} != {'app[19 chars]t', 'models': 'application_profile', 'storage'[19 chars]ile'}
+  {'application': 'explicit',
+-  'models': 'KB_MODELS_CONFIG',
+-  'storage': 'KB_STORAGE_CONFIG'}
++  'models': 'application_profile',
++  'storage': 'application_profile'}
+
+----------------------------------------------------------------------
+Ran 3 tests in 5.466s
+
+FAILED (failures=1, errors=2)

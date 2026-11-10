@@ -71,6 +71,11 @@ class KnowledgeApplication:
     def capabilities(self):
         return self.knowledge.capabilities()
 
+    def model_status(self):
+        model = self.knowledge.model
+        return {'policy': asdict(model.policy), 'budget': model.ledger.snapshot(),
+                'provider_id': model.provider_id}
+
     def create(self, actor, scope_id, policy=None, config_name='recommended'):
         return self.knowledge.create(actor, scope_id, policy, config_name)
 
@@ -79,6 +84,9 @@ class KnowledgeApplication:
 
     def history(self, actor, session_id):
         return self.knowledge.history(actor, session_id)
+
+    def request_status(self, actor, session_id, request_id):
+        return self.knowledge.request_status(actor, session_id, request_id)
 
     def artifact(self, actor, session_id, artifact_id):
         return self.knowledge.artifact(actor, session_id, artifact_id)
@@ -136,6 +144,9 @@ class HostedKnowledgeApplication:
     def capabilities(self):
         return self.host.call('application', 'capabilities')
 
+    def model_status(self):
+        return self.host.call('application', 'model_status')
+
     def create(self, actor, scope_id, policy=None, config_name='recommended'):
         return self.host.call('application', 'create', actor, scope_id, policy, config_name)
 
@@ -144,6 +155,9 @@ class HostedKnowledgeApplication:
 
     def history(self, actor, session_id):
         return self.host.call('application', 'history', actor, session_id)
+
+    def request_status(self, actor, session_id, request_id):
+        return self.host.call('application', 'request_status', actor, session_id, request_id)
 
     def artifact(self, actor, session_id, artifact_id):
         return self.host.call('application', 'artifact', actor, session_id, artifact_id)

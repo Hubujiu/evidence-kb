@@ -82,6 +82,28 @@ class BudgetStatusFixture:
 
 
 class DeliveryStatusContracts(BudgetStatusFixture, unittest.TestCase):
+    def test_child_recovery_requires_explicit_read_only_opt_in_and_cannot_reenable_itself(self):
+        parent = self.ledger('recovery-parent')
+        self.settle(parent, 'parent-complete')
+        frozen = freeze_predecessor(parent.path)
+        child = self.ledger('unresolved-child')
+        child.reserve('retained-started', RESERVED)
+        before = child.summary(), child.entry('retained-started')
+        with self.assertRaisesRegex(ValueError, 'UNRESOLVED_CHILD_LEDGER'):
+            ReviewedPredecessorLedger(child.path, CAPS, predecessors=[frozen])
+        recovery = ReviewedPredecessorLedger(child.path, CAPS, predecessors=[frozen], allow_unresolved_child=True)
+        self.addCleanup(recovery.ledger.close)
+        self.assertEqual((child.summary(), child.entry('retained-started')), before)
+        child.finish('retained-started', status='COMPLETE', usage=OBSERVED)
+        settled = child.summary()
+        with self.assertRaisesRegex(ValueError, 'BUDGET_RECOVERY_READ_ONLY'):
+            recovery.reserve('new-request', RESERVED)
+        with self.assertRaisesRegex(ValueError, 'BUDGET_RECOVERY_READ_ONLY'):
+            recovery.finish('retained-started', status='COMPLETE', usage=OBSERVED)
+        with self.assertRaisesRegex(ValueError, 'BUDGET_RECOVERY_READ_ONLY'):
+            recovery.admission()
+        self.assertEqual(recovery.summary(), settled)
+
     def test_plain_read_failure_reports_unknown_then_recovers_original_facts(self):
         ledger = self.ledger()
         self.settle(ledger, 'already-complete')
@@ -189,7 +211,8 @@ def live_suite():
         def setUp(self):
             super().setUp()
             environment = patch.dict(os.environ,
-                {key: value for key, value in os.environ.items() if not key.startswith('KB_')}, clear=True)
+                {key: value for key, value in os.environ.items()
+                 if not key.startswith('KB_') or key == 'KB_AGENT_KERNEL_LIBRARY'}, clear=True)
             environment.start()
             self.addCleanup(environment.stop)
             self.run = self.root / 'run'
@@ -211,14 +234,15 @@ def live_suite():
             self.config_path.write_text(json.dumps(profile), 'utf-8')
             self.providers_path.write_text(json.dumps(providers), 'utf-8')
 
-        def application(self, *, batch=None):
+        def application(self, *, batch=None, service=None):
             def construct(settings, *, model_clients):
                 _, embedding = model_clients.values
                 application = FastAPI()
                 platform = SimpleNamespace(embedding_provider=embedding)
                 research = SimpleNamespace(embedding=embedding)
-                agent = SimpleNamespace(model=SimpleNamespace(policy=SimpleNamespace(model_window=WINDOW['total'],
-                    input_budget=WINDOW['input'], output_reserve=WINDOW['output'], safety_reserve=WINDOW['safety'])))
+                agent = service or SimpleNamespace()
+                agent.model = SimpleNamespace(policy=SimpleNamespace(model_window=WINDOW['total'],
+                    input_budget=WINDOW['input'], output_reserve=WINDOW['output'], safety_reserve=WINDOW['safety']))
                 identities = settings.identities()
 
                 def identity(authorization: str | None = Header(default=None)):
@@ -229,6 +253,14 @@ def live_suite():
 
                 application.state.platform, application.state.research = platform, research
                 install_agent_routes(application, platform, research, identity, application=agent)
+
+                @application.post('/knowledge-bases/{kb_id}/search')
+                def search(kb_id: str, request: dict):
+                    raise AssertionError('RECOVERY_SEARCH_MUST_NOT_EXECUTE')
+
+                @application.get('/unclassified-read')
+                def unclassified_read():
+                    raise AssertionError('RECOVERY_UNCLASSIFIED_ROUTE_MUST_NOT_EXECUTE')
                 return application
 
             def unexpected(request):
@@ -263,6 +295,158 @@ def live_suite():
                 status = client.get('/agent/runtime-status', headers=headers)
                 self.assertNotIn('X-Delivery-Instance', status.headers)
             self.assertEqual(self.physical, [])
+
+        def test_unresolved_startup_preserves_reads_and_denies_mutations_before_execution(self):
+            ledger = BudgetLedger(self.run / 'physical-calls.sqlite3', CAPS)
+            self.addCleanup(ledger.close)
+            self.settle(ledger, 'synthetic-unknown', status='UNKNOWN')
+            before = ledger.summary(), ledger.entry('synthetic-unknown')
+            session = {'session_id': 'saved', 'scope_id': 'kb', 'revision': 1,
+                'created_at': '2026-11-10T00:00:00Z', 'updated_at': '2026-11-10T00:00:00Z',
+                'state': {'config_name': 'recommended'}}
+            history = {'events': [{'kind': 'user', 'payload': {'text': 'Saved synthetic question'}}]}
+            service = SimpleNamespace(list_sessions=lambda actor, **kwargs: {'sessions': [session]},
+                get=lambda actor, session_id: session, history=lambda actor, session_id: history)
+            app, headers = self.application(service=service)
+            self.addCleanup(app.state.delivery['ledger'].close)
+            with TestClient(app) as client:
+                status = self.request_status(client, headers)
+                self.assertEqual(status['mode'], 'restricted_recovery')
+                self.assertEqual(status['status'], 'BLOCKED')
+                self.assertFalse(status['new_paid_requests_allowed'])
+                self.assertTrue(status['recovery_requires_restart'])
+                self.assertEqual(status['pending_or_unknown'], 1)
+                self.assertEqual(status['effective_usage_or_reserved'], RESERVED)
+                for path in ('/agent/sessions', '/agent/sessions/saved', '/agent/sessions/saved/history',
+                             '/agent/sessions/saved/export'):
+                    response = client.get(path, headers=headers)
+                    self.assertEqual(response.status_code, 200, response.text)
+                    self.assertEqual(client.get(path).status_code, 401)
+                exported = client.get('/agent/sessions/saved/export', headers=headers).json()
+                self.assertEqual(exported['events'], history['events'])
+                for path, body in [('/scopes/kb/sessions', {}),
+                                   ('/agent/sessions/saved/turns', {'message': 'Never send',
+                                        'request_id': 'new', 'expected_revision': 1}),
+                                   ('/knowledge-bases/kb/search', {'query': 'local', 'channel': 'bm25'}),
+                                   ('/knowledge-bases/kb/search', {'query': 'remote', 'purpose': 'llm_context',
+                                                                 'channel': 'dense'})]:
+                    response = client.post(path, json=body, headers=headers)
+                    self.assertEqual(response.status_code, 503, response.text)
+                    self.assertEqual(response.json()['error'], 'DELIVERY_RECOVERY_REQUIRED')
+                    self.assertFalse(response.json()['model_sent'])
+                    unauthenticated = client.post(path, json=body)
+                    self.assertEqual(unauthenticated.status_code, 401, unauthenticated.text)
+                    self.assertNotIn('restricted_recovery', unauthenticated.text)
+                unclassified = client.get('/unclassified-read', headers=headers)
+                self.assertEqual(unclassified.status_code, 503)
+            self.assertEqual((ledger.summary(), ledger.entry('synthetic-unknown')), before)
+            self.assertEqual(self.physical, [])
+            self.assertEqual(list(app.state.delivery['capture_root'].glob('*.json')), [])
+
+        def test_recovery_send_remains_blocked_after_external_reconciliation_until_restart(self):
+            from kb_platform.provider_admission import CapturePreflightError
+
+            ledger = BudgetLedger(self.run / 'physical-calls.sqlite3', CAPS)
+            self.addCleanup(ledger.close)
+            ledger.reserve('synthetic-started', RESERVED)
+            app, headers = self.application()
+            self.addCleanup(app.state.delivery['ledger'].close)
+            ledger.finish('synthetic-started', status='COMPLETE', usage=OBSERVED)
+            before = ledger.summary()
+            for provider in app.state.delivery['providers']:
+                with self.assertRaises(CapturePreflightError) as raised:
+                    provider.client.post('https://status-fixture.invalid/never-send', json={'messages': []})
+                self.assertIs(raised.exception.model_sent, False)
+                self.assertEqual(raised.exception.reason, 'DELIVERY_RECOVERY_REQUIRED')
+                with self.assertRaises(CapturePreflightError):
+                    provider.client._transport.inner.handle_request(httpx.Request('POST', 'https://fixture.invalid'))
+            with TestClient(app) as client:
+                status = self.request_status(client, headers)
+                self.assertEqual(status['mode'], 'restricted_recovery')
+                self.assertEqual(status['status'], 'BLOCKED')
+                self.assertEqual(status['pending_or_unknown'], 0)
+                self.assertEqual(status['budget_status'], 'AVAILABLE')
+            self.assertEqual(ledger.summary(), before)
+            self.assertEqual(list(app.state.delivery['capture_root'].glob('*.json')), [])
+
+        def test_production_restart_keeps_persisted_session_readable_and_all_writes_blocked(self):
+            from kb_platform.storage_catalog import initialize_configuration
+
+            root = Path(__file__).resolve().parents[2]
+            storage = json.loads((root / 'config/storage.local.example.json').read_text('utf-8'))
+            storage['application_id'] = 'delivery-recovery-contract'
+            for name, instance in storage['instances'].items():
+                instance['config']['root'] = str(self.root / 'storage' / name)
+            storage_path = self.root / 'storage.json'
+            storage_path.write_text(json.dumps(initialize_configuration(storage)), 'utf-8')
+
+            def unexpected(request):
+                self.physical.append(str(request.url))
+                raise AssertionError('RECOVERY_MUST_NOT_SEND_PROVIDER_REQUESTS')
+
+            def application():
+                return create_delivery_app(self.config_path, self.providers_path, self.run,
+                    inner_factory=lambda provider, category: httpx.MockTransport(unexpected))
+
+            with patch.dict(os.environ, {'KB_STORAGE_CONFIG': str(storage_path)}):
+                original = application()
+                ledger = original.state.delivery['ledger']
+                self.addCleanup(ledger.close)
+                token = next(iter(json.loads((self.run / 'identities.json').read_text('utf-8'))))
+                headers = {'Authorization': 'Bearer ' + token}
+                with TestClient(original) as client:
+                    created = client.post('/knowledge-bases', json={'name': 'Synthetic recovery corpus'}, headers=headers)
+                    self.assertEqual(created.status_code, 201, created.text)
+                    kb = created.json()['kb_id']
+                    uploaded = client.post(f'/knowledge-bases/{kb}/sources', headers=headers,
+                        files={'file': ('synthetic.md', b'Synthetic retained source value 42.', 'text/markdown')},
+                        data={'policy': json.dumps({'llm_context': True, 'embedding': False,
+                                                   'allowed_providers': ['luna']})})
+                    self.assertEqual(uploaded.status_code, 201, uploaded.text)
+                    build = client.post(f'/knowledge-bases/{kb}/builds', json={'channels': ['bm25']}, headers=headers)
+                    self.assertEqual(build.status_code, 201, build.text)
+                    build_id = build.json()['build_id']
+                    published = client.post(f'/knowledge-bases/{kb}/builds/{build_id}/publish', headers=headers)
+                    self.assertEqual(published.status_code, 200, published.text)
+                    started = client.post(f'/scopes/{kb}/sessions', json={}, headers=headers)
+                    self.assertEqual(started.status_code, 201, started.text)
+                    session_id = started.json()['session_id']
+                    saved = client.get(f'/agent/sessions/{session_id}/export', headers=headers)
+                    self.assertEqual(saved.status_code, 200, saved.text)
+                ledger.reserve('synthetic-restart-pending', RESERVED)
+                ledger.finish('synthetic-restart-pending', status='UNKNOWN')
+                before = ledger.summary(), ledger.entry('synthetic-restart-pending')
+                recovery = application()
+                self.addCleanup(recovery.state.delivery['ledger'].close)
+                with TestClient(recovery) as client:
+                    status = self.request_status(client, headers)
+                    self.assertEqual(status['mode'], 'restricted_recovery')
+                    for path in (f'/agent/sessions/{session_id}', f'/agent/sessions/{session_id}/history',
+                                 f'/agent/sessions/{session_id}/export', '/agent/sessions', '/knowledge-bases'):
+                        response = client.get(path, headers=headers)
+                        self.assertEqual(response.status_code, 200, response.text)
+                        self.assertEqual(client.get(path).status_code, 401)
+                    exported = client.get(f'/agent/sessions/{session_id}/export', headers=headers).json()
+                    self.assertEqual(exported['session'], saved.json()['session'])
+                    self.assertEqual(exported['events'], saved.json()['events'])
+                    for method, path, body in [
+                        ('POST', '/knowledge-bases', {'name': 'Denied'}),
+                        ('POST', f'/knowledge-bases/{kb}/builds', {'channels': ['bm25']}),
+                        ('POST', f'/knowledge-bases/{kb}/builds/{build_id}/publish', {}),
+                        ('PUT', f'/knowledge-bases/{kb}/members/other', {'capabilities': ['kb.read']}),
+                        ('DELETE', f'/knowledge-bases/{kb}/bindings/unknown', {}),
+                        ('POST', f'/knowledge-bases/{kb}/search', {'query': '42', 'purpose': 'llm_context'}),
+                        ('POST', f'/agent/sessions/{session_id}/turns',
+                            {'message': 'Never send', 'request_id': 'denied', 'expected_revision': 0})]:
+                        response = client.request(method, path, json=body, headers=headers)
+                        self.assertEqual(response.status_code, 503, response.text)
+                        self.assertEqual(response.json()['error'], 'DELIVERY_RECOVERY_REQUIRED')
+                        self.assertFalse(response.json()['model_sent'])
+                        self.assertEqual(client.request(method, path, json=body).status_code, 401)
+                    self.assertEqual(len(client.get('/knowledge-bases', headers=headers).json()), 1)
+                self.assertEqual((ledger.summary(), ledger.entry('synthetic-restart-pending')), before)
+                self.assertEqual(self.physical, [])
+                self.assertEqual(list(recovery.state.delivery['capture_root'].glob('*.json')), [])
 
         def test_http_plain_read_failure_is_blocked_json_without_provider_calls(self):
             app, headers = self.application()
@@ -316,6 +500,50 @@ def live_suite():
                 self.assertEqual(restored['status'], 'AVAILABLE')
                 self.assertEqual(restored['cumulative_effective_usage_or_reserved']['model'], 3)
             self.assertEqual(ledger.summary(), before)
+            self.assertEqual(list(app.state.delivery['capture_root'].glob('*.json')), [])
+
+        def test_pending_runtime_batch_restarts_with_all_reservations_retained(self):
+            predecessors = []
+            for path in (self.run / 'physical-calls.sqlite3', self.root / 'semantic' / 'physical-calls.sqlite3'):
+                ledger = BudgetLedger(path, CAPS)
+                self.settle(ledger, path.parent.name + '-complete')
+                predecessors.append(freeze_predecessor(path))
+                ledger.close()
+            batch_path = self.root / 'batch' / 'batch.json'
+            batch_path.parent.mkdir()
+            batch_path.write_text(json.dumps({'protocol': 'delivery-runtime-budget-batch/1',
+                'id': 'runtime-status-contract', 'tenant_id': 'delivery-status-contract',
+                'caps': RUNTIME_CAPS, 'predecessors': predecessors,
+                'semantic_predecessor': predecessors[1]['path']}), 'utf-8')
+            current = BudgetLedger(batch_path.parent / 'physical-calls.sqlite3', RUNTIME_CAPS)
+            self.addCleanup(current.close)
+            current.reserve('synthetic-batch-pending', RESERVED)
+            before = current.summary(), current.entry('synthetic-batch-pending')
+            app, headers = self.application(batch=batch_path)
+            self.addCleanup(app.state.delivery['ledger'].ledger.close)
+            read_only = app.state.delivery['ledger']
+            with self.assertRaisesRegex(ValueError, 'BUDGET_RECOVERY_READ_ONLY'):
+                read_only.reserve('must-not-reserve', RESERVED)
+            with self.assertRaisesRegex(ValueError, 'BUDGET_RECOVERY_READ_ONLY'):
+                read_only.finish('synthetic-batch-pending', status='COMPLETE', usage=OBSERVED)
+            with self.assertRaisesRegex(ValueError, 'BUDGET_RECOVERY_READ_ONLY'):
+                read_only.admission()
+            with TestClient(app) as client:
+                status = self.request_status(client, headers)
+                self.assertEqual(status['mode'], 'restricted_recovery')
+                self.assertEqual(status['batch_id'], 'runtime-status-contract')
+                self.assertEqual(status['current_pending_or_unknown'], 1)
+                self.assertEqual(status['pending_or_unknown'], 1)
+                self.assertEqual(status['cumulative_effective_usage_or_reserved']['model'], 3)
+                self.assertEqual(status['effective_usage_or_reserved'], RESERVED)
+                with unavailable_calls(current.path):
+                    unavailable = self.request_status(client, headers)
+                    self.assertEqual(unavailable['blocked_reason'], 'BUDGET_READ_UNAVAILABLE')
+                    self.assertIsNone(unavailable['remaining'])
+            self.assertEqual((current.summary(), current.entry('synthetic-batch-pending')), before)
+            for predecessor in predecessors:
+                self.assertEqual(freeze_predecessor(predecessor['path']), predecessor)
+            self.assertEqual(self.physical, [])
             self.assertEqual(list(app.state.delivery['capture_root'].glob('*.json')), [])
 
     return unittest.defaultTestLoader.loadTestsFromTestCase(DeliveryStatusIntegration)

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,6 +15,9 @@ from .storage_sdk import StorageError
 from .plugin_contracts import ContractError
 from .documents import max_upload_bytes, render_pdf_preview
 from .settings import Settings
+from .agent_responses import DocumentsResponse, SourceVersionsResponse
+from .public_errors import PUBLIC_ERROR_SCHEMA, public_error, public_error_headers
+from .configuration_diagnostics import configuration_diagnostics
 
 
 class RequestModel(BaseModel):
@@ -31,15 +34,22 @@ class MemberUpdate(RequestModel):
 
 class SourceReaders(RequestModel):
     readers: list[str]
+    expected_revision: int | None = Field(default=None, ge=0)
 
 
 class SourcePolicy(RequestModel):
     policy: dict
+    expected_revision: int | None = Field(default=None, ge=0)
 
 
 class BindingRequest(RequestModel):
     source_id: str
     source_version_id: str
+    expected_revision: int | None = Field(default=None, ge=0)
+
+
+class ReparseRequest(RequestModel):
+    expected_revision: int | None = Field(default=None, ge=0)
 
 
 class BuildRequest(RequestModel):
@@ -75,7 +85,9 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     service, research, models = composition.platform, composition.research, composition.models
     provider = service.embedding_provider if service is not None else None
     luna = service.ocr_client if service is not None else None
-    app = FastAPI(title="文档证据与单库检索", version="0.2.0")
+    app = FastAPI(title="文档证据与单库检索", version="0.2.0", responses={
+        code: {'content': {'application/json': {'schema': PUBLIC_ERROR_SCHEMA}}}
+        for code in (400, 403, 409, 429, 502, 503)})
     app.state.platform, app.state.research, app.state.models = service, research, models
     app.state.model_clients = model_clients
     app.state.root_plugins = composition.host
@@ -111,12 +123,15 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     @app.exception_handler(PlatformError)
     @app.exception_handler(ContractError)
     async def domain_error(request, exc):
-        return JSONResponse(status_code=exc.status_code, content={"error": exc.code, "detail": str(exc)})
+        payload = public_error(exc)
+        return JSONResponse(status_code=exc.status_code, content=payload, headers=public_error_headers(payload))
 
     @app.exception_handler(DatabaseError)
     @app.exception_handler(StorageError)
     async def authority_unavailable(request, exc):
-        return JSONResponse(status_code=503, content={"error": "AUTHORITY_UNAVAILABLE"})
+        payload = public_error(exc, code='COMMIT_UNKNOWN' if getattr(exc, 'code', None) == 'COMMIT_UNKNOWN'
+            else 'AUTHORITY_UNAVAILABLE', message='Authority unavailable or commit awaiting reconciliation')
+        return JSONResponse(status_code=503, content=payload)
 
     if models is not None:
         from .remote import RemoteModelError
@@ -124,11 +139,13 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
 
         @app.exception_handler(RemoteModelError)
         async def remote_error(request, exc):
-            return JSONResponse(status_code=502, content={'error': exc.code, 'provider_http_status': exc.status})
+            payload = public_error(exc)
+            return JSONResponse(status_code=502, content=payload, headers=public_error_headers(payload))
 
         @app.exception_handler(EmbeddingError)
         async def embedding_error(request, exc):
-            return JSONResponse(status_code=502, content={'error': 'EMBEDDING_FAILED', 'detail': str(exc)})
+            payload = public_error(exc, code='EMBEDDING_FAILED')
+            return JSONResponse(status_code=502, content=payload, headers=public_error_headers(payload))
 
 
     @app.get("/health")
@@ -165,6 +182,10 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     @app.get("/identity")
     def whoami(actor: principal):
         return {"tenant_id": actor.tenant_id, "principal_id": actor.principal_id}
+
+    @app.get('/diagnostics')
+    def diagnostics(actor: principal):
+        return configuration_diagnostics(composition)
 
     @app.get("/capabilities")
     def capabilities(actor: principal):
@@ -212,7 +233,7 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     @app.post("/knowledge-bases/{kb_id}/sources", status_code=201)
     def upload(kb_id: str, actor: principal, file: UploadFile = File(...),
                readers: str | None = Form(None), policy: str | None = Form(None),
-               source_id: str | None = Form(None)):
+               source_id: str | None = Form(None), expected_revision: int | None = Form(None, ge=0)):
         limit = max_upload_bytes()
         data = file.file.read(limit + 1)
         if len(data) > limit:
@@ -227,23 +248,44 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
         except (ValueError, TypeError):
             raise HTTPException(422, "readers 必须为字符串数组，policy 必须为对象") from None
         return service.ingest(actor, kb_id, Path(file.filename or "upload.txt").name, data,
-                              readers_value, policy_value, source_id)
+                              readers_value, policy_value, source_id,
+                              **({} if expected_revision is None else {'expected_revision': expected_revision}))
+
+    @app.get('/knowledge-bases/{kb_id}/documents', response_model=DocumentsResponse)
+    def documents(kb_id: str, actor: principal, provider_id: str | None = Query(None, min_length=1, max_length=200),
+                  include_removed: bool = False):
+        agent = getattr(app.state, 'agent', None)
+        selected = provider_id or (agent.model_status().get('provider_id') if agent is not None else None)
+        return service.documents(actor, kb_id, provider_id=selected, include_removed=include_removed)
+
+    @app.get('/knowledge-bases/{kb_id}/sources/{source_id}/versions', response_model=SourceVersionsResponse)
+    def source_versions(kb_id: str, source_id: str, actor: principal):
+        return service.source_versions(actor, kb_id, source_id)
+
+    @app.post('/knowledge-bases/{kb_id}/sources/{source_id}/reparse')
+    def reparse_source(kb_id: str, source_id: str, actor: principal, body: ReparseRequest):
+        return service.reparse_source(actor, kb_id, source_id,
+            **({} if body.expected_revision is None else {'expected_revision': body.expected_revision}))
 
     @app.post("/knowledge-bases/{kb_id}/bindings")
     def bind(kb_id: str, body: BindingRequest, actor: principal):
-        return service.bind_source(actor, kb_id, body.source_id, body.source_version_id)
+        return service.bind_source(actor, kb_id, body.source_id, body.source_version_id,
+            **({} if body.expected_revision is None else {'expected_revision': body.expected_revision}))
 
     @app.delete("/knowledge-bases/{kb_id}/bindings/{binding_id}")
-    def remove(kb_id: str, binding_id: str, actor: principal):
-        return service.remove_binding(actor, kb_id, binding_id)
+    def remove(kb_id: str, binding_id: str, actor: principal, expected_revision: int | None = Query(None, ge=0)):
+        return service.remove_binding(actor, kb_id, binding_id,
+            **({} if expected_revision is None else {'expected_revision': expected_revision}))
 
     @app.put("/sources/{source_id}/readers")
     def readers(source_id: str, body: SourceReaders, actor: principal):
-        return service.set_source_readers(actor, source_id, body.readers)
+        return service.set_source_readers(actor, source_id, body.readers,
+            **({} if body.expected_revision is None else {'expected_revision': body.expected_revision}))
 
     @app.put("/sources/{source_id}/policy")
     def policy(source_id: str, body: SourcePolicy, actor: principal):
-        return service.set_source_policy(actor, source_id, body.policy)
+        return service.set_source_policy(actor, source_id, body.policy,
+            **({} if body.expected_revision is None else {'expected_revision': body.expected_revision}))
 
     @app.post("/knowledge-bases/{kb_id}/builds", status_code=201)
     def stage(kb_id: str, actor: principal, body: BuildRequest | None = Body(default=None)):

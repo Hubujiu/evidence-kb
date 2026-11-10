@@ -13,6 +13,8 @@ rustup toolchain install 1.99.0 --profile minimal --component rustfmt --componen
 cargo fetch --locked
 cargo build --locked --offline
 uv sync --locked --group dev
+npm --prefix web ci
+npm --prefix e2e ci
 uv run --no-sync python scripts/check_project.py
 ```
 

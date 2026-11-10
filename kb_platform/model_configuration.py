@@ -9,6 +9,7 @@ from .embeddings import EmbeddingCallError
 from .model_errors import RemoteModelError
 from .model_sdk import Capability, Media, ModelRequest
 from .model_service import ModelService
+from .model_provider_registry import PROVIDER_ADAPTERS
 
 
 def from_clients(chat, embedding=None):
@@ -21,7 +22,7 @@ def from_clients(chat, embedding=None):
     return service
 
 
-def read_model_config(path):
+def read_model_config(path, *, adapters=None):
     from jsonschema import Draft202012Validator
     from .model_http import validate_model_endpoint, validate_provider_options
     from .plugin_configuration import config_schema, TEXT, POSITIVE
@@ -29,10 +30,7 @@ def read_model_config(path):
 
     resources = {'type': 'object', 'minProperties': 1,
                  'propertyNames': TEXT, 'additionalProperties': {'type': 'integer', 'minimum': 0}}
-    provider = config_schema({'adapter': {'enum': ['openai-compatible', 'anthropic']},
-        'base_url': TEXT, 'api_key_env': {'type': 'string', 'pattern': '^[A-Za-z_][A-Za-z0-9_]*$'},
-        'timeout_seconds': {'type': 'number', 'exclusiveMinimum': 0}},
-        required=('adapter', 'base_url', 'api_key_env'))
+    adapters = PROVIDER_ADAPTERS if adapters is None else adapters
     model = config_schema({'provider': TEXT, 'model': TEXT,
         'capabilities': {'type': 'array', 'minItems': 1, 'uniqueItems': True,
                          'items': {'enum': [kind.value for kind in Capability]}},
@@ -40,7 +38,8 @@ def read_model_config(path):
         required=('provider', 'model', 'capabilities', 'reservation'))
     schema = config_schema({'version': {'type': 'integer', 'const': 1},
         'budget': config_schema({'path': TEXT, 'caps': resources}, required=('path', 'caps')),
-        'providers': {'type': 'object', 'minProperties': 1, 'propertyNames': TEXT, 'additionalProperties': provider},
+        'providers': {'type': 'object', 'minProperties': 1, 'propertyNames': TEXT,
+                      'additionalProperties': adapters.provider_schema()},
         'models': {'type': 'object', 'minProperties': 1, 'propertyNames': TEXT, 'additionalProperties': model}},
         required=('version', 'budget', 'providers', 'models'))
     config = json.loads(Path(path).read_text('utf-8'))
@@ -48,8 +47,10 @@ def read_model_config(path):
         raise ValueError('INVALID_MODELS_CONFIG')
     budget = config['budget']
     validate_ledger_configuration(Path(budget['path']), budget['caps'])
-    classes = {'openai-compatible': 'OpenAICompatibleAdapter', 'anthropic': 'AnthropicAdapter'}
     for value in config['providers'].values():
+        definition = adapters.definition(value['adapter'])
+        if next(Draft202012Validator(definition.options_schema).iter_errors(value.get('options', {})), None):
+            raise ValueError('INVALID_MODEL_PROVIDER_OPTIONS')
         validate_model_endpoint(value['base_url'])
         timeout = value.get('timeout_seconds', 120)
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
@@ -60,10 +61,13 @@ def read_model_config(path):
         selected = config['providers'].get(row['provider'])
         if selected is None:
             raise ValueError('MODEL_PROVIDER_UNAVAILABLE')
+        definition = adapters.definition(selected['adapter'])
+        if not frozenset(Capability(value) for value in row['capabilities']) <= definition.capabilities:
+            raise ValueError('MODEL_ADAPTER_CAPABILITY_UNSUPPORTED')
         info = validate_provider_options(provider=row['provider'], model=row['model'], endpoint=selected['base_url'],
             api_key=os.environ[selected['api_key_env']], capabilities=row['capabilities'],
             reservation=row['reservation'], caps=budget['caps'], timeout=selected.get('timeout_seconds', 120),
-            preferred_batch_size=row.get('batch_size', 1), adapter_name=classes[selected['adapter']])
+            preferred_batch_size=row.get('batch_size', 1), adapter_name=selected['adapter'])
         required_capability = {'generation': Capability.CHAT, 'embedding': Capability.EMBEDDING,
                                'ocr': Capability.OCR}.get(name)
         if required_capability is not None and required_capability not in info.capabilities:
@@ -92,13 +96,12 @@ def configured_budget(config, *, database=None):
         raise
 
 
-def configured_adapter(config, name, ledger, *, client=None, audit_root=None, admission_factory=None):
-    from .model_http import AnthropicAdapter, OpenAICompatibleAdapter
-
+def configured_adapter(config, name, ledger, *, client=None, audit_root=None, admission_factory=None, adapters=None):
+    adapters = PROVIDER_ADAPTERS if adapters is None else adapters
     row = config['models'][name]
     provider = config['providers'][row['provider']]
-    adapters = {'openai-compatible': OpenAICompatibleAdapter, 'anthropic': AnthropicAdapter}
-    return adapters[provider['adapter']](provider=row['provider'], model=row['model'],
+    return adapters.create(provider['adapter'], provider_options=provider.get('options', {}),
+        provider=row['provider'], model=row['model'],
         endpoint=provider['base_url'], api_key=os.environ[provider['api_key_env']],
         capabilities=row['capabilities'], ledger=ledger, reservation=row['reservation'],
         timeout=provider.get('timeout_seconds', 120), preferred_batch_size=row.get('batch_size', 1),
@@ -117,14 +120,14 @@ class _ConfiguredModels(ModelService):
             self._ledger = None
 
 
-def from_config(path, *, database=None, audit_root=None, admission_factory=None):
-    config = read_model_config(path)
+def from_config(path, *, database=None, audit_root=None, admission_factory=None, adapters=None):
+    config = read_model_config(path, adapters=adapters)
     ledger = configured_budget(config, database=database)
     service = _ConfiguredModels(ledger)
     try:
         for name in config['models']:
             adapter = configured_adapter(config, name, ledger, audit_root=audit_root,
-                                         admission_factory=admission_factory)
+                                         admission_factory=admission_factory, adapters=adapters)
             try:
                 service.register(name, adapter, owned=True)
             except BaseException:

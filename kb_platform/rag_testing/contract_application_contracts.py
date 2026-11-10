@@ -98,6 +98,24 @@ class ContractApplicationContracts(unittest.TestCase):
         self.assertEqual(composition.application.model_status()['budget']['calls'], 0)
         self.assertEqual(len(composition.application.composition.plan['plugins']), 11)
 
+    def test_renamed_instances_accept_injected_clients_and_report_actual_source(self):
+        from kb_platform.configuration_diagnostics import configuration_diagnostics
+
+        names = {name: 'selected-' + name for name in self.profile['plugins']}
+        self.profile['plugins'] = {names[name]: value for name, value in self.profile['plugins'].items()}
+        self.profile['bindings'] = {names[name]: {alias: {**target, 'plugin': names[target['plugin']]}
+            for alias, target in bindings.items()} for name, bindings in self.profile['bindings'].items()}
+        self.profile['entrypoint']['plugin'] = names[self.profile['entrypoint']['plugin']]
+        composition = create_contract_knowledge(self.settings, profile=self.profile,
+            storage_configuration=self.storage, model_clients=(self.client, None))
+        self.addCleanup(composition.close)
+        self.assertEqual(configuration_diagnostics(composition)['configuration_sources']['models'], 'explicit')
+        self.assertEqual(composition.authenticate(self.token), self.actor)
+        scope, _ = self.publish(composition)
+        session = composition.application.create(self.actor, scope)
+        self.assertEqual(composition.application.get(self.actor, session['session_id'])['scope_id'], scope)
+        self.assertEqual(self.physical, [])
+
     def test_actual_foundation_and_knowledge_graph_ingests_retrieves_answers_and_reuses_turn(self):
         composition = self.compose()
         self.assertEqual(len(composition.application.composition.plan['plugins']), 11)

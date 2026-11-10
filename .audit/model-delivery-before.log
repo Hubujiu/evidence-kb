@@ -1,0 +1,167 @@
+FFFEEEE
+======================================================================
+ERROR: test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish (kb_platform.rag_testing.model_delivery_contracts.ModelDeliveryContracts.test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish) (adapter='OpenAICompatibleAdapter', committed=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/model_http.py", line 204, in invoke
+    self.ledger.finish(identity, status=state,
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+                       usage={'requests': 1} if 'requests' in self.reservation else None,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       diagnostic=f'HTTP_{response.status_code}')
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1169, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1173, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1240, in _execute_mock_call
+    result = effect(*args, **kwargs)
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 60, in fail
+    raise unknown
+kb_platform.database_contracts.CommitUnknown: COMMIT_UNKNOWN:synthetic-finish-operation
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 64, in test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish
+    adapter.invoke(REQUEST)
+    ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/model_http.py", line 230, in invoke
+    raise error from exc
+kb_platform.model_errors.RemoteModelError: PROVIDER_LEDGER_ERROR
+
+======================================================================
+ERROR: test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish (kb_platform.rag_testing.model_delivery_contracts.ModelDeliveryContracts.test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish) (adapter='OpenAICompatibleAdapter', committed=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/model_http.py", line 204, in invoke
+    self.ledger.finish(identity, status=state,
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+                       usage={'requests': 1} if 'requests' in self.reservation else None,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       diagnostic=f'HTTP_{response.status_code}')
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1169, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1173, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1240, in _execute_mock_call
+    result = effect(*args, **kwargs)
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 60, in fail
+    raise unknown
+kb_platform.database_contracts.CommitUnknown: COMMIT_UNKNOWN:synthetic-finish-operation
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 64, in test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish
+    adapter.invoke(REQUEST)
+    ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/model_http.py", line 230, in invoke
+    raise error from exc
+kb_platform.model_errors.RemoteModelError: PROVIDER_LEDGER_ERROR
+
+======================================================================
+ERROR: test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish (kb_platform.rag_testing.model_delivery_contracts.ModelDeliveryContracts.test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish) (adapter='AnthropicAdapter', committed=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/model_http.py", line 204, in invoke
+    self.ledger.finish(identity, status=state,
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+                       usage={'requests': 1} if 'requests' in self.reservation else None,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       diagnostic=f'HTTP_{response.status_code}')
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1169, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1173, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1240, in _execute_mock_call
+    result = effect(*args, **kwargs)
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 60, in fail
+    raise unknown
+kb_platform.database_contracts.CommitUnknown: COMMIT_UNKNOWN:synthetic-finish-operation
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 64, in test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish
+    adapter.invoke(REQUEST)
+    ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/model_http.py", line 230, in invoke
+    raise error from exc
+kb_platform.model_errors.RemoteModelError: PROVIDER_LEDGER_ERROR
+
+======================================================================
+ERROR: test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish (kb_platform.rag_testing.model_delivery_contracts.ModelDeliveryContracts.test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish) (adapter='AnthropicAdapter', committed=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/model_http.py", line 204, in invoke
+    self.ledger.finish(identity, status=state,
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+                       usage={'requests': 1} if 'requests' in self.reservation else None,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                       diagnostic=f'HTTP_{response.status_code}')
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1169, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1173, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/unittest/mock.py", line 1240, in _execute_mock_call
+    result = effect(*args, **kwargs)
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 60, in fail
+    raise unknown
+kb_platform.database_contracts.CommitUnknown: COMMIT_UNKNOWN:synthetic-finish-operation
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 64, in test_response_facts_survive_settlement_rollback_and_lost_ack_without_second_finish
+    adapter.invoke(REQUEST)
+    ~~~~~~~~~~~~~~^^^^^^^^^
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/model_http.py", line 230, in invoke
+    raise error from exc
+kb_platform.model_errors.RemoteModelError: PROVIDER_LEDGER_ERROR
+
+======================================================================
+FAIL: test_capture_failure_after_response_retains_usage_and_settles_exactly_once (kb_platform.rag_testing.model_delivery_contracts.ModelDeliveryContracts.test_capture_failure_after_response_retains_usage_and_settles_exactly_once) (adapter='OpenAICompatibleAdapter')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 100, in test_capture_failure_after_response_retains_usage_and_settles_exactly_once
+    self.assertEqual(error.status, 429)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+AssertionError: None != 429
+
+======================================================================
+FAIL: test_capture_failure_after_response_retains_usage_and_settles_exactly_once (kb_platform.rag_testing.model_delivery_contracts.ModelDeliveryContracts.test_capture_failure_after_response_retains_usage_and_settles_exactly_once) (adapter='AnthropicAdapter')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 100, in test_capture_failure_after_response_retains_usage_and_settles_exactly_once
+    self.assertEqual(error.status, 429)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+AssertionError: None != 429
+
+======================================================================
+FAIL: test_healthy_inflight_request_reports_busy_unsent_and_unknown_remains_blocking (kb_platform.rag_testing.model_delivery_contracts.ModelDeliveryContracts.test_healthy_inflight_request_reports_busy_unsent_and_unknown_remains_blocking)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Workspace/AiProjects/kb-api-delivery-models/kb_platform/rag_testing/model_delivery_contracts.py", line 124, in test_healthy_inflight_request_reports_busy_unsent_and_unknown_remains_blocking
+    self.assertEqual(blocked.exception.code, 'BUDGET_PRODUCER_BUSY')
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'UNRESOLVED_PHYSICAL_REQUEST' != 'BUDGET_PRODUCER_BUSY'
+- UNRESOLVED_PHYSICAL_REQUEST
++ BUDGET_PRODUCER_BUSY
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 1.071s
+
+FAILED (failures=3, errors=4)

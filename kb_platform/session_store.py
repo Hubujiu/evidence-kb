@@ -117,6 +117,31 @@ class SessionStore:
                     map(self._row, db.execute(select(self._tables['events']).where(self._tables['events'].c.session == session_id)
                                              .order_by(self._tables['events'].c.seq)).fetchall())]
 
+    def request_events(self, actor, session_id, request_id):
+        with self._db(write=False) as db:
+            self._owner(db, actor, session_id, lock=False)
+            statement = select(self._tables['events']).where(self._tables['events'].c.session == session_id,
+                self._tables['events'].c.group_id == request_id).order_by(self._tables['events'].c.seq)
+            return [{**dict(row), 'payload': json.loads(row['payload'])} for row in
+                map(self._row, db.execute(statement).fetchall())]
+
+    def request_status(self, actor, session_id, request_id):
+        with self._db(write=False) as db:
+            session = self._owner(db, actor, session_id, lock=False)
+            request = self._row(db.execute(select(self._tables['requests']).where(
+                self._tables['requests'].c.session == session_id,
+                self._tables['requests'].c.request_id == request_id)).fetchone())
+            identity = {'session_id': session_id, 'request_id': request_id,
+                        'revision': session['revision'], 'send_status': 'unknown'}
+            if request is None:
+                return {**identity, 'status': 'not_found', 'recovery_action': 'verify_request_id'}
+            if request['status'] == 'complete':
+                return {**identity, 'status': 'completed', 'recovery_action': 'retrieve_result',
+                        'response': json.loads(request['response'])}
+            if request['status'] == 'running' and request['expires'] > time.time():
+                return {**identity, 'status': 'running', 'recovery_action': 'wait'}
+            return {**identity, 'status': 'interrupted', 'recovery_action': 'inspect_request'}
+
     def _event(self, db, session_id, kind, payload, group_id, agent):
         seq = db.execute(select((func.coalesce(func.max(self._tables['events'].c.seq), 0) + 1).label('next_seq'))
                          .where(self._tables['events'].c.session == session_id)).fetchone()['next_seq']

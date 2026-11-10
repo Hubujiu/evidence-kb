@@ -89,7 +89,8 @@ class ModelHttpFailureContracts(unittest.TestCase):
                             self.assertIsInstance(error.__cause__.orig, sqlite3.IntegrityError)
                         for snapshot in (budget.snapshot(), structured._model.turn_budget_snapshot('s', 't')):
                             self.assertEqual(snapshot['calls'], int(sent))
-                            self.assertEqual(snapshot['unknown_usage_calls'], int(sent))
+                            self.assertEqual(snapshot['unknown_usage_calls'], int(sent and transport_error is not None))
+                            self.assertEqual(snapshot['tokens'], 4 if transport_error is None else 0)
                             self.assertEqual(snapshot['reserved_calls'], 0)
                             self.assertEqual(snapshot['reserved_tokens'], 0)
                             self.assertEqual(snapshot['accounted_tokens'] > 0, sent)

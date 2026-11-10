@@ -86,12 +86,14 @@ class ProviderAdmissionFormalContracts(unittest.TestCase):
                     raise unknown from cause
 
                 with patch.object(state.ledger, 'finish', side_effect=lose_acknowledgement) as called:
-                    with self.assertRaises(RemoteModelError) as raised:
+                    with self.assertRaises(CommitUnknown) as raised:
                         state.adapter.invoke(self.request)
                 error = raised.exception
                 self.assertEqual(called.call_count, 1)
-                self.assertEqual(error.code, 'PROVIDER_LEDGER_ERROR')
-                self.assertIs(error.__cause__, unknown)
+                self.assertIs(error, unknown)
+                self.assertEqual(error.code, 'COMMIT_UNKNOWN')
+                self.assertEqual(error.status, 403)
+                self.assertEqual(error.ledger_settlement, 'UNCONFIRMED')
                 self.assertIs(unknown.__cause__, cause)
                 self.assertEqual(unknown.operation_id, 'settlement-commit-control')
                 self.assertIs(error.model_sent, True)
@@ -278,13 +280,13 @@ class ProviderAdmissionLintContracts(unittest.TestCase):
         self.assertEqual(provider_admission_violations(ROOT), [])
         registry = json.loads((ROOT / 'formal/registry-v1.json').read_text('utf-8'))
         reviewed = next(row for row in registry['machines'] if row['id'] == 'provider_admission')
-        block = ('            if response.status_code == 403:\n'
-                 '                self.admission.block(identity, payload_sha256=payload_hash, category=category)\n')
+        block = '                self.admission.block(identity, payload_sha256=payload_hash, category=category)\n'
         invoke = (ROOT / 'kb_platform/model_http.py').read_text('utf-8')
-        late = invoke.replace(block, '').replace("                               diagnostic=f'HTTP_{response.status_code}')\n",
-            "                               diagnostic=f'HTTP_{response.status_code}')\n" + block)
-        swallowed = block.replace('                self.admission.block', '                try:\n                    self.admission.block') + \
-            '                except OSError:\n                    pass\n'
+        late = invoke.replace(block, '                pass\n').replace(
+            "        record['ledger_settlement'] = 'COMMITTED'\n",
+            "        record['ledger_settlement'] = 'COMMITTED'\n"
+            '        if response is not None and response.status_code == 403:\n' + block)
+        swallowed = '                try:\n    ' + block + '                except OSError:\n                    pass\n'
         mutations = [
             ('kb_platform/model_http.py', invoke, late),
             ('kb_platform/model_http.py', block, swallowed),

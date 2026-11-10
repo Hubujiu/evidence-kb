@@ -304,7 +304,8 @@ class AgentModel:
                                "estimate_kind": estimate["kind"],
                                **{name: failure[name] for name in
                                   ('model_sent', 'physical_request_id', 'preflight_code',
-                                   'operation_id', 'budget_operation_id')
+                                   'operation_id', 'budget_operation_id', 'status', 'retry_after_seconds',
+                                   'observed_usage', 'provider_request_id', 'ledger_settlement', 'capture_state')
                                   if failure[name] is not None},
                                **getattr(exc, "output_diagnostics", {})}
             raise

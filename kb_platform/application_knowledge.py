@@ -18,9 +18,13 @@ from .session_identity import Actor, PlatformError
 DEFAULT_APPLICATION = Path(__file__).resolve().parents[1] / 'config/applications/knowledge.json'
 
 
-def load_knowledge_application(profile=None, *, settings, environment):
+def load_knowledge_application(profile=None, *, settings, environment, provenance=None):
     selected = deepcopy(profile) if isinstance(profile, dict) else json.loads(
         Path(profile or DEFAULT_APPLICATION).read_text('utf-8'))
+    if provenance is not None:
+        source = 'application_profile' if profile is not None else 'default'
+        provenance['sources'].update(application='explicit' if profile is not None else 'default',
+            storage=source, models=source)
     if profile is None:
         configs = {name: row.setdefault('config', {}) for name, row in selected['plugins'].items()}
         storage_path = environment.get('KB_STORAGE_CONFIG')
@@ -29,13 +33,24 @@ def load_knowledge_application(profile=None, *, settings, environment):
             storage_path = settings.storage_file
         if storage_path is not None:
             configs['storage']['path'] = str(storage_path)
+            if provenance is not None:
+                provenance['sources']['storage'] = ('KB_STORAGE_CONFIG' if environment.get('KB_STORAGE_CONFIG')
+                    else 'settings.storage_file')
+                if environment.get('KB_STORAGE_CONFIG'):
+                    provenance['used_environment'].add('KB_STORAGE_CONFIG')
         configs['access']['identities_file'] = str(settings.identities_file)
         for key, name in (('config_path', 'KB_MODELS_CONFIG'), ('providers_config', 'KB_PROVIDERS_CONFIG')):
             if environment.get(name):
                 configs['llm'][key] = environment[name]
+                if provenance is not None:
+                    provenance['sources']['models'] = name
+                    provenance['used_environment'].add(name)
         if environment.get('KB_MODELS_CONFIG'):
             configs['llm'].pop('providers_config', None)
             configs['llm'].setdefault('budget_binding', 'provider.primary')
+            if provenance is not None:
+                provenance['sources']['models'] = 'KB_MODELS_CONFIG'
+                provenance['used_environment'].discard('KB_PROVIDERS_CONFIG')
         if not set(configs['llm']) & {'config_path', 'providers_config'}:
             configs['llm']['providers_config'] = '.local/providers.json'
         if environment.get('KB_RESEARCH_ROOT'):
@@ -85,11 +100,21 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
                               provider_catalog=None, models=None, model_clients=None,
                               platform=None, research=None, workflow_options=None,
                               extra_catalog=(), extra_mounts=None, schemas=None, process_root=None,
-                              semantic_observer=None):
-    from .application_composition import ApplicationComposition
+                              semantic_observer=None, application_source=None):
+    from .application_composition import ApplicationComposition, configuration_provenance
     from .knowledge_platform_contract import PlatformClient
 
-    selected = load_knowledge_application(profile, settings=settings, environment=environment or {})
+    selected_environment = dict(environment or {})
+    provenance = {'sources': {}, 'used_environment': set()}
+    selected = load_knowledge_application(profile, settings=settings, environment=selected_environment,
+        provenance=provenance)
+    if application_source is not None:
+        provenance['sources']['application'] = application_source
+        if application_source == 'KB_APPLICATION_PROFILE':
+            provenance['used_environment'].add(application_source)
+    if storage_configuration is not None:
+        provenance['sources']['storage'] = 'explicit'
+        provenance['used_environment'].discard('KB_STORAGE_CONFIG')
     if profile is None and models is not None and not any((environment or {}).get(name)
             for name in ('KB_MODELS_CONFIG', 'KB_PROVIDERS_CONFIG')):
         selected['plugins']['llm']['config'].pop('providers_config', None)
@@ -185,6 +210,15 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
 
     foundation = foundation_mounts(storage_configuration=storage_configuration, provider_catalog=provider_catalog,
         models=models, model_clients=model_clients, storage_requirements=REQUIREMENTS, storage_schemas=SCHEMAS)
+    mount_llm = foundation[('foundation.llm', '1')]
+
+    def llm(ctx, config):
+        mount_llm(ctx, config)
+        if models is not None or model_clients is not None and not config.get('config_path'):
+            provenance['sources']['models'] = 'explicit'
+            provenance['used_environment'].difference_update({'KB_MODELS_CONFIG', 'KB_PROVIDERS_CONFIG'})
+
+    foundation[('foundation.llm', '1')] = llm
     composed, application = build_knowledge_application(selected,
         foundation=foundation, session_factory=session_factory, data_factory=data_factory,
         model_factory=model_factory, authenticate=authenticate,
@@ -203,7 +237,9 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
         return ApplicationComposition(composed.host, service, SimpleNamespace(configured=True), application,
             SimpleNamespace(configured=True),
             lambda token: Actor(**domain_call(lambda request: composed.run(
-                {'operation': 'authenticate', 'request': request}), {'token': token})))
+                {'operation': 'authenticate', 'request': request}), {'token': token})),
+            configuration_provenance=configuration_provenance(
+                provenance['sources'], selected_environment, provenance['used_environment']))
     except BaseException:
         composed.close()
         raise

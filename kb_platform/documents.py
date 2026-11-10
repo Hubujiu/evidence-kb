@@ -92,17 +92,23 @@ def _text_kind(text: str) -> str:
     return "Paragraph"
 
 
+def processing_flags(policy):
+    return {key: policy.get(key, default) for key, default in {
+        "native_parse": True, "ocr": False, "include_hidden": False, "include_notes": False,
+    }.items()}
+
+
 class _Bundle:
+    processing_policy_version = "parse-processing/1"
+
     def __init__(self, data: bytes, filename: str, policy: dict):
         self.policy = policy
         self.ext = PurePath(filename).suffix.lower()
         self.source = hashlib.sha256(data).hexdigest()
         packages = {name: version(name) for name in DEPENDENCIES.get(self.ext, ())}
-        config = {key: policy.get(key, default) for key, default in {
-            "native_parse": True, "ocr": False, "include_hidden": False, "include_notes": False,
-        }.items()}
+        config = processing_flags(policy)
         parser_version = TEXT_PARSER_VERSION if self.ext in (".md", ".txt") else PARSER_VERSION
-        self.snapshot = _hash([self.source, parser_version, packages, config, self.ext])
+        self.snapshot = _hash([self.source, parser_version, packages, config, self.ext, self.processing_policy_version])
         self.result = {
             "source_version_id": self.source, "original_sha256": self.source,
             "filename": PurePath(filename).name, "media_type": MEDIA_TYPES.get(self.ext, "application/octet-stream"),

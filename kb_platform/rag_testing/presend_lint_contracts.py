@@ -1,3 +1,4 @@
+import ast
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -94,7 +95,12 @@ class PresendLintContracts(unittest.TestCase):
             binding = {'path': 'kb_platform/model_errors.py', 'language': 'python', 'symbol': 'error_details'}
             original_function = source_digest(root, binding)
             text = path.read_text('utf-8')
-            mutant = text.replace(", 'known_zero_send')", ')', 1)
+            tree = ast.parse(text)
+            fields = next(node for node in tree.body if isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == 'ERROR_FIELDS' for target in node.targets))
+            self.assertIn('known_zero_send', ast.literal_eval(fields.value))
+            fields.value.elts = [node for node in fields.value.elts if node.value != 'known_zero_send']
+            mutant = ast.unparse(tree)
             self.assertNotEqual(mutant, text)
             path.write_text(mutant, encoding='utf-8')
             self.assertEqual(source_digest(root, binding), original_function)

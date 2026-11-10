@@ -26,21 +26,33 @@ class ApplicationComposition:
     application: object
     models: object
     authenticate: object = None
+    configuration_provenance: object = None
 
     def close(self):
         self.host.close()
+
+
+def configuration_provenance(sources, environment, used_environment):
+    names = ('KB_APPLICATION_PROFILE', 'KB_STORAGE_CONFIG', 'KB_MODELS_CONFIG', 'KB_PROVIDERS_CONFIG',
+        'KB_AGENT_PROFILE', 'KB_AGENT_PROVIDERS_CONFIG', 'KB_AGENT_ROOT')
+    return {'configuration_sources': dict(sources),
+        'inactive_environment': [name for name in names if environment.get(name) and name not in used_environment]}
 
 
 def _row(identity, use, **config):
     return {'id': identity, 'use': use, 'config': config}
 
 
-def _overlay(selected, environment):
+def _overlay(selected, environment, provenance=None):
     for row in selected['plugins']:
         config = row.setdefault('config', {})
         for key, (name, convert) in ENVIRONMENT.get(row['use'], {}).items():
             if environment.get(name):
                 config[key] = convert(environment[name])
+                if provenance is not None:
+                    provenance['used_environment'].add(name)
+                    if name in {'KB_MODELS_CONFIG', 'KB_PROVIDERS_CONFIG', 'KB_AGENT_PROVIDERS_CONFIG'}:
+                        provenance['sources']['models'] = name
     return selected
 
 
@@ -51,7 +63,8 @@ def _client_routes():
                  client='embedding', capability='embedding')]
 
 
-def _storage(selected, catalog, settings, environment, *, storage_configuration=None, provider_catalog=None):
+def _storage(selected, catalog, settings, environment, *, storage_configuration=None, provider_catalog=None,
+             provenance=None):
     from .storage_catalog import default_storage_providers
     from .storage_plugins import compile_storage_plugins
     from .storage_sdk import StorageSlot
@@ -63,15 +76,24 @@ def _storage(selected, catalog, settings, environment, *, storage_configuration=
         path = environment.get('KB_STORAGE_CONFIG') or (getattr(settings, 'storage_file', None) if needs_storage else None)
         if path is not None:
             storage_configuration = json.loads(Path(path).read_text('utf-8'))
+            if provenance is not None:
+                provenance['sources']['storage'] = ('KB_STORAGE_CONFIG' if environment.get('KB_STORAGE_CONFIG')
+                    else 'settings.storage_file')
+                if environment.get('KB_STORAGE_CONFIG'):
+                    provenance['used_environment'].add('KB_STORAGE_CONFIG')
+    elif provenance is not None:
+        provenance['sources']['storage'] = 'explicit'
     if storage_configuration is None:
         if needs_storage:
             raise ValueError('STORAGE_CONFIGURATION_REQUIRED')
+        if provenance is not None:
+            provenance['sources']['storage'] = 'not_configured'
         return selected, catalog
     providers = default_storage_providers() if provider_catalog is None else provider_catalog
     return compile_storage_plugins(selected, catalog, storage_configuration, provider_catalog=providers)
 
 
-def load_application_profile(settings, *, profile=None, environment=None, remote=None):
+def load_application_profile(settings, *, profile=None, environment=None, remote=None, provenance=None):
     environment = dict(os.environ if environment is None else environment)
     remote = environment.get('KB_REMOTE_MODELS') == '1' if remote is None else remote
     model_path = environment.get('KB_MODELS_CONFIG') if remote else None
@@ -79,6 +101,11 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
     generation = remote and (configured is None or 'generation' in configured)
     path = profile or environment.get('KB_APPLICATION_PROFILE') or CONFIG / 'application-profiles' / (
         'knowledge.json' if generation else 'bm25.json')
+    if provenance is not None:
+        provenance['sources']['application'] = ('explicit' if profile is not None else
+            'KB_APPLICATION_PROFILE' if environment.get('KB_APPLICATION_PROFILE') else 'default')
+        if profile is None and environment.get('KB_APPLICATION_PROFILE'):
+            provenance['used_environment'].add('KB_APPLICATION_PROFILE')
     selected = expand_profile(path, {'platform': CONFIG / 'application-bundles/platform.json',
                                     'knowledge': CONFIG / 'agent-bundles/knowledge.json'})
     if profile is None and not environment.get('KB_APPLICATION_PROFILE') and generation and environment.get('KB_AGENT_PROFILE'):
@@ -86,7 +113,10 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
                                   {'platform': CONFIG / 'application-bundles/platform.json'})
         next(row for row in selected['plugins'] if row['id'] == 'research')['use'] = 'platform.research'
         selected['plugins'].extend(load_knowledge_profile(environment=environment)['plugins'])
-    selected = _overlay(selected, environment)
+        if provenance is not None:
+            provenance['sources']['application'] = 'KB_AGENT_PROFILE'
+            provenance['used_environment'].add('KB_AGENT_PROFILE')
+    selected = _overlay(selected, environment, provenance)
     by_id = {row['id']: row for row in selected['plugins']}
     if not remote or 'platform' not in by_id:
         return selected
@@ -95,6 +125,9 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
         by_id['provider'] = selected['plugins'][-1]
     if model_path:
         by_id['provider'].setdefault('config', {})['config_path'] = model_path
+        if provenance is not None:
+            provenance['sources']['models'] = 'KB_MODELS_CONFIG'
+            provenance['used_environment'].add('KB_MODELS_CONFIG')
         embedding, ocr = 'embedding' in configured, 'ocr' in configured
         if embedding:
             selected['plugins'].append(_row('embedding', 'models.embedding',
@@ -103,6 +136,14 @@ def load_application_profile(settings, *, profile=None, environment=None, remote
             selected['plugins'].append(_row('ocr', 'models.ocr'))
     else:
         source = environment.get('KB_PROVIDERS_CONFIG', '.local/providers.json')
+        if provenance is not None:
+            provenance['sources']['models'] = ('KB_AGENT_PROVIDERS_CONFIG'
+                if environment.get('KB_AGENT_PROVIDERS_CONFIG') else
+                'KB_PROVIDERS_CONFIG' if environment.get('KB_PROVIDERS_CONFIG') else 'default')
+            if environment.get('KB_PROVIDERS_CONFIG'):
+                provenance['used_environment'].add('KB_PROVIDERS_CONFIG')
+            if environment.get('KB_AGENT_PROVIDERS_CONFIG'):
+                provenance['used_environment'].add('KB_AGENT_PROVIDERS_CONFIG')
         selected['plugins'].extend([
             _row('model-clients', 'platform.model_clients.remote', providers_config=source,
                  generation_config=environment.get('KB_AGENT_PROVIDERS_CONFIG') or source),
@@ -125,6 +166,8 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
     from .authentication_plugins import authentication_plugins
 
     selected_environment = dict(os.environ if environment is None else environment)
+    provenance = {'sources': {'application': 'default', 'storage': 'default', 'models': 'application_profile'},
+        'used_environment': set()}
     selected_remote = selected_environment.get('KB_REMOTE_MODELS') == '1' if remote is None else remote
     candidate = profile or selected_environment.get('KB_APPLICATION_PROFILE')
     if isinstance(candidate, (str, Path)):
@@ -145,10 +188,14 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
         return create_contract_knowledge(settings, profile=candidate, environment=selected_environment,
             storage_configuration=storage_configuration, provider_catalog=provider_catalog,
             models=models, model_clients=model_clients, platform=platform, research=research,
-            workflow_options=workflow_options, semantic_observer=semantic_observer, **deployment)
+            workflow_options=workflow_options, semantic_observer=semantic_observer,
+            application_source='explicit' if profile is not None else
+                'KB_APPLICATION_PROFILE' if selected_environment.get('KB_APPLICATION_PROFILE') else 'default',
+            **deployment)
     if selected_environment.get('KB_PLUGIN_CATALOG'):
         raise ValueError('PLUGIN_CATALOG_REQUIRES_CONTRACT_APPLICATION')
-    selected = load_application_profile(settings, profile=profile, environment=environment, remote=remote)
+    selected = load_application_profile(settings, profile=profile, environment=environment, remote=remote,
+        provenance=provenance)
     if platform is not None:
         excluded = {'repository', 'originals', 'parser', 'embedding-jobs', 'search', 'search_bm25', 'search_dense', 'capabilities'}
         selected['plugins'] = [row for row in selected['plugins'] if row['id'] not in excluded]
@@ -169,7 +216,7 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
 
     selected, catalog = compile_model_plugins(selected, catalog)
     selected, catalog = _storage(selected, catalog, settings, selected_environment,
-        storage_configuration=storage_configuration, provider_catalog=provider_catalog)
+        storage_configuration=storage_configuration, provider_catalog=provider_catalog, provenance=provenance)
     from .authentication import validate_authentication
 
     host = PluginHost(selected, catalog,
@@ -179,10 +226,21 @@ def create_root_application(settings, *, profile=None, environment=None, platfor
         provided = {name for row in selected['plugins'] if not row.get('disabled')
                     for name in specs[row['use']].provides}
         application = HostedKnowledgeApplication(host, host.service('application')) if 'application' in provided else None
+        remote_clients = any(row['use'] == 'platform.model_clients.remote' and not row.get('disabled')
+            for row in selected['plugins'])
+        if remote_clients and model_clients is not None:
+            provenance['sources']['models'] = 'explicit'
+            provenance['used_environment'].difference_update({'KB_PROVIDERS_CONFIG', 'KB_AGENT_PROVIDERS_CONFIG'})
+        if 'models' not in provided:
+            provenance['sources']['models'] = 'not_configured'
+        elif models is not None and host.service('models') is models:
+            provenance['sources']['models'] = 'explicit'
         return ApplicationComposition(
             host, HostedPlatform(host) if 'platform' in provided else None,
             host.service('research') if 'research' in provided else None, application,
-            host.service('models') if 'models' in provided else None)
+            host.service('models') if 'models' in provided else None,
+            configuration_provenance=configuration_provenance(
+                provenance['sources'], selected_environment, provenance['used_environment']))
     except BaseException:
         host.close()
         raise
