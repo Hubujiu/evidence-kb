@@ -1315,6 +1315,10 @@ def main() -> int:
             '--output', str(output / 'formal-lint')], output, env))
         results.append(run_check('browser-source-lint', [sys.executable, '-B', '-m',
             'kb_platform.rag_testing.browser_sources'], output, env))
+        results.append(run_check('web-types', ['node', str(ROOT / 'web/node_modules/typescript/bin/tsc'),
+            '--project', str(ROOT / 'web/tsconfig.json'), '--noEmit', '--noUnusedLocals', '--noUnusedParameters'], output, env))
+        results.append(run_check('web-build', ['node', str(ROOT / 'web/node_modules/vite/bin/vite.js'),
+            'build', str(ROOT / 'web'), '--config', str(ROOT / 'web/vite.config.ts')], output, env))
         target = ROOT / "target/checks" / uuid4().hex
         cargo = ["cargo", "--color", "never"]
         results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))
@@ -1388,8 +1392,6 @@ def main() -> int:
                                  ['node', '--test', str(ROOT / 'scripts/check_source.test.mjs')], output, env))
         results.append(run_check('web-ownership', ['node', '--experimental-strip-types', '--test',
                                  str(ROOT / 'scripts/web_ownership.test.mjs')], output, env))
-        results.append(run_check('web-types', ['node', str(ROOT / 'web/node_modules/typescript/bin/tsc'),
-            '--project', str(ROOT / 'web/tsconfig.json'), '--noEmit', '--noUnusedLocals', '--noUnusedParameters'], output, env))
         for kind in ("contracts", "scorer"):
             if kind == "contracts" and native_library is None:
                 results.append(blocked_contracts(output, block_reason))
@@ -1422,15 +1424,8 @@ def main() -> int:
             (output / 'browser-integration.log').write_text('BLOCKED: prerequisite gates failed\n', encoding='utf-8')
             results.append(CheckResult('browser-integration', 2, 'browser-integration.log'))
     if args.web_integration:
-        if passed:
-            build = run_check('web-build', ['node', str(ROOT / 'web/node_modules/vite/bin/vite.js'),
-                'build', str(ROOT / 'web'), '--config', str(ROOT / 'web/vite.config.ts')], output, env)
-            results.append(build)
-            web_ready = build.exit_code == 0
-        else:
-            web_ready = False
         for name, module in (('web-chat', 'e2e.run_web_chat'), ('workbench', 'e2e.run_workbench')):
-            if web_ready:
+            if passed:
                 results.append(run_check(name,
                     [sys.executable, '-B', '-m', module, '--checker-summary', str(output / 'prerequisites.json'),
                      '--output', str(output / name)], output, env, timeout=300))
