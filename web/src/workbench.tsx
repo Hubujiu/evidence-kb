@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { OperationOwner, type OwnedOperation } from '@/operation-owner'
 import { z } from 'zod'
 import { ArrowRight, BookOpen, Check, FilePlus2, FileSearch, FolderPlus, LoaderCircle, Search, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -14,37 +15,100 @@ const Citation = z.object({ filename: z.string(), source_version_id: z.string(),
 type Scope = z.infer<typeof Scopes>[number]
 type Citation = z.infer<typeof Citation>
 
-async function request(token: string, path: string, body?: unknown, binary = false): Promise<Response> {
+async function request(operation: OwnedOperation, token: string, path: string, body?: unknown): Promise<Response> {
+ if (!operation.isCurrent()) throw new DOMException('Operation superseded', 'AbortError')
  const isForm = body instanceof FormData
- const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${token}`, ...(body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body) })
+ const response = await fetch(path, { signal: operation.signal, method: body === undefined ? 'GET' : 'POST', headers: { Authorization: `Bearer ${token}`, ...(body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : isForm ? body : JSON.stringify(body) })
  if (!response.ok) { const data: unknown = await response.json().catch(() => null); const error = z.object({ detail: z.string().optional(), error: z.string().optional() }).safeParse(data); throw new Error(error.success ? error.data.detail || error.data.error || `请求失败 (${response.status})` : `请求失败 (${response.status})`) }
- if (binary) return response
  return response
 }
 
-export function Workbench({ token, scopes, scope, busy, onConnect, onChat, onScopes }: { token: string; scopes: Scope[]; scope: string; busy: boolean; onConnect: () => void; onChat: () => void; onScopes: (scopes: Scope[], id: string) => void }) {
+export function Workbench({ token, scopes, scope, busy, notice, isCurrent, onConnect, onChat, onScopes }: { token: string; scopes: Scope[]; scope: string; busy: boolean; notice: string; isCurrent: () => boolean; onConnect: () => void; onChat: () => void; onScopes: (scopes: Scope[], id: string, notice?: string) => void }) {
  const [working, setWorking] = useState(false)
  const [name, setName] = useState('')
  const [file, setFile] = useState<File | null>(null)
  const [search, setSearch] = useState('')
  const [channel, setChannel] = useState<'bm25' | 'structure'>('bm25')
  const [hits, setHits] = useState<z.infer<typeof SearchResult>['hits']>([])
- const [status, setStatus] = useState('')
+ const [status, setStatus] = useState(notice)
  const [error, setError] = useState('')
  const [citation, setCitation] = useState<Citation | null>(null)
  const [citationId, setCitationId] = useState('')
  const [preview, setPreview] = useState('')
+ const owner = useRef(new OperationOwner())
+ const running = useRef(false)
+ const previewRef = useRef('')
+ const downloads = useRef(new Set<string>())
  const prefix = `/knowledge-bases/${encodeURIComponent(scope)}`
  const locked = working || busy || !token
- async function run(action: () => Promise<void>) { if (locked) return; setWorking(true); setError(''); setStatus(''); try { await action() } catch (e) { setError(e instanceof Error ? e.message : '请求失败') } finally { setWorking(false) } }
- function closeCitation() { if (preview) URL.revokeObjectURL(preview); setPreview(''); setCitation(null); setCitationId('') }
- function choose(id: string) { closeCitation(); setHits([]); setFile(null); setStatus(''); setError(''); onScopes(scopes, id) }
- async function create(e: FormEvent) { e.preventDefault(); if (!name.trim()) return; await run(async () => { const created = Created.parse(await (await request(token, '/scopes', { name: name.trim() })).json()); const all = Scopes.parse(await (await request(token, '/scopes')).json()); onScopes(all, created.scope_id); setName(''); setHits([]); setStatus('知识库已创建。添加文件后构建索引。') }) }
- async function upload() { if (!file) return; await run(async () => { const form = new FormData(); form.append('file', file); const result = UploadResult.parse(await (await request(token, `${prefix}/sources`, form)).json()); setStatus(`${file.name} · ${result.document.status} · ${result.document.elements.length} 个结构元素。请构建并发布索引。`); setFile(null) }) }
- async function publish() { await run(async () => { const build = Build.parse(await (await request(token, `${prefix}/builds`, { channels: ['bm25'] })).json()); const result = Manifest.parse(await (await request(token, `${prefix}/builds/${encodeURIComponent(build.build_id)}/publish`, {})).json()); setStatus(`索引已发布。版本 ${result.manifest_id}`) }) }
- async function find(e: FormEvent) { e.preventDefault(); if (!search.trim()) return; await run(async () => { closeCitation(); const result = SearchResult.parse(await (await request(token, `${prefix}/search`, { query: search.trim(), channel })).json()); setHits(result.hits); setStatus(`找到 ${result.hits.length} 条证据。`) }) }
- async function show(id: string) { await run(async () => { const path = `${prefix}/citations/${encodeURIComponent(id)}`; const item = Citation.parse(await (await request(token, path)).json()); const blob = await (await request(token, `${path}/preview`, undefined, true)).blob(); closeCitation(); setCitationId(id); setPreview(URL.createObjectURL(blob)); setCitation(item) }) }
- async function download() { if (!citation) return; await run(async () => { const blob = await (await request(token, `${prefix}/citations/${encodeURIComponent(citationId)}/original`, undefined, true)).blob(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = citation.filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }) }
+ function releasePreview() { if (previewRef.current) URL.revokeObjectURL(previewRef.current); previewRef.current = '' }
+ useEffect(() => {
+  const operations = owner.current
+  const urls = downloads.current
+  return () => { operations.invalidate(); releasePreview(); for (const url of urls) URL.revokeObjectURL(url); urls.clear() }
+ }, [])
+ async function run(action: (operation: OwnedOperation) => Promise<void>) {
+  if (locked || running.current || !isCurrent()) return
+  const operation = owner.current.begin(isCurrent)
+  running.current = true
+  setWorking(true); setError(''); setStatus('')
+  try { await action(operation) }
+  catch (e) { operation.commit(() => setError(e instanceof Error ? e.message : '请求失败')) }
+  finally { running.current = false; operation.commit(() => setWorking(false)) }
+ }
+ function closeCitation() { releasePreview(); setPreview(''); setCitation(null); setCitationId('') }
+ function choose(id: string) { if (locked || !isCurrent()) return; owner.current.invalidate(); closeCitation(); setHits([]); setFile(null); setStatus(''); setError(''); onScopes(scopes, id) }
+ async function create(e: FormEvent) {
+  e.preventDefault(); if (!name.trim()) return
+  await run(async operation => {
+   const created = Created.parse(await (await request(operation, token, '/scopes', { name: name.trim() })).json())
+   const all = Scopes.parse(await (await request(operation, token, '/scopes')).json())
+   operation.commit(() => { setName(''); setHits([]); setStatus('知识库已创建。添加文件后构建索引。'); setWorking(false); closeCitation(); onScopes(all, created.scope_id, '知识库已创建。添加文件后构建索引。') })
+  })
+ }
+ async function upload() {
+  if (!file) return
+  await run(async operation => {
+   const form = new FormData(); form.append('file', file)
+   const result = UploadResult.parse(await (await request(operation, token, `${prefix}/sources`, form)).json())
+   operation.commit(() => { setStatus(`${file.name} · ${result.document.status} · ${result.document.elements.length} 个结构元素。请构建并发布索引。`); setFile(null) })
+  })
+ }
+ async function publish() {
+  await run(async operation => {
+   const build = Build.parse(await (await request(operation, token, `${prefix}/builds`, { channels: ['bm25'] })).json())
+   const result = Manifest.parse(await (await request(operation, token, `${prefix}/builds/${encodeURIComponent(build.build_id)}/publish`, {})).json())
+   operation.commit(() => setStatus(`索引已发布。版本 ${result.manifest_id}`))
+  })
+ }
+ async function find(e: FormEvent) {
+  e.preventDefault(); if (!search.trim()) return
+  await run(async operation => {
+   closeCitation()
+   const result = SearchResult.parse(await (await request(operation, token, `${prefix}/search`, { query: search.trim(), channel })).json())
+   operation.commit(() => { setHits(result.hits); setStatus(`找到 ${result.hits.length} 条证据。`) })
+  })
+ }
+ async function show(id: string) {
+  await run(async operation => {
+   const path = `${prefix}/citations/${encodeURIComponent(id)}`
+   const item = Citation.parse(await (await request(operation, token, path)).json())
+   const blob = await (await request(operation, token, `${path}/preview`)).blob()
+   operation.commit(() => { closeCitation(); const url = URL.createObjectURL(blob); previewRef.current = url; setCitationId(id); setPreview(url); setCitation(item) })
+  })
+ }
+ async function download() {
+  if (!citation) return
+  await run(async operation => {
+   const blob = await (await request(operation, token, `${prefix}/citations/${encodeURIComponent(citationId)}/original`)).blob()
+   operation.commit(() => {
+    const url = URL.createObjectURL(blob); downloads.current.add(url)
+    const link = document.createElement('a'); link.href = url; link.download = citation.filename
+    try { link.click() } finally { setTimeout(() => { URL.revokeObjectURL(url); downloads.current.delete(url) }, 1000) }
+   })
+  })
+ }
+
  return <div className="workbench"><div className="workbench-content"><div className="workbench-heading"><div><p className="eyebrow">KNOWLEDGE WORKSPACE / 02</p><h1>知识库管理<span className="heading-dot">.</span></h1><p className="subtitle">从原始文档到可追溯的答案，一步一步建立你的知识库。</p></div><Button className="workbench-chat" onClick={onChat}>进入对话 <ArrowRight size={15}/></Button></div>
  <div className="flow-steps"><div><span>01</span><strong>创建知识库</strong><small>确定文档的组织范围</small></div><div><span>02</span><strong>添加文档</strong><small>上传并解析原始文件</small></div><div><span>03</span><strong>发布索引</strong><small>让文档可以被检索</small></div><div><span>04</span><strong>检索或对话</strong><small>查看答案与原文来源</small></div></div>
  {!token && <div className="connect-banner"><BookOpen size={18}/><span>连接工作空间后，即可使用下方的建库、文档和检索功能。</span><Button className="primary-action" onClick={onConnect}>连接知识库 <ArrowRight size={15}/></Button></div>}

@@ -36,19 +36,21 @@ def wait_for(url, process):
     raise TimeoutError(f'Server did not become ready: {url}')
 
 
-def browser_verdict(output, expected_file):
+def browser_verdict(output, expected_file, expected_tests=1):
     run = json.loads((output / 'report.json').read_text('utf-8'))['run']
     results = run['results']
     if (run['status'] != 'passed' or run['exitCode'] != 0 or run['errors']
-            or len(results) != 1 or results[0]['file'] != expected_file
-            or results[0]['status'] != 'passed' or len(results[0]['attempts']) != 1
-            or results[0]['attempts'][0]['status'] != 'passed'
+            or expected_tests < 1 or len(results) != expected_tests
+            or any(result['file'] != expected_file or result['status'] != 'passed'
+                   or len(result['attempts']) != 1 or result['attempts'][0]['status'] != 'passed'
+                   for result in results)
             or run['usage']['modelTokens'] != 0 or run['usage']['maxModelCallsInStep'] != 0):
-        raise ValueError('Expected one passing browser case without skips, retries or model calls')
-    assertions = [step for step in results[0]['attempts'][0]['steps'] if step['kind'] == 'assertion']
-    if not assertions or any(step['status'] != 'passed' for step in assertions):
+        raise ValueError('Expected every declared browser case without skips, retries or model calls')
+    assertions = [[step for step in result['attempts'][0]['steps'] if step['kind'] == 'assertion']
+                  for result in results]
+    if any(not group or any(step['status'] != 'passed' for step in group) for group in assertions):
         raise ValueError('Browser acceptance requires passing deterministic assertions')
-    return {'tests': 1, 'assertions': len(assertions), 'failures': 0, 'errors': 0,
+    return {'tests': len(results), 'assertions': sum(map(len, assertions)), 'failures': 0, 'errors': 0,
             'skipped': 0, 'retries': 0, 'new_model_calls': 0,
             'new_embedding_calls': 0, 'new_judge_calls': 0}
 
@@ -65,7 +67,7 @@ def arguments(description):
     return args
 
 
-def run_browser(node, runner, output, env):
+def run_browser(node, runner, output, env, *, expected_tests=1):
     browser_output = ROOT / 'e2e/.artifacts' / uuid4().hex
     report = {'status': 'FAIL', 'scope': 'offline synthetic browser component acceptance',
               'browser_output': 'browser'}
@@ -77,7 +79,7 @@ def run_browser(node, runner, output, env):
             shutil.copytree(browser_output, output / 'browser')
         if result.returncode:
             raise ValueError(f'Browser runner exited with {result.returncode}')
-        report.update(browser_verdict(output / 'browser', env['KB_E2E_TESTS']))
+        report.update(browser_verdict(output / 'browser', env['KB_E2E_TESTS'], expected_tests))
         report['status'] = 'PASS'
     except (ValueError, KeyError, OSError, subprocess.TimeoutExpired) as exc:
         report['error'] = str(exc)

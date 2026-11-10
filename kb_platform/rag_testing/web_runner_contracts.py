@@ -40,6 +40,38 @@ class WebRunnerContracts(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         verdict(value)
 
+    def test_workbench_verdict_requires_all_three_cases_and_assertions_in_each(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory)
+            case = {'file': 'workbench.e2e.js', 'status': 'passed', 'attempts': [
+                {'status': 'passed', 'steps': [{'kind': 'assertion', 'status': 'passed'}]}]}
+            report = {'run': {'status': 'passed', 'exitCode': 0, 'errors': [],
+                'usage': {'modelTokens': 0, 'maxModelCallsInStep': 0},
+                'results': [json.loads(json.dumps(case)) for _ in range(3)]}}
+            def verdict(value, count=3):
+                (output / 'report.json').write_text(json.dumps(value), encoding='utf-8')
+                return browser_verdict(output, 'workbench.e2e.js', count)
+            self.assertEqual(verdict(report)['tests'], 3)
+            self.assertEqual(verdict(report)['assertions'], 3)
+            for mutation in ('missing', 'extra', 'other_file', 'empty_case', 'failed_case', 'retry', 'zero_expected'):
+                with self.subTest(mutation=mutation):
+                    value = json.loads(json.dumps(report))
+                    results = value['run']['results']
+                    if mutation == 'missing':
+                        results.pop()
+                    elif mutation == 'extra':
+                        results.append(case)
+                    elif mutation == 'other_file':
+                        results[1]['file'] = 'unrelated.e2e.js'
+                    elif mutation == 'empty_case':
+                        results[1]['attempts'][0]['steps'] = []
+                    elif mutation == 'failed_case':
+                        results[1]['attempts'][0]['steps'][0]['status'] = 'failed'
+                    elif mutation == 'retry':
+                        results[1]['attempts'] *= 2
+                    with self.assertRaises(ValueError):
+                        verdict(value, 0 if mutation == 'zero_expected' else 3)
+
     def test_cli_rejects_existing_output_before_starting_services(self):
         with TemporaryDirectory() as directory:
             stderr = io.StringIO()
