@@ -21,6 +21,7 @@ class _HttpCompletion:
     result: ModelResult
     status: int
     provider_request_id: str | None
+    logical_request_id: str
 
 
 def validate_model_endpoint(endpoint):
@@ -134,17 +135,25 @@ class OpenAICompatibleAdapter:
         raise RemoteModelError('MODEL_CAPABILITY_UNAVAILABLE')
 
     def invoke(self, request):
-        admitted, completion = False, None
+        admitted, completion, failure = False, None, None
         try:
             with self.ledger.admission():
                 admitted = True
-                completion = self._invoke_admitted(request)
+                try:
+                    completion = self._invoke_admitted(request)
+                except BaseException as error:
+                    failure = error
+                    raise
             return completion.result
         except BaseException as error:
+            if failure is not None and error is not failure:
+                failure.add_note('Model producer release failed: ' + type(error).__name__)
+                raise failure
             if completion is not None:
                 preserve_result_failure(error, completion.result.usage, result=completion.result)
                 error.status = completion.status
                 error.provider_request_id = completion.provider_request_id
+                error.request_id = completion.logical_request_id
                 error.ledger_settlement, error.capture_state = 'COMMITTED', 'COMMITTED'
             elif not admitted:
                 error.model_sent = False
@@ -346,7 +355,8 @@ class OpenAICompatibleAdapter:
                 preserve(exc)
                 raise
         return _HttpCompletion(ModelResult(self.info.provider, self.info.model, request.capability,
-            data, usage, identity, physical_request_id=identity), response.status_code, record['provider_request_id'])
+            data, usage, identity, physical_request_id=identity), response.status_code, record['provider_request_id'],
+            request.call_context.get('request_id') or identity)
 
     def _response_usage(self, body):
         return body.get('usage') if isinstance(body, dict) else None

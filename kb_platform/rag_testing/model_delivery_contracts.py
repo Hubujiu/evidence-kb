@@ -226,6 +226,42 @@ class ModelDeliveryContracts(unittest.TestCase):
             self.assertEqual(failure.status, 200)
             self.assertEqual(failure.observed_usage, USAGE)
             self.assertEqual(failure.ledger_settlement, 'COMMITTED')
+            self.assertEqual(failure.request_id, 'logical-fixture')
             self.assertEqual(failure.capture_state, 'COMMITTED')
             self.assertEqual(ledger.entry(failure.physical_request_id)['status'], 'COMPLETE')
+            self.assertEqual(len(sent), 1)
+
+    def test_admission_release_error_cannot_mask_existing_settlement_failure(self):
+        with TemporaryDirectory() as folder:
+            adapter, ledger, sent = self.fixture(Path(folder), OpenAICompatibleAdapter,
+                lambda _: self.response(OpenAICompatibleAdapter))
+            admission, nesting = ledger.admission, [0]
+            failure = CommitUnknown('synthetic-original-settlement')
+            cause = OSError('synthetic original acknowledgement failure')
+
+            @contextmanager
+            def fail_release():
+                nesting[0] += 1
+                try:
+                    with admission():
+                        yield
+                finally:
+                    if nesting[0] == 1:
+                        nesting[0] -= 1
+                        raise OSError('synthetic producer release fault')
+                    nesting[0] -= 1
+
+            def fail_settlement(*args, **kwargs):
+                raise failure from cause
+
+            with patch.object(ledger, 'admission', side_effect=fail_release), \
+                    patch.object(ledger, 'finish', side_effect=fail_settlement) as called:
+                with self.assertRaises(CommitUnknown) as raised:
+                    adapter.invoke(REQUEST)
+            self.assertIs(raised.exception, failure)
+            self.assertIs(failure.__cause__, cause)
+            self.assertEqual(failure.status, 200)
+            self.assertEqual(failure.observed_usage, USAGE)
+            self.assertIn('Model producer release failed: OSError', failure.__notes__)
+            self.assertEqual(called.call_count, 1)
             self.assertEqual(len(sent), 1)
