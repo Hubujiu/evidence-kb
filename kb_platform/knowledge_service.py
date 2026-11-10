@@ -133,6 +133,25 @@ class KnowledgeService:
                     )
         return {"session_id": session_id, "events": visible}
 
+    def request_status(self, actor, session_id, request_id):
+        session = self.store.load(actor, session_id)
+        self.gateway.authorize(actor, session['scope_id'])
+        result = self.store.request_status(actor, session_id, request_id)
+        if result['status'] == 'completed':
+            response = result['response']
+            try:
+                self.gateway.revalidate(actor, session['scope_id'], response.get('evidence', []),
+                                        session['state']['source_policy'])
+                result['response'] = {key: response[key] for key in (
+                    'session_id', 'revision', 'status', 'answer', 'claims', 'evidence',
+                    'completion', 'unresolved', 'user_statements', 'stop_reason') if key in response}
+            except PlatformError as error:
+                if error.status_code not in (403, 404, 409):
+                    raise
+                result['response'] = {'status': 'redacted', 'reason': 'source_unavailable'}
+                result['recovery_action'] = 'inspect_request'
+        return result
+
     def artifact(self, actor, session_id, artifact_id):
         session = self.store.load(actor, session_id)
         self.gateway.authorize(actor, session["scope_id"])

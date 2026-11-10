@@ -37,6 +37,53 @@ def object_schema(properties, required=None):
             'additionalProperties': False}
 
 
+SESSION_RESPONSE = object_schema({'session_id': TEXT, 'scope_id': TEXT, 'revision': INTEGER,
+    'state': OBJECT, 'created_at': TEXT, 'updated_at': TEXT})
+COMPLETED_RESPONSE = {'type': 'object', 'properties': {
+    'session_id': TEXT, 'revision': INTEGER, 'status': TEXT},
+    'required': ['session_id', 'revision', 'status'], 'additionalProperties': True}
+BEGIN_RESPONSE = {'oneOf': [object_schema({'token': TEXT, 'session': SESSION_RESPONSE}),
+                          object_schema({'cached': COMPLETED_RESPONSE})]}
+TURN_PROPERTIES = {'session_id': TEXT, 'revision': INTEGER,
+    'status': {'enum': ['answered', 'partial', 'abstained', 'clarification', 'error']},
+    'answer': {'type': 'string'}, 'claims': {'type': 'array', 'items': OBJECT},
+    'evidence': {'type': 'array', 'items': {'type': 'object', 'properties': {'citation_id': TEXT},
+        'required': ['citation_id'], 'additionalProperties': True}},
+    'completion': {'enum': ['complete', 'partial', 'insufficient', 'conflict',
+                            'clarification', 'out_of_domain', 'error']},
+    'unresolved': {'type': 'array', 'items': {'type': 'string'}},
+    'user_statements': {'type': 'array', 'items': OBJECT}, 'stop_reason': TEXT}
+TURN_RESPONSE = object_schema({**TURN_PROPERTIES, 'trace': OBJECT},
+    [key for key in TURN_PROPERTIES if key != 'user_statements'] + ['trace'])
+PUBLIC_TURN_RESPONSE = object_schema(TURN_PROPERTIES,
+    [key for key in TURN_PROPERTIES if key != 'user_statements'])
+REDACTED_RESPONSE = object_schema({'status': {'const': 'redacted'},
+                                 'reason': {'const': 'source_unavailable'}})
+
+
+def request_status_schema(response):
+    identity = {'session_id': TEXT, 'request_id': TEXT, 'revision': INTEGER,
+                'send_status': {'const': 'unknown'}}
+    return {'oneOf': [
+        object_schema({**identity, 'status': {'const': 'running'},
+                       'recovery_action': {'const': 'wait'}}),
+        object_schema({**identity, 'status': {'const': 'interrupted'},
+                       'recovery_action': {'const': 'inspect_request'}}),
+        object_schema({**identity, 'status': {'const': 'not_found'},
+                       'recovery_action': {'const': 'verify_request_id'}}),
+        object_schema({**identity, 'status': {'const': 'completed'},
+                       'recovery_action': {'const': 'retrieve_result'}, 'response': response}),
+    ]}
+
+
+REQUEST_STATUS_RESPONSE = request_status_schema(COMPLETED_RESPONSE)
+PUBLIC_REQUEST_STATUS_RESPONSE = request_status_schema(PUBLIC_TURN_RESPONSE)
+PUBLIC_REQUEST_STATUS_RESPONSE['oneOf'].append(object_schema({
+    'session_id': TEXT, 'request_id': TEXT, 'revision': INTEGER, 'send_status': {'const': 'unknown'},
+    'status': {'const': 'completed'}, 'recovery_action': {'const': 'inspect_request'},
+    'response': REDACTED_RESPONSE}))
+
+
 POLICY_RESPONSE = object_schema({**CONTEXT_PROPERTIES,
     'evidence_strategy': {'enum': ['prefix', 'query_blocks', 'coverage_blocks']}}, list(CONTEXT_PROPERTIES))
 MODEL_METADATA_RESPONSE = object_schema({
@@ -105,11 +152,13 @@ def operation(names, *, optional=None, response=OBJECT):
 
 
 SESSION_OPERATIONS = {
-    'create': operation('actor scope_id source_policy', optional='config_name'),
-    'load': operation('actor session_id'),
+    'create': operation('actor scope_id source_policy', optional='config_name', response=SESSION_RESPONSE),
+    'load': operation('actor session_id', response=SESSION_RESPONSE),
     'list_sessions': operation('actor', optional='limit offset', response=ARRAY),
     'events': operation('actor session_id', response=ARRAY),
-    'begin': operation('actor session_id request_id expected_revision fingerprint', optional='lease_seconds'),
+    'begin': operation('actor session_id request_id expected_revision fingerprint', optional='lease_seconds',
+                       response=BEGIN_RESPONSE),
+    'request_status': operation('actor session_id request_id', response=REQUEST_STATUS_RESPONSE),
     'append': operation('actor session_id token kind payload group_id', optional='agent', response=INTEGER),
     'artifact': operation('actor session_id token body'),
     'read_artifact': operation('actor session_id artifact_id'),
@@ -133,15 +182,16 @@ EVIDENCE_OPERATIONS = {
 }
 APPLICATION_OPERATIONS = {
     'capabilities': operation(''),
-    'create': operation('actor scope_id', optional='policy config_name'),
-    'get': operation('actor session_id'),
+    'create': operation('actor scope_id', optional='policy config_name', response=SESSION_RESPONSE),
+    'get': operation('actor session_id', response=SESSION_RESPONSE),
+    'request_status': operation('actor session_id request_id', response=PUBLIC_REQUEST_STATUS_RESPONSE),
     'history': operation('actor session_id'),
     'artifact': operation('actor session_id artifact_id'),
     'sources': operation('actor scope_id', response=ARRAY),
     'authority': operation('actor scope_id'),
     'list_sessions': operation('actor', optional='limit offset'),
     'turn': operation('actor session_id message request_id expected_revision',
-                      optional='policy constraints workflow_state context_budget'),
+                      optional='policy constraints workflow_state context_budget', response=TURN_RESPONSE),
     'model_status': operation(''),
 }
 
