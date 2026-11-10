@@ -91,7 +91,7 @@ class EvidenceContinuationContracts(unittest.TestCase):
     def prepare(self, outcome='success'):
         def staged(*args, **kwargs):
             try:
-                ranking = yield [{'synthetic': True}]
+                ranking = yield {'candidates': [{'synthetic': True}], 'assessment_input': 'synthetic'}
                 if outcome == 'resume-error':
                     raise ValueError('SYNTHETIC_RESUME_FAILURE')
                 if outcome == 'unexpected-yield':

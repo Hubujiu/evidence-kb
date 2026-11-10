@@ -64,8 +64,7 @@ class IngestionAdmissionContracts(unittest.TestCase):
                 self.assertEqual(result['document']['original_sha256'], digest)
                 if filename == 'source.html':
                     self.assertTrue(result['document']['elements'])
-                    with self.repository.transaction(self.actor, scope, write=False) as transaction:
-                        bindings = transaction.execute(K.BINDINGS_ACTIVE, (self.actor.tenant_id, scope)).fetchall()
+                    bindings = self.platform._source_snapshot(self.actor, scope)['rows']
                     units, _ = self.platform._units(self.actor, scope, 'synthetic-uncommitted-build', bindings)
                     self.assertTrue(units)
                 with self.database.transaction(write=False, scope={'tenant_id': self.actor.tenant_id,

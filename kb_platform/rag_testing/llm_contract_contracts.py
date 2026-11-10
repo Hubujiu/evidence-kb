@@ -82,6 +82,7 @@ class LlmContractContracts(unittest.TestCase):
         with self.assertRaises(EmbeddingCallError) as caught:
             embedding.documents(['synthetic'])
         self.assertIs(caught.exception.model_sent, False)
+        self.assertEqual(caught.exception.preflight_code, 'BUDGET_INSUFFICIENT')
         classified = classify_provider_failure({}, embedding, caught.exception)
         self.assertIsInstance(classified, EmbeddingPreflightError)
         self.assertEqual(classified.code, 'EMBEDDING_BUDGET_INSUFFICIENT')
