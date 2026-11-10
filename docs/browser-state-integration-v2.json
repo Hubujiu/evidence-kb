@@ -36,7 +36,19 @@
       "path": "e2e/knowledge.e2e.js",
       "baseline_sha256": "cfcaf0862f54748bbc092b2e18664cc061c58e0e72cd903afed7fcef8c7b81ea",
       "current_sha256": "975c59a2a723c1de5a54531de63d268bde8a4d1fd8079950ec0196202ca71ac0",
-      "review": "Retain deterministic original browser cases while checking current schema and complete outcomes; new React ownership schedules run separately against the actual workbench."
+      "review": "Run product flows on the current React root and retain diagnostic console schedules at explicit /console. Delayed-response workbench cases independently exercise the actual React implementation."
+    },
+    {
+      "path": "e2e/console-state.e2e.js",
+      "baseline_sha256": "04988ee83f3ce40b6312e2266461a143750242da0050bd5a9b949e6a6c11b2a9",
+      "current_sha256": "ea1ecbb72fe10cf8d09613eead53695c4e9194f04dc0abf51a642288ffef73f0",
+      "review": "Run product flows on the current React root and retain diagnostic console schedules at explicit /console. Delayed-response workbench cases independently exercise the actual React implementation."
+    },
+    {
+      "path": "e2e/console-scope-state.e2e.js",
+      "baseline_sha256": "342cde3d3a50b073b8d8f6da313616f4c3136a767f49cb0da0dbc50649c27a98",
+      "current_sha256": "822886c420b9fafc85618d5dc495faea5c3efb1184731016d4e698e9d20030fb",
+      "review": "Run product flows on the current React root and retain diagnostic console schedules at explicit /console. Delayed-response workbench cases independently exercise the actual React implementation."
     }
   ],
   "added_sources": {

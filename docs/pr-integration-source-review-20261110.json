@@ -1,6 +1,6 @@
 {
   "baseline": "150d2b215fed60846d3630b8cffc495f307ea944",
-  "product_commit": "be108d35eeb16bb5fbf298de192323cf48374ad8",
+  "product_commit": "a39bc4567a008444abe24c2fb9e02dddc7861242",
   "scope": "Reviewed source mappings; finite abstractions and executable contracts, not an implementation refinement proof.",
   "changed_bindings": [
     {
