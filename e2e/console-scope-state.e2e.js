@@ -43,7 +43,7 @@ async function fixture(app, screen, browser) {
       flush: () => new Promise(requestAnimationFrame),
     };
   });
-  await app.open('/');
+  await app.open('/console');
   await screen.getByLabel('本地访问令牌').fill('synthetic-controlled-scope-token');
   await screen.getByRole('button', '连接').tap();
   await expect(screen.getByRole('status')).toContainText('身份已验证。');

@@ -38,12 +38,12 @@ class BrowserOwnerContracts(unittest.TestCase):
             def get(url):
                 name, media = next((name, media) for path, name, media in BROWSER_ASSETS
                                    if url == 'http://fixture' + path)
-                module = name == 'agent_console.mjs'
+                module = name == 'kb_platform/agent_console.mjs'
                 headers = {'content-type': media, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff'}
                 if module and broken in headers:
                     headers[broken] = 'incorrect'
                 return SimpleNamespace(status_code=404 if module and broken == 'status' else 200,
-                    content=b'stale' if module and broken == 'content' else (ROOT / 'kb_platform' / name).read_bytes(),
+                    content=b'stale' if module and broken == 'content' else (ROOT / name).read_bytes(),
                     headers=headers)
 
             with self.subTest(broken=broken), self.assertRaisesRegex(ValueError, 'Browser asset /agent_console.mjs'):
@@ -112,7 +112,7 @@ def live_suite():
                             for path, name, media in BROWSER_ASSETS:
                                 response = await client.get(path)
                                 self.assertEqual(response.status_code, 200, path)
-                                self.assertEqual(response.content, text_asset_bytes(ROOT / 'kb_platform' / name), path)
+                                self.assertEqual(response.content, text_asset_bytes(ROOT / name), path)
                                 self.assertEqual(response.headers['content-type'].split(';')[0], media)
                                 self.assertEqual(response.headers['cache-control'], 'no-store')
                                 self.assertEqual(response.headers['x-content-type-options'], 'nosniff')

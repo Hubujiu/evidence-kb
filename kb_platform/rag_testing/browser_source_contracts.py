@@ -33,7 +33,8 @@ class BrowserSourceContracts(unittest.TestCase):
             'e2e/agent-draft-state.e2e.js', 'e2e/console-scope-state.e2e.js'})
         changed = {row['path']: row for row in review['source_reviews']}
         self.assertEqual(set(changed), {'kb_platform/agent_console.html', 'kb_platform/console.mjs',
-                                       'e2e/agent-draft-state.e2e.js', 'e2e/knowledge.e2e.js'})
+                                       'e2e/agent-draft-state.e2e.js', 'e2e/knowledge.e2e.js',
+                                       'e2e/console-state.e2e.js', 'e2e/console-scope-state.e2e.js'})
         for path, old_hash in originals.items():
             current = sha256((ROOT / path).read_text('utf-8').encode('utf-8')).hexdigest()
             if path in changed:
@@ -206,7 +207,7 @@ class BrowserSourceContracts(unittest.TestCase):
                 name, _ = next((name, media) for path, name, media in BROWSER_ASSETS
                                if url == 'http://fixture' + path)
                 module = name.endswith('.mjs')
-                content = (ROOT / 'kb_platform' / name).read_bytes()
+                content = (ROOT / name).read_bytes()
                 headers = {'content-type': 'text/javascript; charset=utf-8' if module else 'text/html; charset=utf-8',
                            'cache-control': 'no-store', 'x-content-type-options': 'nosniff'}
                 if module and broken in headers:
@@ -308,8 +309,8 @@ class BrowserSourceContracts(unittest.TestCase):
             def get(url):
                 name, _ = next((name, media) for path, name, media in BROWSER_ASSETS
                                if url == 'http://fixture' + path)
-                agent = name == 'agent_console.html'
-                content = (ROOT / 'kb_platform' / name).read_bytes()
+                agent = name == 'kb_platform/agent_console.html'
+                content = (ROOT / name).read_bytes()
                 media_type = 'text/javascript' if name.endswith('.mjs') else 'text/html'
                 return SimpleNamespace(status_code=404 if agent and broken == 'status' else 200,
                     content=b'stale agent page' if agent and broken == 'content' else content,

@@ -19,9 +19,11 @@ from .runtime_integration import acceptance_dsn as acceptance_dsn
 
 
 ROOT = Path(__file__).resolve().parents[2]
-BROWSER_ASSETS = (('/', 'console.html', 'text/html'), ('/console.mjs', 'console.mjs', 'text/javascript'),
-                  ('/agent', 'agent_console.html', 'text/html'),
-                  ('/agent_console.mjs', 'agent_console.mjs', 'text/javascript'))
+BROWSER_ASSETS = (('/', 'web/dist/index.html', 'text/html'),
+                  ('/console', 'kb_platform/console.html', 'text/html'),
+                  ('/console.mjs', 'kb_platform/console.mjs', 'text/javascript'),
+                  ('/agent', 'kb_platform/agent_console.html', 'text/html'),
+                  ('/agent_console.mjs', 'kb_platform/agent_console.mjs', 'text/javascript'))
 CASES = frozenset({
     'source upload, BM25 publication, citation and original download [chromium]',
     'switching tenants clears and isolates knowledge bases [chromium]',
@@ -56,7 +58,7 @@ def checked_browser_assets(client, url):
     observed = {}
     for path, name, media_type in BROWSER_ASSETS:
         response = client.get(url + path)
-        expected = (ROOT / 'kb_platform' / name).read_bytes()
+        expected = (ROOT / name).read_bytes()
         if (response.status_code != 200 or response.content != expected
                 or response.headers.get('content-type', '').split(';')[0] != media_type
                 or response.headers.get('cache-control') != 'no-store'
