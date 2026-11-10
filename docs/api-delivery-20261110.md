@@ -44,6 +44,8 @@ observations 仅包含允许公开的逐调用事实，例如物理身份、操�
 
 GET /diagnostics 返回实际应用图摘要、配置来源类别、当前 Provider、当前入口不读取的环境变量和开发工具是否存在。它不探测供应商、不发送模型请求，也不输出配置内容、密钥或本机配置路径。
 
+配置来源在实际装配时记录。显式 profile 内的文件记为 application_profile，被忽略的 KB_MODELS_CONFIG、KB_PROVIDERS_CONFIG、KB_STORAGE_CONFIG 会列入 inactive_environment。显式模型或存储对象记为 explicit。默认装配采用环境覆盖时才标记对应环境变量，后续修改进程环境不会改写既有实例的诊断。
+
 未决交付实例的只读恢复接口与限制见 [交付恢复说明](delivery-recovery-api.md)。
 
 ## 验收

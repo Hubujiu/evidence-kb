@@ -76,8 +76,6 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
                models=None):
     from .application_composition import create_root_application
 
-    configured_environment = dict(os.environ)
-    supplied_models = models is not None
     settings = settings if settings is not None else Settings.from_environment()
     composition = create_root_application(settings, platform=platform, profile=profile,
         model_clients=model_clients, models=models, service_factory=agent_factory, extra_plugins=extra_plugins,
@@ -187,9 +185,7 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
 
     @app.get('/diagnostics')
     def diagnostics(actor: principal):
-        return configuration_diagnostics(composition, environment=configured_environment,
-            explicit_profile=profile is not None, explicit_storage=storage_configuration is not None,
-            explicit_models=supplied_models)
+        return configuration_diagnostics(composition)
 
     @app.get("/capabilities")
     def capabilities(actor: principal):

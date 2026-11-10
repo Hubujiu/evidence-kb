@@ -93,7 +93,7 @@ def _catalog(gateway, actor, scope_id, state, allowed, *, mapping=None):
 
     allowed_rows = {tuple(row[key] for key in BINDING_FIELDS): row for row in allowed}
     allowed_keys = set(allowed_rows)
-    snapshot = gateway.platform._source_snapshot(actor, scope_id)
+    snapshot = gateway.platform._source_snapshot(actor, scope_id, published=True)
     with gateway.platform._tx(actor, scope_id) as conn:
         gateway.platform._check_source_snapshot(conn, actor, scope_id, snapshot)
         rows = [row for row in snapshot['rows']

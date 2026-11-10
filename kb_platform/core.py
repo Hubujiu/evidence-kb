@@ -131,7 +131,7 @@ class Platform:
     def ingest(self, actor: Actor, kb_id: str, filename: str, data: bytes,
                readers: list[str] | None = None, policy: dict | None = None,
                source_id: str | None = None, expected_revision: int | None = None) -> dict:
-        from .documents import max_upload_bytes
+        from .documents import max_upload_bytes, processing_flags
 
         limit = max_upload_bytes()
         if not data or len(data) > limit:
@@ -154,7 +154,7 @@ class Platform:
             from .ocr import augment_ocr
 
             document = augment_ocr(data, filename, document, self.ocr_client)
-        document['processing_policy'] = parse_policy
+        document['processing_policy'] = processing_flags(parse_policy)
         if document.get('original_sha256') != digest or document.get('source_version_id') != digest:
             raise PlatformError('SOURCE_INTEGRITY', 'Parser source identity mismatch', 422)
         source_id = source_id or str(uuid4())

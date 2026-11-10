@@ -5274,7 +5274,8 @@
         "kb_platform/knowledge_service.py",
         "kb_platform/semantic_pages_v2.py",
         "kb_platform/knowledge_semantic_contract.py",
-        "kb_platform/rag_testing/publication_embedding_contracts.py"
+        "kb_platform/rag_testing/publication_embedding_contracts.py",
+        "kb_platform/retrieval_pipeline.py"
       ],
       "states": [
         "authority revision"
@@ -5400,6 +5401,12 @@
           "language": "python",
           "symbol": "Platform._store_citations",
           "sha256": "db9c3d1697a935d795f8b78c1bff3179e96b28010b19c9667c06c052d1804ea7"
+        },
+        {
+          "path": "kb_platform/retrieval_pipeline.py",
+          "language": "python",
+          "symbol": "_catalog",
+          "sha256": "27571c7efdb0774b797271e84f89be3c8087bb5643ab25b47f8b2e0e805c8aaa"
         }
       ],
       "models": [
@@ -5443,7 +5450,8 @@
       ],
       "remaining_obligations": [
         "Refine real Python/SQL/adapters and concurrent persistence to the model; verify actual PostgreSQL/RLS and power-loss behavior separately.",
-        "Cover all remaining methods, source/ACL/capsule identity, unbounded inputs and physical provider behavior; existing component and integration checks remain mandatory."
+        "Cover all remaining methods, source/ACL/capsule identity, unbounded inputs and physical provider behavior; existing component and integration checks remain mandatory.",
+        "PR 86 follow-up: published parse catalog joins and pipeline availability are not represented by AuthorityPublication. Real BuiltinTools and HTTP candidate-update, publication and revocation contracts cover this obligation; see docs/api-review-86-20261110.md."
       ]
     },
     {
@@ -7081,7 +7089,7 @@
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.ingest",
-          "sha256": "6e7c8db7edfc66c2172ec016d3db15adaddbf378bffbbbc2b7b489135d6eb2af"
+          "sha256": "27b13f97f3540062e7edbc22fc8577e181b642ffa6589a71d14922c7504dab00"
         },
         {
           "path": "kb_platform/core.py",
@@ -7166,6 +7174,12 @@
           "language": "python",
           "symbol": "export_legacy_knowledge",
           "sha256": "ca703255780344ad9f7a8b5caf764fb1a3fe1e44158a7230e3b9cbd9977b76e6"
+        },
+        {
+          "path": "kb_platform/documents.py",
+          "language": "python",
+          "symbol": "processing_flags",
+          "sha256": "f2e8cf562f1628bce128a101684d59957e0f76a8b8f4e3c6902b747c7dbcf61c"
         }
       ],
       "models": [
@@ -7328,7 +7342,8 @@
         "Parser-page ensemble and explicit OCR partial recovery are separately bounded by page_recovery; extraction quality and cross-model refinement remain unproved.",
         "Object transfer and distributed online migration orchestration remain separate; import_ledger sealing/recovery belongs to the budget worker.",
         "Cross-model composition with authority/search generation (PR43), independent storage providers and arbitrary numbers of rows/writers is unproved.",
-        "KnowledgeTransfer models one unchanged package/target content; detection of later target edits is exercised by SQL contracts and lint, not a modeled external-edit transition."
+        "KnowledgeTransfer models one unchanged package/target content; detection of later target edits is exercised by SQL contracts and lint, not a modeled external-edit transition.",
+        "PR 86 follow-up: original identity is abstract; parse JSON serialization and processing format hash isolation require concrete document contracts. See docs/api-review-86-20261110.md; source digests are review bindings, not refinement proofs."
       ]
     },
     {
@@ -9301,7 +9316,8 @@
       "remaining_obligations": [
         "Unbounded pages, arbitrary document malformedness, memory/resource cleanup and third-party parser correctness require separate analysis.",
         "Cache authority changes, worker process lifecycles and cross-model ingestion/publication composition are not proved here.",
-        "Reading order is abstracted as page order; real local regression additionally checks geometry/ordinal order and exact source links."
+        "Reading order is abstracted as page order; real local regression additionally checks geometry/ordinal order and exact source links.",
+        "PR 86 follow-up: original identity is abstract; parse JSON serialization and processing format hash isolation require concrete document contracts. See docs/api-review-86-20261110.md; source digests are review bindings, not refinement proofs."
       ],
       "source_bindings": [
         {
@@ -9350,13 +9366,19 @@
           "path": "kb_platform/documents.py",
           "language": "python",
           "symbol": "_Bundle",
-          "sha256": "9562b1afdf0551a8619231615810e799bb4e2222cdd81af029d91ad14b8a2396"
+          "sha256": "60ca2261eb1083b8e5c6f6b539b1056259cf5f1e5763baa258573fabf0d894ca"
         },
         {
           "path": "kb_platform/documents.py",
           "language": "python",
           "symbol": "parse_native_document",
           "sha256": "32bbdec522999bd33dbac374b065d46464491e5d7dcf4356323be821069a8dcf"
+        },
+        {
+          "path": "kb_platform/documents.py",
+          "language": "python",
+          "symbol": "processing_flags",
+          "sha256": "f2e8cf562f1628bce128a101684d59957e0f76a8b8f4e3c6902b747c7dbcf61c"
         }
       ],
       "models": [
@@ -13143,7 +13165,7 @@
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.ingest",
-          "sha256": "6e7c8db7edfc66c2172ec016d3db15adaddbf378bffbbbc2b7b489135d6eb2af"
+          "sha256": "27b13f97f3540062e7edbc22fc8577e181b642ffa6589a71d14922c7504dab00"
         },
         {
           "path": "scripts/authority_commit_checks.py",

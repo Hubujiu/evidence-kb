@@ -108,6 +108,11 @@ class ContractHTTPIntegration(unittest.TestCase):
             ready = client.get(path + '/documents', headers=headers).json()
             self.assertTrue(ready['documents'][0]['qa_ready'])
             self.assertFalse(ready['documents'][0]['needs_publication'])
+            reparsed = client.post(path + f'/sources/{source}/reparse', headers=headers,
+                json={'expected_revision': ready['authority_revision']})
+            self.assertEqual(reparsed.status_code, 200, reparsed.text)
+            ready = client.get(path + '/documents', headers=headers).json()
+            self.assertFalse(ready['documents'][0]['needs_publication'])
             session = client.post(f'/scopes/{scope}/sessions', headers=headers, json={})
             self.assertEqual(session.status_code, 201, session.text)
             session_id = session.json()['session_id']
@@ -143,6 +148,25 @@ class ContractHTTPIntegration(unittest.TestCase):
             self.assertTrue(search.json()['hits'])
             self.assertTrue(all('42' in hit['text'] for hit in search.json()['hits']))
             self.assertEqual(len(self.physical), 4)
+            from .agent_graph_contracts import normal_script
+
+            def ask(request_id, expected_text):
+                self.cache.clear()
+                self.script[:] = normal_script()
+                session = client.post(f'/scopes/{scope}/sessions', headers=headers, json={})
+                self.assertEqual(session.status_code, 201, session.text)
+                result = client.post(f'/agent/sessions/{session.json()["session_id"]}/turns', headers=headers,
+                    json={'message': 'What is the original rule?', 'request_id': request_id, 'expected_revision': 0})
+                self.assertEqual(result.status_code, 200, result.text)
+                self.assertEqual(result.json()['status'], 'answered', result.text)
+                self.assertEqual(result.json()['answer'], expected_text)
+                self.assertIn(expected_text, json.dumps(self.physical[-2]['messages']))
+                self.assertTrue(result.json()['trace']['retrieval_stages'])
+                return result.json()
+
+            retained = ask('candidate-not-published', 'Original rule value 42.')
+            self.assertEqual(retained['evidence'][0]['citation_id'], citation)
+            self.assertEqual(len(self.physical), 8)
             partial = client.post(path + '/sources', headers=headers,
                 files={'file': ('Incomplete.html', b'<p>Draft</p><img src="missing.png">', 'text/html')})
             self.assertEqual(partial.status_code, 201, partial.text)
@@ -159,7 +183,20 @@ class ContractHTTPIntegration(unittest.TestCase):
             self.assertEqual(removed.status_code, 200, removed.text)
             rebuilt = client.post(path + '/builds', headers=headers, json={'channels': ['bm25']})
             self.assertEqual(rebuilt.status_code, 201, rebuilt.text)
-            self.assertEqual(len(self.physical), 4)
+            published = client.post(path + f'/builds/{rebuilt.json()["build_id"]}/publish', headers=headers)
+            self.assertEqual(published.status_code, 200, published.text)
+            ask('candidate-now-published', 'Original rule value 99.')
+            self.assertEqual(len(self.physical), 12)
+            listing = client.get(path + '/documents', headers=headers).json()
+            revoked = client.put(f'/sources/{source}/policy', headers=headers,
+                json={'policy': {'llm_context': False, 'allowed_providers': ['synthetic']},
+                    'expected_revision': listing['authority_revision']})
+            self.assertEqual(revoked.status_code, 200, revoked.text)
+            self.assertEqual(client.get(f'/scopes/{scope}/agent-sources', headers=headers).json(), [])
+            redacted = client.get(f'/agent/sessions/{session_id}/requests/api%2Flifecycle%2F1', headers=headers)
+            self.assertEqual(redacted.status_code, 200, redacted.text)
+            self.assertEqual(redacted.json()['response']['status'], 'redacted')
+            self.assertEqual(len(self.physical), 12)
 
     def test_large_parsed_document_upload_publish_search_and_original_download(self):
         from fastapi.testclient import TestClient

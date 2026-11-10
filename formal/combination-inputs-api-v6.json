@@ -8398,12 +8398,18 @@
       "WebRunnerContracts.test_workbench_verdict_requires_all_three_cases_and_assertions_in_each"
     ],
     "kb_platform/rag_testing/configuration_diagnostic_contracts.py": [
-      "ConfigurationDiagnosticContracts.test_diagnostics_describe_selected_graph_without_exposing_config_values"
+      "ConfigurationDiagnosticContracts.test_diagnostics_describe_selected_graph_without_exposing_config_values",
+      "ConfigurationAssemblyDiagnosticContracts.test_http_diagnostics_report_profile_files_and_ignored_environment",
+      "ConfigurationAssemblyDiagnosticContracts.test_legacy_profile_records_generation_and_embedding_configuration_sources",
+      "ConfigurationAssemblyDiagnosticContracts.test_borrowed_legacy_clients_do_not_report_ignored_files_as_active",
+      "ConfigurationAssemblyDiagnosticContracts.test_owned_model_registry_does_not_report_unused_injected_registry"
     ],
     "kb_platform/rag_testing/document_management_contracts.py": [
       "DocumentManagementContracts.test_partial_document_is_diagnosed_and_can_be_removed_without_hiding_failure",
       "DocumentManagementContracts.test_policy_readiness_update_and_published_version_are_separate",
-      "DocumentManagementContracts.test_stale_mutation_and_cross_identity_document_reads_fail_closed"
+      "DocumentManagementContracts.test_stale_mutation_and_cross_identity_document_reads_fail_closed",
+      "DocumentManagementContracts.test_builtin_search_uses_published_parse_through_update_publish_and_revocation",
+      "DocumentManagementContracts.test_reparse_after_mutable_authorization_update_preserves_immutable_parse"
     ],
     "kb_platform/rag_testing/public_error_contracts.py": [
       "PublicErrorContracts.test_platform_model_error_conversion_keeps_response_and_recovery_facts",
