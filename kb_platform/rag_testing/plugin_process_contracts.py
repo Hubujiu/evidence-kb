@@ -176,6 +176,61 @@ class ProcessPackageContracts(unittest.TestCase):
             self.assertNotIn('shell', popen.call_args.kwargs)
             self.assertEqual(transport.runtime_info['language'], 'rust')
 
+    def test_closed_transport_rejects_start_without_creating_a_process(self):
+        with tempfile.TemporaryDirectory() as root:
+            _, installed = self.package(root)
+            transport = ProcessTransport(installed['package'], journal=Path(root) / 'journal',
+                timeout=1, identity={})
+            transport.close()
+            transport.close()
+            with patch('kb_platform.plugin_process.subprocess.Popen',
+                    side_effect=AssertionError('Closed transport must not create a process')) as spawn:
+                with self.assertRaises(PluginError) as failure:
+                    transport.start()
+                self.assertEqual(failure.exception.code, 'PROCESS_UNAVAILABLE')
+                transport.close()
+            spawn.assert_not_called()
+            self.assertIsNone(transport._process)
+            self.assertTrue(transport._closed)
+
+    def test_close_fences_start_before_cleanup_completes(self):
+        with tempfile.TemporaryDirectory() as root:
+            _, installed = self.package(root)
+            transport = ProcessTransport(installed['package'], journal=Path(root) / 'journal',
+                timeout=1, identity={})
+            entered, released, failures = Event(), Event(), []
+
+            def terminate():
+                entered.set()
+                if not released.wait(2):
+                    raise RuntimeError('Cleanup fixture was not released')
+
+            def close():
+                try:
+                    transport.close()
+                except BaseException as error:
+                    failures.append(error)
+
+            with patch.object(transport, '_terminate', terminate), \
+                    patch('kb_platform.plugin_process.subprocess.Popen',
+                        side_effect=AssertionError('Draining transport must not create a process')) as spawn:
+                worker = Thread(target=close)
+                worker.start()
+                try:
+                    self.assertTrue(entered.wait(2))
+                    self.assertFalse(transport._closed)
+                    with self.assertRaises(PluginError) as failure:
+                        transport.start()
+                    self.assertEqual(failure.exception.code, 'PROCESS_UNAVAILABLE')
+                finally:
+                    released.set()
+                    worker.join(2)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(failures, [])
+            spawn.assert_not_called()
+            self.assertIsNone(transport._process)
+            self.assertTrue(transport._closed)
+
     def test_command_manifest_rejects_ambiguous_or_invalid_launch_before_install(self):
         cases = [
             {'command': []}, {'command': 'python plugin.py'}, {'command': [4]},

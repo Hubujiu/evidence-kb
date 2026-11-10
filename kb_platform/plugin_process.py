@@ -252,6 +252,8 @@ class ProcessTransport:
         with self._lock:
             if self._process is not None:
                 raise PluginError('PROCESS_ALREADY_STARTED')
+            if self._closed or self._draining:
+                raise PluginError('PROCESS_UNAVAILABLE')
             if 'command' in self.manifest:
                 command = list(self.manifest['command'])
                 executable = Path(command[0])

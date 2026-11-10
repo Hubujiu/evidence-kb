@@ -50,7 +50,11 @@ def host_source_violations(sources):
             or 'if future is None or future.done():' not in receive
             or 'with self._write_lock:' not in send or 'self.fail(exc)' not in send):
         errors.append('native requests require unique allocation and exact response correlation, not monotone wire order')
-    write, request, close = (function(transport, name) for name in ('_write', 'request', 'close'))
+    start, write, request, close = (function(transport, name) for name in ('start', '_write', 'request', 'close'))
+    if not ordered(start, 'with self._lock:', 'if self._process is not None:',
+                   'if self._closed or self._draining:', "raise PluginError('PROCESS_UNAVAILABLE')",
+                   'self._process = subprocess.Popen('):
+        errors.append('transport startup must reject terminal or draining admission under its lifecycle lock before spawning')
     if not ordered(write, 'write.sent = True', 'self._record(write.request, write.status)', 'self._process.stdin.write(payload)'):
         errors.append('write intent must precede journal and physical bytes without asserting dispatch')
     if (not ordered(request, 'sent = write.sent', 'if not sent:', "self._record(request, 'UNKNOWN'", 'self._terminate()',

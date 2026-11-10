@@ -25,6 +25,7 @@ class HostProcessFormalContracts(unittest.TestCase):
             (PATHS[0], 'self._stop_done.wait()', 'pass'),
             (PATHS[0], 'self._settled.wait()', 'pass'),
             (PATHS[1], "self._pending.get(frame['id'])", 'next(iter(self._pending.values()), None)'),
+            (PATHS[2], 'if self._closed or self._draining:', 'if False:'),
             (PATHS[2], 'write.sent = True', 'write.sent = False'),
             (PATHS[2], 'sent = write.sent', 'sent = False'),
             (PATHS[2], "self._record(request, 'UNKNOWN',", "self._record(request, 'NOT_SENT',"),
