@@ -179,6 +179,7 @@ class KnowledgeService:
         policy=None,
         constraints=None,
         workflow_state=None,
+        context_budget=None,
     ):
         return KnowledgeTurn(self).run(
             actor,
@@ -189,4 +190,5 @@ class KnowledgeService:
             policy=policy,
             constraints=constraints,
             workflow_state=workflow_state,
+            context_budget=context_budget,
         )

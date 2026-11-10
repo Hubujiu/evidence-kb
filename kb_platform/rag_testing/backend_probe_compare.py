@@ -76,7 +76,7 @@ def compare_runs(inputs, runs, output):
         memory=psutil.virtual_memory()._asdict(), new_model_calls=0, new_embedding_calls=0, new_judge_calls=0,
         quality_gate='Evidence sets cannot lose any baseline evidence at the same k; counts alone are insufficient',
         acl_challenges='first 12 frozen requests; deterministic 0/1/10/100 percent allowed-source subsets',
-        source_timing='Windows client; Docker Linux servers; library and HTTP/SQL paths differ')
+        source_timing='Client process and Docker servers; library and HTTP/SQL paths differ')
     write_json(output/'protocol.json', protocol)
     results = {name: [] for name in engines}
     for repeat in range(5):

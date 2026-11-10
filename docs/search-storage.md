@@ -31,7 +31,7 @@ BM25 与 dense 可以使用同一 PostgreSQL、不同 PostgreSQL 数据库，或
 
 ## 验证入口
 
-```powershell
+```bash
 uv run --no-sync python scripts/check_project.py
 uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --output reports/storage-check-new
 ```

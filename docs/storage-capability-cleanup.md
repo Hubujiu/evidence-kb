@@ -59,9 +59,9 @@ structured 句柄不暴露 `info.engine`、DSN 或物理 schema。低层 raw SQL
 
 本地运行 `uv run --no-sync python scripts/bootstrap.py`，创建 SQLite、embedded、files 的独立新空间及 `.local/storage.json`。脚本保留已有配置和数据。其他部署使用初始化模板：
 
-```powershell
+```bash
 uv run --no-sync python -m kb_platform.storage_configuration initialize --input config/storage.example.json --output .local/storage-configured.json
-$env:KB_STORAGE_CONFIG = (Resolve-Path .local/storage-configured.json).Path
+export KB_STORAGE_CONFIG="$(pwd)/.local/storage-configured.json"
 ```
 
 模板中的消费者必须与应用 profile 一致，删除未使用的绑定。普通启动只核对已初始化的 `dataset_id`，不自动创建或迁移数据。

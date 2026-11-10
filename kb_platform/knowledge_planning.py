@@ -191,6 +191,15 @@ class KnowledgePlanning:
                 "error": getattr(exc, "code", type(exc).__name__),
                 "seconds": time.perf_counter() - tool_start,
             }
+        spec = None if action in self.service.plugins else TOOLS[action]
+        correction = (output["status"] == "error" and spec is not None
+                      and output["error"] in spec.correctable_input_errors
+                      and spec.retry_safe and not spec.mutates_data and not spec.incurs_cost
+                      and not self.fast_calculation and step + 1 < self.config["steps"]
+                      and not any("input_correction" in item for item in self.local_tool_results)
+                      and self.call_budget.can_explore(self.trace["calls"]))
+        if correction:
+            output["input_correction"] = spec.input_guidance
         artifact = self.service.store.artifact(
             self.actor,
             self.session_id,
@@ -208,6 +217,8 @@ class KnowledgePlanning:
         if self.config.get("work_state"):
             record_receipt(self.state["work_state"], output)
         if output["status"] == "error":
+            if correction:
+                return {"decision": decision, "step": step + 1, "halted": False}
             self.trace["stop_reason"] = "tool_failure"
             return {"decision": decision, "step": step + 1, "halted": True}
         if action == "workflow_next" and result.get("status") in {"clarify", "ambiguous"}:

@@ -34,3 +34,16 @@ PostgreSQL 搜索删除未初始化实例的 database 与 schema 回退。构造
 PR #32 新增的 Rust 注释也移除。形式化 registry 仅刷新已审查的注释删除对应 Rust 文件指纹，模型、负对照和 Python 绑定保持原样。哈希一致不等于源码精化证明。
 
 使用普通完整 CLI 和附加 formal-only CLI 分别验证。真实数据库与存储提供商验收由原 CI 资源运行，本地合成合同不能替代这些验收。没有新增模型、Embedding 或语义裁判调用。
+
+## 验证
+
+定向命令为 `uv run --no-sync python -m unittest kb_platform.rag_testing.model_embedding_review_contracts kb_platform.rag_testing.model_review_contracts`。
+首次执行遇到 native 产物和 Python 生命周期协议不一致，报错 `lifecycle commands use runtime_* action protocol`。该结果不能作为通过结论。需要重建 native 产物后通过统一检查入口复验。
+
+没有调用模型、Embedding 服务或语义裁判。测试使用本地 HTTP 固定响应。
+
+PostgreSQL 搜索删除了未初始化实例的 `database` 与 `schema` 回退。构造函数始终设置这两个字段。合同夹具改为调用真实构造函数并替换连接池，不再通过 `__new__` 绕过初始化。现役 DSN 与数据库绑定能力均保留。
+
+统一入口复验已通过，产物位于 `.local/checks/cleanup-final-20261103/summary.json`。本轮发现并执行 1,045 个 Python 合同，六个删除方法对应的保留测试均在完整发现集合内。聊天与工作台浏览器验收也通过，分别执行 11 和 9 个确定性断言。数据库和实际存储提供商验收因未配置隔离资源而未在本地执行。
+
+最终源码的默认全量检查再次通过，报告为 `.local/checks/cleanup-verified-20261103/summary.json`。该轮包含 examples 的 Python lint 与注释检查，全部合同发现完整，未跳过测试或降低通过门槛。

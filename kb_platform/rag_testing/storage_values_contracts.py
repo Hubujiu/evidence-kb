@@ -490,3 +490,31 @@ class RedisCacheBoundaryContracts(unittest.TestCase):
         for suffix in ('?decode_responses=True', '?socket_timeout=9999', '?retry_on_timeout=True', '#fragment'):
             with self.subTest(suffix=suffix), self.assertRaisesRegex(StorageError, 'INVALID_REDIS_CONFIG'):
                 RedisCacheProvider('redis://localhost:6379/0' + suffix)
+
+    def test_failed_close_seals_admission_and_retries_physical_cleanup(self):
+        self.client.close.side_effect = [RuntimeError('close failed'), None]
+        with self.assertRaisesRegex(RuntimeError, 'close failed'):
+            self.provider.close()
+        with self.assertRaisesRegex(StorageError, 'STORAGE_PROVIDER_CLOSED'):
+            self.cache.get('key')
+        self.provider.close()
+        self.provider.close()
+        self.assertEqual(self.client.close.call_count, 2)
+
+    def test_reentrant_close_during_operation_waits_for_operation_to_leave(self):
+        self.client.get.side_effect = lambda key: self.provider.close()
+        with self.assertRaisesRegex(StorageError, 'STORAGE_PROVIDER_BUSY'):
+            self.cache.get('key')
+        self.client.close.assert_not_called()
+        with self.assertRaisesRegex(StorageError, 'STORAGE_PROVIDER_CLOSED'):
+            self.cache.get('key')
+        self.provider.close()
+        self.client.close.assert_called_once()
+
+    def test_reentrant_close_during_cleanup_is_rejected_and_retryable(self):
+        self.client.close.side_effect = self.provider.close
+        with self.assertRaisesRegex(StorageError, 'STORAGE_PROVIDER_BUSY'):
+            self.provider.close()
+        self.client.close.side_effect = None
+        self.provider.close()
+        self.assertEqual(self.client.close.call_count, 2)

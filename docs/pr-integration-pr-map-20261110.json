@@ -1,0 +1,350 @@
+{
+  "integration_pr": 85,
+  "scope": "Input containment and frozen composition provenance; not approval to close or merge the original PRs.",
+  "semantic_composition_manifest": "formal/combination-inputs-composition-v4.json",
+  "rows": [
+    {
+      "pr": 31,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/31",
+      "head": "7d4b2f643592fc5188b402968839242ba42511d0",
+      "integration": "direct_ancestor",
+      "evidence": "Git ancestry"
+    },
+    {
+      "pr": 33,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/33",
+      "head": "2854929df098f7e878e1c281bb00df22c6d86862",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 34,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/34",
+      "head": "b6134a6332ff3ae96294bd8a36658c7d413b2689",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 35,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/35",
+      "head": "d6378fd4365e4bf640fe09e989d8c304a3daa9df",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 36,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/36",
+      "head": "038e8b2b6f0036e4dc0221eaafe962a456d2c295",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 37,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/37",
+      "head": "0c4ccd1de3f1e6d9f5d3879614a1dd46cd48f681",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 38,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/38",
+      "head": "b87ba303170081ccda62a0e4ae0e530b4b5e29dd",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 39,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/39",
+      "head": "804379482e82f62b58e0ef0efc52a7e060cba647",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 40,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/40",
+      "head": "4da9b83cd635256b3ba3fd96cc10668897941f14",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 41,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/41",
+      "head": "89201f1c3a175dec617b593201a639ead1728f98",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 42,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/42",
+      "head": "6650d89c471ac1b9aca3941da7bfc24737405832",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 43,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/43",
+      "head": "1e674953de921bebc8b1faed1f0db7417543a727",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 44,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/44",
+      "head": "e746c97e359a5ffceed7d3b2c093b104160ef43d",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 45,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/45",
+      "head": "86f1fd2ce5ca5c6c2b71e81a8332c62d65544f8a",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 46,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/46",
+      "head": "ff6d9637f1e94944e85e72f37bdfa57ac2b68ce5",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 47,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/47",
+      "head": "3b7aad5705783ffed6d1db284d2fe14ca9f9abe3",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 48,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/48",
+      "head": "07d25da7b07ecb2dd4ccd9fa0f9aad9ae6aacc59",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 49,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/49",
+      "head": "084c22ee4fdeffc4280df7d9ab84627d141d5131",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 50,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/50",
+      "head": "e5239b6fbafc6d3a1ac53b363cf3734b3a07526e",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 51,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/51",
+      "head": "b0037e5a3f340df28fa7f87216cb4a0f61bd2eff",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 52,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/52",
+      "head": "0d750dcf66b71b25822bb8b3d8fb142218034f8c",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 53,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/53",
+      "head": "45eb11bf91ce5aa6d10ede862b0751156dff032a",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 54,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/54",
+      "head": "f54ba7768a44e251c637ee0d6c308ba69dbdecb3",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 55,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/55",
+      "head": "95f10220c0566b80c54eb53329a4c66ed74a9da0",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 56,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/56",
+      "head": "465123986007de0335f576d672ee34cf450ff053",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 57,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/57",
+      "head": "b082004a1f69263a08a71ac331e33e5967bbca10",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 58,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/58",
+      "head": "0abb0b1f7d47a4225a5929def864194a91eda40a",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 59,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/59",
+      "head": "dab16deb1e720dc6cf96ca681f6bf67b4714cec3",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 60,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/60",
+      "head": "ac75a224f0d59e74eedf2fc700cae238b902f043",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 61,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/61",
+      "head": "de5d0768fabe25686571d7b8e40b87ab2692c02b",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 62,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/62",
+      "head": "ffc46414b1cfc7aab345181fd7c786533016e900",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 63,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/63",
+      "head": "a833798888269c671afbba0e8853e4b0d06a8f4a",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 64,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/64",
+      "head": "834712551a625bb74a118638c52ada0e27a7af92",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 65,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/65",
+      "head": "35dfaac4ec1387f9deb2c1f699490fae3a426790",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 66,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/66",
+      "head": "70e503daf33ff171e5e871d5f84b37df82625715",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 67,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/67",
+      "head": "b435bc6a15b7204d31e2638052aa11dde94dffb2",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 68,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/68",
+      "head": "7c4e3ae4febe3076942b527c25642cbf708b765c",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 69,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/69",
+      "head": "3f15185cbe350cf577c2147eb962decfc37287b3",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 70,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/70",
+      "head": "12796b893a0cb50b8b7f84d74176ebb3977a29c8",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 71,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/71",
+      "head": "7fc3a1a8034a1bc8cf24ea4843785b6c517bf166",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 72,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/72",
+      "head": "3588c4a98612410103ac86f3da22046d903db3be",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 73,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/73",
+      "head": "f71bba77060186aca14f4ab54ad70610c36d0690",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 74,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/74",
+      "head": "150d2b215fed60846d3630b8cffc495f307ea944",
+      "integration": "direct_ancestor",
+      "evidence": "Git ancestry"
+    },
+    {
+      "pr": 75,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/75",
+      "head": "ff76760cc1f4860b5157bb6727a0be0322321eeb",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 76,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/76",
+      "head": "323aaac17d31d5a88484a3a7bae6c5d2ac4cd396",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 77,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/77",
+      "head": "db5a80137d00de3be8f3f63c5bb03c5baddcf9cf",
+      "integration": "frozen_semantic_input",
+      "evidence": "formal/combination-inputs-product-v5.json"
+    },
+    {
+      "pr": 82,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/82",
+      "head": "13d2cf9000da998307553a1451bb929a54ad7376",
+      "integration": "direct_ancestor",
+      "evidence": "Git ancestry"
+    },
+    {
+      "pr": 83,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/83",
+      "head": "e730f39598004661d4b3461a85d3c994c62d5a3e",
+      "integration": "direct_ancestor",
+      "evidence": "Git ancestry"
+    },
+    {
+      "pr": 84,
+      "url": "https://github.com/Hubujiu/evidence-kb/pull/84",
+      "head": "6459885d07902e3b4b51c911295b457398249a0f",
+      "integration": "independent",
+      "evidence": "Not included"
+    }
+  ]
+}

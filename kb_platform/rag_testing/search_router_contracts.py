@@ -13,6 +13,7 @@ from kb_platform.search_router import channel_records
 from kb_platform.search_router import SplitSearch
 from kb_platform.storage_sdk import DOCUMENT_V1, LEXICAL_BM25_V1, VECTOR_V1, SpaceKey, StorageIdentity
 from .product_fixture import Authority
+from .search_stage_diagnostics import note_stage_failure
 from .storage_values_contracts import value_store
 
 
@@ -39,7 +40,11 @@ class SearchRouterContracts(unittest.TestCase):
         self.index = self.router.index_name('tenant', 'scope', '1' * 32)
 
     def stage(self):
-        self.router.stage(self.index, self.units, vector_dimension=3)
+        try:
+            self.router.stage(self.index, self.units, vector_dimension=3)
+        except Exception as error:
+            note_stage_failure(error, self.root)
+            raise
 
     def test_new_generation_not_found_is_distinct_from_partial_generation(self):
         with self.assertRaisesRegex(SearchUnavailable, '^Search generation not found$'):

@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-import ctypes
 import gc
 from hashlib import sha256
 import json
@@ -14,7 +13,6 @@ import platform
 import statistics
 import subprocess
 import sys
-import threading
 from tempfile import TemporaryDirectory
 from time import perf_counter_ns
 
@@ -55,35 +53,6 @@ def _measure(operation, validate, *, samples, warmup):
 
 
 def _rss():
-    if sys.platform == 'win32':
-        from ctypes import wintypes
-
-        class Counters(ctypes.Structure):
-            _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD),
-                        *((name, ctypes.c_size_t) for name in (
-                            'PeakWorkingSetSize', 'WorkingSetSize', 'QuotaPeakPagedPoolUsage',
-                            'QuotaPagedPoolUsage', 'QuotaPeakNonPagedPoolUsage', 'QuotaNonPagedPoolUsage',
-                            'PagefileUsage', 'PeakPagefileUsage', 'PrivateUsage'))]
-
-        current = ctypes.windll.kernel32.GetCurrentProcess
-        current.restype = wintypes.HANDLE
-        read = ctypes.windll.psapi.GetProcessMemoryInfo
-        read.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
-        read.restype = wintypes.BOOL
-        counters = Counters()
-        counters.cb = ctypes.sizeof(counters)
-        if not read(current(), ctypes.byref(counters), counters.cb):
-            raise OSError('PROCESS_MEMORY_COUNTERS_UNAVAILABLE')
-        handles = wintypes.DWORD()
-        count_handles = ctypes.windll.kernel32.GetProcessHandleCount
-        count_handles.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
-        count_handles.restype = wintypes.BOOL
-        if not count_handles(current(), ctypes.byref(handles)):
-            raise OSError('PROCESS_HANDLE_COUNT_UNAVAILABLE')
-        return {'process_peak_rss_bytes': None, 'current_process_handles': handles.value,
-                'current_python_threads': threading.active_count(), 'current_rss_bytes': counters.WorkingSetSize,
-                'current_private_bytes': counters.PrivateUsage,
-                'rss_source': 'Windows GetProcessMemoryInfo current WorkingSetSize and PrivateUsage'}
     status = Path('/proc/self/status')
     if status.is_file():
         values = dict(line.split(':', 1) for line in status.read_text().splitlines() if ':' in line)

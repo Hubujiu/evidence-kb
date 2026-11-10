@@ -218,13 +218,15 @@ class PluginContext:
             parent_lease=parent_lease if parent_lease is not None else authority.identity if authority else None)
         lease = _Lease(acquired['lease'], current_thread(),
             parent_operation=(authority.operation or authority.parent_operation) if authority else None)
-        with self.host._lock:
-            token = _leases.set(tuple(item for item in _leases.get() if item[0] != self.host.id)
-                + ((self.host.id, lease),))
+        token = None
         try:
+            with self.host._lock:
+                token = _leases.set(tuple(item for item in _leases.get() if item[0] != self.host.id)
+                    + ((self.host.id, lease),))
             yield self
         finally:
-            _leases.reset(token)
+            if token is not None:
+                _leases.reset(token)
             self.host._release(lease)
 
 
@@ -506,12 +508,15 @@ class PluginHost:
                 authority.users += 1
             else:
                 authority = _Lease(native_call('runtime_acquire', host=self.id)['lease'], current_thread())
-            token = _leases.set(tuple(item for item in _leases.get() if item[0] != self.id)
-                + ((self.id, authority),))
+        token = None
         try:
+            with self._lock:
+                token = _leases.set(tuple(item for item in _leases.get() if item[0] != self.id)
+                    + ((self.id, authority),))
             yield self
         finally:
-            _leases.reset(token)
+            if token is not None:
+                _leases.reset(token)
             self._release(authority)
 
     def _invoke(self, binding, method, args, kwargs, *, timeout=None):

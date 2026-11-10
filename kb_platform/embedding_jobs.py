@@ -97,30 +97,57 @@ class EmbeddingJobs:
         manifest = deepcopy(provider.manifest)
         scope = (tenant_id, kb_id, build_id)
         with self._tx(tenant_id, kb_id) as conn:
-            existing = conn.execute(KnowledgeQuery.JOBS_INPUTS, scope).fetchall()
-            size = existing[0]['payload']['batch_size'] if existing else batch_size(provider)
+            existing = conn.execute(KnowledgeQuery.JOB_FIRST, scope).fetchone()
+            size = existing['payload']['batch_size'] if existing else batch_size(provider)
             if type(size) is not int or size < 1:
                 raise EmbeddingJobError('EMBEDDING_INVALID_BATCH_SIZE')
             payload = {'units': deepcopy(units), 'manifest': manifest,
                        'audit_context': deepcopy(audit_context), 'batch_size': size}
             dependency, provider_hash = digest(payload), digest(manifest)
-            if any(row['dependency_hash'] != dependency for row in existing):
+            audit_hash = digest(audit_context)
+            if conn.execute(KnowledgeQuery.JOBS_CONFLICT, (*scope, dependency)).fetchone():
                 raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
-            for number, start in enumerate(range(0, len(units), size)):
-                batch = {**payload, 'units': units[start:start + size]}
-                conn.execute(KnowledgeQuery.JOB_INSERT,
-                             (*scope, number, dependency, provider_hash, batch))
-            current = conn.execute(KnowledgeQuery.JOBS_INPUTS, scope).fetchall()
-            if any(row['dependency_hash'] != dependency for row in current):
-                raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
-            conn.execute(KnowledgeQuery.CIRCUIT_ENSURE, (tenant_id, kb_id, provider_hash))
+        for first in range(0, len(units), size * 256):
+            with self._tx(tenant_id, kb_id) as conn:
+                if conn.execute(KnowledgeQuery.JOBS_CONFLICT, (*scope, dependency)).fetchone():
+                    raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
+                for start in range(first, min(first + size * 256, len(units)), size):
+                    number = start // size
+                    batch = {**payload, 'units': units[start:start + size]}
+                    if number:
+                        batch.pop('audit_context')
+                        batch['audit_context_sha256'] = audit_hash
+                    conn.execute(KnowledgeQuery.JOB_INSERT,
+                                 (*scope, number, dependency, provider_hash, batch))
+                if conn.execute(KnowledgeQuery.JOBS_CONFLICT, (*scope, dependency)).fetchone():
+                    raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
+                conn.execute(KnowledgeQuery.CIRCUIT_ENSURE, (tenant_id, kb_id, provider_hash))
         return manifest, dependency
 
-    def _claim(self, tenant_id, kb_id, build_id, number, dependency):
+    @staticmethod
+    def _hydrate(conn, row, audit_binding=None):
+        payload = row['payload']
+        if 'audit_context_sha256' not in payload:
+            return row
+        if audit_binding is not None:
+            context, context_hash = audit_binding
+            if context_hash != payload['audit_context_sha256']:
+                raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
+            return {**row, 'payload': {**payload, 'audit_context': context}}
+        first = conn.execute(KnowledgeQuery.JOB_FIRST,
+            (row['tenant_id'], row['kb_id'], row['build_id'])).fetchone()
+        if (first is None or first['dependency_hash'] != row['dependency_hash']
+                or 'audit_context' not in first['payload']
+                or digest(first['payload']['audit_context']) != payload['audit_context_sha256']):
+            raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
+        row = {**row, 'payload': {**payload, 'audit_context': first['payload']['audit_context']}}
+        return row
+
+    def _claim(self, tenant_id, kb_id, build_id, number, dependency, audit_binding=None):
         scope = (tenant_id, kb_id, build_id, number)
         failure = None
         with self._tx(tenant_id, kb_id) as conn:
-            row = conn.execute(KnowledgeQuery.JOB_LOCK, scope).fetchone()
+            row = self._hydrate(conn, conn.execute(KnowledgeQuery.JOB_LOCK, scope).fetchone(), audit_binding)
             row['db_now'] = conn.execute(KnowledgeQuery.JOB_CLOCK).fetchone()['db_now']
             if row['dependency_hash'] != dependency:
                 raise EmbeddingJobError('EMBEDDING_DEPENDENCY_CHANGED')
@@ -152,6 +179,7 @@ class EmbeddingJobs:
                         (old_preflight, request_id, self.lease_seconds, *scope)).fetchone()
                     conn.execute(KnowledgeQuery.ATTEMPT_INSERT,
                         (*scope, request_id))
+                    row = self._hydrate(conn, row, audit_binding)
         if failure:
             raise failure
         return row
@@ -193,11 +221,12 @@ class EmbeddingJobs:
     def run(self, tenant_id, kb_id, build_id, provider, units, authorize, audit_context):
         self._auth(authorize)
         manifest, dependency = self._prepare(tenant_id, kb_id, build_id, provider, units, audit_context)
+        audit_binding = (audit_context, digest(audit_context))
         result = []
         batches = self.status(tenant_id, kb_id, build_id)
         for number in range(len(batches)):
             self._auth(authorize)
-            row = self._claim(tenant_id, kb_id, build_id, number, dependency)
+            row = self._claim(tenant_id, kb_id, build_id, number, dependency, audit_binding)
             batch = row['payload']['units']
             if row['status'] == 'COMPLETE':
                 vectors = validate_vectors(row['vectors'], len(batch), provider.dimension)
@@ -220,22 +249,34 @@ class EmbeddingJobs:
         self._auth(authorize)
         return result
 
+    def _pages(self, query, tenant_id, kb_id, build_id):
+        after = -1
+        while True:
+            with self._tx(tenant_id, kb_id) as conn:
+                if query == KnowledgeQuery.JOBS_UNKNOWN:
+                    rows = conn.execute(KnowledgeQuery.JOBS_UNKNOWN,
+                        (tenant_id, kb_id, build_id, after)).fetchall()
+                    rows = [self._hydrate(conn, row) for row in rows]
+                else:
+                    rows = conn.execute(KnowledgeQuery.JOBS_STATUS,
+                        (tenant_id, kb_id, build_id, after)).fetchall()
+            if not rows:
+                return
+            yield from rows
+            after = rows[-1]['batch_no']
+
     def status(self, tenant_id, kb_id, build_id):
-        with self._tx(tenant_id, kb_id) as conn:
-            return conn.execute(KnowledgeQuery.JOBS_STATUS,
-                (tenant_id, kb_id, build_id)).fetchall()
+        return list(self._pages(KnowledgeQuery.JOBS_STATUS, tenant_id, kb_id, build_id))
 
     def reconcile(self, tenant_id, kb_id, build_id, provider, authorize):
-
         self._auth(authorize)
         with self._tx(tenant_id, kb_id) as conn:
-            conn.execute(KnowledgeQuery.JOBS_EXPIRE,
-                (tenant_id, kb_id, build_id))
-            rows = conn.execute(KnowledgeQuery.JOBS_UNKNOWN, (tenant_id, kb_id, build_id)).fetchall()
-            for row in rows:
-                conn.execute(KnowledgeQuery.ATTEMPT_EXPIRE,
-                    (tenant_id, kb_id, row['request_id']))
+            conn.execute(KnowledgeQuery.JOBS_EXPIRE, (tenant_id, kb_id, build_id))
+        rows = self._pages(KnowledgeQuery.JOBS_UNKNOWN, tenant_id, kb_id, build_id)
         for row in rows:
+            self._auth(authorize)
+            with self._tx(tenant_id, kb_id) as conn:
+                conn.execute(KnowledgeQuery.ATTEMPT_EXPIRE, (tenant_id, kb_id, row['request_id']))
             vectors = recovered_vectors(row, provider)
             if vectors is not None:
                 self._auth(authorize)

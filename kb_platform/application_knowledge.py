@@ -64,7 +64,7 @@ def application_schemas():
     schemas = {
         'authority': config_schema({'binding': TEXT}, required=('binding',)),
         'model_policy': config_schema(),
-        'sessions': config_schema({'binding': TEXT}, required=('binding',)),
+        'sessions': config_schema(),
         'data': config_schema({'research_root': TEXT, 'rerank': {'type': 'boolean'}, 'semantic_config': TEXT}),
         'model': config_schema({'routes': config_schema({'generation': TEXT, 'embedding': TEXT, 'ocr': TEXT}),
             'policy': config_schema(CONTEXT_PROPERTIES),
@@ -77,7 +77,8 @@ def application_schemas():
         'access': config_schema({'identities_file': TEXT}, required=('identities_file',)),
         'entry': config_schema(),
     }
-    return {**FOUNDATION_SCHEMAS, **{('knowledge.' + key, '1'): value for key, value in schemas.items()}}
+    return {**FOUNDATION_SCHEMAS, **{('knowledge.' + key, '2' if key in {'sessions', 'authority'} else '1'): value
+                                   for key, value in schemas.items()}}
 
 
 def create_contract_knowledge(settings, *, profile=None, environment=None, storage_configuration=None,
@@ -110,8 +111,9 @@ def create_contract_knowledge(settings, *, profile=None, environment=None, stora
     def session_factory(ctx, config):
         from .knowledge_sessions import KnowledgeSessions
         from .session_store import SessionStore
+        from .knowledge_schema import knowledge_schema
 
-        store = SessionStore(database=StorageClient(ctx.require('storage'), config['binding']).relational())
+        store = SessionStore(database=authority_database(ctx.require('authority')), schema=knowledge_schema)
         ctx.defer(store.close)
         return KnowledgeSessions(store)
 

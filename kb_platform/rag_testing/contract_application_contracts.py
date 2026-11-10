@@ -118,10 +118,12 @@ class ContractApplicationContracts(unittest.TestCase):
         application = composition.application
         session = application.create(self.actor, scope)
         request = dict(message='What is the original rule?', request_id='durable-request', expected_revision=0,
-                       constraints=['Use only the original rule'])
+                       constraints=['Use only the original rule'],
+                       context_budget={'limit': 16000, 'unit': 'unicode_codepoints'})
         result = application.turn(self.actor, session['session_id'], **request)
         self.assertEqual(result['status'], 'answered', result)
         self.assertEqual(result['answer'], 'Original rule value 42.')
+        self.assertEqual(result['trace']['budget']['request_budget']['limit'], 16000)
         self.assertEqual(len(self.physical), 4)
         self.assertEqual(application.turn(self.actor, session['session_id'], **request), result)
         self.assertEqual(len(self.physical), 4)
@@ -140,7 +142,6 @@ class ContractApplicationContracts(unittest.TestCase):
         from kb_platform.agent_context import ContextManager, ContextPolicy
         from kb_platform.agent_luna import LunaModelProvider
         from kb_platform.agent_model import AgentModel, BudgetLedger
-        from kb_platform.application_storage import StorageClient
         from kb_platform.knowledge_capabilities import CATALOG, AuthorizedEvidenceClient
         from kb_platform.knowledge_context import KnowledgeContext, LocalEvidenceSource, LocalHistorySource
         from kb_platform.knowledge_contracts import ModelEndpoint, SessionClient, SessionEndpoint
@@ -156,7 +157,10 @@ class ContractApplicationContracts(unittest.TestCase):
             self.profile['plugins'][name]['implementation'] = replacement['implementation']
 
         def sessions(ctx, config):
-            store = SessionStore(database=StorageClient(ctx.require('storage'), config['binding']).relational())
+            from kb_platform.knowledge_authority_contract import authority_database
+            from kb_platform.knowledge_schema import knowledge_schema
+
+            store = SessionStore(database=authority_database(ctx.require('authority')), schema=knowledge_schema)
             ctx.defer(store.close)
             ctx.provide('sessions', SessionEndpoint(KnowledgeSessions(store)))
             mounted.append('sessions')
@@ -192,10 +196,10 @@ class ContractApplicationContracts(unittest.TestCase):
             mounted.append('context')
 
         composition = self.compose(extra_catalog=selected, extra_mounts={
-            ('synthetic.replacement.sessions', '1'): sessions,
+            ('synthetic.replacement.sessions', '2'): sessions,
             ('synthetic.replacement.model', '1'): model,
             ('synthetic.replacement.context', '1'): context}, schemas={
-                (item['implementation'], '1'): {'type': 'object'} for item in selected})
+                (item['implementation'], item['version']): {'type': 'object'} for item in selected})
         self.assertEqual(set(mounted), {'sessions', 'model', 'context'})
         scope, _ = self.publish(composition)
         application = composition.application

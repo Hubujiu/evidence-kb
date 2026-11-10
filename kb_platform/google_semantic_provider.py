@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import json
+import sys
 from pathlib import Path
 import re
 from threading import Lock
@@ -176,7 +177,19 @@ class GoogleSemanticProvider:
                           'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
                 raise EmbeddingCallError(ModelPreflightError(reason)) from exc
             raise
+        def settle(status, actual, diagnostic=None):
+            record.update(status=status, usage=actual, ledger_settlement='UNCONFIRMED')
+            try:
+                self.ledger.finish(request_id, status=status, usage=actual, diagnostic=diagnostic)
+            except BaseException as error:
+                record['ledger_error'] = type(error).__name__
+                if getattr(error, 'operation_id', None) is not None:
+                    record['ledger_operation_id'] = error.operation_id
+                raise
+            record['ledger_settlement'] = 'COMMITTED'
+
         usage, response_received, started, issued_before = None, False, False, None
+        failed = False
         try:
             with target.open("x", encoding="utf-8") as handle:
                 json.dump(record, handle, ensure_ascii=False, sort_keys=True, allow_nan=False)
@@ -209,10 +222,15 @@ class GoogleSemanticProvider:
             self._unchanged()
             record.update(vectors=matrix, vectors_sha256=digest(matrix), input_tokens=tokens,
                           status="COMPLETE", usage=usage, physical_embedding_attempts=1)
-            self.ledger.finish(request_id, status="COMPLETE", usage=usage)
+            settle("COMPLETE", usage)
             self.last_observation = deepcopy(record)
             return matrix, deepcopy(record)
-        except Exception as exc:
+        except BaseException as exc:
+            failed = True
+            if 'ledger_settlement' in record:
+                raise
+            if not isinstance(exc, Exception):
+                raise
             issued = self.remote._issued_requests - issued_before if issued_before is not None else 0
             admission_blocked = getattr(exc, 'code', None) == 'RAG_PHYSICAL_REQUEST_ADMISSION_FAILED'
             if admission_blocked:
@@ -229,11 +247,17 @@ class GoogleSemanticProvider:
             status = "ERROR" if known else "UNKNOWN"
 
             diagnostic = type(exc).__name__
-            self.ledger.finish(request_id, status=status, usage=usage, diagnostic=diagnostic)
-            record.update(status=status, usage=usage, error=diagnostic)
+            record['error'] = diagnostic
+            settle(status, usage, diagnostic)
             raise
         finally:
-            target.write_text(json.dumps(record, ensure_ascii=False, sort_keys=True, allow_nan=False), "utf-8")
+            failure = sys.exception() if failed else None
+            try:
+                target.write_text(json.dumps(record, ensure_ascii=False, sort_keys=True, allow_nan=False), "utf-8")
+            except Exception as capture_error:
+                if failure is None:
+                    raise
+                failure.add_note('Physical capture persistence failed: ' + type(capture_error).__name__)
 
     def documents_observed(self, texts, *, request_id, audit_context, authorize):
         matrix, record = self._observed(texts, task="document", request_id=request_id,

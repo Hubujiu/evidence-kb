@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .knowledge_queries import KnowledgeQuery
 from .knowledge_embedding import embedding_audit
+from .knowledge_parse_cache import ImmutableParseCache
 
 from decimal import Decimal, InvalidOperation
 import math
@@ -46,6 +47,7 @@ class Platform:
         self.backend, self.store, self.parser = search, store, parser
         self.embedding_jobs = embedding_jobs
         self.embedding_provider, self.ocr_client = embedding_provider, ocr_client
+        self._parse_cache = ImmutableParseCache()
 
     def _tx(self, actor: Actor, kb_id: str | None = None):
         return self.repository.transaction(actor, kb_id)
@@ -226,9 +228,45 @@ class Platform:
             self._bump(conn, actor)
         return {'source_id': source_id, 'policy': policy}
 
-    def _bindings(self, conn, actor, kb_id):
-        return conn.execute(KnowledgeQuery.BINDINGS_ACTIVE,
-                            (actor.tenant_id, kb_id)).fetchall()
+    def _source_snapshot(self, actor, kb_id, *, processing=False, capability='kb.read'):
+        with self._tx(actor, kb_id) as conn:
+            revision = self._lock_authority(conn, actor)
+            kb = self._auth(conn, actor, kb_id, capability)
+            self._auth(conn, actor, kb_id)
+            if processing:
+                rows = conn.execute(KnowledgeQuery.BINDINGS_PROCESSING, (actor.tenant_id, kb_id)).fetchall()
+            else:
+                rows = conn.execute(KnowledgeQuery.BINDINGS_ACTIVE, (actor.tenant_id, kb_id)).fetchall()
+        documents, missing = {}, []
+        for row in rows:
+            identity = (row['source_id'], row['source_version_id'], row['parse_snapshot_id'])
+            key = (self.repository.identity.dataset_id, actor.tenant_id, *identity)
+            document = self._parse_cache.get(key)
+            if document is None:
+                missing.append(identity)
+            else:
+                documents[identity] = document
+        for identity, document in self.repository.parse_documents(actor, kb_id, missing):
+            documents[identity] = document
+            self._parse_cache.put((self.repository.identity.dataset_id, actor.tenant_id, *identity), document)
+        hydrated = [{**row, 'document': documents[(row['source_id'], row['source_version_id'],
+                                                  row['parse_snapshot_id'])]} for row in rows]
+        snapshot = {'actor': actor, 'scope': kb_id, 'kb': kb, 'authority_revision': revision,
+                    'capability': capability, 'rows': hydrated}
+        with self._tx(actor, kb_id) as conn:
+            self._check_source_snapshot(conn, actor, kb_id, snapshot)
+        return snapshot
+
+    def _check_source_snapshot(self, conn, actor, kb_id, snapshot):
+        if snapshot['actor'] != actor or snapshot['scope'] != kb_id:
+            _deny()
+        revision = self._lock_authority(conn, actor)
+        kb = self._auth(conn, actor, kb_id, snapshot['capability'])
+        self._auth(conn, actor, kb_id)
+        if (revision != snapshot['authority_revision'] or kb['revision'] != snapshot['kb']['revision']
+                or kb['manifest_id'] != snapshot['kb']['manifest_id']):
+            raise PlatformError('SCOPE_CHANGED', 'Sources or authorization changed during snapshot read', 409)
+        return kb
 
     def _allowed(self, rows, actor, purpose):
         if purpose not in {'human_search', 'llm_context', 'preview', 'download'}:
@@ -238,6 +276,17 @@ class Platform:
                 not any(row.get('document', {}).get('processing_policy', {}).get(flag, False)
                         and not row['policy'].get(flag, False) for flag in ('include_hidden', 'include_notes', 'ocr')) and
                 (purpose == 'human_search' or row['policy'].get(purpose, False))]
+
+    def _store_citations(self, actor, kb_id, build_id, snapshot, citations):
+        def authorize(conn):
+            kb = self._check_source_snapshot(conn, actor, kb_id, snapshot)
+            build = conn.execute(KnowledgeQuery.BUILD_GET, (actor.tenant_id, kb_id, build_id)).fetchone()
+            if (not build or build['status'] != 'STAGING'
+                    or build['authority_revision'] != snapshot['authority_revision']
+                    or build['kb_revision'] != kb['revision']
+                    or build['expected_manifest_id'] != kb['manifest_id']):
+                raise PlatformError('STALE_BUILD', 'Build changed during citation population', 409)
+        self.repository.write_citations(actor, kb_id, citations, authorize)
 
     def stage(self, actor, kb_id, channels=None):
         from hashlib import sha256
@@ -253,51 +302,52 @@ class Platform:
             raise PlatformError('CHANNEL_NOT_ADMITTED', 'No approved configured embedding provider', 409)
         build_id = str(uuid4())
         index = self.backend.index_name(actor.tenant_id, kb_id, build_id)
+        snapshot = self._source_snapshot(actor, kb_id, capability='kb.manage')
+        rows = snapshot['rows']
+        if len(self._allowed(rows, actor, 'human_search')) != len(rows):
+            _deny()
+        if not rows:
+            raise PlatformError('NO_SOURCES', 'No active sources to build', 409)
+        if any(row['document']['status'] != 'READY' for row in rows):
+            raise PlatformError('INCOMPLETE_PARSE', 'All sources must have complete READY parses', 409)
+        if any(not row['policy'].get('native_parse', False) for row in rows):
+            raise PlatformError('PROCESSING_DENIED', 'Processing policy blocks this build', 403)
+        units, citations = self._units(actor, kb_id, build_id, rows)
+        if not units:
+            raise PlatformError('NO_EVIDENCE', 'No indexed source evidence', 409)
+        inputs = [{key: row[key] for key in ('binding_id','source_id','source_version_id',
+                                              'parse_snapshot_id','revision','source_revision')} for row in rows]
+        vector_rows = [row for row in rows if self._embedding_allowed(row)] if model_enabled else []
+        if model_enabled and not vector_rows:
+            raise PlatformError('PROCESSING_DENIED', 'No sources permit this embedding provider', 403)
+        vector_sources = {row['source_id'] for row in vector_rows}
+        config = {'sources': inputs, 'channels': channels,
+                  'retrieval_unit_protocol': delivery_units.PROTOCOL,
+                  'page_navigation_protocol': delivery_units.PAGE_PROTOCOL,
+                  'retrieval_unit_implementation_sha256': sha256(Path(delivery_units.__file__).read_bytes()).hexdigest(),
+                  'retrieval_chunking_implementation_sha256': sha256(Path(retrieval_expansion.__file__).read_bytes()).hexdigest(),
+                  'lexical_query_protocol': search.QUERY_PROTOCOL,
+                  'lexical_query_implementation_sha256': sha256(Path(search.__file__).read_bytes()).hexdigest(),
+                  'search_backend': type(self.backend).__name__,
+                  'search_dependencies': search.backend_dependencies(self.backend),
+                  'query_blocks_implementation_sha256': sha256(Path(evidence_packing.__file__).read_bytes()).hexdigest(),
+                  'tie_break': list(TIE_BREAK_FIELDS),
+                  'embedding': self.embedding_provider.manifest if model_enabled else None,
+                  'vector_source_ids': sorted(vector_sources),
+                  'excluded_vector_source_ids': sorted({row['source_id'] for row in rows} - vector_sources)
+                  if model_enabled else [],
+                  'model_admission': 'EXPERIMENTAL' if model_enabled else 'NOT_ENABLED'}
         with self._tx(actor, kb_id) as conn:
+            self._check_source_snapshot(conn, actor, kb_id, snapshot)
             authority_revision = self._lock_authority(conn, actor)
             kb = self._auth(conn, actor, kb_id, 'kb.manage')
             self._auth(conn, actor, kb_id, 'kb.read')
-            rows = self._bindings(conn, actor, kb_id)
-            if len(self._allowed(rows, actor, 'human_search')) != len(rows):
-                _deny()
-            if not rows:
-                raise PlatformError('NO_SOURCES', 'No active sources to build', 409)
-            if any(row['document']['status'] != 'READY' for row in rows):
-                raise PlatformError('INCOMPLETE_PARSE', 'All sources must have complete READY parses', 409)
-            if any(not row['policy'].get('native_parse', False) for row in rows):
-                raise PlatformError('PROCESSING_DENIED', 'Processing policy blocks this build', 403)
-            units, citations = self._units(actor, kb_id, build_id, rows)
-            if not units:
-                raise PlatformError('NO_EVIDENCE', 'No indexed source evidence', 409)
-            inputs = [{key: row[key] for key in ('binding_id','source_id','source_version_id',
-                                                  'parse_snapshot_id','revision','source_revision')} for row in rows]
-            vector_rows = [row for row in rows if self._embedding_allowed(row)] if model_enabled else []
-            if model_enabled and not vector_rows:
-                raise PlatformError('PROCESSING_DENIED', 'No sources permit this embedding provider', 403)
-            vector_sources = {row['source_id'] for row in vector_rows}
-            config = {'sources': inputs, 'channels': channels,
-                      'retrieval_unit_protocol': delivery_units.PROTOCOL,
-                      'page_navigation_protocol': delivery_units.PAGE_PROTOCOL,
-                      'retrieval_unit_implementation_sha256': sha256(Path(delivery_units.__file__).read_bytes()).hexdigest(),
-                      'retrieval_chunking_implementation_sha256': sha256(Path(retrieval_expansion.__file__).read_bytes()).hexdigest(),
-                      'lexical_query_protocol': search.QUERY_PROTOCOL,
-                      'lexical_query_implementation_sha256': sha256(Path(search.__file__).read_bytes()).hexdigest(),
-                      'search_backend': type(self.backend).__name__,
-                      'search_dependencies': search.backend_dependencies(self.backend),
-                      'query_blocks_implementation_sha256': sha256(Path(evidence_packing.__file__).read_bytes()).hexdigest(),
-                      'tie_break': list(TIE_BREAK_FIELDS),
-                      'embedding': self.embedding_provider.manifest if model_enabled else None,
-                      'vector_source_ids': sorted(vector_sources),
-                      'excluded_vector_source_ids': sorted({row['source_id'] for row in rows} - vector_sources)
-                      if model_enabled else [],
-                      'model_admission': 'EXPERIMENTAL' if model_enabled else 'NOT_ENABLED'}
             conn.execute(KnowledgeQuery.BUILD_INSERT,
                          (actor.tenant_id, kb_id, build_id, kb['manifest_id'], authority_revision,
                           kb['revision'], index, config, len(units)))
-            for citation in citations:
-                conn.execute(KnowledgeQuery.CITATION_INSERT, citation)
         if getattr(self.backend, 'supports_resume_build', type(self.backend).__name__ == 'PostgresSearch'):
             return self.resume_build(actor, kb_id, build_id)
+        self._store_citations(actor, kb_id, build_id, snapshot, citations)
         try:
             if model_enabled:
                 eligible = [unit for unit in units if unit['source_id'] in vector_sources and unit['kind'] != 'Page']
@@ -385,21 +435,25 @@ class Platform:
                     config['retrieval_unit_implementation_sha256'] != sha256(Path(delivery_units.__file__).read_bytes()).hexdigest() or
                     config['retrieval_chunking_implementation_sha256'] != sha256(Path(retrieval_expansion.__file__).read_bytes()).hexdigest()):
                 raise PlatformError('STALE_BUILD', 'Frozen chunking implementation changed', 409)
-            rows = self._bindings(conn, actor, kb_id)
-            if len(self._allowed(rows, actor, 'human_search')) != len(rows):
-                _deny()
-            inputs = [{key: row[key] for key in ('binding_id', 'source_id', 'source_version_id',
-                       'parse_snapshot_id', 'revision', 'source_revision')} for row in rows]
-            if inputs != config['sources']:
-                raise PlatformError('STALE_BUILD', 'Frozen source dependencies changed', 409)
-            units, generated = self._units(actor, kb_id, build_id, rows)
-            fields = ('tenant_id', 'kb_id', 'citation_id', 'build_id', 'binding_id', 'source_id',
-                      'source_version_id', 'parse_snapshot_id', 'element_id', 'text', 'evidence_ids', 'anchors', 'table_data')
-            expected = {r[2]: dict(zip(fields, r, strict=True)) for r in generated}
-            stored = conn.execute(KnowledgeQuery.CITATIONS_FOR_BUILD,
-                                  (actor.tenant_id, kb_id, build_id)).fetchall()
-            if len(units) != build['unit_count'] or expected != {r['citation_id']: r for r in stored}:
-                raise PlatformError('STALE_BUILD', 'Regenerated units differ from committed evidence', 409)
+        snapshot = self._source_snapshot(actor, kb_id, capability='kb.manage')
+        if (snapshot['authority_revision'] != revision or snapshot['kb']['revision'] != kb['revision']
+                or snapshot['kb']['manifest_id'] != kb['manifest_id']):
+            raise PlatformError('STALE_BUILD', 'Build inputs changed before source hydration', 409)
+        rows = snapshot['rows']
+        if len(self._allowed(rows, actor, 'human_search')) != len(rows):
+            _deny()
+        inputs = [{key: row[key] for key in ('binding_id', 'source_id', 'source_version_id',
+                   'parse_snapshot_id', 'revision', 'source_revision')} for row in rows]
+        if inputs != config['sources']:
+            raise PlatformError('STALE_BUILD', 'Frozen source dependencies changed', 409)
+        units, generated = self._units(actor, kb_id, build_id, rows)
+        fields = ('tenant_id', 'kb_id', 'citation_id', 'build_id', 'binding_id', 'source_id',
+                  'source_version_id', 'parse_snapshot_id', 'element_id', 'text', 'evidence_ids', 'anchors', 'table_data')
+        expected = {r[2]: dict(zip(fields, r, strict=True)) for r in generated}
+        self._store_citations(actor, kb_id, build_id, snapshot, generated)
+        stored = {r['citation_id']: r for r in self.repository.citations(actor, kb_id, build_id)}
+        if len(units) != build['unit_count'] or expected != stored:
+            raise PlatformError('STALE_BUILD', 'Regenerated units differ from committed evidence', 409)
 
         def authorize():
             with self._tx(actor, kb_id) as conn:
@@ -516,10 +570,12 @@ class Platform:
             raise PlatformError('CHANNEL_NOT_ADMITTED', 'Channel has no approved configured provider', 409)
         if not query.strip() or len(query) > 2000 or not 1 <= top_k <= 50 or not 1 <= context_budget <= 50000:
             raise PlatformError('INVALID_QUERY', 'Invalid query or retrieval budget')
+        snapshot = self._source_snapshot(actor, kb_id)
         with self._tx(actor, kb_id) as conn:
+            self._check_source_snapshot(conn, actor, kb_id, snapshot)
             kb = self._auth(conn, actor, kb_id)
             revision = self._revision(conn, actor)
-            allowed = self._allowed(self._bindings(conn, actor, kb_id), actor, purpose)
+            allowed = self._allowed(snapshot['rows'], actor, purpose)
             if not kb['manifest_id']:
                 raise PlatformError('NO_PUBLISHED_MANIFEST', 'Knowledge base has no published index', 409)
             build = conn.execute(KnowledgeQuery.BUILD_PUBLISHED, (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()

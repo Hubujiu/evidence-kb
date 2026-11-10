@@ -227,7 +227,7 @@ class RuntimeLifecycleContracts(TestCase):
                     'artifact_id': 'a' * 64,
                     'result': {'rows': [['value' * 100] for _ in range(1000)], 'count': 1000}}
         before = deepcopy(original)
-        view = project_tool_results([original], budget_bytes=1000)[0]
+        view = project_tool_results([original], budget_bytes=1000, role='retrieval')[0]
         self.assertLess(len(json.dumps(view).encode('utf-8')), 1000)
         self.assertEqual(view['artifact_id'], original['artifact_id'])
         self.assertEqual(view['result']['count'], 1000)

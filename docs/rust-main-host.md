@@ -8,18 +8,20 @@
 
 先构建整个 workspace，确保主宿主与单次 Agent 值状态动态库来自同一源码。
 
-```powershell
+```bash
 cargo build --workspace --locked --offline
 uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
-`uv run` 让配置中的 `python` 使用项目环境。也可以直接启动 `target/debug/evidence-host.exe`，通过 `--worker` 指定 `.venv/Scripts/python.exe` 的绝对路径。Linux/macOS 可执行文件没有 `.exe`。
+`uv run` 让配置中的 `python` 使用项目环境。也可以直接启动 `target/debug/evidence-host`，通过 `--worker` 指定 `.venv/bin/python` 的绝对路径。
 
 在另一终端创建 `.local/api.stop` 请求正常关停；再次启动前移除旧标记。Unix 入口也将 Ctrl+C（SIGINT）和 SIGTERM 转为同一停止事件，依次执行应用 stop、等待 run 与 close、回收 worker 进程组；关停超时时，宿主继续存活并强制回收该组，返回非零退出码。宿主监督启动、协议写入、关停与子进程退出。启动默认上限 30 秒，关停默认上限 10 秒；HTTP 长期运行本身没有总时限。超时和清理失败返回非零退出码，输出未完成根状态，不自动重放业务请求。强制终止进程不等于完成业务清理。
 
-宿主拥有 worker 及其后代的进程生命周期。Windows 在恢复挂起的 worker 前将它加入关闭时终止的 Job Object；Unix 在创建 worker 时建立专属进程组。正常协议关停后或协议失败、超时时，宿主清理该组，避免残留插件进程。Unix 在清理进程组前保留已退出 leader 的身份，避免 PID 复用导致误终止。此机制不阻止可信插件刻意脱离进程组，也不替代业务资源的正常清理。
+宿主创建 worker 时建立专属进程组。正常协议关停后或协议失败、超时时，宿主清理该组。清理前保留已退出 leader 的身份，避免 PID 复用导致误终止。此机制不阻止可信插件刻意脱离进程组，也不替代业务资源的正常清理。
 
-固定交付流程使用 `scripts/start_delivery.ps1`，先构建 `cargo build --release --workspace --locked --offline`。启动器保存 `process.json`、宿主路径和专属停止标记；使用 `scripts/stop_delivery.ps1 -Receipt <process.json>` 关停。既有配置验证、物理预算和提供者账本继续生效。
+固定交付流程使用 `uv run --no-sync python scripts/delivery_control.py start`，先构建 `cargo build --release --workspace --locked --offline`。启动器保存 `process.json`、宿主路径和专属停止标记；使用 `uv run --no-sync python scripts/delivery_control.py stop --receipt <process.json>` 关停。停止需要 Linux pidfd，核对进程启动身份和可执行文件后才写停止标记；超时不强制终止进程。既有配置验证、物理预算和提供者账本继续生效。
+
+启动器先发布 `STARTING` 回执，再放行宿主执行。健康检查同时核对交付配置和本次启动的随机实例标识，成功后将回执更新为 `RUNNING_LIVENESS_ONLY`。若放行后启动中断或健康检查超时，保留回执和进程，使用输出的路径检查日志并按需正常停止；不要直接重试启动。存活确认不代表外部依赖已经就绪。
 
 ## 两种配置
 
@@ -62,7 +64,7 @@ flowchart TD
 | 层 | 所有权 |
 | --- | --- |
 | `rust/plugin-runtime` | 实例、代次、依赖、作用域、服务注册、租约和清理动作 |
-| `rust/plugin-host` | worker 进程树生命周期、双向管道、帧边界、退出与关停期限；依赖 Serde 及按平台选择的 libc 或 windows-sys |
+| `rust/plugin-host` | worker 进程组生命周期、双向管道、帧边界、退出与关停期限；依赖 Serde 和 libc |
 | `rust/agent-harness` | 协议 dispatcher，以及注入 dispatcher 的 `evidence-host` 入口 |
 | `rust/agent-services` | 默认 loop/graph 控制状态；独立于生命周期内核 |
 | `rust/llm-service`、`rust/storage-service` | 公共协议与服务语义；由装配入口调用，不被通用内核依赖 |

@@ -358,8 +358,9 @@ class LunaSDKContracts(unittest.TestCase):
         state = self.setup_provider([], caps={'model': 0, 'input_tokens': 10000, 'output_tokens': 1000,
                                               'remote_embedding_calls': 0, 'embedding_input_tokens': 0})
         trace = {'request_id': 'budget-denied', 'attempt': 0}
-        with self.assertRaises(CaptureAdmissionError):
+        with self.assertRaises(CaptureAdmissionError) as caught:
             self.call(state, trace=trace)
+        self.assertIs(caught.exception.model_sent, False)
         self.assertEqual(state.requests, [])
         self.assertEqual(state.ledger.summary()['physical_requests'], 0)
         self.assertEqual(trace['attempt'], 0)
@@ -371,8 +372,9 @@ class LunaSDKContracts(unittest.TestCase):
             'model': 1, 'input_tokens': 10000, 'output_tokens': 1000,
             'remote_embedding_calls': 0, 'embedding_input_tokens': 0})
         trace = {'request_id': 'bounded-retry', 'attempt': 0}
-        with self.assertRaises(CaptureAdmissionError):
+        with self.assertRaises(CaptureAdmissionError) as caught:
             self.call(state, trace=trace)
+        self.assertIs(caught.exception.model_sent, False)
         self.assertEqual(len(state.requests), 1)
         self.assertEqual(trace['attempt'], 1)
         self.assertEqual(state.ledger.summary()['physical_requests'], 1)

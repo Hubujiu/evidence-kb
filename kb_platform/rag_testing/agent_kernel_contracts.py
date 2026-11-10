@@ -109,7 +109,7 @@ class NativeRuntimeContracts(unittest.TestCase):
 
     def test_missing_library_does_not_silently_run_python(self):
         with TemporaryDirectory() as directory:
-            with patch.dict('os.environ', {'KB_AGENT_KERNEL_LIBRARY': str(Path(directory) / 'missing.dll')}):
+            with patch.dict('os.environ', {'KB_AGENT_KERNEL_LIBRARY': str(Path(directory) / 'missing.so')}):
                 program = CounterProgram()
                 with self.assertRaises(KernelError) as failure:
                     Runtime().run(program)

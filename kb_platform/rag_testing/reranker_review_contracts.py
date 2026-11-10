@@ -27,7 +27,8 @@ class RerankerReviewContracts(unittest.TestCase):
 
         def ranking(messages):
             payload = json.loads(messages[-1]['content'])
-            self.assertEqual(payload['query'], 'original')
+            self.assertIn('original_question', payload['query'])
+            self.assertIn('retrieval_hypothesis', payload['query'])
             self.assertEqual([row['ref'] for row in payload['documents']],
                              [f'R{index:03}' for index in range(1, 21)])
             for index, row in enumerate(payload['documents']):
@@ -37,7 +38,7 @@ class RerankerReviewContracts(unittest.TestCase):
             self.assertLessEqual(estimate_messages(messages)['tokens'], 24000)
             return {'scores': [index / 20 for index in range(20)], 'requirements': [
                 {'need': 'original rule', 'supported': True,
-                 'evidence': [{'ref': 'R020', 'quote': 'Original 19:'}]}]}
+                 'evidence': [{'ref': 'R020'}]}]}
 
         rerank_model = fixtures.ScenarioModel([('rerank', ranking)])
         models = SimpleNamespace(catalog=lambda: {'generation': SimpleNamespace(
@@ -105,7 +106,7 @@ class RerankerReviewContracts(unittest.TestCase):
             ('answer', fixtures.cited_answer), ('verifier', fixtures.verdict())])
 
         def ranking(messages):
-            self.assertIn('coverage-array/1', messages[0]['content'])
+            self.assertIn('coverage-contributions/3', messages[0]['content'])
             self.assertIn('documents', messages[-1]['content'])
             return {'scores': [0.2, 0.9], 'requirements': [
                 {'need': 'original rule', 'supported': False, 'evidence': []}]}
@@ -121,9 +122,9 @@ class RerankerReviewContracts(unittest.TestCase):
         case.service.retrieval_config = {'channels': ['bm25'], 'rerank': True, 'parent': 'none'}
         case.service.capture = case.captures.append
         result = self.turn(case)
-        self.assertEqual(result['status'], 'answered', result)
+        self.assertEqual(result['status'], 'abstained', result)
         self.assertEqual([call['role'] for call in case.model.calls],
-                         ['decision', 'retrieval', 'answer', 'verifier'])
+                         ['decision', 'retrieval'])
         self.assertEqual([call['role'] for call in rerank_model.calls], ['rerank'])
         self.assertEqual(sum(call['role'] == 'rerank' for call in result['trace']['calls']), 1)
         self.assertEqual(sum(call['role'] == 'rerank' for call in case.captures), 1)

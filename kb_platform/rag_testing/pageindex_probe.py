@@ -12,7 +12,7 @@ from .answer_metrics import answer_score
 from .budget_batches import LinkedBudgetLedger, freeze_predecessor
 from .contracts import Fragment, Plan, Suite, Trace, digest
 from .reader_diagnostic import BoundedLuna, PROMPTS, read
-from .provider_capture import observe_client, request_context
+from .provider_capture import capture_unresolved, observe_client, request_context
 from .runner import run, write_json
 
 UPSTREAM = 'b81465d9ad3d80ee1df344508a85d1f2cdfb8a26'
@@ -128,6 +128,8 @@ class PageIndexAdapter:
         physical = [read(p) for p in self.output.glob('physical-requests/*.json')]
         bound = [r for r in physical if r['context'].get('case_id') == request.case_id
                  and r['context'].get('variant') == self.variant]
+        if any(capture_unresolved(record) for record in bound):
+            raise ValueError('UNRESOLVED_PHYSICAL_CAPTURE')
         final = [r for r in bound if r['context'].get('stage') == 'answer']
         if len(final) != 1 or final[0]['status'] != 'COMPLETE':
             raise ValueError('FINAL_REQUEST_NOT_UNIQUE_COMPLETE')

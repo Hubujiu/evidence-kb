@@ -27,9 +27,9 @@
 5. 首次创建空间时，运行显式初始化命令生成含 `dataset_id` 的新文件。缓存绑定已有 `cache_id`，不创建持久 dataset。
 6. 将 `KB_STORAGE_CONFIG` 指向初始化后的文件。正常启动只打开和核对现有身份，不能直接使用缺少 `dataset_id` 的初始化模板。
 
-```powershell
+```bash
 uv run --no-sync python -m kb_platform.storage_configuration initialize --input config/storage.example.json --output .local/storage-configured.json
-$env:KB_STORAGE_CONFIG = (Resolve-Path .local/storage-configured.json).Path
+export KB_STORAGE_CONFIG="$(pwd)/.local/storage-configured.json"
 ```
 
 初始化命令不覆盖输入或已有输出。对已有数据集，先在输入绑定中填入核验后的 `dataset_id`；命令只验证这个身份，不因目标为空或身份不符重新初始化。不要删除身份字段来绕过旧数据核验。
@@ -40,7 +40,7 @@ $env:KB_STORAGE_CONFIG = (Resolve-Path .local/storage-configured.json).Path
 
 旧 v1 数据库配置只能离线转换：
 
-```powershell
+```bash
 uv run --no-sync python -m kb_platform.storage_configuration convert-databases --input .local/databases-v1.json --output .local/storage-v2-template.json
 ```
 
@@ -52,7 +52,7 @@ uv run --no-sync python -m kb_platform.storage_configuration convert-databases -
 
 修改活动源码后，从项目根目录运行：
 
-```powershell
+```bash
 uv run --no-sync python scripts/check_project.py
 ```
 
@@ -60,7 +60,7 @@ uv run --no-sync python scripts/check_project.py
 
 真实服务验收使用同一入口：
 
-```powershell
+```bash
 uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --output reports/storage-check-new
 ```
 
@@ -80,7 +80,7 @@ SQL URL 必须使用 `127.0.0.1`、显式端口和 `rust_plugin_acceptance_` 前
 
 最终 checker 构建当前 Rust 宿主。总结果位于 `summary.json`，存储观察位于 `storage-integration/report.json`。原有浏览器入口使用同一 checker 制品：
 
-```powershell
+```bash
 uv run --no-sync python -m kb_platform.rag_testing.browser_integration --checker-summary reports/storage-check-new/summary.json --output reports/storage-browser-new
 ```
 
@@ -116,7 +116,7 @@ uv run --no-sync python -m kb_platform.rag_testing.browser_integration --checker
 
 会话使用 `session_transfer.export_sessions` 和 `import_sessions`。它们核对记录哈希、事件序号、revision 和响应，生成新的目标 `dataset_id` 与源目标映射。旧本地会话可只读导出再导入新目录：
 
-```powershell
+```bash
 uv run --no-sync python -m kb_platform.session_transfer export --legacy-sqlite .local/old-agent/sessions.sqlite3 --source-frozen --output reports/sessions-export-new.json
 uv run --no-sync python -m kb_platform.session_transfer import --input reports/sessions-export-new.json --root .local/new-agent --target-offline
 ```

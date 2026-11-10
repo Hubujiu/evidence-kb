@@ -97,10 +97,10 @@ Python 同步通知等待监听器完成，不承诺 JavaScript Promise 调度�
 
 E0 transport 使用带版本和调用身份的 JSON Lines，沿用 V1 实例、代次、deadline、取消和资源规则。以下示例插件没有编译进宿主。
 
-```powershell
+```bash
 uv run --no-sync python -m scripts.plugin_manager --root .local/plugins install examples/process-echo
 uv run --no-sync python -m scripts.plugin_manager --root .local/plugins list
-$env:KB_PROCESS_PLUGINS_ROOT = (Resolve-Path .local/plugins).Path
+export KB_PROCESS_PLUGINS_ROOT="$(pwd)/.local/plugins"
 ```
 
 在 profile 中选择 `{"id":"echo","use":"process.echo"}`。根 catalog 读取已安装、显式选中的包版本。安装记录保存来源、版本、文件哈希和内容地址；装载前重新核验内容。再次安装同名新版只选择新版，旧包和记录保持可读。
@@ -133,9 +133,9 @@ manifest 可声明 `requires: ["shared.model"]`，缺省为空。依赖参与与
 
 同一 operation 的相同 complete 在确认前幂等，冲突回报保留原结果并记录诊断。Python 收到完成确认后发送 ack，明确退休重复回报历史；退休后旧 operation 返回 unknown，不能重新执行。disposed 根通过 collect 回收状态，Python 只保存 Rust 返回的终态快照。instance 和 registration 身份永不复用。
 
-```powershell
+```bash
 uv run --no-sync python scripts/check_project.py --output reports/rust-plugin-v1/new-check
-$env:KB_INTEGRATION_DSN = '<专用 rust_plugin_acceptance_ 数据库 DSN>'
+export KB_INTEGRATION_DSN='<专用 rust_plugin_acceptance_ 数据库 DSN>'
 uv run --no-sync python scripts/check_project.py --local-integration --output reports/rust-plugin-v1/new-integration-check
 ```
 

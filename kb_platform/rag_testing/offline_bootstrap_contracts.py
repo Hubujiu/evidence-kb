@@ -131,8 +131,9 @@ class OfflineBootstrapRuntimeContracts(unittest.TestCase):
                 patch.object(check_project.sys, 'path', list(sys.path)), \
                 patch.object(check_project.sys, 'addaudithook', side_effect=install), \
                 patch.object(check_project, 'contract_modules', side_effect=discover), \
-                patch.object(check_project.faulthandler, 'dump_traceback_later'), \
-                patch.object(check_project.faulthandler, 'cancel_dump_traceback_later'):
+                patch('scripts.check_contract_watchdog.SnapshotWatchdog') as watchdog:
+            watchdog.return_value.cancel.return_value = {
+                'thread_stopped': True, 'error': None, 'written': False, 'due': False, 'triggered': False}
             with self.assertRaisesRegex(RuntimeError, 'synthetic discovery boundary'):
                 check_project.run_worker('contracts', Path(directory), 0)
             record = json.loads((Path(directory) / 'worker-bootstrap.json').read_text('utf-8'))

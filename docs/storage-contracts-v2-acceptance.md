@@ -33,7 +33,7 @@ BM25 与 dense 实际执行五种组合：同一 PostgreSQL 空间、两个独�
 
 远端首轮 CI 发现 MinIO 镜像无法公开拉取，以及 Windows 合同因落盘等待超时。MinIO 改为从[官方固定提交](https://github.com/minio/minio/tree/9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a)构建，源码 checksum、Go 1.24.8 镜像和模块均固定校验，运行时保留许可证。最后一轮 30 组真实矩阵使用这个新镜像通过。
 
-Windows 合同使用 `RUNNER_TEMP` 下每轮独占目录，显式设置 Python 的三个临时目录环境变量，仍执行相同合同、FULL 持久化和原来的 180/170 秒门槛。CI 五轮交错的两盘写入及重开核验显示，该 runner 的临时盘比系统盘提交等待更短，因此没有保留“系统盘更快”的初始假设。没有采用诊断中变慢的 PERSIST/WAL 候选，也没有把池化后文件未释放的候选合入生产。这是验收环境配置，不是生产性能结论。最终远端结果以 [PR #25](https://github.com/Hubujiu/evidence-kb/pull/25) 的必需检查及其归档为准。
+当时的 Windows 合同使用 `RUNNER_TEMP` 下每轮独占目录，显式设置 Python 的三个临时目录环境变量，仍执行相同合同、FULL 持久化和原来的 180/170 秒门槛。CI 五轮交错的两盘写入及重开核验显示，该 runner 的临时盘比系统盘提交等待更短，因此没有保留“系统盘更快”的初始假设。没有采用诊断中变慢的 PERSIST/WAL 候选，也没有把池化后文件未释放的候选合入生产。这是历史验收环境配置，不是生产性能结论。最终远端结果以 [PR #25](https://github.com/Hubujiu/evidence-kb/pull/25) 的必需检查及其归档为准。
 
 临时盘修正后，Windows 3.13 完整执行了 719 项合同，暴露出一个 Tantivy 目录清理竞争。不可变 generation 的创建和读取现在使用手动 reader，避免默认自动刷新的后台回调在关闭后继续访问元数据。新增回归真实执行 lexical、page、dense 查询，再关闭并立即删除四个 generation；相关 28 项合同及完整 720 项合同均在本地通过。reader 策略的语义见 [Tantivy 官方 API](https://tantivy-py.readthedocs.io/en/latest/api/tantivy/tantivy.html)。
 

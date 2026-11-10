@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from kb_platform.core import Actor
+from .knowledge_session_fixture import platform_fixture
 from kb_platform.knowledge_profile import create_knowledge_application, load_knowledge_profile
 from kb_platform.plugin_host import PluginSpec
 
@@ -31,12 +32,11 @@ class _KnowledgeFixture:
 class KnowledgeProfileContracts(unittest.TestCase):
     def profile(self, root):
         profile = load_knowledge_profile(environment={})
-        next(row for row in profile['plugins'] if row['id'] == 'store')['config']['root'] = str(root)
         return profile
 
     def application(self, root, *, profile=None, plugins=()):
         application, host = create_knowledge_application(
-            object(), SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={}, retries=0)), profile=profile or self.profile(root),
+            platform_fixture(self, root), SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={}, retries=0)), profile=profile or self.profile(root),
             service_factory=_KnowledgeFixture, extra_plugins=plugins, environment={})
         self.addCleanup(host.close)
         return application, host
@@ -100,7 +100,7 @@ class KnowledgeProfileContracts(unittest.TestCase):
             environment['KB_AGENT_ROOT'] = str(Path(directory) / 'sessions')
             with patch.dict(os.environ, environment, clear=True):
                 app = FastAPI()
-                install_agent_routes(app, object(), SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={}, retries=0)),
+                install_agent_routes(app, platform_fixture(self, directory), SimpleNamespace(luna=SimpleNamespace(provider_id='magpie_luna', manifest={}, retries=0)),
                                      lambda: Actor('tenant', 'owner'), service_factory=_KnowledgeFixture)
                 request = self.request()
                 body = {**request, 'source_policy': request['policy']}

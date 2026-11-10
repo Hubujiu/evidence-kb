@@ -72,19 +72,27 @@ class DatabaseService:
         with self._lock:
             if not isinstance(grant, DatabaseGrant) or self._grants.get(grant.token) is not grant:
                 raise DatabaseError('DATABASE_GRANT_REJECTED')
-        with self.lease(grant.route, grant.registration_id) as adapter:
+        with self.lease(grant.route, grant.registration_id, grant=grant) as adapter:
             space = adapter.open_space(grant.space)
             initialize_space(space, expected_dataset_id=grant.expected_dataset_id)
         return BoundDatabase(self, grant, space, owner_lease=owner_lease)
 
+    def _validate_lease_grant(self, grant, name, registration):
+        if grant is not None and (self._grants.get(grant.token) is not grant
+                or grant.route != name or grant.registration_id != registration):
+            raise DatabaseError('DATABASE_GRANT_REJECTED')
+
     @contextmanager
-    def lease(self, name, registration):
+    def lease(self, name, registration, *, grant=None):
         with self._lock:
             route = self._entry(name, registration)
+            self._validate_lease_grant(grant, name, registration)
             ownership = route.owner_lease() if route.owner_lease is not None else nullcontext()
         with ownership:
             with self._lock:
-                route = self._entry(name, registration)
+                if self._entry(name, registration) is not route:
+                    raise DatabaseError('DATABASE_BINDING_CHANGED')
+                self._validate_lease_grant(grant, name, registration)
                 route.active += 1
             try:
                 yield route.adapter
@@ -105,6 +113,8 @@ class DatabaseService:
         with self._lock:
             if self._routes.get(name) is not route:
                 return
+            if route.phase == 'closing':
+                raise DatabaseError('DATABASE_CLEANUP_BUSY')
             route.phase = 'draining'
             if route.active:
                 raise DatabaseError('DATABASE_ROUTE_BUSY')
@@ -126,6 +136,7 @@ class DatabaseService:
         with self._lock:
             if any(row.active for row in self._routes.values()):
                 raise DatabaseError('DATABASE_ROUTE_BUSY')
+            self._state = 'draining'
             rows = tuple(self._routes.items())
         for name, route in reversed(rows):
             self._dispose(name, route)
@@ -159,7 +170,7 @@ class BoundDatabase:
     def _lease(self, *, include_consumer=True):
         ownership = self._owner_lease() if self._owner_lease is not None else nullcontext()
         consumer = self._consumer_lease() if include_consumer and self._consumer_lease is not None else nullcontext()
-        with consumer, ownership, self._service.lease(self._grant.route, self._grant.registration_id):
+        with consumer, ownership, self._service.lease(self._grant.route, self._grant.registration_id, grant=self._grant):
             yield
 
     def prepare(self, package):

@@ -2,12 +2,14 @@ import base64
 from copy import deepcopy
 from dataclasses import asdict
 import json
-import re
 
 from .agent_model import AgentModel
 from .agent_provider import ProviderCompletion
 from .contract_transfer import JsonClient, JsonEndpoint, TransferError
-from .model_errors import ModelPreflightError, RemoteModelError, TerminalContractError
+from .model_errors import (
+    ModelPreflightError, RemoteModelError, TerminalContractError,
+    UNOBSERVED_RESULT as _UNOBSERVED, error_details, model_error,
+)
 from .model_sdk import Capability, Media, ModelInfo, ModelRequest, ModelResult, validate_request, validate_result
 from .plugin_contracts import ContractError, Method, schema_validator
 
@@ -61,9 +63,6 @@ OPERATION_SCHEMAS = {name: object_schema({
     'version': {'const': 1}, 'op': {'const': name}, **BINDING, **properties})
     for name, properties in OPERATIONS.items()}
 _VALIDATORS = {name: schema_validator(schema) for name, schema in OPERATION_SCHEMAS.items()}
-ERROR_FIELDS = ('status', 'retry_after_seconds', 'model_sent', 'physical_request_id',
-                'request_id', 'call_record', 'preflight_code', 'output_diagnostics', 'observed_usage')
-_UNOBSERVED = object()
 
 
 def _registration(value):
@@ -98,52 +97,6 @@ def _decode(value):
     if type(value) is list:
         return [_decode(item) for item in value]
     return value
-
-
-def error_details(error, *, dispatched=None, result=_UNOBSERVED, trace=None):
-    cause = getattr(error, '__cause__', None)
-    details = {key: getattr(error, key, getattr(cause, key, None)) for key in ERROR_FIELDS}
-    code = getattr(error, 'code', None)
-    details['code'] = code if isinstance(code, str) else (
-        str(error) if re.fullmatch('[A-Z][A-Z0-9_]{0,99}', str(error)) else 'MODEL_EXECUTION_FAILED')
-    if isinstance(error, ModelPreflightError) and details['model_sent'] is not True:
-        details.update(preflight_code=error.code, model_sent=False)
-    if result is not _UNOBSERVED:
-        details['model_sent'] = True
-        observed = result if isinstance(result, dict) else {
-            'usage': getattr(result, 'usage', None), 'request_id': getattr(result, 'request_id', None),
-            'physical_request_id': getattr(result, 'physical_request_id', None)}
-        if isinstance(observed.get('usage'), dict):
-            details['observed_usage'] = observed['usage']
-        if details['physical_request_id'] is None:
-            details['physical_request_id'] = observed.get('physical_request_id')
-        if details['request_id'] is None:
-            details['request_id'] = observed.get('request_id')
-    elif details['model_sent'] is None and dispatched is not None:
-        details['model_sent'] = dispatched
-    if details['model_sent'] is True:
-        details['preflight_code'] = None
-    if trace is not None:
-        details['trace'] = trace
-        if details['physical_request_id'] is None and isinstance(trace.get('last_physical_request_id'), str):
-            details['physical_request_id'] = trace['last_physical_request_id']
-    if isinstance(error, TerminalContractError):
-        details['terminal'] = True
-    return details
-
-
-def model_error(details):
-    if details.get('terminal'):
-        error = TerminalContractError(details['code'])
-    elif details.get('preflight_code') and details.get('model_sent') is not True:
-        error = ModelPreflightError(details['preflight_code'])
-    else:
-        error = RemoteModelError(details['code'], details.get('status'),
-                                 retry_after_seconds=details.get('retry_after_seconds'))
-    for key in ERROR_FIELDS:
-        if details.get(key) is not None:
-            setattr(error, key, details[key])
-    return error
 
 
 class LlmEndpoint:
@@ -196,7 +149,14 @@ class LlmEndpoint:
         try:
             return self._wire.execute(request)
         except TransferError as error:
-            raise ContractError(error.code, str(error), status_code=422) from error
+            dispatched = getattr(error, 'request_dispatched', None)
+            details = error_details(error, dispatched=dispatched)
+            if dispatched is False:
+                details['preflight_code'] = error.code
+            converted = ContractError(error.code, str(error), status_code=422,
+                                      details={'kind': 'model', **details})
+            converted.request_dispatched = dispatched
+            raise converted from error
 
     def _validate(self, contract, value):
         if self._policy is None:
@@ -329,15 +289,12 @@ class LlmClient:
             details = {'code': error.code, **error.details}
             if details.get('model_sent') is None and getattr(error, 'request_dispatched', None) is False:
                 details.update(model_sent=False, preflight_code=details['code'])
-            converted = model_error(details)
-            if 'trace' in details:
-                converted.trace = details['trace']
-            raise converted from error
+            raise model_error(details) from error
         except TransferError as error:
-            converted = (RemoteModelError(error.code) if getattr(error, 'request_dispatched', True)
-                         else ModelPreflightError(error.code))
-            converted.model_sent = getattr(error, 'request_dispatched', None)
-            raise converted from error
+            details = error_details(error, dispatched=getattr(error, 'request_dispatched', None))
+            if details['model_sent'] is False:
+                details['preflight_code'] = error.code
+            raise model_error(details) from error
 
 
 class LlmBinding:

@@ -369,6 +369,7 @@ class NativeBuildGateContracts(unittest.TestCase):
 
         with patch.object(check_project, 'ROOT', root), \
                 patch.object(check_project, 'architecture_violations', return_value=[]), \
+                patch('scripts.check_process_owner_lint.violations', return_value=[]), \
                 patch.object(check_project, 'run_check', side_effect=controlled_check), \
                 patch.object(check_project.sys, 'argv', ['check_project.py', '--output', str(output), *arguments]), \
                 patch('builtins.print'):
@@ -484,8 +485,12 @@ class NativeBuildGateContracts(unittest.TestCase):
                     if name == 'host-integration':
                         self.assertEqual(str(binary), env['KB_PLUGIN_HOST_BINARY'])
                 self.assertIn('rust-clippy', [name for name, _, _ in calls])
-                self.assertTrue({'lint', 'source-lint', 'source-lint-contracts'} <=
+                self.assertTrue({'lint', 'source-lint', 'source-lint-contracts', 'web-ownership', 'web-types', 'web-build'} <=
                                 {name for name, _, _ in calls})
+                names = [name for name, _, _ in calls]
+                self.assertLess(names.index('web-types'), names.index('web-build'))
+                self.assertLess(names.index('web-build'), names.index('foundation-integration'))
+                self.assertLess(names.index('web-build'), names.index('host-integration'))
             self.assertNotEqual(targets[0], targets[1])
             self.assertNotEqual(libraries[0], libraries[1])
             self.assertEqual(b'current release library', libraries[0].read_bytes())

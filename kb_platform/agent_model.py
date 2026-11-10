@@ -9,8 +9,8 @@ from threading import Lock
 import time
 from uuid import uuid4
 
-from .context_budget import ContextBudget as ContextPolicy, canonical, digest, estimate_messages
-from .model_errors import RemoteModelError
+from .context_budget import RequestBudget, ContextBudget as ContextPolicy, canonical, digest, estimate_messages
+from .model_errors import RemoteModelError, UNOBSERVED_RESULT, error_details, preserve_result_failure
 from .agent_provider import ModelProvider
 from .agent_schema import compile_schema, validate_output
 
@@ -35,9 +35,9 @@ class BudgetLedger:
             raise ValueError("INVALID_AGENT_RESERVATION")
         with self._lock:
             if self._calls + sum(row[0] for row in self._pending.values()) + calls > self.max_calls:
-                raise RemoteModelError("AGENT_CALL_BUDGET_EXHAUSTED")
+                raise RemoteModelError("AGENT_CALL_BUDGET_EXHAUSTED", model_sent=False)
             if self._accounted + sum(a * b for a, b in self._pending.values()) + calls * tokens_per_call > self.max_tokens:
-                raise RemoteModelError("AGENT_TOKEN_BUDGET_EXHAUSTED")
+                raise RemoteModelError("AGENT_TOKEN_BUDGET_EXHAUSTED", model_sent=False)
             key = uuid4().hex
             self._pending[key] = (calls, tokens_per_call)
             return key
@@ -71,7 +71,7 @@ class BudgetLedger:
                 ledger = BudgetLedger(max_calls=limit, max_tokens=self.max_tokens)
                 self._turn_budgets[(session_id, turn_id)] = ledger
             elif ledger.max_calls != limit:
-                raise RemoteModelError('AGENT_TURN_BUDGET_CHANGED')
+                raise RemoteModelError('AGENT_TURN_BUDGET_CHANGED', model_sent=False)
             return ledger
 
     def turn_budget_snapshot(self, session_id, turn_id):
@@ -169,6 +169,9 @@ class AgentModel:
                 prepared[0]["content"] += "\n" + instruction
         else:
             prepared.insert(0, {"role": "system", "content": instruction})
+        request_budget = RequestBudget.parse(call_context.get("context_budget"))
+        if request_budget is not None:
+            request_budget.validate_messages(prepared)
         estimate = estimate_messages(prepared)
         limit = min(self.policy.input_budget, self.policy.model_window - output_limit - self.policy.safety_reserve)
         if estimate["tokens"] > limit:
@@ -247,6 +250,7 @@ class AgentModel:
             raise
         usage = None
         finish = None
+        result = UNOBSERVED_RESULT
         try:
             result = self.provider.complete(prepared, output_limit, purpose=purpose, key=key, trace=trace)
             usage = _usage(result.usage)
@@ -286,14 +290,22 @@ class AgentModel:
                 self.provider.cache_put(key, {"value": value, "usage": usage, "finish_reason": finish})
             return CompletionEnvelope(value, request_id, usage, trace["attempt"], finish, "none", key)
         except Exception as exc:
+            if result is not UNOBSERVED_RESULT:
+                preserve_result_failure(exc, getattr(result, 'usage', None), result=result,
+                                        physical_request_id=trace.get('last_physical_request_id'))
             if usage is None and isinstance(getattr(exc, 'observed_usage', None), dict):
                 usage = _usage(exc.observed_usage)
+            failure = error_details(exc, trace=trace)
             exc.call_record = {"request_id": request_id, "usage": usage or _usage(None),
                                "attempts": trace["attempt"], "finish_reason": finish,
                                "cache_kind": "none", "request_hash": key,
                                "error": getattr(exc, "code", type(exc).__name__),
                                "estimated_input_tokens": estimate["tokens"],
                                "estimate_kind": estimate["kind"],
+                               **{name: failure[name] for name in
+                                  ('model_sent', 'physical_request_id', 'preflight_code',
+                                   'operation_id', 'budget_operation_id')
+                                  if failure[name] is not None},
                                **getattr(exc, "output_diagnostics", {})}
             raise
         finally:

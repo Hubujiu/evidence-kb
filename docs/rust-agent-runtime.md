@@ -112,7 +112,7 @@ answer = agent.run('查询原文要求', ToolContext(actor, 'outer-session', 'ou
 
 从仓库根目录启动纯 Rust 协议进程，不需要 Python：
 
-```powershell
+```bash
 cargo run --locked --offline -p agent-harness --bin agent-harness
 ```
 
@@ -164,7 +164,7 @@ stdin 每行是一条 JSON 请求，stdout 每行是一条 JSON 响应。调用�
 
 安装 `rust-toolchain.toml` 指定的工具链后执行：
 
-```powershell
+```bash
 cargo build --workspace --locked --offline
 uv sync --locked --group dev
 uv run --no-sync python scripts/check_project.py
@@ -180,7 +180,7 @@ export KB_AGENT_KERNEL_LIBRARY="$(pwd)/target/release/libagent_kernel.so"
 uv run --no-sync target/release/evidence-host --profile config/host-profiles/api.json --stop-file .local/api.stop
 ```
 
-PowerShell 使用 `$env:KB_AGENT_KERNEL_LIBRARY = (Resolve-Path target/release/agent_kernel.dll).Path`；macOS 使用 `target/release/libagent_kernel.dylib` 的绝对路径。主宿主未显式指定库时加载其同目录制品，直接 Python 嵌入模式默认加载 debug 库。
+主宿主未显式指定库时加载其同目录的 Linux 动态库 `libagent_kernel.so`。直接 Python 嵌入模式默认加载 debug 库。
 
 统一入口执行 Rust 格式、Clippy、整个 workspace 的独立 release 构建和测试，再把本轮库副本的准确路径传给 Python 离线合同。构建失败时阻断合同，不能用旧库得到通过结果。原有禁止 socket 和子进程的 Python 审计钩子未放宽。CLI 帧边界和状态协议由 Rust 内存流测试验证，不从 Python 合同偷偷启动程序。
 

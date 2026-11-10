@@ -36,3 +36,6 @@ impl std::error::Error for Error {}
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod ownership_tests;

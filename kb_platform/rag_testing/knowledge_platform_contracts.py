@@ -300,7 +300,10 @@ class KnowledgePlatformContracts(unittest.TestCase):
     def test_domain_errors_and_provider_status_survive_the_boundary(self):
         case = self.fixture()
         for error, code, status in ((PlatformError('ACCESS_DENIED', 'Denied', 403), 'ACCESS_DENIED', 403),
-                                    (DatabaseError('DATABASE_UNAVAILABLE'), 'AUTHORITY_UNAVAILABLE', 503)):
+                                    (DatabaseError('DATABASE_UNAVAILABLE'), 'AUTHORITY_UNAVAILABLE', 503),
+                                    (DatabaseError('DATABASE_RESULT_LIMIT'), 'DATABASE_RESULT_LIMIT', 500),
+                                    (DatabaseError('DATABASE_QUERY_LIMIT'), 'DATABASE_QUERY_LIMIT', 500),
+                                    (DatabaseError('DATABASE_QUERY_TIMEOUT'), 'DATABASE_QUERY_TIMEOUT', 500)):
             case.platform.create_kb.side_effect = error
             with self.assertRaises(PlatformError) as caught:
                 case.client.create_kb(case.actor, 'Name')

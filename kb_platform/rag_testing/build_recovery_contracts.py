@@ -11,6 +11,8 @@ from sqlalchemy import select, update
 from kb_platform.application_composition import create_platform
 from kb_platform.core import Actor, PlatformError
 from kb_platform.knowledge_schema import BUILDS, EMBEDDING_JOBS
+from kb_platform.knowledge_queries import KnowledgeQuery
+from kb_platform.knowledge_storage import KnowledgeTransaction
 from kb_platform.remote import RemoteModelError
 from kb_platform.settings import Settings
 from kb_platform.storage_catalog import initialize_configuration
@@ -79,6 +81,42 @@ class BuildRecoveryContracts(unittest.TestCase):
         self.platform.publish(self.actor, self.kb, build['build_id'])
         self.assertTrue(self.platform.search(self.actor, self.kb, 'ALPHA')['hits'])
         self.assertTrue(all(r['status'] == 'COMPLETE' for r in self.platform.build_status(self.actor,self.kb,build['build_id'])['embedding_batches']))
+
+    def test_partial_citation_population_cannot_publish_and_resumes_without_duplicates(self):
+        content = '\n\n'.join(f'Paragraph {i}: recoverable evidence.' for i in range(90)).encode()
+        self.platform.ingest(self.actor, self.kb, 'many.md', content)
+        execute = KnowledgeTransaction.execute
+        inserts = 0
+        def interrupted(transaction, query, values=None):
+            nonlocal inserts
+            if query == KnowledgeQuery.CITATION_INSERT:
+                inserts += 1
+                if inserts == 34:
+                    raise RuntimeError('citation write interrupted')
+            return execute(transaction, query, values)
+        with patch.object(KnowledgeTransaction, 'execute', interrupted):
+            with self.assertRaisesRegex(RuntimeError, 'citation write interrupted'):
+                self.platform.stage(self.actor, self.kb, ['bm25'])
+        build = self.latest()
+        self.assertEqual(build['status'], 'STAGING')
+        before = list(self.platform.repository.citations(self.actor, self.kb, build['build_id']))
+        self.assertEqual(len(before), 32)
+        with self.assertRaises(PlatformError) as raised:
+            self.platform.publish(self.actor, self.kb, build['build_id'])
+        self.assertEqual(raised.exception.code, 'BUILD_NOT_VALIDATED')
+        self.platform.resume_build(self.actor, self.kb, build['build_id'])
+        after = list(self.platform.repository.citations(self.actor, self.kb, build['build_id']))
+        self.assertEqual(len(after), build['unit_count'])
+        self.assertEqual(len({r['citation_id'] for r in after}), len(after))
+        with self.assertRaises(PlatformError) as changed:
+            self.platform.repository.write_citations(self.actor, self.kb,
+                [{**after[0], 'text': 'different evidence under the same immutable citation'}], lambda conn: None)
+        self.assertEqual(changed.exception.code, 'SOURCE_INTEGRITY')
+        self.assertEqual(list(self.platform.repository.citations(self.actor, self.kb, build['build_id'])), after)
+        self.assertEqual({r['citation_id']: r for r in before},
+                         {r['citation_id']: r for r in after if r['citation_id'] in {v['citation_id'] for v in before}})
+        self.platform.publish(self.actor, self.kb, build['build_id'])
+        self.assertEqual(self.calls, [])
 
     def test_changed_search_dependency_rejects_resume_without_new_embedding(self):
         with self.assertRaises(PlatformError):
