@@ -539,7 +539,8 @@ class ApplicationEndpoint(ObjectEndpoint):
         self._model = model
 
     def model_status(self, request):
-        return {'policy': asdict(self._model.policy), 'budget': self._model.ledger.snapshot()}
+        return {'policy': asdict(self._model.policy), 'budget': self._model.ledger.snapshot(),
+                'provider_id': self._model.provider_id}
 
 
 class ApplicationClient(ObjectClient):

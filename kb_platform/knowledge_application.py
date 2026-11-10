@@ -71,6 +71,11 @@ class KnowledgeApplication:
     def capabilities(self):
         return self.knowledge.capabilities()
 
+    def model_status(self):
+        model = self.knowledge.model
+        return {'policy': asdict(model.policy), 'budget': model.ledger.snapshot(),
+                'provider_id': model.provider_id}
+
     def create(self, actor, scope_id, policy=None, config_name='recommended'):
         return self.knowledge.create(actor, scope_id, policy, config_name)
 
@@ -138,6 +143,9 @@ class HostedKnowledgeApplication:
 
     def capabilities(self):
         return self.host.call('application', 'capabilities')
+
+    def model_status(self):
+        return self.host.call('application', 'model_status')
 
     def create(self, actor, scope_id, policy=None, config_name='recommended'):
         return self.host.call('application', 'create', actor, scope_id, policy, config_name)

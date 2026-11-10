@@ -166,6 +166,7 @@ class RequestRecoveryAuthorityContracts(unittest.TestCase):
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         composition = fixture.compose()
+        self.assertEqual(composition.application.model_status()['provider_id'], 'synthetic')
         scope, source = fixture.publish(composition)
         reader = Actor(fixture.actor.tenant_id, 'reader')
         composition.platform.set_member(fixture.actor, scope, reader.principal_id, ['kb.read'])
