@@ -12,7 +12,7 @@ from .formal_state_machines import source_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MANIFEST = ROOT / 'formal/combination-inputs-api-v6.json'
+MANIFEST = ROOT / 'formal/combination-inputs-embedding-v7.json'
 
 
 def model_input_digest(data):
@@ -231,12 +231,13 @@ class FormalCombinationContracts(unittest.TestCase):
                             for row in changes['model_inputs']['changed']))
         for path, cases in previous['required_contract_cases'].items():
             self.assertTrue(set(cases) <= set(product['required_contract_cases'][path]), path)
-        changes = self.manifest['reviewed_changes_from_product_v5']
+        api = json.loads((ROOT / 'formal/combination-inputs-api-v6.json').read_text('utf-8'))
+        changes = api['reviewed_changes_from_product_v5']
         for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
             change = changes[field]
             self.assertEqual(change['removed'], [])
             self.assertEqual(change['changed'], [])
-            self.assertCountEqual([*product[field], *change['added']], self.manifest[field])
+            self.assertCountEqual([*product[field], *change['added']], api[field])
         self.assertEqual({row['id'] for row in changes['required_runs']['added']}, {
             'batch_recovery', 'batch_recovery_mutation', 'batch_recovery_authorization'})
         self.assertEqual({row['path'] for row in changes['model_inputs']['added']}, {
@@ -244,6 +245,27 @@ class FormalCombinationContracts(unittest.TestCase):
             'formal/budget_batches/BatchRecoveryMutationNegative.cfg',
             'formal/budget_batches/BatchRecoveryAuthorizationNegative.cfg'})
         for path, cases in product['required_contract_cases'].items():
+            self.assertTrue(set(cases) <= set(api['required_contract_cases'][path]), path)
+
+    def test_embedding_revision_retains_api_obligations_and_adds_source_view_slice(self):
+        previous = json.loads((ROOT / 'formal/combination-inputs-api-v6.json').read_text('utf-8'))
+        changes = self.manifest['reviewed_changes_from_api_v6']
+        for field in ('required_runs', 'model_inputs', 'shared_entry_points'):
+            change = changes[field]
+            self.assertEqual(change['removed'], [])
+            self.assertEqual(change['changed'], [])
+            self.assertCountEqual([*previous[field], *change['added']], self.manifest[field])
+        self.assertEqual({row['id'] for row in changes['required_runs']['added']}, {
+            'embedding-source-view', 'embedding-source-view-candidate', 'embedding-source-view-frozen-policy',
+            'embedding-source-view-published-witness', 'embedding-source-view-candidate-witness'})
+        self.assertEqual({row['path'] for row in changes['model_inputs']['added']}, {
+            'formal/authority_publication/EmbeddingSourceView.tla',
+            'formal/authority_publication/EmbeddingSourceView.cfg',
+            'formal/authority_publication/EmbeddingSourceViewCandidate.cfg',
+            'formal/authority_publication/EmbeddingSourceViewFrozenPolicy.cfg',
+            'formal/authority_publication/EmbeddingSourceViewPublishedWitness.cfg',
+            'formal/authority_publication/EmbeddingSourceViewCandidateWitness.cfg'})
+        for path, cases in previous['required_contract_cases'].items():
             self.assertTrue(set(cases) <= set(self.manifest['required_contract_cases'][path]), path)
 
     def test_changed_control_invariant_is_rejected_without_changing_any_id(self):
