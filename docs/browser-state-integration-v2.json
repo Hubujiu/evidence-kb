@@ -23,8 +23,9 @@
     {
       "path": "kb_platform/console.mjs",
       "baseline_sha256": "30d5447a8f77d1224ce554cc6504af4e0a00f747ff315b08c86676d05f408a38",
-      "current_sha256": "5520272272aaceabecfd3c5ef873fbfdc261cb89c40894cd9a0cc6cb388fba08",
-      "review": "Capture upload currentScope before awaiting json; recheck immediately before the synchronous ingest and status writes. Existing citation selection/URL/error ownership unchanged."
+      "current_sha256": "da0fb80920fb32442e5c9ebd56f8d939ff194d0c4b46fa0dfa70151b5639b370",
+      "review": "Capture upload currentScope before awaiting json; recheck immediately before the synchronous ingest and status writes. Existing citation selection/URL/error ownership unchanged. 2026-11-10: preserve existing cases and handlers; bind the complete build/publish operation to its original scope before dispatch and final status, with two race regressions and a current-operation control.",
+      "previous_reviewed_sha256": "5520272272aaceabecfd3c5ef873fbfdc261cb89c40894cd9a0cc6cb388fba08"
     },
     {
       "path": "e2e/agent-draft-state.e2e.js",
@@ -48,8 +49,9 @@
     {
       "path": "e2e/console-scope-state.e2e.js",
       "baseline_sha256": "342cde3d3a50b073b8d8f6da313616f4c3136a767f49cb0da0dbc50649c27a98",
-      "current_sha256": "822886c420b9fafc85618d5dc495faea5c3efb1184731016d4e698e9d20030fb",
-      "review": "Run product flows on the current React root and retain diagnostic console schedules at explicit /console. Delayed-response workbench cases independently exercise the actual React implementation."
+      "current_sha256": "c0aa4dfe1ca813151508b986b974608805eef3cd6f639679daf1a78adf93a719",
+      "review": "Run product flows on the current React root and retain diagnostic console schedules at explicit /console. Delayed-response workbench cases independently exercise the actual React implementation. 2026-11-10: preserve existing cases and handlers; bind the complete build/publish operation to its original scope before dispatch and final status, with two race regressions and a current-operation control.",
+      "previous_reviewed_sha256": "822886c420b9fafc85618d5dc495faea5c3efb1184731016d4e698e9d20030fb"
     }
   ],
   "added_sources": {
@@ -63,9 +65,9 @@
   },
   "current_suite_counts": {
     "agent-draft-state.e2e.js": 6,
-    "console-scope-state.e2e.js": 3
+    "console-scope-state.e2e.js": 6
   },
-  "fixed_browser_status": "PASS in normal CI run 41540663562 for exact product source; NOT_RUN locally; corrected test-stage head still requires complete CI",
+  "fixed_browser_status": "Historical pre-publish-fix source passed browser cases in CI run 41540663562; this is not a verdict for the current source hashes. Current console publish browser checks were blocked locally by socket EPERM and require the new PR CI.",
   "proof_boundary": "Source-review drift, standard HTMLParser placement and actual V8 syntax checks are not semantic JavaScript refinement proof. The bounded models and actual browser regressions establish separate limited facts.",
   "first_fixed_ci": {
     "head": "a00984281cc4da5bdd14a4c28c22527e8159967f",
@@ -83,6 +85,6 @@
     "web/src/workbench.tsx": "0e8b0323d966478012fb81a76f9ccfca5a17603216ff80da6adbefebeb4a9941",
     "e2e/workbench.e2e.js": "36cc6bb6c2382fff94bab07e75471c697fd049aa671a301a939ecb23a3604a2a",
     "e2e/web_chat.e2e.js": "e407c4aecfc26254890599f86c2487712c3d5870e9ac1ac3ee1ace7decebea96",
-    "scripts/web_ownership.test.mjs": "e36653dc0c74c74eb5d18f8897f8dae3e5f1fc09929b32a7e60c5a6c42056e76"
+    "scripts/web_ownership.test.mjs": "33b4a782b3fb2b5b6125cf052c2189977e5968e35a224d991b6cd217ff7c4715"
   }
 }

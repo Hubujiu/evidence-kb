@@ -37,6 +37,9 @@ SCOPE_CASES = frozenset(name + ' [chromium]' for name in (
     'concurrent create cannot publish an old upload result under the newly selected scope',
     'current upload still publishes its actual DOM result in the owning scope',
     'concurrent create retains its later clear after an older search completion',
+    'concurrent create cancels the next publish mutation from an older build',
+    'concurrent create rejects the final status of an already sent publish',
+    'current publish sends once and renders the acknowledged manifest',
 ))
 
 

@@ -77,7 +77,7 @@ $('create').onclick=()=>action($('create'),async()=>{const kb=await json('/knowl
 $('kb').onchange=()=>{clearView();$('ingest').textContent='已切换知识库，当前视图已清空。';};
 $('token').oninput=()=>{clearView();$('identity').textContent='身份已更改，请重新连接。';$('kb').replaceChildren();};
 $('upload').onclick=()=>action($('upload'),async()=>{const file=$('file').files[0];if(!file)throw new Error('请选择文件。');const data=new FormData();data.append('file',file);const stamp=currentScope();const result=await json(scope()+'/sources',{method:'POST',body:data});current(stamp);$('ingest').textContent=file.name+' · '+result.document.status+' · '+result.document.elements.length+' 个结构元素';message('文件已解析。构建并发布后可检索。');});
-$('publish').onclick=()=>action($('publish'),async()=>{const prefix=scope();const build=await json(prefix+'/builds',{method:'POST'});const manifest=await json(prefix+'/builds/'+build.build_id+'/publish',{method:'POST'});message('索引已发布。版本 '+manifest.manifest_id);});
+$('publish').onclick=()=>action($('publish'),async()=>{const stamp=currentScope();const prefix=scope();try{const build=await json(prefix+'/builds',{method:'POST'});current(stamp);const manifest=await json(prefix+'/builds/'+build.build_id+'/publish',{method:'POST'});current(stamp);message('索引已发布。版本 '+manifest.manifest_id);}catch(error){throw ownedFailure(error,{scope:stamp});}});
 async function showCitation(id){
   const owner={scope:currentScope(),selection:{}};
   citationSelection=owner.selection;
