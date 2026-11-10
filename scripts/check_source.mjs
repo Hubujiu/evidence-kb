@@ -4,7 +4,7 @@ import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const require = createRequire(join(root, 'e2e/package.json'));
+const require = createRequire(join(root, 'web/package.json'));
 const { parse } = require('@babel/parser');
 const postcss = require('postcss');
 const { parse: parseHtml } = await import(pathToFileURL(require.resolve('parse5')).href);
@@ -88,7 +88,7 @@ export function sourceFiles(directory) {
 
 export function checkSources() {
   let failed = false;
-  const files = ['e2e', 'scripts', 'rust', 'examples', 'kb_platform'].flatMap(directory => sourceFiles(join(root, directory)));
+  const files = ['web', 'e2e', 'scripts', 'rust', 'examples', 'kb_platform'].flatMap(directory => sourceFiles(join(root, directory)));
   for (const path of files) {
     try {
       const source = readFileSync(path, 'utf8');

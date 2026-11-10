@@ -42,9 +42,11 @@ class KnowledgeTools:
         self.knowledge = knowledge
 
     def bind_turn(self, actor, session_id, *, request_id, expected_revision,
-                  policy=None, constraints=None, workflow_state=None):
+                  policy=None, constraints=None, workflow_state=None, context_budget=None):
         controls = deepcopy(dict(request_id=request_id, expected_revision=expected_revision,
                                  policy=policy, constraints=constraints, workflow_state=workflow_state))
+        if context_budget is not None:
+            controls['context_budget'] = deepcopy(context_budget)
 
         def query(context, arguments):
             result = self.knowledge.turn(actor, session_id, message=arguments['question'], **controls)
@@ -102,10 +104,10 @@ class KnowledgeApplication:
                 'next_offset': offset + limit, 'source_text_included': False}
 
     def turn(self, actor, session_id, *, message, request_id, expected_revision,
-             policy=None, constraints=None, workflow_state=None):
+             policy=None, constraints=None, workflow_state=None, context_budget=None):
         tool, context = self.tools.bind_turn(
             actor, session_id, request_id=request_id, expected_revision=expected_revision,
-            policy=policy, constraints=constraints, workflow_state=workflow_state)
+            policy=policy, constraints=constraints, workflow_state=workflow_state, context_budget=context_budget)
         return self.loop.invoke(tool, context, {'question': message})
 
 

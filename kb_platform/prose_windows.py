@@ -6,7 +6,25 @@ from collections import Counter
 
 from .evidence_packing import terms
 
-PROTOCOL = 'context-prose-line-safe650/1'
+PROTOCOL = 'context-prose-sentence-safe650/2'
+
+
+def _long_line_spans(text, start, end):
+    cursor = start
+    for boundary in re.finditer(r'(?<=[.!?。！？])\s+(?=[A-Z\u3400-\u9fff])', text[start:end]):
+        stop = start + boundary.start()
+        word = text[cursor:stop].rsplit(None, 1)[-1].lower()
+        if word.endswith('.') and (len(word) <= 2 or word in {
+                'dr.', 'mr.', 'mrs.', 'ms.', 'prof.', 'st.', 'jr.', 'sr.', 'vs.', 'e.g.', 'i.e.'}):
+            continue
+        following = text[start + boundary.end():end].split(None, 1)[0].lower().strip(',;:')
+        if following in {'however', 'unless', 'except', 'but', 'otherwise', 'only',
+                         'nevertheless', 'notwithstanding', 'instead'}:
+            continue
+        yield cursor, stop
+        cursor = start + boundary.end()
+    if cursor < end:
+        yield cursor, end
 
 
 def blocks(text, offset=0):
@@ -20,6 +38,9 @@ def blocks(text, offset=0):
         paragraph = text[start:end]
         if len(paragraph) <= 650 or '|' in paragraph or '\t' in paragraph:
             spans.append((start, end))
+            continue
+        if '\n' not in paragraph:
+            spans.extend(_long_line_spans(text, start, end))
             continue
         cursor = start
         for newline in re.finditer(r'\n', paragraph):
@@ -40,6 +61,21 @@ def ranked_blocks(text, question, offset=0):
     scored = [(sum(math.log1p(len(spans) / frequencies[term]) for term in query & bag), start, end)
               for (start, end), bag in zip(spans, bags)]
     return sorted((row for row in scored if row[0] > 0), key=lambda row: (-row[0], row[1]))
+
+
+def expand_window(text, start, end, offset, fits):
+    spans = blocks(text, offset)
+    while True:
+        before = next((a for a, b in reversed(spans)
+                       if b <= start and not re.search(r'\n\s*\n', text[b:start])), None)
+        after = next((b for a, b in spans
+                      if a >= end and not re.search(r'\n\s*\n', text[end:a])), None)
+        if before is not None and fits(before, end):
+            start = before
+        elif after is not None and fits(start, after):
+            end = after
+        else:
+            return start, end
 
 
 def select_window(text, question, offset, fits, max_characters=2000):

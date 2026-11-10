@@ -49,6 +49,7 @@ def main(argv=None):
     prepare.add_argument('--output', type=Path, required=True)
     prepare.add_argument('--expected-tenant', required=True)
     prepare.add_argument('--storage-root', type=Path, required=True)
+    prepare.add_argument('--split', choices=('dev', 'holdout'))
     prepare.add_argument('--context-budget', type=int, default=118784, help='Frozen scorer evidence JSON budget, in codepoints')
     rebind = sub.add_parser('rebind', help='Read-only reuse of completed receipts into a new live-authority binding')
     rebind.add_argument('--prepared', type=Path, required=True)
@@ -90,7 +91,7 @@ def main(argv=None):
             else:
                 prepared = prepare_http(client, args.fixtures, args.output, platform=platform,
                     expected_tenant_id=args.expected_tenant, physical_directory=args.physical_records,
-                    context_budget=args.context_budget)
+                    context_budget=args.context_budget, split=args.split)
             print(json.dumps({'status': 'COMPLETE', 'scopes': {split: value['scope_id']
                 for split, value in prepared['splits'].items()}, 'planned_cases': len(prepared['planned_case_ids']),
                 'authority': {split: value['authority'] for split, value in prepared['splits'].items()},

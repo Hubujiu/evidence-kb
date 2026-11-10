@@ -3,6 +3,8 @@ from tempfile import TemporaryDirectory
 from threading import Barrier
 import unittest
 
+from .knowledge_session_fixture import session_fixture
+from kb_platform.knowledge_schema import knowledge_schema
 from kb_platform.knowledge_sessions import KnowledgeSessions
 from kb_platform.session_store import SessionStore
 from unittest.mock import patch
@@ -16,8 +18,9 @@ class AgentStoreContracts(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = directory.name
         self.actor = Actor('tenant', 'owner')
-        self.first = KnowledgeSessions(SessionStore(self.root))
-        self.second = KnowledgeSessions(SessionStore(self.root))
+        self.first, self.authority = session_fixture(self.root, self.actor)
+        self.addCleanup(self.first.close)
+        self.second = KnowledgeSessions(SessionStore(self.root, schema=knowledge_schema))
         self.session = self.first.create(self.actor, 'scope', {})['session_id']
 
     def concurrent_begins(self, sessions):
@@ -64,8 +67,8 @@ class AgentStoreContracts(unittest.TestCase):
         admitted = self.first.begin(self.actor, self.session, 'turn', 0, 'original-fingerprint')
         state = {**admitted['session']['state'], 'turn_number': 1}
         expected = self.first.finish(self.actor, self.session, admitted['token'], state,
-                                     {'answer': 'synthetic answer', 'status': 'answered'})
-        restarted = KnowledgeSessions(SessionStore(self.root))
+                                     {'answer': 'synthetic answer', 'status': 'answered'}, authority=self.authority)
+        restarted = KnowledgeSessions(SessionStore(self.root, schema=knowledge_schema))
         self.assertEqual(restarted.load(self.actor, self.session)['state'], state)
         self.assertEqual(restarted.begin(self.actor, self.session, 'turn', 0, 'original-fingerprint'),
                          {'cached': expected})
@@ -90,11 +93,11 @@ class AgentStoreContracts(unittest.TestCase):
             self.assertEqual(caught.exception.code, 'TURN_LEASE_EXPIRED')
             with self.assertRaises(PlatformError) as caught:
                 self.first.finish(self.actor, self.session, old['token'], old['session']['state'],
-                                  {'answer': 'late answer'})
+                                  {'answer': 'late answer'}, authority=self.authority)
             self.assertEqual(caught.exception.code, 'TURN_LEASE_EXPIRED')
             completed = self.second.finish(self.actor, self.session, new['token'], new['session']['state'],
-                                           {'answer': 'replacement answer'})
-            restarted = KnowledgeSessions(SessionStore(self.root))
+                                           {'answer': 'replacement answer'}, authority=self.authority)
+            restarted = KnowledgeSessions(SessionStore(self.root, schema=knowledge_schema))
             with self.assertRaises(PlatformError) as caught:
                 restarted.begin(self.actor, self.session, 'old', 0, 'old-fingerprint')
             self.assertEqual(caught.exception.code, 'TURN_INTERRUPTED')

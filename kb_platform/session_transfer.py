@@ -7,7 +7,8 @@ import sqlite3
 from sqlalchemy import func, select
 
 from .session_store import SessionStore, canonical, digest
-from .session_storage.schema import metadata
+from .session_storage import session_schema
+from .database_contracts import SpaceKey
 
 
 TABLE_COLUMNS = {
@@ -91,7 +92,7 @@ def export_sessions(store, *, source_frozen=False):
     if source_frozen is not True:
         raise ValueError('SESSION_SOURCE_MUST_BE_FROZEN')
     with store.database.transaction(write=False) as tx:
-        tables = {table: [store._row(row) for row in tx.execute(select(metadata.tables[table])).fetchall()]
+        tables = {table: [store._row(row) for row in tx.execute(select(store._tables[table])).fetchall()]
                   for table in TABLE_COLUMNS}
     return _package(tables, {'kind': 'database', 'dataset_id': store.identity.dataset_id})
 
@@ -108,19 +109,42 @@ def export_legacy_sqlite(path, *, source_frozen=False):
     return _package(tables, {'kind': 'legacy-sqlite', 'dataset_id': None})
 
 
+def export_frozen_root(root, *, source_frozen=False):
+    if source_frozen is not True:
+        raise ValueError('SESSION_SOURCE_MUST_BE_FROZEN')
+    key = SpaceKey('local', 'conversations', 'history')
+    path = (Path(root) / key.digest / 'space.sqlite3').resolve(strict=True)
+    if any(Path(str(path) + suffix).exists() for suffix in ('-wal', '-journal')):
+        raise ValueError('SESSION_EXPORT_REQUIRES_CLOSED_CHECKPOINTED_SOURCE')
+    with closing(sqlite3.connect(path.as_uri() + '?mode=ro&immutable=1', uri=True)) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute('PRAGMA query_only=ON')
+        connection.execute('BEGIN')
+        identities = connection.execute('SELECT space_key,dataset_id FROM _database_identity').fetchall()
+        if len(identities) != 1 or identities[0]['space_key'] != key.key:
+            raise ValueError('SESSION_EXPORT_SOURCE_IDENTITY')
+        schemas = connection.execute('SELECT version,schema_hash FROM _database_structured').fetchall()
+        schema = session_schema(key.owner_id)
+        if len(schemas) != 1 or tuple(schemas[0]) != (schema.version, schema.digest):
+            raise ValueError('SESSION_EXPORT_SOURCE_SCHEMA')
+        tables = {table: [dict(row) for row in connection.execute(f'SELECT * FROM {table}')]
+                  for table in TABLE_COLUMNS}
+    return _package(tables, {'kind': 'database', 'dataset_id': identities[0]['dataset_id']})
+
+
 def import_sessions(store, package, *, target_offline=False):
     if target_offline is not True:
         raise ValueError('SESSION_TARGET_MUST_BE_OFFLINE')
     validate_export(package)
     with store.database.transaction(write=True) as tx:
-        if any(tx.execute(select(func.count(tuple(metadata.tables[table].primary_key)[0]).label('n'))).fetchone()['n']
+        if any(tx.execute(select(func.count(tuple(store._tables[table].primary_key)[0]).label('n'))).fetchone()['n']
                for table in TABLE_COLUMNS):
             raise ValueError('SESSION_IMPORT_TARGET_NOT_EMPTY')
         for table in TABLE_COLUMNS:
             for row in package['tables'][table]:
-                tx.insert(metadata.tables[table], row)
+                tx.insert(store._tables[table], row)
         for table in TABLE_COLUMNS:
-            actual = _ordered(table, [store._row(row) for row in tx.execute(select(metadata.tables[table])).fetchall()])
+            actual = _ordered(table, [store._row(row) for row in tx.execute(select(store._tables[table])).fetchall()])
             if actual != package['tables'][table] or [digest(row) for row in actual] != package['record_hashes'][table]:
                 raise ValueError('SESSION_IMPORT_VERIFICATION_FAILED')
     return {'source_dataset_id': package['source']['dataset_id'],
@@ -154,19 +178,15 @@ def main(argv=None):
     clone.add_argument('--root', required=True)
     clone.add_argument('--target-offline', action='store_true', required=True)
     args = parser.parse_args(argv)
-    if args.command == 'export' and args.legacy_sqlite:
-        package = export_legacy_sqlite(args.legacy_sqlite, source_frozen=args.source_frozen)
+    if args.command == 'export':
+        package = (export_legacy_sqlite(args.legacy_sqlite, source_frozen=args.source_frozen)
+            if args.legacy_sqlite else export_frozen_root(args.root, source_frozen=args.source_frozen))
         write_export(args.output, package)
         result = {'counts': package['counts'], 'sha256': package['sha256']}
     else:
         store = SessionStore(args.root)
         try:
-            if args.command == 'export':
-                package = export_sessions(store, source_frozen=args.source_frozen)
-                write_export(args.output, package)
-                result = {'counts': package['counts'], 'sha256': package['sha256']}
-            else:
-                result = import_sessions(store, read_export(args.input), target_offline=args.target_offline)
+            result = import_sessions(store, read_export(args.input), target_offline=args.target_offline)
         finally:
             store.close()
     print(canonical(result))

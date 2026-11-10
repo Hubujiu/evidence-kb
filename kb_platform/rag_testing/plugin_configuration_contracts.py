@@ -1,3 +1,4 @@
+from .offline_transport import offline_client_construction
 from copy import deepcopy
 from pathlib import Path
 import json
@@ -251,7 +252,9 @@ class PluginConfigurationContracts(unittest.TestCase):
             settings = Settings(root, root / 'unused')
             profile = {'version': 1, 'plugins': [{'id': 'clients', 'use': 'platform.model_clients.remote',
                                                 'config': {'providers_config': str(path)}}]}
-            with PluginHost(profile, platform_plugins(settings)) as host:
+            with offline_client_construction():
+                host = PluginHost(profile, platform_plugins(settings))
+            with host:
                 before, binding = host.inspect(), host.bind('model.clients')
                 clients = host.service('model.clients')
                 config['google']['dimension'] = 2

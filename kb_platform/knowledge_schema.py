@@ -4,6 +4,7 @@ from sqlalchemy import (
 )
 
 from .storage_sdk.relational import Clock, ExactString, StructuredSchema, TypedJSON, UtcDateTime
+from .session_storage.schema import metadata as session_metadata
 
 
 METADATA = MetaData()
@@ -106,6 +107,15 @@ EMBEDDING_CIRCUITS = _table('embedding_circuits', _identity('tenant_id', princip
     primary=('tenant_id', 'kb_id', 'provider_hash'), scope=('tenant_id', 'kb_id'))
 
 
+LEGACY_METADATA = MetaData()
+for _table_definition in METADATA.sorted_tables:
+    _table_definition.to_metadata(LEGACY_METADATA)
+
+
+for _table_definition in session_metadata.sorted_tables:
+    _table_definition.to_metadata(METADATA)
+
+
 def knowledge_schema(owner):
     return StructuredSchema(owner, METADATA,
-        appendonly=('source_versions', 'parse_snapshots', 'citations'))
+        appendonly=('source_versions', 'parse_snapshots', 'citations', 'events', 'artifacts'))

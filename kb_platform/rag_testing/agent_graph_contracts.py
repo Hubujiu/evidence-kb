@@ -14,7 +14,6 @@ from kb_platform.agent_schema import compile_schema, validate_output
 from .product_fixture import knowledge_service as AgentService
 from kb_platform.knowledge_policy import CONFIGS, RECOMMENDED
 from kb_platform.core import Actor, PlatformError
-from kb_platform.session_storage.schema import requests
 from .budget import BudgetLedger
 from .product_fixture import Authority, Gateway
 from .provider_capture import CapturedLuna, observe_client
@@ -301,6 +300,80 @@ class AgentGraphContracts(unittest.TestCase):
         self.assertEqual(calls, [1])
         self.assertEqual(len(case.model.calls), 1)
 
+    def test_local_input_rejection_allows_one_corrected_call_with_error_receipt(self):
+        def corrected(messages):
+            tools = json.loads(messages[-1]['content'])['state']['tool_results']
+            failed = next(row for row in tools if row['status'] == 'error')
+            self.assertEqual(failed['error'], 'INVALID_EXPRESSION')
+            self.assertIn('scalar', failed['input_correction'])
+            return decision('calculator', expression='2*30+3*20')
+        case = self.setup_service([('decision', decision()),
+            ('retrieval', decision('calculator', expression='{"amount":2*30}')),
+            ('retrieval', corrected), ('retrieval', decision('answer')),
+            ('answer', cited_answer), ('verifier', verdict())])
+        result = self.turn(case)
+        self.assertEqual(result['status'], 'answered', result)
+        tools = result['trace']['tool_calls']
+        self.assertEqual([row['status'] for row in tools], ['ok', 'error', 'ok'])
+        self.assertEqual(tools[-1]['result']['value'], '120')
+        receipts = [e['payload'] for e in self.events(case) if e['kind'] == 'tool_result']
+        self.assertEqual([r['status'] for r in receipts], ['ok', 'error', 'ok'])
+        self.assertEqual(receipts[1]['error'], 'INVALID_EXPRESSION')
+
+    def test_local_input_correction_stops_after_second_distinct_rejection(self):
+        case = self.setup_service([('decision', decision('calculator', expression='{"x":1}')),
+            ('retrieval', decision('calculator', expression='[1,2]'))])
+        result = self.turn(case)
+        self.assertEqual(result['status'], 'error', result)
+        self.assertEqual(result['stop_reason'], 'tool_failure')
+        self.assertEqual(len(result['trace']['tool_calls']), 2)
+        self.assertEqual(sum(bool(t.get('input_correction')) for t in result['trace']['tool_calls']), 1)
+        self.assertEqual(len(case.model.calls), 2)
+
+    def test_direct_invalid_calculation_does_not_request_model_correction(self):
+        case = self.setup_service()
+        result = self.turn(case, message='计算: 1/0')
+        self.assertEqual(result['status'], 'error', result)
+        self.assertEqual(result['stop_reason'], 'tool_failure')
+        self.assertFalse(result['trace']['tool_calls'][0].get('input_correction'))
+        self.assertEqual(case.model.calls, [])
+
+    def test_identical_rejected_input_is_not_executed_again(self):
+        invalid = decision('calculator', expression='{"x":1}')
+        case = self.setup_service([('decision', invalid), ('retrieval', invalid)])
+        result = self.turn(case)
+        self.assertEqual(result['stop_reason'], 'repeated_action', result)
+        self.assertEqual(len(result['trace']['tool_calls']), 1)
+        self.assertEqual(len(case.model.calls), 2)
+
+    def test_input_correction_preserves_reserved_answer_budget(self):
+        case = self.setup_service([('decision', decision('calculator', expression='{"x":1}'))],
+                                  config={'max_model_calls': 3})
+        result = self.turn(case)
+        self.assertEqual(result['stop_reason'], 'tool_failure', result)
+        self.assertFalse(result['trace']['tool_calls'][0].get('input_correction'))
+        self.assertEqual(len(case.model.calls), 1)
+
+    def test_input_correction_does_not_extend_step_limit(self):
+        case = self.setup_service([('decision', decision('calculator', expression='{"x":1}'))],
+                                  config={'steps': 1})
+        result = self.turn(case)
+        self.assertEqual(result['stop_reason'], 'tool_failure', result)
+        self.assertFalse(result['trace']['tool_calls'][0].get('input_correction'))
+        self.assertEqual(len(case.model.calls), 1)
+
+    def test_calculator_permission_or_unknown_error_is_not_correctable(self):
+        for code in ('SOURCE_FORBIDDEN', 'PROVIDER_OUTCOME_UNKNOWN', 'PROVIDER_HTTP_ERROR'):
+            with self.subTest(code=code):
+                case = self.setup_service([('decision', decision('calculator', expression='1+1'))])
+                with patch('kb_platform.agent_builtin_tools.bounded_calculate',
+                           side_effect=PlatformError(code, 'synthetic', 403)):
+                    result = self.turn(case)
+                self.assertEqual(result['stop_reason'], 'tool_failure', result)
+                self.assertEqual(result['trace']['tool_calls'][0]['error'], code)
+                self.assertFalse(result['trace']['tool_calls'][0].get('input_correction'))
+                self.assertEqual(len(case.model.calls), 1)
+
     def test_workflow_missing_state_routes_directly_to_clarification(self):
         def workflow_decision(messages):
             evidence = json.loads(messages[-1]['content'])['evidence']
@@ -337,23 +410,19 @@ class AgentGraphContracts(unittest.TestCase):
         self.assertIn('unresolved part', result['unresolved'])
         self.assertNotIn('repair', result['trace']['graph']['nodes'])
 
-    def test_repair_tool_failure_retains_receipt_and_redacts_derived_text(self):
-        case = self.setup_service(normal_script(verdict(False)))
-        searches = []
-        def fail(*args, **kwargs):
-            searches.append(1)
-            raise PlatformError('SOURCE_UNAVAILABLE', 'synthetic repair failure', 503)
-        case.gateway.search = fail
+    def test_repair_preserves_current_evidence_without_unseen_search(self):
+        case = self.setup_service(normal_script(verdict(False)) +
+            [('answer', cited_answer), ('verifier', verdict(True))])
+        def forbidden_search(*args, **kwargs):
+            self.fail('Answer repair must not replace evidence with unseen search results')
+        case.gateway.search = forbidden_search
         result = self.turn(case)
-        self.assertEqual(result['status'], 'error', result)
-        self.assertEqual(result['stop_reason'], 'SOURCE_UNAVAILABLE')
-        self.assertEqual(searches, [1])
-        self.assertEqual(result['claims'], [])
-        self.assertEqual(result['answer'], '')
-        self.assertNotIn('value 42', json.dumps(result))
-        receipts = [e for e in self.events(case) if e['kind'] == 'tool_result']
-        self.assertEqual(receipts[-1]['payload']['status'], 'error')
-        self.assertEqual(receipts[-1]['group_id'], 'turn:repair:0')
+        self.assertEqual(result['status'], 'answered', result)
+        self.assertEqual(result['trace']['repair']['mode'], 'revise_current_evidence')
+        self.assertEqual(result['trace']['repair']['attempts'], 1)
+        self.assertEqual(len(case.model.calls), 6)
+        self.assertFalse(any(e.get('group_id') == 'turn:repair:0'
+                             for e in self.events(case)))
 
     def test_disabled_repair_abstains_without_another_generation(self):
         case = self.setup_service(normal_script(verdict(False)), config={'repair': False})
@@ -462,7 +531,7 @@ class AgentGraphContracts(unittest.TestCase):
             self.turn(case)
         self.assertEqual(caught.exception.code, 'TURN_IN_PROGRESS')
         with case.service.store.database.transaction() as db:
-            db.execute(requests.update().values(expires=0))
+            db.execute(case.service.store.store._tables['requests'].update().values(expires=0))
         with self.assertRaises(PlatformError) as caught:
             self.turn(case)
         self.assertEqual(caught.exception.code, 'TURN_INTERRUPTED')

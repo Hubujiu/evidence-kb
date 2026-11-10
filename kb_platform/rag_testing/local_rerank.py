@@ -129,12 +129,13 @@ class LocalRanker:
                 record = dict(physical_id=physical_id, offset=offset, scores=values,
                               input_tokens=sum(lengths[offset:offset + 4]))
                 write_json(self.output / (physical_id + '.json'), record)
-                self.ledger.finish(physical_id, status='COMPLETE', usage=resources)
-                batch_records.append(record)
-                scores.extend(values)
             except Exception as exc:
                 self.ledger.finish(physical_id, status='ERROR', diagnostic=str(exc))
                 raise
+            else:
+                self.ledger.finish(physical_id, status='COMPLETE', usage=resources)
+            batch_records.append(record)
+            scores.extend(values)
         order = sorted(range(len(scores)), key=lambda i: -scores[i])
         return order, dict(scores=scores, batches=batch_records, elapsed_ms=(time.perf_counter()-started)*1000,
                            tokens=sum(lengths), max_pair_tokens=max(lengths, default=0))

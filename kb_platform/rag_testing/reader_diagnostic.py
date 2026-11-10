@@ -8,7 +8,7 @@ from kb_platform.agent_context import estimate_messages
 from .answer_metrics import answer_score
 from .budget_batches import LinkedBudgetLedger, freeze_predecessor
 from .contracts import Fragment, Plan, Suite, Trace, digest
-from .provider_capture import CapturedLuna, observe_client, request_context
+from .provider_capture import CapturedLuna, capture_unresolved, observe_client, request_context
 from .runner import run, write_json
 
 
@@ -74,7 +74,7 @@ class FullCorpusReader:
         captures = [read(p) for p in self.output.glob('physical-requests/*.json')]
         bound = [r for r in captures if r['context'].get('case_id') == request.case_id
                  and r['context'].get('sample_id') == self.sample_id]
-        if len(bound) != 1 or bound[0]['status'] != 'COMPLETE':
+        if len(bound) != 1 or bound[0]['status'] != 'COMPLETE' or capture_unresolved(bound[0]):
             raise ValueError('FINAL_PHYSICAL_BINDING_NOT_UNIQUE_COMPLETE')
         physical = bound[0]
         messages = physical['payload']['messages']

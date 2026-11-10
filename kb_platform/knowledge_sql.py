@@ -75,7 +75,25 @@ citations_all = citations_source.join(PARSE_SNAPSHOTS,
     and_(*(CITATIONS.c[key] == PARSE_SNAPSHOTS.c[key] for key in PARSE)))
 
 
+def _parse_documents(transaction, values):
+    identities = values['identities']
+    if (not isinstance(identities, (list, tuple)) or not 1 <= len(identities) <= 32
+            or any(not isinstance(item, (list, tuple)) or len(item) != 3
+                   or any(not isinstance(part, str) or not part for part in item) for item in identities)
+            or len({tuple(item) for item in identities}) != len(identities)):
+        raise ValueError('INVALID_PARSE_IDENTITIES')
+    clauses = [and_(PARSE_SNAPSHOTS.c.source_id == source,
+                    PARSE_SNAPSHOTS.c.source_version_id == version,
+                    PARSE_SNAPSHOTS.c.parse_snapshot_id == snapshot)
+               for source, version, snapshot in identities]
+    return transaction.execute(select(PARSE_SNAPSHOTS.c.source_id,
+        PARSE_SNAPSHOTS.c.source_version_id, PARSE_SNAPSHOTS.c.parse_snapshot_id,
+        PARSE_SNAPSHOTS.c.document).where(
+            PARSE_SNAPSHOTS.c.tenant_id == values['tenant_id'], or_(*clauses)))
+
+
 OPERATIONS = {
+    K.PARSE_DOCUMENTS: Operation(('tenant_id', 'identities'), _parse_documents),
     K.AUTHORITY_BUMP: _statement(TENANT,
         update(TENANTS).where(_where(TENANTS, *TENANT)).values(revision=TENANTS.c.revision + 1), write=True),
     K.KB_BUMP: _statement(KB,
@@ -127,13 +145,14 @@ OPERATIONS = {
         returning=(BINDINGS.c.binding_id, BINDINGS.c.source_id, BINDINGS.c.source_version_id)),
     K.BINDINGS_ACTIVE: _statement(KB,
         select(BINDINGS, SOURCES.c.owner_id, SOURCES.c.readers, SOURCES.c.policy,
-            SOURCES.c.revision.label('source_revision'), PARSE_SNAPSHOTS.c.document)
+            SOURCES.c.revision.label('source_revision'))
         .select_from(bindings_parse).where(_where(BINDINGS, *KB), BINDINGS.c.status == 'ACTIVE')
         .order_by(BINDINGS.c.binding_id)),
     K.BINDING_ACCESS: _statement((*KB, 'source_id'),
         select(BINDINGS).where(_where(BINDINGS, *KB, 'source_id'), BINDINGS.c.status == 'ACTIVE')),
     K.CITATION_INSERT: _insert(CITATIONS, (*KB, 'citation_id', 'build_id', 'binding_id', 'source_id',
-        'source_version_id', 'parse_snapshot_id', 'element_id', 'text', 'evidence_ids', 'anchors', 'table_data')),
+        'source_version_id', 'parse_snapshot_id', 'element_id', 'text', 'evidence_ids', 'anchors', 'table_data'),
+        conflict_keys=(*KB, 'citation_id')),
     K.KBS_VISIBLE: _statement((*TENANT, 'actor_principal_id'),
         select(KNOWLEDGE_BASES.c.kb_id, KNOWLEDGE_BASES.c.name, KNOWLEDGE_BASES.c.manifest_id, MEMBERS.c.capabilities)
         .select_from(_join(KNOWLEDGE_BASES, MEMBERS, *KB))
@@ -144,6 +163,8 @@ OPERATIONS = {
     K.PARSE_FIRST: _statement(VERSION,
         select(PARSE_SNAPSHOTS.c.parse_snapshot_id).where(_where(PARSE_SNAPSHOTS, *VERSION))
         .order_by(PARSE_SNAPSHOTS.c.parse_snapshot_id).limit(1)),
+    K.PARSE_DOCUMENT: _statement(PARSE,
+        select(PARSE_SNAPSHOTS.c.document).where(_where(PARSE_SNAPSHOTS, *PARSE))),
     K.BINDING_REMOVE: _statement((*KB, 'binding_id'),
         update(BINDINGS).where(_where(BINDINGS, *KB, 'binding_id'))
         .values(status='REMOVED', revision=BINDINGS.c.revision + 1)
@@ -154,6 +175,9 @@ OPERATIONS = {
         select(BUILDS.c.build_id, BUILDS.c.status, BUILDS.c.unit_count).where(_where(BUILDS, *BUILD))),
     K.BUILD_GET: _statement(BUILD, select(BUILDS).where(_where(BUILDS, *BUILD))),
     K.CITATIONS_FOR_BUILD: _statement(BUILD, select(CITATIONS).where(_where(CITATIONS, *BUILD))),
+    K.CITATIONS_PAGE: _statement((*BUILD, 'after', 'limit'), select(CITATIONS)
+        .where(_where(CITATIONS, *BUILD), CITATIONS.c.citation_id > _parameter('after'))
+        .order_by(CITATIONS.c.citation_id).limit(_parameter('limit'))),
     K.BUILD_LOCK: _statement(BUILD, select(BUILDS).where(_where(BUILDS, *BUILD)).with_for_update(), write=True),
     K.BUILD_PUBLISHED: _statement(BUILD,
         select(BUILDS).where(_where(BUILDS, *BUILD), BUILDS.c.status == 'PUBLISHED')),
@@ -178,14 +202,20 @@ OPERATIONS = {
                      'source_version_id', 'parse_snapshot_id'))),
     K.BINDINGS_PROCESSING: _statement(KB,
         select(BINDINGS, SOURCES.c.owner_id, SOURCES.c.readers, SOURCES.c.policy,
-            SOURCE_VERSIONS.c.filename, PARSE_SNAPSHOTS.c.document).select_from(bindings_versions)
+            SOURCES.c.revision.label('source_revision'), SOURCE_VERSIONS.c.filename).select_from(bindings_versions)
         .where(_where(BINDINGS, *KB), BINDINGS.c.status == 'ACTIVE').order_by(BINDINGS.c.binding_id)),
     K.SOURCE_VERSION_ORIGINAL: _statement(VERSION,
         select(SOURCE_VERSIONS.c.original_path, SOURCE_VERSIONS.c.original_sha256)
         .where(_where(SOURCE_VERSIONS, *VERSION))),
     K.JOB_CLOCK: _statement((), select(Clock().label('db_now'))),
     K.JOBS_INPUTS: _statement(BUILD,
-        select(EMBEDDING_JOBS.c.dependency_hash, EMBEDDING_JOBS.c.payload).where(_where(EMBEDDING_JOBS, *BUILD))),
+        select(EMBEDDING_JOBS.c.dependency_hash).where(_where(EMBEDDING_JOBS, *BUILD))),
+    K.JOB_FIRST: _statement(BUILD,
+        select(EMBEDDING_JOBS.c.payload, EMBEDDING_JOBS.c.dependency_hash)
+        .where(_where(EMBEDDING_JOBS, *BUILD), EMBEDDING_JOBS.c.batch_no == 0)),
+    K.JOBS_CONFLICT: _statement((*BUILD, 'dependency_hash'),
+        select(EMBEDDING_JOBS.c.dependency_hash).where(_where(EMBEDDING_JOBS, *BUILD),
+            EMBEDDING_JOBS.c.dependency_hash != _parameter('dependency_hash')).limit(1)),
     K.JOB_INSERT: _insert(EMBEDDING_JOBS, (*BATCH, 'dependency_hash', 'provider_hash', 'payload'), conflict_keys=BATCH),
     K.CIRCUIT_ENSURE: _insert(EMBEDDING_CIRCUITS, CIRCUIT, conflict_keys=CIRCUIT),
     K.JOB_LOCK: _statement(BATCH,
@@ -229,20 +259,23 @@ OPERATIONS = {
     K.CIRCUIT_RESET: _statement(CIRCUIT,
         update(EMBEDDING_CIRCUITS).where(_where(EMBEDDING_CIRCUITS, *CIRCUIT))
         .values(failures=0, open_until=None), write=True),
-    K.JOBS_STATUS: _statement(BUILD,
+    K.JOBS_STATUS: _statement((*BUILD, 'after'),
         select(*(EMBEDDING_JOBS.c[key] for key in (
             'batch_no', 'status', 'attempt', 'request_id', 'lease_until', 'retry_at', 'error')))
-        .where(_where(EMBEDDING_JOBS, *BUILD)).order_by(EMBEDDING_JOBS.c.batch_no)),
+        .where(_where(EMBEDDING_JOBS, *BUILD), EMBEDDING_JOBS.c.batch_no > _parameter('after'))
+        .order_by(EMBEDDING_JOBS.c.batch_no).limit(256)),
     K.JOBS_EXPIRE: _statement(BUILD,
         update(EMBEDDING_JOBS).where(_where(EMBEDDING_JOBS, *BUILD),
             EMBEDDING_JOBS.c.status == 'RUNNING', EMBEDDING_JOBS.c.lease_until < Clock())
         .values(status='UNKNOWN', error='LEASE_EXPIRED'), write=True),
-    K.JOBS_UNKNOWN: _statement(BUILD,
-        select(EMBEDDING_JOBS).where(_where(EMBEDDING_JOBS, *BUILD), EMBEDDING_JOBS.c.status == 'UNKNOWN')),
+    K.JOBS_UNKNOWN: _statement((*BUILD, 'after'),
+        select(EMBEDDING_JOBS).where(_where(EMBEDDING_JOBS, *BUILD), EMBEDDING_JOBS.c.status == 'UNKNOWN',
+            EMBEDDING_JOBS.c.batch_no > _parameter('after')).order_by(EMBEDDING_JOBS.c.batch_no).limit(1)),
 }
 
 
 IMMUTABLE_LOOKUPS = {
+    K.CITATION_INSERT: select(CITATIONS).where(_where(CITATIONS, *KB, 'citation_id')),
     K.SOURCE_VERSION_INSERT: select(SOURCE_VERSIONS).where(_where(SOURCE_VERSIONS, *VERSION)),
     K.PARSE_INSERT: select(PARSE_SNAPSHOTS).where(_where(PARSE_SNAPSHOTS, *PARSE)),
 }
@@ -274,7 +307,7 @@ def execute_operation(transaction, query, values, *, write):
     if query == K.JOB_FINISH:
         OPERATIONS[K.JOB_LOCK].run(transaction, {key: values[key] for key in BATCH})
     result = operation.run(transaction, values)
-    if query in IMMUTABLE_LOOKUPS:
+    if query in IMMUTABLE_LOOKUPS and not (query == K.CITATION_INSERT and result.rowcount == 1):
         stored = transaction.execute(IMMUTABLE_LOOKUPS[query], {'p_' + key: value for key, value in values.items()}).fetchone()
         if stored is None:
             raise PlatformError('SOURCE_INTEGRITY', 'Immutable source record is unavailable', 503)

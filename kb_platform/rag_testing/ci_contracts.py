@@ -84,7 +84,7 @@ class CiContracts(unittest.TestCase):
                 self.assertTrue(workflow_violations(changed))
 
     def test_actual_storage_gate_cannot_be_removed_from_required_command(self):
-        for flag in ('--storage-integration', '--browser-integration', '--local-integration'):
+        for flag in ('--storage-integration', '--browser-integration', '--local-integration', '--web-integration'):
             changed = deepcopy(self.workflow)
             step = next(step for step in changed['jobs']['integration']['steps']
                         if 'scripts/check_project.py' in step.get('run', ''))

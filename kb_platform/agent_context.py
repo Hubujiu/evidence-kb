@@ -7,7 +7,7 @@ import re
 
 
 from .context_budget import (
-    ContextBudget, ContextBudgetError as ContextBudgetError,
+    ContextBudget, ContextCapacity, ContextBudgetError as ContextBudgetError,
     canonical as canonical, estimate_messages as estimate_messages,
 )
 
@@ -38,12 +38,13 @@ class ContextManager:
     def __init__(self, policy=None):
         self.policy = policy or ContextPolicy()
 
-    def prepare_rerank(self, system, evidence, payload):
+    def prepare_rerank(self, system, evidence, payload, *, request_budget=None):
         policy = self.policy
+        capacity = ContextCapacity(policy, request_budget)
         if policy.strict_tokens:
             raise ContextBudgetError('TOKEN_CAPABILITY_UNVERIFIED')
         documents = payload.get('documents')
-        if (set(payload) != {'query', 'documents'} or not isinstance(payload['query'], str)
+        if (set(payload) not in ({'query', 'documents'}, {'protocol', 'query', 'documents'}) or not isinstance(payload['query'], str)
                 or not isinstance(documents, list) or len(documents) != len(evidence)
                 or not documents or any(row != {'ref': f'R{index:03}', 'text': item['text']}
                     for index, (row, item) in enumerate(zip(documents, evidence, strict=True), 1))):
@@ -56,18 +57,20 @@ class ContextManager:
                      'text_truncated': start != 0 or start + length < len(item['text'])}
                     for row, item, start in zip(documents, evidence, starts, strict=True)]
             return [{'role': 'system', 'content': system}, {'role': 'user', 'content': canonical({
+                **({'protocol': payload['protocol']} if 'protocol' in payload else {}),
                 'query': payload['query'], 'documents': rows})}]
 
-        if estimate_messages(messages(1))['tokens'] > limit:
+        if capacity.cost(messages(1)) > limit:
             raise ContextBudgetError('CONTEXT_REQUIRED_STATE_TOO_LARGE')
         low, high = 1, max(len(item['text']) for item in evidence)
         while low < high:
             middle = (low + high + 1) // 2
-            if estimate_messages(messages(middle))['tokens'] <= limit:
+            if capacity.cost(messages(middle)) <= limit:
                 low = middle
             else:
                 high = middle - 1
         output = messages(low)
+        capacity.validate(output)
         windows = [{**self._evidence_reference(item), 'ref': row['ref'],
                     'text': item['text'][start:start + low], 'text_start': start,
                     'text_truncated': start != 0 or start + low < len(item['text'])}
@@ -76,7 +79,8 @@ class ContextManager:
                       'state': {}, 'history': [], 'omitted_event_refs': []}
         return PreparedContext(output, {'input_limit': limit, 'output_reserve': policy.output_reserve,
             'model_window': policy.model_window, 'safety_reserve': policy.safety_reserve,
-            'strict_tokens': False, 'window_capability_verified': False}, estimate_messages(output),
+            'strict_tokens': False, 'window_capability_verified': False,
+            'request_budget': capacity.observation(output)}, estimate_messages(output),
             any(item['text_truncated'] for item in windows), projection)
 
     @staticmethod
@@ -141,7 +145,7 @@ class ContextManager:
         return result
 
     @staticmethod
-    def _evidence_reference(item):
+    def _evidence_reference(item, *, compact=False):
         if not isinstance(item, dict):
             raise ContextBudgetError("INVALID_CONTEXT_EVIDENCE")
 
@@ -153,6 +157,12 @@ class ContextManager:
                 return [metadata(child) for child in value]
             return deepcopy(value)
         result = metadata(item)
+        if compact:
+            identity_fields = {'citation_id', 'evidence_id', 'source_id', 'source_version_id',
+                               'parse_snapshot_id', 'original_sha256', 'build_id', 'parse_text_start',
+                               'parse_text_end', 'document_id', 'version', 'kind', 'title'}
+            result = {key: value for key, value in result.items() if key in identity_fields}
+            result['metadata_reference'] = {'storage': 'server_canonical_citation', 'externalized': True}
 
 
         for field in ("anchors", "evidence_ids"):
@@ -222,8 +232,9 @@ class ContextManager:
                 slots.append(slot)
         return slots
 
-    def prepare(self, role, system, state, history, evidence, question, checkpoint=None, selection_query=None):
+    def prepare(self, role, system, state, history, evidence, question, checkpoint=None, selection_query=None, *, request_budget=None):
         policy = self.policy
+        capacity = ContextCapacity(policy, request_budget)
         if policy.strict_tokens:
             raise ContextBudgetError("TOKEN_CAPABILITY_UNVERIFIED")
         if not isinstance(role, str) or not role or not isinstance(system, str) or not isinstance(question, str):
@@ -263,13 +274,15 @@ class ContextManager:
             return result
 
         limit = policy.effective_input_budget
-        if projection["checkpoint"] and estimate_messages(messages())["tokens"] > limit:
+        if capacity.cost(messages()) > limit:
+            projection['evidence'] = [self._evidence_reference(item, compact=True) for item in evidence]
+        if projection["checkpoint"] and capacity.cost(messages()) > limit:
             projection["checkpoint"] = self._minimal_checkpoint(projection["checkpoint"])
-        if estimate_messages(messages())["tokens"] > limit:
+        if capacity.cost(messages()) > limit:
             raise ContextBudgetError("CONTEXT_REQUIRED_STATE_TOO_LARGE")
 
 
-        base_cost = estimate_messages(messages())["tokens"]
+        base_cost = capacity.cost(messages())
         checkpoint_reserve = 0
         if groups:
             prior_checkpoint = projection["checkpoint"]
@@ -277,7 +290,7 @@ class ContextManager:
             projection["checkpoint"] = self._minimal_checkpoint(possible)
             projection["omitted_event_refs"] = [{"from_seq": groups[0][0]["seq"],
                                                    "through_seq": groups[-1][-1]["seq"]}]
-            checkpoint_reserve = max(0, estimate_messages(messages())["tokens"] - base_cost)
+            checkpoint_reserve = max(0, capacity.cost(messages()) - base_cost)
             projection["checkpoint"] = prior_checkpoint
             projection["omitted_event_refs"] = []
         evidence_limit = limit - checkpoint_reserve
@@ -295,7 +308,7 @@ class ContextManager:
             if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= len(text):
                 raise ContextBudgetError("INVALID_EVIDENCE_OFFSET")
             remaining = len(evidence) - index + len(restored_history)
-            current_cost = estimate_messages(messages())["tokens"]
+            current_cost = capacity.cost(messages())
             item_limit = current_cost + max(0, evidence_limit - current_cost) // remaining
             full_hash = sha256(text.encode("utf-8")).hexdigest()
 
@@ -318,7 +331,7 @@ class ContextManager:
 
                 def fits(start, end):
                     projection["evidence"][index] = block_candidate(start, end)
-                    return estimate_messages(messages())["tokens"] <= item_limit
+                    return capacity.cost(messages()) <= item_limit
 
 
                 selected_window = select_window(text, selection_query or question, offset, fits,
@@ -329,9 +342,7 @@ class ContextManager:
                     if fits(offset, len(text)):
                         selected_window = (offset, len(text))
                     else:
-                        projection['evidence'][index] = block_candidate(offset, len(text))
-                        selected_window = ((offset, len(text)) if estimate_messages(messages())['tokens'] <= evidence_limit
-                                           else (offset, offset))
+                        selected_window = (offset, offset)
                         if selected_window == (offset, offset) and (item.get('kind') == 'Table' or item.get('table_data')):
                             projection['evidence'][index] = reference
                             externalized = True
@@ -341,13 +352,14 @@ class ContextManager:
 
 
                     for _, start, end in ranked_blocks(text, selection_query or question, offset):
-                        projection["evidence"][index] = block_candidate(start, end)
-                        if estimate_messages(messages())["tokens"] <= evidence_limit:
+                        if fits(start, end):
                             selected_window = (start, end)
                             break
                 if selected_window == (offset, offset):
-
-
+                    if item.get('kind') == 'Table' or item.get('table_data'):
+                        projection['evidence'][index] = reference
+                        externalized = True
+                        continue
                     from .prose_windows import select_window as prose_window, ranked_blocks as prose_blocks
 
                     prose_fallback_used = True
@@ -355,8 +367,7 @@ class ContextManager:
                                                    max_characters=policy.effective_input_budget)
                     if selected_window == (offset, offset):
                         for _, start, end in prose_blocks(text, selection_query or question, offset):
-                            projection["evidence"][index] = block_candidate(start, end)
-                            if estimate_messages(messages())["tokens"] <= evidence_limit:
+                            if fits(start, end):
                                 selected_window = (start, end)
                                 break
                 if selected_window is not None:
@@ -369,12 +380,12 @@ class ContextManager:
             while low < high:
                 midpoint = (low + high + 1) // 2
                 projection["evidence"][index] = candidate(midpoint)
-                if estimate_messages(messages())["tokens"] <= item_limit:
+                if capacity.cost(messages()) <= item_limit:
                     low = midpoint
                 else:
                     high = midpoint - 1
             projection["evidence"][index] = candidate(low)
-            if (not low and offset < len(text)) or estimate_messages(messages())["tokens"] > item_limit:
+            if (not low and offset < len(text)) or capacity.cost(messages()) > item_limit:
                 projection["evidence"][index] = reference
                 externalized = True
             else:
@@ -383,26 +394,66 @@ class ContextManager:
 
         for index, slot in enumerate(restored_history):
             remaining = len(restored_history) - index
-            current_cost = estimate_messages(messages())["tokens"]
+            current_cost = capacity.cost(messages())
             item_limit = current_cost + max(0, evidence_limit - current_cost) // remaining
             low, high = 0, len(slot["raw"])
             while low < high:
                 midpoint = (low + high + 1) // 2
                 slot["target"].clear()
                 slot["target"].update(self._history_tool_window(slot, midpoint))
-                if estimate_messages(messages())["tokens"] <= item_limit:
+                if capacity.cost(messages()) <= item_limit:
                     low = midpoint
                 else:
                     high = midpoint - 1
             slot["target"].clear()
             slot["target"].update(self._history_tool_window(slot, low))
             externalized = externalized or low < len(slot["raw"])
+        pending = sorted((index for index, item in enumerate(evidence)
+                          if isinstance(item.get('text'), str) and
+                          projection['evidence'][index].get('text') != item['text'][item.get('context_offset', 0):]),
+                         key=lambda index: (len(evidence[index]['text']) -
+                             len(projection['evidence'][index].get('text', '')), index))
+        for index in pending:
+            item = evidence[index]
+            offset, text = item.get('context_offset', 0), item['text']
+            previous = projection['evidence'][index]
+            projection['evidence'][index] = {**previous, 'text': text[offset:], 'text_start': offset,
+                'text_truncated': bool(offset), 'remaining_text_externalized': bool(offset),
+                'externalized': bool(offset), 'full_text_sha256': sha256(text.encode('utf-8')).hexdigest(),
+                'original_characters': len(text)}
+            if capacity.cost(messages()) > evidence_limit:
+                projection['evidence'][index] = previous
+                if (policy.evidence_strategy not in {'query_blocks', 'coverage_blocks'}
+                        or item.get('kind') == 'Table' or item.get('table_data')):
+                    continue
+                from .prose_windows import expand_window, select_window as surplus_window
+
+                def surplus_candidate(start, end):
+                    truncated = start != 0 or end != len(text)
+                    return {**previous, 'text': text[start:end], 'text_start': start,
+                        'text_truncated': truncated, 'remaining_text_externalized': truncated,
+                        'externalized': truncated, 'full_text_sha256': sha256(text.encode('utf-8')).hexdigest(),
+                        'original_characters': len(text)}
+
+                def surplus_fits(start, end):
+                    projection['evidence'][index] = surplus_candidate(start, end)
+                    return capacity.cost(messages()) <= evidence_limit
+
+                if previous.get('text'):
+                    start = previous['text_start']
+                    window = expand_window(text, start, start + len(previous['text']), offset, surplus_fits)
+                else:
+                    window = surplus_window(text, selection_query or question, offset, surplus_fits,
+                                            max_characters=policy.effective_input_budget)
+                projection['evidence'][index] = (surplus_candidate(*window)
+                    if window is not None and window[1] > window[0] else previous)
+
         selected = []
         omitted = []
         for index in range(len(groups) - 1, -1, -1):
             candidate = groups[index] + selected
             projection["history"] = candidate
-            if estimate_messages(messages())["tokens"] > limit:
+            if capacity.cost(messages()) > limit:
                 omitted = [event for group in groups[:index + 1] for event in group]
                 break
             selected = candidate
@@ -413,9 +464,9 @@ class ContextManager:
             projection["checkpoint"] = self.compact(omitted, checkpoint)
 
 
-            if estimate_messages(messages())["tokens"] > limit:
+            if capacity.cost(messages()) > limit:
                 projection["checkpoint"] = self._minimal_checkpoint(projection["checkpoint"])
-            while estimate_messages(messages())["tokens"] > limit and selected:
+            while capacity.cost(messages()) > limit and selected:
                 first_group = selected[0].get("group_id") or f"event:{selected[0]['seq']}"
                 moved = []
                 while selected and (selected[0].get("group_id") or f"event:{selected[0]['seq']}") == first_group:
@@ -426,17 +477,19 @@ class ContextManager:
 
                 projection["checkpoint"] = self.compact(omitted, checkpoint)
                 projection["omitted_event_refs"][0]["through_seq"] = omitted[-1]["seq"]
-                if estimate_messages(messages())["tokens"] > limit:
+                if capacity.cost(messages()) > limit:
                     projection["checkpoint"] = self._minimal_checkpoint(projection["checkpoint"])
-            if estimate_messages(messages())["tokens"] > limit:
+            if capacity.cost(messages()) > limit:
 
                 projection["checkpoint"] = self._minimal_checkpoint(projection["checkpoint"])
-            if estimate_messages(messages())["tokens"] > limit:
+            if capacity.cost(messages()) > limit:
                 raise ContextBudgetError("CONTEXT_REQUIRED_STATE_TOO_LARGE")
         output = messages()
+        capacity.validate(output)
         return PreparedContext(output,
                                {"input_limit": limit, "output_reserve": policy.output_reserve,
                                 "model_window": policy.model_window, "safety_reserve": policy.safety_reserve,
                                 "strict_tokens": False, "window_capability_verified": False,
-                                "prose_line_safe_fallback_used": prose_fallback_used},
+                                "prose_line_safe_fallback_used": prose_fallback_used,
+                                "request_budget": capacity.observation(output)},
                                estimate_messages(output), bool(omitted) or externalized, projection)

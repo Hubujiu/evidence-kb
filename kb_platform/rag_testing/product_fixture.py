@@ -15,10 +15,20 @@ def knowledge_service(platform, model, *, root, gateway, context_policy=None,
     from kb_platform.knowledge_workflow import KnowledgeWorkflow
     from kb_platform.provider_runtime import ToolExecutor
     from kb_platform.session_store import SessionStore
+    from kb_platform.knowledge_schema import knowledge_schema
+    from .knowledge_session_fixture import session_fixture
 
     policy = context_policy if context_policy is not None else ContextPolicy(
         input_budget=24000, evidence_strategy='query_blocks')
-    return KnowledgeService(platform, model, store=KnowledgeSessions(SessionStore(root)),
+    authority = gateway.platform
+    if isinstance(authority, Authority):
+        store, _ = session_fixture(root, authority.actor, authority.scope, manifest='build', revision=authority.revision)
+        authority.session_database = store.database
+        authority.repository = SimpleNamespace(database=store.database)
+    else:
+        store = KnowledgeSessions(SessionStore(database=authority.repository.database,
+            schema=knowledge_schema, prepared=True))
+    return KnowledgeService(platform, model, store=store,
         gateway=gateway, context_policy=policy, context_manager=ContextManager(policy), runtime=Runtime(),
         workflow_factory=KnowledgeWorkflow, tool_executor=ToolExecutor(max_attempts=2), semantic_pages=None,
         retrieval_config=retrieval_config if retrieval_config is not None else {
@@ -53,6 +63,20 @@ class Reranker:
 
 class Authority:
     _allowed = Platform._allowed
+    _check_source_snapshot = Platform._check_source_snapshot
+
+    @property
+    def revision(self):
+        return self._revision
+
+    @revision.setter
+    def revision(self, value):
+        if hasattr(self, 'session_database'):
+            from kb_platform.knowledge_schema import TENANTS
+
+            with self.session_database.transaction(scope={'tenant_id': self.actor.tenant_id}) as tx:
+                tx.execute(TENANTS.update().where(TENANTS.c.tenant_id == self.actor.tenant_id).values(revision=value))
+        self._revision = value
 
     def __init__(self, sources):
         self.actor, self.scope, self.revision = Actor('tenant', 'reader'), 'scope', 1
@@ -89,11 +113,12 @@ class Authority:
     def _lock_authority(self, conn, actor):
         return self.revision
 
-    def _auth(self, conn, actor, scope):
-        return {'manifest_id': 'build'}
+    def _auth(self, conn, actor, scope, capability='kb.read'):
+        return {'manifest_id': 'build', 'revision': self.revision}
 
-    def _bindings(self, conn, actor, scope):
-        return self.rows
+    def _source_snapshot(self, actor, scope, *, processing=False, capability='kb.read'):
+        return {'actor': actor, 'scope': scope, 'kb': self._auth(None, actor, scope, capability),
+                'authority_revision': self.revision, 'capability': capability, 'rows': deepcopy(self.rows)}
 
     def resolve_citation(self, actor, scope, citation_id, purpose):
         record = deepcopy(self.records[citation_id])

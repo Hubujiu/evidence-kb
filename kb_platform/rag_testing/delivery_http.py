@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import time
 from uuid import uuid4
@@ -11,21 +12,29 @@ import httpx
 
 from ..agent_context import canonical
 from ..core import Actor
+from ..database_providers.sqlite_guard import sqlite_guard
 from .contracts import Fragment, Plan, Suite, Trace, digest
 from .delivery_fixtures import bind_suite, load_delivery_fixtures
 from .runner import run, write_json
+from .provider_capture import capture_unresolved
 
 
-VERSION = 'delivery-real-http-actual-payload/2'
+VERSION = 'delivery-real-http-actual-payload/3'
 POLICY = {'llm_context': True, 'embedding': True, 'rerank': True, 'ocr': False,
           'compile': False, 'allowed_providers': ['google_gemini', 'magpie_luna']}
 
 
 def _atomic_json(path, value):
     path = Path(path)
-    temporary = path.with_suffix(path.suffix + '.tmp')
-    write_json(temporary, value)
-    temporary.replace(path)
+    temporary = path.with_suffix(path.suffix + '.' + uuid4().hex + '.tmp')
+    try:
+        with temporary.open('x', encoding='utf-8') as stream:
+            json.dump(value, stream, ensure_ascii=False, allow_nan=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def physical_records(directory):
@@ -48,7 +57,7 @@ def physical_records(directory):
 
 def require_no_pending(directory):
     pending = [record['physical_request_id'] for record in physical_records(directory)
-               if record.get('status') not in ('COMPLETE', 'ERROR')]
+               if capture_unresolved(record)]
     if pending:
         raise RuntimeError('UNRESOLVED_PHYSICAL_REQUESTS:' + ','.join(pending))
 
@@ -78,6 +87,15 @@ def _assert_authority(actual, expected):
         raise ValueError('FROZEN_AUTHORITY_OR_MANIFEST_MISMATCH')
 
 
+def _publish_bound_json(path, value):
+    path = Path(path)
+    if path.exists():
+        if json.loads(path.read_text('utf-8')) != value:
+            raise ValueError('BOUND_PREPARE_ARTIFACT_CHANGED:' + path.name)
+        return
+    _atomic_json(path, value)
+
+
 def _bind_prepared_http(client, fixtures, root, *, platform, identity, data_scopes, context_budget, state, state_path):
 
     actor = Actor(**identity)
@@ -104,33 +122,44 @@ def _bind_prepared_http(client, fixtures, root, *, platform, identity, data_scop
                  'expectations': split + '-expectations.json', 'documents': split + '-documents.json'}
         for kind, name in files.items():
             value = bound[kind].model_dump(mode='json') if kind == 'suite' else bound[kind]
-            target = root / name
-            if target.exists() and json.loads(target.read_text('utf-8')) != value:
-                raise ValueError('BOUND_PREPARE_ARTIFACT_CHANGED:' + name)
-            _atomic_json(target, value)
+            _publish_bound_json(root / name, value)
         prepared['splits'][split] = {**data, 'files': files, 'authority': expected}
     for split, expected in before.items():
         _assert_authority(read_authority(client, data_scopes[split]['scope_id']), expected)
     scenarios = json.loads((Path(fixtures['root']) / 'scenario-inputs.json').read_text('utf-8'))
-    write_json(root / 'scenario-inputs.json', scenarios)
+    _publish_bound_json(root / 'scenario-inputs.json', scenarios)
     prepared['scenario_inputs'] = 'scenario-inputs.json'
     prepared['file_sha256'] = {name: sha256((root / name).read_bytes()).hexdigest()
         for name in [*sum((list(item['files'].values()) for item in prepared['splits'].values()), []), 'scenario-inputs.json']}
     if 'rebind_from' in state:
         prepared.update(rebind_from=state['rebind_from'], reused_http_operation_receipts=len(state['operations']),
                         new_upload_build_publish_requests=0)
-    _atomic_json(root / 'prepared.json', prepared)
+    _publish_bound_json(root / 'prepared.json', prepared)
     state['status'] = 'COMPLETE'
     _atomic_json(state_path, state)
     return prepared
 
 
 def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, physical_directory,
-                 context_budget=118784, channels=('bm25', 'dense', 'hybrid'), policy=None):
+                 context_budget=118784, channels=('bm25', 'dense', 'hybrid'), policy=None, split=None):
 
-    fixtures = load_delivery_fixtures(fixtures['root'] if isinstance(fixtures, dict) else fixtures)
     root = Path(output).resolve()
     root.mkdir(parents=True, exist_ok=True)
+
+
+
+    with sqlite_guard(root / '.prepare.guard.sqlite3', nowait=True):
+        return _prepare_http_locked(client, fixtures, root, platform=platform,
+            expected_tenant_id=expected_tenant_id, physical_directory=physical_directory,
+            context_budget=context_budget, channels=channels, policy=policy, split=split)
+
+
+def _prepare_http_locked(client, fixtures, root, *, platform, expected_tenant_id, physical_directory,
+                         context_budget, channels, policy, split):
+    fixtures = load_delivery_fixtures(fixtures['root'] if isinstance(fixtures, dict) else fixtures)
+    if split not in (None, 'dev', 'holdout'):
+        raise ValueError('INVALID_DELIVERY_SPLIT')
+    splits = (split,) if split else ('dev', 'holdout')
     path = root / 'prepare-state.json'
     identity = client.get('/identity').raise_for_status().json()
     if identity.get('tenant_id') != expected_tenant_id:
@@ -139,6 +168,8 @@ def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, phys
     specification = {'protocol': VERSION, 'fixture_hash': digest({key: value for key, value in fixtures.items() if key != 'root'}),
         'fixture_root': fixtures['root'], 'identity': identity, 'channels': list(channels),
         'policy': dict(POLICY if policy is None else policy), 'context_budget': context_budget}
+    if split is not None:
+        specification['split'] = split
     if path.exists():
         state = json.loads(path.read_text('utf-8'))
         if state['specification'] != specification:
@@ -152,7 +183,7 @@ def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, phys
         if client.get('/knowledge-bases').raise_for_status().json():
             raise ValueError('DELIVERY_TENANT_NOT_FRESH')
         state = {'specification': specification, 'status': 'PREPARING', 'operations': {}, 'scopes': {},
-                 'planned_case_ids': [case['id'] for case in fixtures['cases']]}
+                 'planned_case_ids': [case['id'] for case in fixtures['cases'] if case['split'] in splits]}
         _atomic_json(path, state)
 
     def once(key, method, url, **kwargs):
@@ -182,7 +213,7 @@ def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, phys
         return value
 
     data_scopes = {}
-    for split in ('dev', 'holdout'):
+    for split in splits:
         scope_receipt = once(split + ':scope', 'POST', '/knowledge-bases', json={'name': 'delivery-' + split})
         scope = scope_receipt['kb_id']
         state['scopes'][split] = scope
@@ -206,9 +237,13 @@ def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, phys
 
 
 def load_prepared(root):
+    return _checked_prepared(root, (VERSION,))
+
+
+def _checked_prepared(root, protocols):
     root = Path(root).resolve()
     prepared = json.loads((root / 'prepared.json').read_text('utf-8'))
-    if prepared.get('protocol') != VERSION:
+    if prepared.get('protocol') not in protocols:
         raise ValueError('UNKNOWN_PREPARED_PROTOCOL')
     for name, checksum in prepared['file_sha256'].items():
         path = (root / name).resolve()
@@ -220,7 +255,7 @@ def load_prepared(root):
 def rebind_http(client, prepared_directory, output, *, platform, expected_tenant_id, physical_directory):
 
     previous = Path(prepared_directory).resolve()
-    old = load_prepared(previous)
+    old = _checked_prepared(previous, (VERSION, 'delivery-real-http-actual-payload/2'))
     old_state_path = previous / 'prepare-state.json'
     old_state = json.loads(old_state_path.read_text('utf-8'))
     if old_state.get('status') != 'COMPLETE' or any(
@@ -247,12 +282,18 @@ def rebind_http(client, prepared_directory, output, *, platform, expected_tenant
     state = {'status': 'DATA_READY', 'operations': deepcopy(old_state['operations']),
         'specification': {**old_state.get('specification', {}), 'protocol': VERSION},
         'planned_case_ids': list(old['planned_case_ids']),
-        'rebind_from': {'directory': str(previous), 'prepared_sha256': sha256((previous / 'prepared.json').read_bytes()).hexdigest(),
+        'rebind_from': {'directory': str(previous), 'protocol': old['protocol'],
+                        'execution_protocol': VERSION, 'old_traces_reused': False,
+                        'prepared_sha256': sha256((previous / 'prepared.json').read_bytes()).hexdigest(),
                         'receipts_sha256': sha256(old_state_path.read_bytes()).hexdigest()}}
     data_scopes = {split: {key: data[key] for key in ('scope_id', 'ingested', 'build', 'published')}
                    for split, data in old['splits'].items()}
-    return _bind_prepared_http(client, fixtures, root, platform=platform, identity=identity, data_scopes=data_scopes,
-                              context_budget=old['context_budget'], state=state, state_path=root / 'prepare-state.json')
+    with sqlite_guard(root / '.prepare.guard.sqlite3', nowait=True):
+        if any(path.name not in {'.prepare.guard.sqlite3', '.prepare.guard.sqlite3-journal',
+                                 '.prepare.guard.sqlite3-wal', '.prepare.guard.sqlite3-shm'} for path in root.iterdir()):
+            raise FileExistsError(root)
+        return _bind_prepared_http(client, fixtures, root, platform=platform, identity=identity, data_scopes=data_scopes,
+                                  context_budget=old['context_budget'], state=state, state_path=root / 'prepare-state.json')
 
 
 def _fragment(binding, source, relative_start=0, text=None):
@@ -270,7 +311,8 @@ def _fragment(binding, source, relative_start=0, text=None):
 
 
 def capture_final(response, records, bindings, sources):
-
+    if any(capture_unresolved(record) for record in records):
+        raise ValueError('FINAL_PHYSICAL_PAYLOAD_MISSING_OR_AMBIGUOUS')
     models = [record for record in records if isinstance(record['payload'].get('messages'), list)]
     calls = response.get('trace', {}).get('calls', [])
     answers = [call for call in calls if call.get('role') == 'answer']
@@ -434,7 +476,8 @@ class DeliveryHTTPAdapter:
                 _assert_authority(observed, expected_authority)
                 current_id = turn_id if number == len(conversation) - 1 else 'history-' + uuid4().hex
                 turn_ids.append(current_id)
-                product_input = {**product_turn, 'request_id': current_id, 'expected_revision': revision}
+                product_input = {**product_turn, 'request_id': current_id, 'expected_revision': revision,
+                    'context_budget': {'limit': request.context_budget, 'unit': request.budget_unit, 'scope': 'evidence'}}
                 write_json(case_dir / f'turn-{number:02}-request.json', {'session_id': session_id,
                     'request': product_input, 'config_name': self.config_name})
                 _atomic_json(case_dir / 'state.json', {'status': 'STARTED', 'session_id': session_id,
@@ -508,7 +551,7 @@ class DeliveryHTTPAdapter:
 
 def _usage(records):
     def total(key):
-        values = [record.get('usage', {}).get(key) for record in records]
+        values = [(record.get('usage') or {}).get(key) for record in records]
         return sum(values) if all(type(value) is int and value >= 0 for value in values) else None
     return {'model_calls': len(records), 'input_tokens': total('input_tokens'), 'output_tokens': total('output_tokens')}
 
@@ -517,9 +560,11 @@ def _physical_summary(records):
     models = [record for record in records if isinstance(record['payload'].get('messages'), list)]
     return {'physical_request_ids': [record['physical_request_id'] for record in records], **_usage(models),
         'embedding_requests': len(records) - len(models),
-        'pending_or_unknown': [record['physical_request_id'] for record in records if record['status'] not in ('COMPLETE', 'ERROR')],
+        'pending_or_unknown': [record['physical_request_id'] for record in records if capture_unresolved(record)],
+        'unconfirmed_settlement_requests': [record['physical_request_id'] for record in records
+            if 'ledger_settlement' in record and record['ledger_settlement'] != 'COMMITTED'],
         'unknown_usage_model_requests': [record['physical_request_id'] for record in models
-            if any(type(record.get('usage', {}).get(key)) is not int for key in ('input_tokens', 'output_tokens'))]}
+            if any(type((record.get('usage') or {}).get(key)) is not int for key in ('input_tokens', 'output_tokens'))]}
 
 
 def execute_prepared(client, prepared_directory, output, *, config_name, physical_directory,

@@ -104,7 +104,7 @@ def _provider_guard(operation):
 
     def guarded(self, *args, **kwargs):
         try:
-            probe = self._circuit.acquire()
+            permit = self._circuit.acquire()
         except RuntimePolicyError as exc:
             raise RemoteModelError(exc.code) from None
         try:
@@ -114,10 +114,10 @@ def _provider_guard(operation):
             admission = getattr(exc, 'code', '') in {
                 'PROVIDER_RATE_LIMIT_WAIT_EXCEEDED', 'PROVIDER_RETRY_WAIT_EXCEEDED',
                 'PROVIDER_DEADLINE_EXCEEDED', 'PROVIDER_REQUEST_LIMIT', 'PROVIDER_REQUEST_UNRESOLVED'}
-            self._circuit.finish(probe, failure=not admission and (failure.retryable or failure.outcome == 'UNKNOWN'
+            self._circuit.finish(permit, failure=not admission and (failure.retryable or failure.outcome == 'UNKNOWN'
                 or getattr(exc, 'code', '') == 'PROVIDER_TRANSPORT_ERROR'))
             raise
-        self._circuit.finish(probe, success=True)
+        self._circuit.finish(permit, success=True)
         return result
     return guarded
 
@@ -418,13 +418,18 @@ class _Transport:
         deadline = metadata.get('deadline_monotonic')
         execution = current_execution()
         if execution is not None:
-            if execution.cancellation.is_set():
-                raise RemoteModelError('PROVIDER_CANCELLED')
             deadline = min(deadline, execution.deadline) if deadline is not None else execution.deadline
             metadata['deadline_monotonic'] = deadline
-        remaining = deadline - time.monotonic() if deadline is not None else None
-        if remaining is not None and remaining <= 0:
-            raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
+
+        def remaining_time():
+            if execution is not None and execution.cancellation.is_set():
+                raise RemoteModelError('PROVIDER_CANCELLED')
+            remaining = deadline - time.monotonic() if deadline is not None else None
+            if remaining is not None and remaining <= 0:
+                raise RemoteModelError('PROVIDER_DEADLINE_EXCEEDED')
+            return remaining
+
+        remaining_time()
         with self._stats_lock:
             if self._issued_requests >= self.max_requests:
                 raise RemoteModelError('PROVIDER_REQUEST_LIMIT')
@@ -432,6 +437,21 @@ class _Transport:
                 physical_id = self._receipts.begin(logical_id, key, metadata)
             except RuntimePolicyError as exc:
                 raise RemoteModelError(exc.code) from None
+            try:
+                remaining = remaining_time()
+            except RemoteModelError as preflight:
+                facts = {'model_sent': False, 'preflight_code': preflight.code,
+                         'admission_receipt_id': physical_id, 'known_zero_send': True}
+                metadata.update(facts)
+                try:
+                    self._receipts.finish(logical_id, physical_id, 'ERROR', **facts)
+                except BaseException as storage_error:
+                    for name, value in facts.items():
+                        setattr(storage_error, name, value)
+                    raise
+                for name, value in facts.items():
+                    setattr(preflight, name, value)
+                raise
             self._issued_requests += 1
         metadata['physical_request_id'] = physical_id
         started = time.perf_counter()

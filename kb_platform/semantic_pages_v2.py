@@ -63,7 +63,12 @@ class SemanticPageAuthority:
 
     @contextmanager
     def locked(self, actor, kb_id, *, manage=False):
+        source_snapshot = self.platform._source_snapshot(actor, kb_id,
+            capability='kb.manage' if manage else 'kb.read')
+        stored = {row['citation_id']: row for row in self.platform.repository.citations(
+            actor, kb_id, source_snapshot['kb']['manifest_id'])} if source_snapshot['kb']['manifest_id'] else {}
         with self.platform._tx(actor, kb_id) as conn:
+            self.platform._check_source_snapshot(conn, actor, kb_id, source_snapshot)
             revision = self.platform._lock_authority(conn, actor)
             kb = self.platform._auth(conn, actor, kb_id, 'kb.manage' if manage else 'kb.read')
             self.platform._auth(conn, actor, kb_id, 'kb.read')
@@ -72,12 +77,13 @@ class SemanticPageAuthority:
             build = conn.execute(KnowledgeQuery.BUILD_PUBLISHED, (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone()
             if not build or build['inputs'].get('page_navigation_protocol') != PAGE_PROTOCOL:
                 raise PlatformError('SEMANTIC_PAGE_BUILD_REQUIRED', 'The current build has no canonical Page channel', 409)
-            rows = self.platform._allowed(self.platform._bindings(conn, actor, kb_id), actor, 'human_search')
+            rows = self.platform._allowed(source_snapshot['rows'], actor, 'human_search')
             state = {'scope_id': kb_id, 'manifest_id': kb['manifest_id'], 'authority_revision': revision}
             def authorize():
                 current = self.platform._auth(conn, actor, kb_id)
                 return current['manifest_id'] == state['manifest_id'] and self.platform._revision(conn, actor) == revision
-            yield {'state': state, 'rows': rows, 'build': build, 'conn': conn, 'authorize': authorize}
+            yield {'state': state, 'rows': rows, 'build': build, 'conn': conn, 'authorize': authorize,
+                   'citations': stored}
 
     def catalog(self, actor, kb_id, snapshot, rows):
 
@@ -85,9 +91,7 @@ class SemanticPageAuthority:
         build_id = snapshot['state']['manifest_id']
         units, _ = platform._units(actor, kb_id, build_id, rows)
         by_id = {u['citation_id']: u for u in units if u['kind'] == 'Page'}
-        stored = conn.execute(KnowledgeQuery.CITATIONS_FOR_BUILD,
-                              (actor.tenant_id, kb_id, build_id)).fetchall()
-        stored = {r['citation_id']: r for r in stored}
+        stored = snapshot['citations']
         result = {}
         for row in rows:
             doc = row['document']
@@ -183,6 +187,7 @@ class SemanticPageService:
                     or manifest['authority_revision'] != state['authority_revision']):
                 raise PlatformError('SEMANTIC_PAGE_INDEX_STALE',
                     'Build or authority changed; explicitly rebuild semantic Pages', 409)
+            self.gateway._unchanged(actor, kb_id, state)
             return manifest, pointer['sha256']
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise PlatformError('SEMANTIC_PAGE_INDEX_UNAVAILABLE', 'Build a verified semantic Page index explicitly', 409) from exc

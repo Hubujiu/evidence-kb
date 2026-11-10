@@ -1,9 +1,13 @@
 from pathlib import Path
+from contextlib import closing
 from hashlib import sha256
+from functools import partial
 from threading import RLock
+import sqlite3
+import time
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, QueuePool
 
 from ..database_contracts import DatabaseInfo
 from .base import DatabaseSpace
@@ -13,6 +17,8 @@ class SQLiteProvider:
     info = DatabaseInfo('sqlite')
 
     def __init__(self, root, *, files=None):
+        if files is None and sqlite3.sqlite_version_info < (3, 51, 3):
+            raise RuntimeError('SQLITE_VERSION_REQUIRES_3_51_3')
         self.root = Path(root).resolve()
         self._files = None if files is None else {key: Path(path).resolve() for key, path in files.items()}
         if self._files is not None and len(set(self._files.values())) != len(self._files):
@@ -30,10 +36,12 @@ class SQLiteProvider:
                     raise ValueError('SQLITE_SPACE_FILE_NOT_GRANTED')
                 path = self._files[key]
             path.parent.mkdir(parents=True, exist_ok=True)
-            engines = [create_engine('sqlite:///' + path.as_posix(), poolclass=NullPool,
+            pooling = ({'poolclass': QueuePool, 'pool_size': 1, 'max_overflow': -1}
+                       if self._files is None else {'poolclass': NullPool})
+            engines = [create_engine('sqlite:///' + path.as_posix(), **pooling,
                                      connect_args={'timeout': 30, 'check_same_thread': False}) for _ in range(2)]
             for engine in engines:
-                event.listen(engine, 'connect', _initialize)
+                event.listen(engine, 'connect', partial(_initialize, wal=self._files is None))
             space = DatabaseSpace(self, key, engines[0], engines[1], str(path))
             self._spaces[key] = space
             return space
@@ -65,7 +73,37 @@ class SQLiteProvider:
             self._spaces.clear()
 
 
-def _initialize(connection, record):
-    connection.execute('PRAGMA foreign_keys=ON')
-    connection.execute('PRAGMA recursive_triggers=ON')
-    connection.execute('PRAGMA busy_timeout=30000')
+def _set_journal_mode(connection, mode):
+    deadline = time.monotonic() + 30
+
+    def read(statement):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('SQLITE_JOURNAL_MODE_TIMEOUT')
+        with closing(connection.execute('PRAGMA busy_timeout=' + str(int(remaining * 1000)))):
+            pass
+        with closing(connection.execute(statement)) as cursor:
+            return cursor.fetchone()[0]
+
+    while True:
+        try:
+            if read('PRAGMA journal_mode') != mode:
+                if read('PRAGMA journal_mode=' + mode) != mode:
+                    raise RuntimeError('SQLITE_WAL_UNAVAILABLE')
+            return
+        except sqlite3.OperationalError as error:
+            code = getattr(error, 'sqlite_errorcode', None)
+            if not isinstance(code, int) or code & 0xff != sqlite3.SQLITE_BUSY:
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.01, remaining))
+
+
+def _initialize(connection, record, *, wal):
+    _set_journal_mode(connection, 'wal' if wal else 'delete')
+    for statement in ('PRAGMA busy_timeout=30000', 'PRAGMA synchronous=FULL',
+                      'PRAGMA foreign_keys=ON', 'PRAGMA recursive_triggers=ON'):
+        with closing(connection.execute(statement)):
+            pass

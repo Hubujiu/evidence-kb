@@ -25,6 +25,22 @@ from kb_platform.storage_catalog import initialize_configuration
 
 
 class KnowledgeAuthorityContracts(unittest.TestCase):
+    def test_partial_builtin_compositions_cannot_split_session_and_evidence_authority(self):
+        from kb_platform.knowledge_authority_contract import validate_authority_bindings
+
+        for other in ('access', 'data'):
+            with self.subTest(other=other):
+                profile = {'plugins': {name: {'implementation': 'knowledge.' + name}
+                    for name in ('sessions', other)}, 'bindings': {name: {'authority': {
+                        'plugin': 'shared', 'export': 'authority'}} for name in ('sessions', other)}}
+                validate_authority_bindings(profile)
+                profile['bindings']['sessions']['authority']['plugin'] = 'different'
+                with self.assertRaisesRegex(PluginError, 'KNOWLEDGE_AUTHORITY_BINDING_MISMATCH'):
+                    validate_authority_bindings(profile)
+                del profile['bindings']['sessions']['authority']
+                with self.assertRaisesRegex(PluginError, 'KNOWLEDGE_AUTHORITY_BINDING_REQUIRED'):
+                    validate_authority_bindings(profile)
+
     def test_foreign_authority_revision_is_negotiated_from_neutral_schema(self):
         with TemporaryDirectory() as directory:
             configuration = initialize_configuration({'version': 2, 'application_id': 'foreign-authority-contract',
@@ -89,7 +105,7 @@ class KnowledgeAuthorityContracts(unittest.TestCase):
                 neutral = authority_schema_descriptor()
                 self.assertNotIn('owner', neutral)
                 self.assertNotIn('digest', neutral)
-                self.assertEqual(set(neutral['appendonly']), {'source_versions', 'parse_snapshots', 'citations'})
+                self.assertEqual(set(neutral['appendonly']), {'source_versions', 'parse_snapshots', 'citations', 'events', 'artifacts'})
                 tables = {table['name'] for table in neutral['tables']}
                 self.assertTrue({'tenant_state', 'knowledge_bases', 'members', 'sources'} <= tables)
                 repository = KnowledgeRepository(database=authority_database(endpoint))
@@ -103,6 +119,18 @@ class KnowledgeAuthorityContracts(unittest.TestCase):
                 with self.assertRaises(ContractError):
                     endpoint.relational({'version': 1, 'op': 'schemas', 'binding': 'store.primary'})
                 self.assertNotIn('store.primary', storage._structured)
+                from kb_platform.knowledge_sessions import KnowledgeSessions
+                from kb_platform.knowledge_schema import knowledge_schema
+                from kb_platform.session_store import SessionStore
+
+                sessions = KnowledgeSessions(SessionStore(database=authority_database(endpoint), schema=knowledge_schema))
+                snapshot = KnowledgeAccess(another).authorize({'actor': asdict(actor), 'scope_id': scope})
+                session = sessions.create(actor, scope, {})['session_id']
+                token = sessions.begin(actor, session, 'wire-turn', 0, 'wire-fingerprint')['token']
+                response = sessions.finish(actor, session, token, {}, {'status': 'answered'}, authority=snapshot)
+                self.assertEqual(response['revision'], 1)
+                self.assertEqual(sessions.identity, repository.identity)
+                self.assertEqual(sessions.begin(actor, session, 'wire-turn', 0, 'wire-fingerprint'), {'cached': response})
             finally:
                 storage.close()
 

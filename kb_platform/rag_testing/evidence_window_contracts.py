@@ -47,6 +47,56 @@ class CompleteWindowModel(ScenarioModel):
 
 
 class EvidenceWindowContracts(unittest.TestCase):
+    def test_long_single_line_can_supply_complete_sentence_without_inventing_text(self):
+        from kb_platform.prose_windows import select_window as prose_window
+
+        fact = 'Dr. A. Smith permits licensed review only if the signed approval is current.'
+        text = fact + ' ' + ('Unrelated background remains available in the original. ' * 40)
+        start, end = prose_window(text, 'licensed review approval', 0,
+            lambda start, end: end - start <= len(fact) + 5)
+        self.assertEqual(text[start:end], fact)
+        self.assertEqual(start, 0)
+
+    def test_short_paragraph_and_table_remain_atomic_under_sentence_fallback(self):
+        from kb_platform.prose_windows import select_window as prose_window
+
+        for text in ('Review is permitted. However, an expired approval forbids review.',
+                     'column | licensed review. ' + 'Row | detail. ' * 100,
+                     'column\tlicensed review. ' + 'Row\tdetail. ' * 100):
+            self.assertEqual(prose_window(text, 'licensed review', 0,
+                lambda start, end: end - start < 40), (0, 0))
+
+    def test_following_exception_stays_with_its_rule_in_long_single_line(self):
+        from kb_platform.prose_windows import select_window as prose_window
+
+        rule = 'Licensed review is permitted. However, expired approval forbids review.'
+        text = rule + ' ' + 'Background information. ' * 50
+        start, end = prose_window(text, 'licensed review', 0,
+            lambda start, end: end - start <= len(rule))
+        self.assertEqual(text[start:end], rule)
+
+    def test_surplus_expands_contiguous_antecedent_without_losing_selected_fact(self):
+        from kb_platform.prose_windows import expand_window
+
+        prefix = 'The named subject is the child of the governor.'
+        fact = 'The governor is the child of the king.'
+        text = prefix + ' ' + fact + ' ' + 'Other information. ' * 60
+        start, end = expand_window(text, len(prefix) + 1, len(prefix) + 1 + len(fact), 0,
+            lambda a, b: b - a <= len(prefix) + 1 + len(fact))
+        self.assertEqual(text[start:end], prefix + ' ' + fact)
+        start, end = expand_window(text, len(prefix) + 1, len(prefix) + 1 + len(fact), len(prefix) + 1,
+            lambda a, b: b - a <= len(fact))
+        self.assertEqual(text[start:end], fact)
+
+    def test_long_single_line_is_selected_in_context_and_retains_original_offsets(self):
+        fact = 'Licensed review is permitted only with current signed approval.'
+        text = fact + ' ' + 'Unrelated background. ' * 100
+        for strategy in ('query_blocks', 'coverage_blocks'):
+            item = self.prepare(text, strategy, budget=1100, question='licensed review approval')
+            self.assertIn(fact, item['text'])
+            self.assertTrue(item['remaining_text_externalized'])
+            self.assertEqual(item['text'], text[item['text_start']:item['text_start'] + len(item['text'])])
+
     def prepare(self, text, strategy, *, offset=0, budget=12000, question='licensed review rule'):
         policy = ContextPolicy(input_budget=budget, evidence_strategy=strategy)
         prepared = ContextManager(policy).prepare('retrieval', 'Use authorized originals.', {}, [],

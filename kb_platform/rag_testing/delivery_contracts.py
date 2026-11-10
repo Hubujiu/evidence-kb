@@ -43,7 +43,10 @@ class DeliveryFailureTraceContracts(unittest.TestCase):
                     elif request.url.path == '/scopes/kb/sessions':
                         body = {'session_id': 'session', 'revision': 0}
                     else:
-                        turn = json.loads(request.content)['request_id']
+                        turn_input = json.loads(request.content)
+                        self.assertEqual(turn_input['context_budget'],
+                                         {'limit': 1000, 'unit': 'unicode_codepoints', 'scope': 'evidence'})
+                        turn = turn_input['request_id']
                         payload = {'messages': [{'role': 'user', 'content': '{}'}]}
                         record = {'physical_request_id': 'unknown', 'status': 'UNKNOWN',
                             'payload': payload, 'payload_sha256': digest(payload),
@@ -180,6 +183,34 @@ class DeliveryContracts(unittest.TestCase):
         with self.assertRaises(DeliveryConfigurationError):
             self.profile()
 
+    def test_v2_uses_explicit_pinned_generation_model(self):
+        self.config['protocol'] = 'enterprise-kb-delivery/2'
+        self.config['models']['generation'] = 'fixture/alternate-model'
+        self.providers['luna']['model'] = 'fixture/alternate-model'
+        self.save()
+        self.assertEqual(self.profile().public()['models']['generation'], 'fixture/alternate-model')
+        self.providers['luna']['model'] = 'fixture/different-model'
+        self.save()
+        with self.assertRaises(DeliveryConfigurationError):
+            self.profile()
+
+    def test_v1_remains_pinned_even_when_both_files_change(self):
+        self.config['models']['generation'] = 'fixture/alternate-model'
+        self.providers['luna']['model'] = 'fixture/alternate-model'
+        self.save()
+        with self.assertRaises(DeliveryConfigurationError):
+            self.profile()
+
+    def test_v2_rejects_missing_or_invalid_model_identity(self):
+        self.config['protocol'] = 'enterprise-kb-delivery/2'
+        for model in (None, '', ' ', 'fixture/model\n', 42):
+            with self.subTest(model=model):
+                self.config['models']['generation'] = model
+                self.providers['luna']['model'] = model
+                self.save()
+                with self.assertRaises(DeliveryConfigurationError):
+                    self.profile()
+
     def test_private_identity_survives_restart_and_invalid_identity_is_not_overwritten(self):
         profile = self.profile()
         path = ensure_private_identity(profile)
@@ -277,6 +308,41 @@ class DeliveryContracts(unittest.TestCase):
         captured.close.assert_called_once_with()
         embedding.close.assert_called_once_with()
 
+    def test_runtime_status_reports_unavailable_budget_without_fabricating_usage(self):
+        from fastapi import FastAPI
+        from kb_platform.database_contracts import DatabaseError
+        from kb_platform.session_identity import Actor
+
+        policy = SimpleNamespace(model_window=131072, input_budget=118784,
+            output_reserve=4096, safety_reserve=8192)
+        app = FastAPI()
+        app.state.agent = SimpleNamespace(model=SimpleNamespace(policy=policy), semantic_pages=None)
+        app.state.research = SimpleNamespace(configured=True)
+        embedding = SimpleNamespace(provider_id='google_gemini', close=Mock(),
+            admission=SimpleNamespace(scope_hash='synthetic', directory=self.run / 'google',
+                                      snapshot=lambda **kwargs: {'state': 'AVAILABLE'}))
+        app.state.research.embedding = embedding
+        captured = SimpleNamespace(provider_id='luna', close=Mock(),
+            admission=SimpleNamespace(scope_hash='synthetic', directory=self.run / 'luna',
+                                      snapshot=lambda **kwargs: {'state': 'AVAILABLE'}))
+        app.state.platform = SimpleNamespace(embedding_provider=embedding)
+        with patch('kb_platform.delivery.CapturedLuna', return_value=captured), \
+                patch('kb_platform.remote.GoogleEmbeddingProvider', return_value=embedding), \
+                patch('kb_platform.delivery.observe_client'), \
+                patch('kb_platform.delivery._serialize_client_sends'):
+            result = create_delivery_app(self.config_path, self.provider_path, self.run,
+                                         app_factory=lambda settings, **kwargs: app)
+        ledger = result.state.delivery['ledger']
+        with patch.object(ledger, 'summary', side_effect=DatabaseError('BUDGET_READ_UNAVAILABLE')):
+            status = result.state.delivery_status(Actor('delivery-contract', 'local'))
+        self.assertEqual(status['status'], 'BLOCKED')
+        self.assertEqual(status['blocked_reason'], 'BUDGET_READ_UNAVAILABLE')
+        self.assertIs(status['usage_available'], False)
+        self.assertIsNone(status['effective_usage_or_reserved'])
+        self.assertIsNone(status['remaining'])
+        for close in result.router.on_shutdown:
+            close()
+
     def test_cli_check_and_help_work_without_services(self):
         help_result = self.cli('--help')
         self.assertEqual(help_result.returncode, 0, help_result.stderr)
@@ -299,6 +365,49 @@ if __name__ == '__main__':
 
 
 class PreparedProtocolContracts(unittest.TestCase):
+    def test_prepare_one_split_never_uploads_other_split(self):
+        import httpx
+        from .delivery_http import prepare_http
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'dev.txt').write_bytes(b'dev document')
+            (root / 'holdout.txt').write_bytes(b'holdout document')
+            from hashlib import sha256
+            fixtures = {'root': str(root), 'documents': [
+                {'id': name, 'split': name, 'relative_path': name + '.txt', 'filename': name + '.txt',
+                 'original_sha256': sha256((root / (name + '.txt')).read_bytes()).hexdigest()}
+                for name in ('dev', 'holdout')], 'cases': [
+                    {'id': name + '-case', 'split': name} for name in ('dev', 'holdout')]}
+            requests = []
+
+            def respond(request):
+                requests.append(request)
+                if request.url.path == '/identity':
+                    return httpx.Response(200, json={'tenant_id': 'tenant', 'principal_id': 'alice'})
+                if request.url.path == '/knowledge-bases' and request.method == 'GET':
+                    return httpx.Response(200, json=[])
+                if request.url.path == '/knowledge-bases':
+                    return httpx.Response(201, json={'kb_id': 'scope'})
+                if request.url.path.endswith('/sources'):
+                    return httpx.Response(201, json={'source_id': 'source'})
+                if request.url.path.endswith('/builds'):
+                    return httpx.Response(201, json={'build_id': 'build'})
+                return httpx.Response(200, json={'manifest_id': 'build'})
+
+            with httpx.Client(base_url='http://fixture.test', transport=httpx.MockTransport(respond)) as client, \
+                    patch('kb_platform.rag_testing.delivery_http.load_delivery_fixtures', return_value=fixtures), \
+                    patch('kb_platform.rag_testing.delivery_http._bind_prepared_http',
+                          side_effect=lambda client, fixtures, root, **kwargs: kwargs):
+                result = prepare_http(client, fixtures, root / 'output', platform=object(),
+                    expected_tenant_id='tenant', physical_directory=root / 'captures', split='holdout')
+            self.assertEqual(result['state']['planned_case_ids'], ['holdout-case'])
+            self.assertEqual(set(result['data_scopes']), {'holdout'})
+            uploads = [request for request in requests if request.url.path.endswith('/sources')]
+            self.assertEqual(len(uploads), 1)
+            self.assertIn(b'holdout document', uploads[0].content)
+            self.assertNotIn(b'dev document', uploads[0].content)
+
     def test_only_current_prepared_protocol_is_accepted(self):
         from .delivery_http import VERSION, load_prepared
         with TemporaryDirectory() as directory:
@@ -306,10 +415,71 @@ class PreparedProtocolContracts(unittest.TestCase):
             target = root / 'prepared.json'
             target.write_text(json.dumps({'protocol': VERSION, 'file_sha256': {}}), 'utf-8')
             self.assertEqual(load_prepared(root)['protocol'], VERSION)
-            target.write_text(json.dumps({'protocol': 'delivery-real-http-actual-payload/1',
-                                          'file_sha256': {}}), 'utf-8')
-            with self.assertRaisesRegex(ValueError, 'UNKNOWN_PREPARED_PROTOCOL'):
-                load_prepared(root)
+            for protocol in ('delivery-real-http-actual-payload/1', 'delivery-real-http-actual-payload/2'):
+                target.write_text(json.dumps({'protocol': protocol, 'file_sha256': {}}), 'utf-8')
+                with self.assertRaisesRegex(ValueError, 'UNKNOWN_PREPARED_PROTOCOL'):
+                    load_prepared(root)
+
+    def test_legacy_rebind_revalidates_receipts_and_regenerates_current_inputs(self):
+        import httpx
+        from hashlib import sha256
+        from .contracts import digest
+        from .delivery_http import VERSION, rebind_http
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = root / 'old'
+            old.mkdir()
+            legacy = old / 'legacy-suite.json'
+            legacy.write_text('{"legacy_execution_inputs":true}', 'utf-8')
+            fixtures = {'root': str(root), 'documents': [], 'cases': []}
+            identity = {'tenant_id': 'tenant', 'principal_id': 'alice'}
+            receipts = {'scope_id': 'kb', 'ingested': {'doc': {'source_id': 'source'}},
+                        'build': {'build_id': 'build'}, 'published': {'manifest_id': 'build'}}
+            prepared = {'protocol': 'delivery-real-http-actual-payload/2', 'fixture_root': str(root),
+                'identity': identity, 'context_budget': 1234, 'planned_case_ids': ['dev-case'],
+                'splits': {'dev': receipts},
+                'file_sha256': {'legacy-suite.json': sha256(legacy.read_bytes()).hexdigest()}}
+            state = {'status': 'COMPLETE', 'specification': {'fixture_hash': digest(
+                {key: value for key, value in fixtures.items() if key != 'root'})}, 'operations': {
+                    'dev:scope': {'status': 'COMPLETE', 'response': {'kb_id': 'kb'}},
+                    'dev:build': {'status': 'COMPLETE', 'response': receipts['build']},
+                    'dev:publish': {'status': 'COMPLETE', 'response': receipts['published']},
+                    'doc:upload': {'status': 'COMPLETE', 'response': receipts['ingested']['doc']}}}
+            (old / 'prepared.json').write_text(json.dumps(prepared), 'utf-8')
+            (old / 'prepare-state.json').write_text(json.dumps(state), 'utf-8')
+            before = {p.name: p.read_bytes() for p in old.iterdir()}
+            requests = []
+
+            def respond(request):
+                requests.append((request.method, request.url.path))
+                return httpx.Response(200, json=identity)
+
+            with httpx.Client(base_url='https://fixture.invalid', transport=httpx.MockTransport(respond)) as client, \
+                    patch('kb_platform.rag_testing.delivery_http.load_delivery_fixtures', return_value=fixtures), \
+                    patch('kb_platform.rag_testing.delivery_http._bind_prepared_http',
+                          side_effect=lambda client, fixtures, root, **kwargs: kwargs) as bind:
+                result = rebind_http(client, old, root / 'new', platform=object(),
+                    expected_tenant_id='tenant', physical_directory=root / 'captures')
+                self.assertEqual(result['data_scopes'], {'dev': receipts})
+                self.assertEqual(result['state']['specification']['protocol'], VERSION)
+                self.assertEqual(result['state']['rebind_from']['protocol'], prepared['protocol'])
+                self.assertFalse(result['state']['rebind_from']['old_traces_reused'])
+                self.assertEqual(result['context_budget'], 1234)
+                self.assertEqual(requests, [('GET', '/identity')])
+                self.assertEqual(before, {p.name: p.read_bytes() for p in old.iterdir()})
+                bind.reset_mock()
+                state['operations']['doc:upload']['response'] = {'source_id': 'wrong'}
+                (old / 'prepare-state.json').write_text(json.dumps(state), 'utf-8')
+                with self.assertRaisesRegex(ValueError, 'REBIND_RECEIPT_MISMATCH'):
+                    rebind_http(client, old, root / 'bad-receipt', platform=object(),
+                        expected_tenant_id='tenant', physical_directory=root / 'captures')
+                bind.assert_not_called()
+                legacy.write_text('tampered', 'utf-8')
+                with self.assertRaisesRegex(ValueError, 'PREPARED_ARTIFACT_CHANGED'):
+                    rebind_http(client, old, root / 'tampered', platform=object(),
+                        expected_tenant_id='tenant', physical_directory=root / 'captures')
+                bind.assert_not_called()
 
 
 class MountedReadinessContracts(unittest.TestCase):

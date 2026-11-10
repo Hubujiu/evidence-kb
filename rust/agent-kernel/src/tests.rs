@@ -185,3 +185,137 @@ fn independent_snapshots_cannot_share_pending_work() {
         status::NO_PENDING
     );
 }
+
+#[test]
+fn bounded_event_exploration_preserves_kernel_safety_invariants() {
+    let mut states = vec![agent_kernel_new(2, 2).state];
+    let mut cursor = 0;
+    while cursor < states.len() {
+        let state = states[cursor];
+        cursor += 1;
+        for kind in 0..=6 {
+            for operation_kind in 0..=4 {
+                for operation_id in 0..=3 {
+                    for now_ms in 0..=3 {
+                        let request = event(kind, operation_kind, operation_id, now_ms);
+                        let result = agent_kernel_apply(state, request);
+                        let next = result.state;
+                        assert!(valid_state(&next), "{state:?} + {request:?}");
+                        assert!(next.operations_started <= next.max_operations);
+                        if next.phase == phase::WAITING {
+                            assert_ne!(next.pending_id, 0);
+                            assert_eq!(next.pending_id, next.operations_started);
+                            assert!(
+                                [operation::MODEL, operation::TOOL, operation::HOST]
+                                    .contains(&next.pending_kind)
+                            );
+                        } else {
+                            assert_eq!(next.pending_id, 0);
+                            assert_eq!(next.pending_kind, operation::NONE);
+                        }
+                        if next.phase == phase::EXPIRED {
+                            assert!(next.last_now_ms >= next.deadline_ms);
+                        } else {
+                            assert!(next.last_now_ms < next.deadline_ms);
+                        }
+                        if next.phase == phase::LIMIT {
+                            assert_eq!(next.operations_started, next.max_operations);
+                        }
+                        assert!(next.operations_started >= state.operations_started);
+                        assert!(next.last_now_ms >= state.last_now_ms);
+                        if state.phase >= phase::COMPLETED {
+                            assert_eq!(next, state, "terminal state changed: {request:?}");
+                        }
+                        if !matches!(
+                            result.status,
+                            status::OK | status::DEADLINE | status::OPERATION_LIMIT
+                        ) {
+                            assert_eq!(next, state, "rejected event changed state: {request:?}");
+                        }
+                        if result.status == status::OK {
+                            assert!(now_ms < state.deadline_ms);
+                            if kind == event::SETTLE {
+                                assert_eq!(state.phase, phase::WAITING);
+                                assert_eq!(operation_kind, state.pending_kind);
+                                assert_eq!(operation_id, state.pending_id);
+                            }
+                            if kind == event::DISPATCH {
+                                assert_eq!(state.phase, phase::READY);
+                                assert_eq!(next.operations_started, state.operations_started + 1);
+                            }
+                        }
+                        if !states.contains(&next) {
+                            states.push(next);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(
+        states.len(),
+        43,
+        "review the bounded model when reachability changes"
+    );
+    for phase in phase::READY..=phase::LIMIT {
+        assert!(states.iter().any(|state| state.phase == phase));
+    }
+}
+
+#[test]
+fn invalid_receipt_after_deadline_does_not_expire_or_settle_pending_work() {
+    let state = applied(initial(2), event(event::DISPATCH, operation::TOOL, 1, 1));
+    for request in [
+        event(event::SETTLE, operation::MODEL, 1, 100),
+        event(event::SETTLE, operation::TOOL, 2, 100),
+    ] {
+        let result = agent_kernel_apply(state, request);
+        assert_eq!(result.status, status::CORRELATION);
+        assert_eq!(result.state, state);
+    }
+    let cancelled = agent_kernel_apply(state, event(event::CANCEL, operation::NONE, 0, 100));
+    assert_eq!(cancelled.status, status::DEADLINE);
+    assert_eq!(cancelled.state.phase, phase::EXPIRED);
+}
+
+#[test]
+fn corrupted_value_snapshots_are_rejected_without_repair_or_dispatch() {
+    let waiting = applied(initial(2), event(event::DISPATCH, operation::HOST, 1, 1));
+    let corruptions = [
+        State {
+            reserved: 1,
+            ..waiting
+        },
+        State {
+            max_operations: 0,
+            ..waiting
+        },
+        State {
+            operations_started: 3,
+            ..waiting
+        },
+        State {
+            pending_id: 2,
+            ..waiting
+        },
+        State {
+            pending_kind: operation::NONE,
+            ..waiting
+        },
+        State {
+            last_now_ms: 100,
+            ..waiting
+        },
+        State {
+            phase: phase::EXPIRED,
+            pending_id: 0,
+            pending_kind: operation::NONE,
+            ..waiting
+        },
+    ];
+    for state in corruptions {
+        let result = agent_kernel_apply(state, event(event::CANCEL, operation::NONE, 0, 2));
+        assert_eq!(result.status, status::INVALID_STATE);
+        assert_eq!(result.state, state);
+    }
+}

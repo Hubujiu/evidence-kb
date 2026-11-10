@@ -1,3 +1,4 @@
+from .offline_transport import offline_client_construction
 from .knowledge_persistence_contracts import postgres_repository, raw_job_transaction
 from datetime import datetime, timezone
 from kb_platform.knowledge_queries import KnowledgeQuery
@@ -63,7 +64,8 @@ class ModelFixtures:
             'cache_mode': 'disabled', 'retries': 0}, 'cache_dir': str(self.root / 'cache'),
             'log_path': str(self.root / 'calls.jsonl')}), 'utf-8')
         def remote(config):
-            provider = GoogleEmbeddingProvider(config)
+            with offline_client_construction():
+                provider = GoogleEmbeddingProvider(config)
             provider.client.close()
             def handle(request):
                 self.sent.append(request)

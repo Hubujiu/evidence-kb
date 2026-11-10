@@ -109,16 +109,16 @@ def main():
         dependencies=recovery_protocol or current_protocol,
     )
     model = "openai/" + gateway.provider.model
-    client = PageIndexClient(
-        index_model=model,
-        chat_model=model,
-        summary_concurrency=1,
-        storage_path=str((args.output / "store").resolve()),
-        index_backend={**gateway.backend, "max_retries": 0},
-        chat_backend=gateway.backend,
-    )
     results = {}
     try:
+        client = PageIndexClient(
+            index_model=model,
+            chat_model=model,
+            summary_concurrency=1,
+            storage_path=str((args.output / "store").resolve()),
+            index_backend={**gateway.backend, "max_retries": 0},
+            chat_backend=gateway.backend,
+        )
         for key, path in PDFS.items():
             gateway.context = dict(stage="index", document=key)
             started = time.perf_counter()

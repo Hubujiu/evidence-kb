@@ -78,10 +78,12 @@
 
 ## 复现
 
-```powershell
-$env:PATH = 'C:\Users\Hubujiu\.cargo\bin;' + $env:PATH
+在 Linux 环境中安装 [开发约定](development.md)所列工具链，并配置专用数据库后执行：
+
+```bash
 uv run --no-sync python scripts/check_project.py --output reports/rust-plugin-v1/new-check
-$env:KB_INTEGRATION_DSN = '<专用 rust_plugin_acceptance_ 数据库 DSN>'
+export KB_INTEGRATION_DSN='<专用 rust_plugin_acceptance_ 数据库 DSN>'
+export KB_INTEGRATION_MIGRATION_DSN='<同库迁移账号 DSN>'
 uv run --no-sync python scripts/check_project.py --local-integration --output reports/rust-plugin-v1/new-integration
 ```
 

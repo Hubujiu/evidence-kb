@@ -15,7 +15,7 @@ from kb_platform.database_contracts import DatabaseError, Migration, SchemaPacka
 from kb_platform.database_providers import SQLiteProvider
 from kb_platform.database_migrations import migration_connection
 from kb_platform.knowledge_queries import KnowledgeQuery as K
-from kb_platform.knowledge_schema import METADATA, knowledge_schema
+from kb_platform.knowledge_schema import LEGACY_METADATA as METADATA, METADATA as CURRENT_METADATA, knowledge_schema
 from kb_platform.knowledge_storage import KnowledgeRepository
 from kb_platform.knowledge_transfer import ARCHIVE, _tables, export_legacy_knowledge, import_knowledge, validate_export, validate_receipt
 from kb_platform.session_identity import Actor
@@ -115,9 +115,9 @@ def exercise_legacy_knowledge_transfer(check, fixtures):
         with target.transaction(write=False, scope={'tenant_id': 'tenant', 'kb_id': 'scope'}) as transaction:
             for name in ('sources', 'source_versions', 'parse_snapshots', 'citations', 'embedding_jobs',
                          'embedding_attempts', 'embedding_circuits'):
-                actual = transaction.execute(select(METADATA.tables[name])).fetchall()
+                actual = transaction.execute(select(CURRENT_METADATA.tables[name])).fetchall()
                 check.assertEqual(content_hash(actual), content_hash(snapshot['tables'][name]))
-            kb = transaction.execute(select(METADATA.tables['knowledge_bases'])).fetchone()
+            kb = transaction.execute(select(CURRENT_METADATA.tables['knowledge_bases'])).fetchone()
             check.assertEqual((kb['manifest_id'], kb['revision']), (None, 4))
         repeated = import_knowledge(target, snapshot, expected_identity=target.identity, target_offline=True)
         check.assertTrue(repeated['idempotent'])
@@ -175,7 +175,7 @@ class KnowledgeTransferContracts(unittest.TestCase):
         with self.target.transaction(write=False, scope={'tenant_id': 'tenant', 'kb_id': 'scope'}) as transaction:
             for name in ('sources', 'source_versions', 'parse_snapshots', 'citations', 'embedding_jobs',
                          'embedding_attempts', 'embedding_circuits'):
-                rows = transaction.execute(select(METADATA.tables[name])).fetchall()
+                rows = transaction.execute(select(CURRENT_METADATA.tables[name])).fetchall()
                 self.assertEqual(content_hash(rows), content_hash(package['tables'][name]))
         repeated = import_knowledge(self.target, package, expected_identity=self.target_identity, target_offline=True)
         self.assertTrue(repeated['idempotent'])
@@ -200,6 +200,22 @@ class KnowledgeTransferContracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'RECEIPT_INTEGRITY'):
             validate_receipt(receipt)
 
+    def test_runtime_handle_cannot_import_legacy_authority(self):
+        from kb_platform.storage_sdk.relational import GUARDED_RELATIONAL_V1
+        from kb_platform.storage_service import StorageService
+
+        service = StorageService()
+        self.addCleanup(service.close)
+        export = next(item for item in self.provider.exports() if item.name == 'structured')
+        service.register('authority', export)
+        grant = service.grant('authority', GUARDED_RELATIONAL_V1,
+            self.target_identity.space, 'fixture', target=ExistingDataset(self.target_identity.dataset_id))
+        target = service.bind(grant)
+        target.prepare(knowledge_schema(self.target_identity.space.owner_id))
+        target.seal()
+        with self.assertRaisesRegex(DatabaseError, 'INITIALIZED_SQL_TARGET_REQUIRED'):
+            import_knowledge(target, self.export(), expected_identity=self.target_identity, target_offline=True)
+
     def test_failed_import_rolls_back_all_domain_rows_and_repeat_cannot_overwrite_changes(self):
         package = self.export()
         broken = deepcopy(package)
@@ -209,10 +225,10 @@ class KnowledgeTransferContracts(unittest.TestCase):
             import_knowledge(self.target, broken, expected_identity=self.target_identity, target_offline=True)
         with self.target.transaction(write=False, scope={'tenant_id': 'tenant', 'kb_id': 'scope'}) as transaction:
             for table in METADATA.sorted_tables:
-                self.assertEqual(transaction.execute(select(table)).fetchall(), [])
+                self.assertEqual(transaction.execute(select(CURRENT_METADATA.tables[table.name])).fetchall(), [])
         import_knowledge(self.target, package, expected_identity=self.target_identity, target_offline=True)
         with self.target.transaction(scope={'tenant_id': 'tenant', 'kb_id': 'scope'}) as transaction:
-            transaction.execute(METADATA.tables['knowledge_bases'].update().values(name='new work'))
+            transaction.execute(CURRENT_METADATA.tables['knowledge_bases'].update().values(name='new work'))
         with self.assertRaisesRegex(DatabaseError, 'TRANSFER_TARGET_CHANGED'):
             import_knowledge(self.target, package, expected_identity=self.target_identity, target_offline=True)
 

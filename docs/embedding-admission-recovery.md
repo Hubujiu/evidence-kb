@@ -24,7 +24,7 @@
 
 当前真实数据库合同由正式入口初始化独立结构化空间。设置同一专用测试数据库的 `KB_INTEGRATION_DSN`（受限运行账号）与 `KB_INTEGRATION_MIGRATION_DSN`（夹具初始化账号），运行：
 
-```powershell
+```bash
 uv run --no-sync python scripts/check_project.py --local-integration --output reports/embedding-recovery-new
 ```
 

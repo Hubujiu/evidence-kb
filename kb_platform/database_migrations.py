@@ -10,6 +10,7 @@ from .database_contracts import DatabaseError, StorageIdentity
 def migration_connection(space):
     connection = space.migration_engine.connect()
     mysql_lock = False
+    failure = None
     try:
         if space.info.engine == 'sqlite':
             connection.exec_driver_sql('BEGIN IMMEDIATE')
@@ -27,15 +28,37 @@ def migration_connection(space):
             mysql_lock = True
         yield connection
         connection.commit()
-    except BaseException:
-        connection.rollback()
+    except BaseException as error:
+        failure = error
+        try:
+            connection.rollback()
+        except BaseException as rollback_error:
+            failure.add_note('Migration rollback failed: ' + type(rollback_error).__name__)
         raise
     finally:
-        if mysql_lock:
-            connection.execute(text('SELECT RELEASE_LOCK(:name)'),
-                               {'name': 'migration_' + space.key.digest[:48]})
-            connection.commit()
-        connection.close()
+        try:
+            if mysql_lock:
+                connection.execute(text('SELECT RELEASE_LOCK(:name)'),
+                                   {'name': 'migration_' + space.key.digest[:48]})
+                connection.commit()
+        except BaseException as release_error:
+            if failure is None:
+                failure = release_error
+            else:
+                failure.add_note('Migration lock release failed: ' + type(release_error).__name__)
+            try:
+                connection.invalidate()
+            except BaseException as invalidate_error:
+                failure.add_note('Migration invalidation failed: ' + type(invalidate_error).__name__)
+            if failure is release_error:
+                raise
+        finally:
+            try:
+                connection.close()
+            except BaseException as close_error:
+                if failure is None:
+                    raise
+                failure.add_note('Migration close failed: ' + type(close_error).__name__)
 
 
 def initialize_space(space, *, expected_dataset_id=None):

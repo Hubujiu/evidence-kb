@@ -45,6 +45,7 @@ def main(argv=None):
     runtime.add_argument('--tenant', required=True)
     runtime.add_argument('--semantic-predecessor', type=Path, required=True)
     runtime.add_argument('--id', required=True)
+    runtime.add_argument('--caps', type=Path, help='Explicit finite runtime resource caps as JSON')
     runtime.add_argument('--output', type=Path, required=True)
     args = parser.parse_args(argv)
     if args.output.exists():
@@ -67,7 +68,7 @@ def main(argv=None):
         _write(args.output, value)
     else:
         import re
-        from kb_platform.delivery import RUNTIME_CAPS
+        from kb_platform.delivery import RUNTIME_CAPS, validate_runtime_caps
 
         predecessors = [_read(path) for path in args.predecessor]
         parents = [validate_predecessor(value) for value in predecessors]
@@ -81,8 +82,9 @@ def main(argv=None):
                 or len(paths) != len(parents) or original not in paths or semantic not in paths
                 or original == semantic or args.output.resolve() == args.delivery_root.resolve()):
             raise ValueError('EXPLICIT_DISTINCT_ORIGINAL_AND_SEMANTIC_PREDECESSORS_REQUIRED')
+        caps = validate_runtime_caps(_read(args.caps) if args.caps else RUNTIME_CAPS)
         _write(args.output / 'batch.json', {'protocol': 'delivery-runtime-budget-batch/1', 'id': args.id,
-            'tenant_id': args.tenant, 'caps': RUNTIME_CAPS, 'semantic_predecessor': semantic,
+            'tenant_id': args.tenant, 'caps': caps, 'semantic_predecessor': semantic,
             'predecessors': predecessors, 'registered_only': True,
             'new_model_calls': 0, 'new_embedding_calls': 0})
     print(json.dumps({'command': args.command, 'output': str(args.output.resolve()), 'new_remote_calls': 0}))

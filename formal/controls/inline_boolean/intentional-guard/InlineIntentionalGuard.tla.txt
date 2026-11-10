@@ -1,0 +1,4 @@
+---- MODULE InlineIntentionalGuard ----
+CONSTANT B   VARIABLE x
+ReviewRequired == x' = TRUE /\ B
+====

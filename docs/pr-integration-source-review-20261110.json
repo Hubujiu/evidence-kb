@@ -1,0 +1,801 @@
+{
+  "baseline": "150d2b215fed60846d3630b8cffc495f307ea944",
+  "product_commit": "8670197a8d5b9891aa7284b123ba9441d7b80a7d",
+  "scope": "Reviewed source mappings; finite abstractions and executable contracts, not an implementation refinement proof.",
+  "changed_bindings": [
+    {
+      "machine": "physical_budget",
+      "path": "kb_platform/model_http.py",
+      "symbol": "OpenAICompatibleAdapter.invoke",
+      "before": "ea0e48c0a355f6a01810c6f4793b7ea2d573c6c8f30ff77bf0de7ead866ed937",
+      "after": "e5dc2c57076583d86b51d961a38b72687ad90a8dca13d87a2b4efa7e68e0290f",
+      "reason": "Attach the reserved physical identity and budget operation identity to unsent COMMIT_UNKNOWN; 403 blocking still precedes settlement."
+    },
+    {
+      "machine": "budget_batches",
+      "path": "kb_platform/rag_testing/budget_batches.py",
+      "symbol": "freeze_reviewed_predecessor",
+      "before": "6021902de7c65e0b2cec1a22172f7ae01fd54aa57c297f44b321e56ebc997b26",
+      "after": "7dfd60535c8ba9f7d93d535590f0fc0fce562ec49b6bb2dfb0f34b03ed555fa0",
+      "reason": "An explicit reviewed predecessor v2 may identify orphaned STARTED rows, while exact snapshots and all unknown reservations remain retained."
+    },
+    {
+      "machine": "turn_budget",
+      "path": "kb_platform/agent_model.py",
+      "symbol": "AgentModel.complete",
+      "before": "f1f33d434ac14332452b2a1393f5dfc62bf203827a292120e4def670abe4d85d",
+      "after": "a32feb9b03e364a361ca845cc647ff9a4f6b988f50d78a179bd872121654429e",
+      "reason": "Enforce the explicit request budget before sending and retain independent physical and budget recovery identities in the failure record."
+    },
+    {
+      "machine": "turn_budget",
+      "path": "kb_platform/rag_testing/turn_budget_contracts.py",
+      "symbol": "TurnBudgetContracts",
+      "before": "7401ead4c4c2a9c2c122981cb3445742d281f78bc164e0bec89d32de2eb93aa1",
+      "after": "957b8e3146bfb925fa56a748b945bf6e67c859f566e2b4d2cdc67f0b7cf3f159",
+      "reason": "Fixture setup supplies the required assessment question; the existing physical-call budget assertions remain."
+    },
+    {
+      "machine": "session_commit",
+      "path": "kb_platform/knowledge_turn.py",
+      "symbol": "KnowledgeTurn.run",
+      "before": "f09fac190d69cb2d63d8241437dcb9eed27199e488661c1736a29b6f14078c27",
+      "after": "5e13db0edb19347abad1360218e675c7237f09f8ba1c4251e97e4a489aeb7b15",
+      "reason": "Combine explicit context budgets and assessment with required authority completion, business-error rejection and COMMIT_UNKNOWN passthrough."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::reconcile",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::complete",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::acquire",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::drain",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::update",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Instance",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "complete",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "reconcile",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "drain_instance",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "update",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "cancel",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "retry",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "invoke",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "drain",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Lease",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Scope",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::retained_by_consumer",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::closing_scope_busy",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::open_ancestors",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::is_ancestor",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::lookup_binding",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Operation",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::cancel_unclaimed_init",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::request",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Resource",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::ack",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::prune_retired",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::resource",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::listeners",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::apply",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::collect",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::revision_affected",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::affected_closure",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::registered_binding",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::intercept",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::inherited",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::scope_options",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::allocate",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "plugin_lifecycle",
+      "path": "rust/plugin-runtime/src/coordinator.rs",
+      "symbol": "Coordinator::resolve",
+      "before": "cabb188ae8bd772d903ee6bcc13fdad923f4d128a327fe07b70b1acaee3afb3b",
+      "after": "aff941d49c402100691ffa1d6a3aad365003066c26ba9a619cc2de3debb491aa",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "host_process",
+      "path": "rust/plugin-host/src/process_plugin.rs",
+      "symbol": "CallContext::check",
+      "before": "466d31355ce18f251413957e9748c386c9983d6d2844ca160f0214fc65e0bb4d",
+      "after": "049b0900d8fdd34e2f06d48467bdf653c1eac0ffc33eae834b6ca995de46ac33",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "host_process",
+      "path": "rust/plugin-host/src/process_plugin.rs",
+      "symbol": "RequestIds::insert",
+      "before": "466d31355ce18f251413957e9748c386c9983d6d2844ca160f0214fc65e0bb4d",
+      "after": "049b0900d8fdd34e2f06d48467bdf653c1eac0ffc33eae834b6ca995de46ac33",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "host_process",
+      "path": "rust/plugin-host/src/process_plugin.rs",
+      "symbol": "join",
+      "before": "466d31355ce18f251413957e9748c386c9983d6d2844ca160f0214fc65e0bb4d",
+      "after": "049b0900d8fdd34e2f06d48467bdf653c1eac0ffc33eae834b6ca995de46ac33",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "host_process",
+      "path": "rust/plugin-host/src/process_plugin.rs",
+      "symbol": "serve",
+      "before": "466d31355ce18f251413957e9748c386c9983d6d2844ca160f0214fc65e0bb4d",
+      "after": "049b0900d8fdd34e2f06d48467bdf653c1eac0ffc33eae834b6ca995de46ac33",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "kernel_execution",
+      "path": "rust/agent-kernel/src/tests.rs",
+      "symbol": "bounded_event_exploration_preserves_kernel_safety_invariants",
+      "before": "b7afa2bdd0c8421f52df8d969c24cad3a5ec71b21bdbe184c53adb1fc9024e8c",
+      "after": "8c4a8d7deea5053e406438036d553f1b8c5f629e6791dd1fb75cb3fd433e51bb",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "kernel_execution",
+      "path": "rust/agent-kernel/src/tests.rs",
+      "symbol": "invalid_receipt_after_deadline_does_not_expire_or_settle_pending_work",
+      "before": "b7afa2bdd0c8421f52df8d969c24cad3a5ec71b21bdbe184c53adb1fc9024e8c",
+      "after": "8c4a8d7deea5053e406438036d553f1b8c5f629e6791dd1fb75cb3fd433e51bb",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "kernel_execution",
+      "path": "rust/agent-kernel/src/tests.rs",
+      "symbol": "corrupted_value_snapshots_are_rejected_without_repair_or_dispatch",
+      "before": "b7afa2bdd0c8421f52df8d969c24cad3a5ec71b21bdbe184c53adb1fc9024e8c",
+      "after": "8c4a8d7deea5053e406438036d553f1b8c5f629e6791dd1fb75cb3fd433e51bb",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "knowledge_workflow",
+      "path": "kb_platform/agent_builtin_tools.py",
+      "symbol": "BuiltinTools",
+      "before": "c7aae54c8a3d3399cccc8ef55f0fc903bbd4996f82fe50653b2c89caaef0fc95",
+      "after": "4538e28900801c8dcec2a64d0b35de4640f37247b75dd72bfc1a47dbb656e4e3",
+      "reason": "Bind the original assessment question and preserve explicit evidence priority; graph contracts cover the changed tool behavior."
+    },
+    {
+      "machine": "knowledge_workflow",
+      "path": "kb_platform/knowledge_answer.py",
+      "symbol": "KnowledgeAnswer.repair_node",
+      "before": "bf418a27ad97d9f05e245fef3a65b3a4d65eac321f798907e5a994db78723f46",
+      "after": "e7ee806361e34cbf73e5dfdd1b4e3b5ce63ee074c3991629fc4a416c3145d708",
+      "reason": "Repair only from current evidence without an extra search; the existing finite Repair action continues to describe the bounded semantic repair."
+    },
+    {
+      "machine": "knowledge_workflow",
+      "path": "kb_platform/knowledge_turn.py",
+      "symbol": "KnowledgeTurn.run",
+      "before": "f09fac190d69cb2d63d8241437dcb9eed27199e488661c1736a29b6f14078c27",
+      "after": "5e13db0edb19347abad1360218e675c7237f09f8ba1c4251e97e4a489aeb7b15",
+      "reason": "Combine explicit context budgets and assessment with required authority completion, business-error rejection and COMMIT_UNKNOWN passthrough."
+    },
+    {
+      "machine": "knowledge_workflow",
+      "path": "kb_platform/knowledge_planning.py",
+      "symbol": "KnowledgePlanning.tool_node",
+      "before": "2d0340718a634514472a7a2b8f04779aba63162e9a2733f04c4d6e636307b39c",
+      "after": "ef7a9c0362f81e547358edbeb0ae3c95cbce799e8db53586ee1b9b147d1cf233",
+      "reason": "Add one eligible read-only input correction within existing step and answer budgets; the workflow model gains the matching action and fault controls."
+    },
+    {
+      "machine": "storage_transaction",
+      "path": "rust/storage-service/src/transaction.rs",
+      "symbol": "CommitOutcome",
+      "before": "b0e151b10dacbcbc18f913293dd234b79fce1e63dd4d98f0bcb737cf2d47caa8",
+      "after": "5e2d83bf9ab180b2fff20e1ee25cc0c459c32b19f307651022a9c8709dd76fbe",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "storage_transaction",
+      "path": "rust/storage-service/src/transaction.rs",
+      "symbol": "resolve_commit",
+      "before": "b0e151b10dacbcbc18f913293dd234b79fce1e63dd4d98f0bcb737cf2d47caa8",
+      "after": "5e2d83bf9ab180b2fff20e1ee25cc0c459c32b19f307651022a9c8709dd76fbe",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "storage_value_call",
+      "path": "rust/storage-service/src/service.rs",
+      "symbol": "Phase",
+      "before": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584",
+      "after": "2a7cf133a66a39bc15daf62ef67f47335360d24cb2ca70e378c29b3fe67e090f",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "storage_value_call",
+      "path": "rust/storage-service/src/service.rs",
+      "symbol": "dispatch",
+      "before": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584",
+      "after": "2a7cf133a66a39bc15daf62ef67f47335360d24cb2ca70e378c29b3fe67e090f",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "authority_publication",
+      "path": "kb_platform/core.py",
+      "symbol": "Platform.stage",
+      "before": "39551f39e957e9c216065d08b1a56bab3b623b64eda471c5d250a19a4d69cb3d",
+      "after": "012b5d87aa4fcd18e88fa3e80273fc92b5efb54e78013d031878e144140e5b29",
+      "reason": "Separate parse hydration and citation population from bounded authority transactions; all publication and snapshot fences remain. Stage/Store remain distinct model actions."
+    },
+    {
+      "machine": "authority_publication",
+      "path": "kb_platform/core.py",
+      "symbol": "Platform.resume_build",
+      "before": "4c95fcb5f74818f4d61e675b0093ad09bfa0c80e87caac0e64e1139de6fa8f2c",
+      "after": "dade2462c428e6280a1f4ce3e56f7526ddd375ec3bd4ceb1bf9695081c9cfd14",
+      "reason": "Separate parse hydration and citation population from bounded authority transactions; all publication and snapshot fences remain. Stage/Store remain distinct model actions."
+    },
+    {
+      "machine": "authority_publication",
+      "path": "kb_platform/core.py",
+      "symbol": "Platform.search",
+      "before": "fcaa96754484bad7534afd3b8a4b409cd8b2deb3ac366531767acb4937d6dd35",
+      "after": "2a553d3e1c98faf7a58e62da0a8b064224fc786cf9cf23a6b194f9f9b536fe2f",
+      "reason": "Separate parse hydration and citation population from bounded authority transactions; all publication and snapshot fences remain. Stage/Store remain distinct model actions."
+    },
+    {
+      "machine": "authority_publication",
+      "path": "kb_platform/agent_tools.py",
+      "symbol": "EvidenceGateway._state",
+      "before": "d76ff50767916a98d1f90d18c1577c47adbd2c48a0ff7f09c2cc976cf0e6344b",
+      "after": "2fa8371505e646a6b8d5969df848588ce7625eb4df779cd1299798ebf50f4b9a",
+      "reason": "Hydrate immutable parses outside the transaction and recheck the source/authority snapshot inside the existing authority transaction."
+    },
+    {
+      "machine": "search_generation",
+      "path": "kb_platform/semantic_pages_v2.py",
+      "symbol": "SemanticPageAuthority.locked",
+      "before": "3e8e8095732ede8a07b51b02057ce37739339e34e529a38c7289d6d1223884ee",
+      "after": "46ef9c66177d4071d90f8fc4c99ed9018ee9616a004ed154731b773bb969fcbf",
+      "reason": "Read parses/citations outside the authority transaction, then validate the snapshot under its lock before exposing the manifest."
+    },
+    {
+      "machine": "embedding_jobs",
+      "path": "kb_platform/embedding_jobs.py",
+      "symbol": "EmbeddingJobs._prepare",
+      "before": "558d810a9f9a2f679529dcd1655d693df8a524223929c2f501300441d130dc35",
+      "after": "cedc497046ebe365b2af3dd9414e9589d1d8a0e543eb874074a63f535e3ed2b2",
+      "reason": "Page preparation/status queries and hydrate audit context by exact dependency hash; claims and recovered outcomes retain the existing lease/CAS boundaries."
+    },
+    {
+      "machine": "embedding_jobs",
+      "path": "kb_platform/embedding_jobs.py",
+      "symbol": "EmbeddingJobs._claim",
+      "before": "efddb9a273ec9c5937567d083d967b080fe79524f18b86caa64bb6c8da02c25d",
+      "after": "d30450502ab030839a3e44341af146bf75c8cd960e944613c6c5f9efebee0f13",
+      "reason": "Page preparation/status queries and hydrate audit context by exact dependency hash; claims and recovered outcomes retain the existing lease/CAS boundaries."
+    },
+    {
+      "machine": "embedding_jobs",
+      "path": "kb_platform/embedding_jobs.py",
+      "symbol": "EmbeddingJobs.reconcile",
+      "before": "71b2cf3aa7aeab56fe590e048100c4f89c0357b0d18a1f36d5925b413424d0d8",
+      "after": "29ca3737343e9867e19d48dde030fb3c7d0fb3b09e850cd34c58be6426766ffc",
+      "reason": "Page preparation/status queries and hydrate audit context by exact dependency hash; claims and recovered outcomes retain the existing lease/CAS boundaries."
+    },
+    {
+      "machine": "embedding_jobs",
+      "path": "kb_platform/embedding_jobs.py",
+      "symbol": "EmbeddingJobs.run",
+      "before": "44eb865c765adf68ae2d7b5a0565d4991cd4868d52c1fd8b709ed35376940a59",
+      "after": "1852ea5f689ef6fccde85b396403810f32f24e680bed831fa7a65e134253aa92",
+      "reason": "Page preparation/status queries and hydrate audit context by exact dependency hash; claims and recovered outcomes retain the existing lease/CAS boundaries."
+    },
+    {
+      "machine": "embedding_jobs",
+      "path": "kb_platform/knowledge_sql.py",
+      "symbol": "<module>",
+      "before": "baf0ac8c7347f63bde73ad8eb327afe2ee9b808aef1d8ce619248457a90e8d28",
+      "after": "4c7deb2007a06f73b405cfeaacf96d8131bda5e3909eef0f1e1a93099e6722d5",
+      "reason": "Use bounded parse/status pages and idempotent citation insertion while retaining tenant, build, dependency, lease and request predicates."
+    },
+    {
+      "machine": "embedding_jobs",
+      "path": "kb_platform/embedding_jobs.py",
+      "symbol": "EmbeddingJobs.run",
+      "before": "44eb865c765adf68ae2d7b5a0565d4991cd4868d52c1fd8b709ed35376940a59",
+      "after": "1852ea5f689ef6fccde85b396403810f32f24e680bed831fa7a65e134253aa92",
+      "reason": "Page preparation/status queries and hydrate audit context by exact dependency hash; claims and recovered outcomes retain the existing lease/CAS boundaries."
+    },
+    {
+      "machine": "provider_admission",
+      "path": "kb_platform/model_errors.py",
+      "symbol": "<module>",
+      "before": "a8bd553dc97604c58eccb31164a2380bc77607d9810554e8a4478f78b6341840",
+      "after": "fe09fec94770375fd177152035ad5dcb7f40ff35f193ea25ed1a29bdcb232e8a",
+      "reason": "Extend the single canonical failure DTO with budget_operation_id; operation_id, observed usage and send facts remain independent."
+    },
+    {
+      "machine": "provider_admission",
+      "path": "kb_platform/model_http.py",
+      "symbol": "OpenAICompatibleAdapter.invoke",
+      "before": "ea0e48c0a355f6a01810c6f4793b7ea2d573c6c8f30ff77bf0de7ead866ed937",
+      "after": "e5dc2c57076583d86b51d961a38b72687ad90a8dca13d87a2b4efa7e68e0290f",
+      "reason": "Attach the reserved physical identity and budget operation identity to unsent COMMIT_UNKNOWN; 403 blocking still precedes settlement."
+    },
+    {
+      "machine": "cache_evidence",
+      "path": "kb_platform/knowledge_contracts.py",
+      "symbol": "EvidenceEndpoint.prepare_pipeline",
+      "before": "3a87d5761f49c4ab042c219f486a229d5715dbe4164d97d10893135ee8b8ede4",
+      "after": "3d41d2306be51c5f5e4af982bf11db23c41fa48dfa1bfe426614f195e04f6634",
+      "reason": "Carry assessment input and coverage through the owned retrieval continuation without changing cancellation or receipt ownership."
+    },
+    {
+      "machine": "cache_evidence",
+      "path": "kb_platform/model_errors.py",
+      "symbol": "<module>",
+      "before": "a8bd553dc97604c58eccb31164a2380bc77607d9810554e8a4478f78b6341840",
+      "after": "fe09fec94770375fd177152035ad5dcb7f40ff35f193ea25ed1a29bdcb232e8a",
+      "reason": "Extend the single canonical failure DTO with budget_operation_id; operation_id, observed usage and send facts remain independent."
+    },
+    {
+      "machine": "cache_evidence",
+      "path": "kb_platform/knowledge_model.py",
+      "symbol": "KnowledgeModelCalls._call_once",
+      "before": "22e1a722197e34a4cb80ab61f97fd3748bfbe27df562221639b00673deab9ce7",
+      "after": "b58d351f80f7d24258967181a02a089cdc9252a5e84078d6093a855fe8ee2cb6",
+      "reason": "Forward the explicit context budget through the public model request; model_failed retains the canonical call record."
+    },
+    {
+      "machine": "ingestion_migration",
+      "path": "kb_platform/core.py",
+      "symbol": "Platform.stage",
+      "before": "39551f39e957e9c216065d08b1a56bab3b623b64eda471c5d250a19a4d69cb3d",
+      "after": "012b5d87aa4fcd18e88fa3e80273fc92b5efb54e78013d031878e144140e5b29",
+      "reason": "Separate parse hydration and citation population from bounded authority transactions; all publication and snapshot fences remain. Stage/Store remain distinct model actions."
+    },
+    {
+      "machine": "acceptance_workflow",
+      "path": "kb_platform/rag_testing/delivery_http.py",
+      "symbol": "DeliveryHTTPAdapter.run",
+      "before": "6d484a68d23b9a56ffed4dad0c38aadd0e4f7e9ec55fb3f6a3dc48f7a95dd1c1",
+      "after": "8b9862e98ab7bdf1c053dcbc169ad9d78eee6fd3c127f852899c3079d150e4c5",
+      "reason": "Thread split selection through the guarded preparer, bind it to the plan and preserve explicit rebind provenance and current request budgets."
+    },
+    {
+      "machine": "acceptance_workflow",
+      "path": "kb_platform/rag_testing/delivery_http.py",
+      "symbol": "prepare_http",
+      "before": "2135d590a79b24606329496c836ba47ed0b9efb00ec62663c65982b637a2b917",
+      "after": "4d3afbb612b54d60d8babe1ec657431febdb17ecb7630e6b4decb9db818be043",
+      "reason": "Thread split selection through the guarded preparer, bind it to the plan and preserve explicit rebind provenance and current request budgets."
+    },
+    {
+      "machine": "acceptance_workflow",
+      "path": "kb_platform/rag_testing/delivery_http.py",
+      "symbol": "rebind_http",
+      "before": "fedb88dd8c474125aa4572f154e155f3ebf93f48f3a8ce03750c399886d46e9f",
+      "after": "4833badeef9d95f4d2ab83eed7f2e0c6f6a87289f9475eeafbe68b4d5309fa05",
+      "reason": "Thread split selection through the guarded preparer, bind it to the plan and preserve explicit rebind provenance and current request budgets."
+    },
+    {
+      "machine": "acceptance_workflow",
+      "path": "kb_platform/rag_testing/delivery_http.py",
+      "symbol": "_prepare_http_locked",
+      "before": "58d3f789489a69da81e61e3b354443f95d7faf3e2e11f7c8d84282bdb2aa7fbb",
+      "after": "4666ed8bf314e054a9e7effb9a469f6a57252e277a0de9c09aa643b6ce6b8418",
+      "reason": "Thread split selection through the guarded preparer, bind it to the plan and preserve explicit rebind provenance and current request budgets."
+    },
+    {
+      "machine": "knowledge_turn_postflight",
+      "path": "kb_platform/knowledge_turn.py",
+      "symbol": "KnowledgeTurn.run",
+      "before": "f09fac190d69cb2d63d8241437dcb9eed27199e488661c1736a29b6f14078c27",
+      "after": "5e13db0edb19347abad1360218e675c7237f09f8ba1c4251e97e4a489aeb7b15",
+      "reason": "Combine explicit context budgets and assessment with required authority completion, business-error rejection and COMMIT_UNKNOWN passthrough."
+    },
+    {
+      "machine": "knowledge_turn_postflight",
+      "path": "kb_platform/agent_tools.py",
+      "symbol": "EvidenceGateway._state",
+      "before": "d76ff50767916a98d1f90d18c1577c47adbd2c48a0ff7f09c2cc976cf0e6344b",
+      "after": "2fa8371505e646a6b8d5969df848588ce7625eb4df779cd1299798ebf50f4b9a",
+      "reason": "Hydrate immutable parses outside the transaction and recheck the source/authority snapshot inside the existing authority transaction."
+    },
+    {
+      "machine": "tool_executor",
+      "path": "kb_platform/knowledge_platform_contract.py",
+      "symbol": "_call",
+      "before": "cfe141b79638fa80880f45e2d357ea71424dbf70eb2c11cb334209cb098ddf09",
+      "after": "ea97599e1fb399bf862c18b741ff49dbf3b3494fa6cf3c5b55a5f8fd5b3cf430",
+      "reason": "Register recoverable build operations at the existing public boundary; authority and current-generation validation remain in Platform."
+    },
+    {
+      "machine": "acceptance_binding_publication",
+      "path": "kb_platform/rag_testing/delivery_http.py",
+      "symbol": "load_prepared",
+      "before": "b22e7cde1587e38a0a502ee3b5d168a0d30d796aa2b9b15f60de1b5ef6bf702e",
+      "after": "f75005444b34b82b09d184e219912c113fd42a83d13557a4914bea3640f9a384",
+      "reason": "Thread split selection through the guarded preparer, bind it to the plan and preserve explicit rebind provenance and current request budgets."
+    },
+    {
+      "machine": "acceptance_binding_publication",
+      "path": "kb_platform/rag_testing/delivery_http.py",
+      "symbol": "rebind_http",
+      "before": "fedb88dd8c474125aa4572f154e155f3ebf93f48f3a8ce03750c399886d46e9f",
+      "after": "4833badeef9d95f4d2ab83eed7f2e0c6f6a87289f9475eeafbe68b4d5309fa05",
+      "reason": "Thread split selection through the guarded preparer, bind it to the plan and preserve explicit rebind provenance and current request budgets."
+    },
+    {
+      "machine": "acceptance_client_execution",
+      "path": "kb_platform/rag_testing/delivery_http.py",
+      "symbol": "DeliveryHTTPAdapter.run",
+      "before": "6d484a68d23b9a56ffed4dad0c38aadd0e4f7e9ec55fb3f6a3dc48f7a95dd1c1",
+      "after": "8b9862e98ab7bdf1c053dcbc169ad9d78eee6fd3c127f852899c3079d150e4c5",
+      "reason": "Thread split selection through the guarded preparer, bind it to the plan and preserve explicit rebind provenance and current request budgets."
+    },
+    {
+      "machine": "platform_upload_snapshots",
+      "path": "kb_platform/rag_testing/knowledge_platform_contracts.py",
+      "symbol": "KnowledgePlatformContracts",
+      "before": "cab6150edce2abbe646fd14c73e556fe067a4d3ec9dfeb2ad7cededd8a1aa601",
+      "after": "41192b3b9b4b4e9c9ec3f14fef9e9c1789eeffecc9de9638f51533638aed5053",
+      "reason": "Fixture configuration follows the new public contract; the existing ownership assertions remain."
+    },
+    {
+      "machine": "native_storage_sessions",
+      "path": "rust/storage-service/src/service.rs",
+      "symbol": "Sessions",
+      "before": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584",
+      "after": "2a7cf133a66a39bc15daf62ef67f47335360d24cb2ca70e378c29b3fe67e090f",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "native_storage_sessions",
+      "path": "rust/storage-service/src/service.rs",
+      "symbol": "dispatch",
+      "before": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584",
+      "after": "2a7cf133a66a39bc15daf62ef67f47335360d24cb2ca70e378c29b3fe67e090f",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "native_storage_sessions",
+      "path": "rust/storage-service/src/service.rs",
+      "symbol": "Phase",
+      "before": "e91fc1f10d944ada8e1868a09ce36006dcebd8bd7c31169db03e9a837789e584",
+      "after": "2a7cf133a66a39bc15daf62ef67f47335360d24cb2ca70e378c29b3fe67e090f",
+      "reason": "Only comments/blank lines were removed under current main source lint; a line-level comparison verifies all Rust code tokens remain."
+    },
+    {
+      "machine": "knowledge_atomic_commit",
+      "path": "kb_platform/knowledge_turn.py",
+      "symbol": "KnowledgeTurn.run",
+      "before": "f09fac190d69cb2d63d8241437dcb9eed27199e488661c1736a29b6f14078c27",
+      "after": "5e13db0edb19347abad1360218e675c7237f09f8ba1c4251e97e4a489aeb7b15",
+      "reason": "Combine explicit context budgets and assessment with required authority completion, business-error rejection and COMMIT_UNKNOWN passthrough."
+    },
+    {
+      "machine": "cache_evidence",
+      "path": "kb_platform/rag_testing/auth_cache_continuation_contracts.py",
+      "symbol": "EvidenceContinuationContracts",
+      "before": "edfc84d2bbcc3c9c94ad88fdbadfc934b158ceffb98a53d3d9cc2773654c8aa3",
+      "after": "495d69f7f497d244d34fbcfead59a9f9edce86f9731d63af53ed8fe13118c437",
+      "reason": "The fixture yields the current candidates/assessment_input response shape; all wrong-identity, expiry, cancellation and exactly-once cleanup assertions remain."
+    }
+  ],
+  "added_bindings": [
+    {
+      "machine": "authority_publication",
+      "path": "kb_platform/core.py",
+      "language": "python",
+      "symbol": "Platform._source_snapshot",
+      "sha256": "15dea4fd38a81d4711a80f9ef177802020433ba52e2b90204040c06d6da2fc38",
+      "reason": "Bind the new preprocessing-to-transaction fence to the existing staged publication/read freshness abstraction."
+    },
+    {
+      "machine": "authority_publication",
+      "path": "kb_platform/core.py",
+      "language": "python",
+      "symbol": "Platform._check_source_snapshot",
+      "sha256": "b883cb9b9f89ada09a5af87c601be9fc83447296994a9eda66b4bcdd86f0e04b",
+      "reason": "Bind the new preprocessing-to-transaction fence to the existing staged publication/read freshness abstraction."
+    },
+    {
+      "machine": "authority_publication",
+      "path": "kb_platform/core.py",
+      "language": "python",
+      "symbol": "Platform._store_citations",
+      "sha256": "db9c3d1697a935d795f8b78c1bff3179e96b28010b19c9667c06c052d1804ea7",
+      "reason": "Bind the new preprocessing-to-transaction fence to the existing staged publication/read freshness abstraction."
+    },
+    {
+      "machine": "physical_budget",
+      "path": "kb_platform/embeddings.py",
+      "language": "python",
+      "symbol": "EmbeddingCallError",
+      "sha256": "bf2ccb9e2c3ed76f1e38ed5386d542b8947cdc89d0dabb39b04a2df12aa82c13",
+      "reason": "Embedding failure wrapping consumes the canonical DTO, retaining the actual preflight reason, usage and both recovery identities."
+    }
+  ],
+  "excluded_test_modules": [
+    {
+      "path": "scripts/check_source.mjs",
+      "symbol": "<module>",
+      "reason": "Deterministic source/test runner aggregates verification verdicts; not a product lifecycle owner. Product ownership is exercised by its contracts and browser acceptance."
+    },
+    {
+      "path": "scripts/check_source.test.mjs",
+      "symbol": "<module>",
+      "reason": "Deterministic source/test runner aggregates verification verdicts; not a product lifecycle owner. Product ownership is exercised by its contracts and browser acceptance."
+    },
+    {
+      "path": "scripts/web_ownership.test.mjs",
+      "symbol": "<module>",
+      "reason": "Deterministic source/test runner aggregates verification verdicts; not a product lifecycle owner. Product ownership is exercised by its contracts and browser acceptance."
+    }
+  ],
+  "removed_stale_exclusions": [
+    {
+      "path": "kb_platform/embeddings.py",
+      "symbol": "EmbeddingCallError.__init__",
+      "reason": "The canonical DTO no longer assigns a locally-owned status field. The class is now explicitly source-bound under physical_budget."
+    }
+  ]
+}

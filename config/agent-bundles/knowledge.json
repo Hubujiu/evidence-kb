@@ -37,13 +37,6 @@
       "use": "knowledge.model"
     },
     {
-      "id": "store",
-      "use": "harness.store.sqlite",
-      "config": {
-        "root": ".local/agentic-v5"
-      }
-    },
-    {
       "id": "knowledge-store",
       "use": "knowledge.sessions"
     },

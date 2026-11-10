@@ -21,6 +21,8 @@ from kb_platform.storage_adapters.values import SqlKeyValueStore
 from kb_platform.storage_plugins import compile_storage_plugins, require_storage
 from kb_platform.storage_sdk import KV_DURABLE_V1, RELATIONAL_V1, SpaceKey, StorageProvider, StorageSlot
 from kb_platform.storage_sdk.relational import GUARDED_RELATIONAL_V1
+from .host_process_integration import prepare_physical_knowledge, verify_physical_knowledge
+from .process_dispatcher_integration import verify_idle_exit_dispatcher
 from .contract_process_integration import verify_contract_process
 from .context_contract_process_integration import verify_context_contract_process
 from .storage_contract_process_integration import verify_storage_contract_process
@@ -56,6 +58,15 @@ def process_host(profile, catalog):
         close_when_quiescent(host)
 
 
+def idle_exit_dispatcher_settled(host, transport, disposed):
+    snapshot = host.inspect()
+    return (transport._closed and disposed.is_set() and not snapshot['leases']
+        and not any(snapshot['counts'][key] for key in
+                    ('resources', 'operations', 'pending_operations', 'queued_actions'))
+        and not transport._writer.is_alive() and not transport._reader.is_alive()
+        and transport._process.poll() is not None)
+
+
 def idle_exit_case(manager, installed, root):
     journal = root / 'idle-exit-journal'
     spec = manager.catalog(installed['package'], journal=journal)
@@ -73,7 +84,7 @@ def idle_exit_case(manager, installed, root):
     value = host.call('external.supervision', 'idle_exit', str(marker))
     leases_before_exit = host.inspect()['leases']
     marker.touch()
-    completed = wait_until(lambda: transport._closed and disposed.is_set(), 3)
+    completed = wait_until(lambda: idle_exit_dispatcher_settled(host, transport, disposed), 3)
     snapshot = host.inspect()
     observation = {'mode': 'idle_exit', 'armed': value, 'leases_before_exit': leases_before_exit,
         'closed_without_retry': completed, 'runtime_state': snapshot['state'],
@@ -526,12 +537,14 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
                 (copied / 'plugin.json').write_text(json.dumps(manifest), 'utf-8')
                 source = copied
             packages[name] = manager.install(source)
+        physical_cases = prepare_physical_knowledge(root, manager)
         installed = packages['process-echo']
         commands = [package['manifest']['command'] if 'command' in package['manifest'] else
             [str(plugin_python.resolve()) if plugin_python is not None else sys.executable,
                 *flags, '-I', '-u', '-c', PROCESS_LAUNCHER,
                 package['package'], str(Path(package['package']) / 'plugin.py')]
             for package in packages.values() for flags in ([], ['-B'])]
+        commands.extend(case['command'] for case in physical_cases)
         commands.append([sys.executable, '-B', str(examples / 'contract-application/worker.py')])
         commands.append([sys.executable, '-B', str(examples / 'contract-storage/worker.py')])
         commands.append([sys.executable, '-B', str(examples / 'contract-context/worker.py')])
@@ -564,10 +577,15 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
             idle_exit_case(manager, packages['process-supervision'], root),
             stale_exit_case(manager, packages['process-supervision'], root),
             completed_cancel_writes_case(manager, packages['process-supervision'], root)]
+        dispatcher = None if blocked_only else verify_idle_exit_dispatcher(
+            manager, packages['process-supervision'], root)
+        if dispatcher is not None and dispatcher['decision'] != 'PASS':
+            raise RuntimeError('PROCESS_DISPATCHER_OBSERVATION_CONTRACT_FAILED')
         if supervision_only or any(row['decision'] != 'PASS' for row in supervision):
             output.mkdir(parents=True, exist_ok=False)
             (output / 'result.json').write_text(json.dumps({'decision': 'PASS' if all(
                 row['decision'] == 'PASS' for row in supervision) else 'FAIL', 'supervision': supervision,
+                'dispatcher_observation': dispatcher,
                 'new_model_calls': 0, 'new_embedding_calls': 0}, indent=2), 'utf-8')
             if any(row['decision'] != 'PASS' for row in supervision):
                 raise RuntimeError('PROCESS_EXIT_OR_CONTROL_WRITE_NOT_SUPERVISED')
@@ -705,12 +723,14 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
         if not controls or any(set(row) - {'protocol', 'id', 'kind', 'target', 'identity',
                 'deadline_seconds', 'cancelled'} for row in controls):
             raise RuntimeError('PROCESS_CANCEL_MESSAGE_CONTAINS_BUSINESS_ARGUMENTS')
+        physical_knowledge = verify_physical_knowledge(physical_cases)
         contract_processes = verify_contract_process(root, plugin_node)
         contract_storage = verify_storage_contract_process(root)
         contract_context = verify_context_contract_process(root)
         output.mkdir(parents=True, exist_ok=False)
         (output / 'result.json').write_text(json.dumps({'decision': 'PASS',
             'contract_processes': contract_processes,
+            'physical_knowledge': physical_knowledge,
             'contract_storage': contract_storage,
             'contract_context': contract_context,
             'scope': 'controlled local external process; no provider or production quality claim',
@@ -727,6 +747,7 @@ def run(output, plugin_python=None, *, plugin_node=None, blocked_only=False, sup
             'pre_send_deadline_sends': len(pre_send_sends),
             'blocked_pipe': blocked,
             'supervision': supervision,
+            'dispatcher_observation': dispatcher,
             'new_model_calls': 0, 'new_embedding_calls': 0}), 'utf-8')
 
 
