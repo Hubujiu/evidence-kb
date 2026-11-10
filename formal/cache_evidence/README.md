@@ -133,6 +133,39 @@ Generator internals, parallel claims for different tokens, unpredictable token
 space, direct endpoint calls after host close and full downstream retrieval
 authority behavior remain outside this finite model. There is no liveness claim.
 
+### Primary failure and cancellation cleanup failure
+
+At application baseline `f0ea7450`, `EvidenceClient.search_pipeline` attempted to
+cancel its continuation after a reranker failure, but a second failure from
+`finish_pipeline(cancel=True)` replaced the original exception. A physical
+`PROVIDER_OUTCOME_UNKNOWN` therefore became a generic cleanup failure, losing
+its top-level code, request identity and observed usage facts. A propagating
+`BaseException` cancellation could likewise become an ordinary domain error.
+
+The client now re-raises the original exception after exactly one cancellation
+attempt. If that attempt also fails, the primary exception receives a note with
+only the cleanup exception class, following the existing model-capture cleanup
+pattern. The original physical facts and error identity remain intact; cleanup
+is not reported as successful, and no request or cancellation is retried.
+
+`KnowledgeCapabilityContracts.test_rerank_primary_failure_survives_cancellation_cleanup_failure`
+uses the actual staged retrieval generator and public evidence JSON endpoint. A
+controlled generator finalizer supplies the secondary failure. Model-unknown
+and `KeyboardInterrupt` primary failures are each exercised with successful and
+failed cancellation, checking unchanged canonical error facts, one retrieval,
+one embedding, one ranker call, one cancellation, and consumed-token rejection.
+The two failed-cleanup combinations fail on the old implementation.
+
+The existing `EvidenceContinuation.Finish` deliberately collapses finish outcomes
+and assumes its disposal effect; it does not model secondary cleanup failures,
+exception precedence or Python exception notes. `ErrorProjection` separately
+models already-selected primary error facts, not how a caller chooses that
+primary error. Their inputs remain unchanged. The new client and regression
+source bindings detect review drift; the concrete contract, not the finite
+models, supplies this exception-composition evidence. Arbitrary transport loss,
+generator resource recovery after failed close, note propagation through every
+later boundary and process death remain unproved.
+
 ## Integrated dependency review and gates
 
 `source-review-v1.json` preserves the independent PR31 review: eleven changed

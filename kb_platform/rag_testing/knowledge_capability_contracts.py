@@ -4,7 +4,7 @@ import json
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from kb_platform.agent_model import AgentModel
 from kb_platform.agent_luna import LunaModelProvider
@@ -101,6 +101,58 @@ class KnowledgeCapabilityContracts(unittest.TestCase):
             endpoint.finish_pipeline({'actor': asdict(authority.actor),
                                       'token': prepared['token'], 'ranking': ranking})
         self.assertEqual(caught.exception.code, 'SCOPE_CHANGED')
+
+    def test_rerank_primary_failure_survives_cancellation_cleanup_failure(self):
+        from kb_platform.model_errors import error_details
+        from kb_platform.provider_runtime import classify_failure
+        from kb_platform.retrieval_pipeline import staged
+
+        for cancelled in (False, True):
+            for cleanup_fails in (False, True):
+                with self.subTest(cancelled=cancelled, cleanup_fails=cleanup_fails):
+                    authority, _, wire = self.gateway()
+                    dependency = SimpleNamespace(metadata=wire.metadata, prepare_pipeline=wire.prepare_pipeline,
+                        finish_pipeline=Mock(wraps=wire.finish_pipeline))
+                    client = EvidenceClient(dependency)
+                    primary = KeyboardInterrupt('synthetic cancellation') if cancelled else RemoteModelError(
+                        'PROVIDER_OUTCOME_UNKNOWN', model_sent=True)
+                    primary.model_sent = True
+                    primary.physical_request_id = 'synthetic-rerank-physical'
+                    primary.call_record = {'attempts': 1, 'physical_request_id': primary.physical_request_id,
+                                           'usage': {'available': False}}
+                    facts = error_details(primary)
+                    client.pipeline_reranker = SimpleNamespace(rank=Mock(side_effect=primary))
+                    disposed = []
+
+                    def controlled_staged(*args, **kwargs):
+                        try:
+                            return (yield from staged(*args, **kwargs))
+                        finally:
+                            disposed.append('closed')
+                            if cleanup_fails:
+                                raise RuntimeError('synthetic private cleanup detail')
+
+                    with patch('kb_platform.retrieval_pipeline.staged', side_effect=controlled_staged):
+                        with self.assertRaises(BaseException) as caught:
+                            client.search_pipeline(authority.actor, authority.scope, 'original', {},
+                                {'channels': ['bm25', 'dense'], 'rerank': True, 'parent': 'none',
+                                 'title_navigation': False})
+                    self.assertIs(caught.exception, primary)
+                    self.assertEqual(error_details(caught.exception), facts)
+                    self.assertEqual(getattr(primary, '__notes__', []),
+                        ['Retrieval continuation cancellation failed: PlatformError'] if cleanup_fails else [])
+                    if not cancelled:
+                        self.assertEqual(classify_failure(caught.exception).outcome, 'UNKNOWN')
+                    self.assertEqual(disposed, ['closed'])
+                    self.assertEqual(client.pipeline_reranker.rank.call_count, 1)
+                    self.assertEqual([name for name, _ in authority.calls], ['bm25', 'dense'])
+                    self.assertEqual(authority.embedding_provider.queries, ['original'])
+                    dependency.finish_pipeline.assert_called_once()
+                    request = dependency.finish_pipeline.call_args.args[0]
+                    self.assertIs(request['cancel'], True)
+                    with self.assertRaises(ContractError) as unavailable:
+                        wire.finish_pipeline(request)
+                    self.assertEqual(unavailable.exception.code, 'RETRIEVAL_STAGE_NOT_FOUND')
 
     def model(self):
         def post(*args, trace, **kwargs):

@@ -6538,7 +6538,8 @@
         "actor-bound retrieval nonce pending/claimed/disposed",
         "model receipt absent/reserved/ready/consumed",
         "pre-model capacity refusal / known-zero failure observation",
-        "generic/coded/cancellation failure -> safe public facts -> model_failed event"
+        "generic/coded/cancellation failure -> safe public facts -> model_failed event",
+        "primary rerank failure with successful or failed continuation cancellation"
       ],
       "transitions": [
         "StageCache.put",
@@ -6546,7 +6547,8 @@
         "EvidenceEndpoint.prepare_pipeline",
         "EvidenceEndpoint.finish_pipeline",
         "ModelEndpoint.complete",
-        "ModelEndpoint.settle"
+        "ModelEndpoint.settle",
+        "EvidenceClient.search_pipeline"
       ],
       "invariants": [
         "Exact immutable dependency key + content hash + current auth; TTL disappearance is miss, never budget reset; one-shot actor-bound retrieval continuation; result cached only after successful validation/confirmation."
@@ -6562,7 +6564,8 @@
       ],
       "exclusions": [
         "No proof of real clocks, hash/nonce entropy, external stores, network transport, provider deadlines, host lease implementation or Python-to-TLA refinement.",
-        "Models deliberately distinguish authentication-read, cache-admission and continuation-claim boundaries; no response-instant authorization guarantee."
+        "Models deliberately distinguish authentication-read, cache-admission and continuation-claim boundaries; no response-instant authorization guarantee.",
+        "EvidenceContinuation collapses finish outcomes and assumes disposal; ErrorProjection starts with an already-selected error. Neither models primary versus secondary cleanup exception precedence, failed-close resource recovery or downstream propagation of exception notes."
       ],
       "source_bindings": [
         {
@@ -6762,6 +6765,18 @@
           "language": "python",
           "symbol": "ErrorProjectionModelContracts",
           "sha256": "873fd65584b0af00fd2306ea16fe14a427f6243effdc66f1753a2ef14bf39bf8"
+        },
+        {
+          "path": "kb_platform/knowledge_contracts.py",
+          "language": "python",
+          "symbol": "EvidenceClient.search_pipeline",
+          "sha256": "4b976bd56e7cf662edeb73586843dcb3283bd3fe90961ae6694d0c790a6b10f9"
+        },
+        {
+          "path": "kb_platform/rag_testing/knowledge_capability_contracts.py",
+          "language": "python",
+          "symbol": "KnowledgeCapabilityContracts.test_rerank_primary_failure_survives_cancellation_cleanup_failure",
+          "sha256": "613cd286b4cc595cd478f4771a29db5fdcf0314d2a93b05509d65a607e2e6e17"
         }
       ],
       "models": [
@@ -7026,7 +7041,8 @@
         "Real cache-key builders include all dependencies/tenant scope; cryptographic collision resistance and external storage linearizability.",
         "Evidence staged generator internals, multiple simultaneously claimed finishes, payload serialization and authority changes inside downstream retrieval.",
         "Cache/budget composition is backed by deterministic existing tests, not a shared formal budget model.",
-        "ErrorProjection trusts canonical structured facts and models no arbitrary hostile call_record payload, logging transport, distributed response loss or Python refinement; unobserved facts remain unknown."
+        "ErrorProjection trusts canonical structured facts and models no arbitrary hostile call_record payload, logging transport, distributed response loss or Python refinement; unobserved facts remain unknown.",
+        "Primary rerank exception precedence under cancellation cleanup failure is covered by the actual public EvidenceClient/Endpoint synthetic regression and explicit source bindings, not the current finite models. Preserve code, physical request identity and observed facts; do not infer successful cleanup, resend or refund from the retained error."
       ]
     },
     {

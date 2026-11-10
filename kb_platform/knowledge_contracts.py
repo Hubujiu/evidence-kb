@@ -384,8 +384,11 @@ class EvidenceClient(ObjectClient):
                 raise PlatformError('RERANKER_NOT_CONFIGURED', 'No reranker is bound to this workflow', 409)
             ranker = self.pipeline_reranker
             ranking = getattr(ranker, 'assess', ranker.rank)(prepared['assessment_input'], prepared['candidates'])
-        except BaseException:
-            domain_call(self._dependency.finish_pipeline, {**continuation, 'cancel': True})
+        except BaseException as error:
+            try:
+                domain_call(self._dependency.finish_pipeline, {**continuation, 'cancel': True})
+            except BaseException as cleanup_error:
+                error.add_note('Retrieval continuation cancellation failed: ' + type(cleanup_error).__name__)
             raise
         return domain_call(self._dependency.finish_pipeline, {**continuation, 'ranking': ranking})
 
