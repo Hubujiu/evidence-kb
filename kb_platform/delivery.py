@@ -18,7 +18,6 @@ from kb_platform.rag_testing.budget_batches import ReviewedPredecessorLedger, va
 from kb_platform.rag_testing.provider_capture import CapturedLuna, observe_client, request_context
 from kb_platform.rag_testing.contracts import digest
 from kb_platform.embeddings import EmbeddingError
-from kb_platform.database_contracts import DatabaseError
 from kb_platform.remote import RemoteModelError
 from kb_platform.settings import Settings
 

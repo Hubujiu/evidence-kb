@@ -303,7 +303,8 @@ class AgentModel:
                                "estimated_input_tokens": estimate["tokens"],
                                "estimate_kind": estimate["kind"],
                                **{name: failure[name] for name in
-                                  ('model_sent', 'physical_request_id', 'preflight_code')
+                                  ('model_sent', 'physical_request_id', 'preflight_code',
+                                   'operation_id', 'budget_operation_id')
                                   if failure[name] is not None},
                                **getattr(exc, "output_diagnostics", {})}
             raise

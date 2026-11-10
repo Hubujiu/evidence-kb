@@ -188,8 +188,6 @@ fn independent_snapshots_cannot_share_pending_work() {
 
 #[test]
 fn bounded_event_exploration_preserves_kernel_safety_invariants() {
-    // Same value domain as formal/agent_execution/KernelExecution.tla. This
-    // exercises the real transition function, not a translated Rust algorithm.
     let mut states = vec![agent_kernel_new(2, 2).state];
     let mut cursor = 0;
     while cursor < states.len() {
@@ -203,8 +201,6 @@ fn bounded_event_exploration_preserves_kernel_safety_invariants() {
                         let result = agent_kernel_apply(state, request);
                         let next = result.state;
                         assert!(valid_state(&next), "{state:?} + {request:?}");
-                        // Independent assertions: do not rely on valid_state's own
-                        // validator to establish the model's output invariants.
                         assert!(next.operations_started <= next.max_operations);
                         if next.phase == phase::WAITING {
                             assert_ne!(next.pending_id, 0);

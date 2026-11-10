@@ -1,4 +1,3 @@
-//! Deterministic native table-owner contract; one test owns all handles it opens.
 use super::*;
 
 fn invoke(v: Value) -> Result<Value, StorageError> {
@@ -16,7 +15,6 @@ fn feed(h: u64, events: Value) -> Result<Value, StorageError> {
 
 #[test]
 fn table_capacity_expiry_monotonic_identity_failed_consumption_and_values_only() {
-    // Existing tests only submit an invalid open request and allocate no handles.
     let handles: Vec<_> = (0..64).map(|_| open_values()).collect();
     assert_eq!(
         invoke(json!({"action":"values","limits":{"max_nodes":100,"max_bytes":4096}}))
@@ -28,8 +26,6 @@ fn table_capacity_expiry_monotonic_identity_failed_consumption_and_values_only()
     let next = open_values();
     assert!(next > *handles.last().unwrap());
     assert!(feed(handles[0], json!([])).is_err());
-    // Clock boundary is injected into private table metadata, without sleeping or
-    // replacing the production sweep. Every actual request still uses dispatch.
     {
         let mut sessions = SESSIONS.get().unwrap().lock().unwrap();
         sessions.values.get_mut(&next).unwrap().touched = Instant::now() - Duration::from_secs(300);

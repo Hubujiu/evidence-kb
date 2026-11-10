@@ -227,6 +227,42 @@ class FoundationKnowledgeContracts(unittest.TestCase):
         self.assertEqual(len(case.wire.requests), 1)
         self.assertEqual(case.wire.errors, [])
 
+    def test_uncertain_budget_commit_keeps_recovery_ids_in_persistent_failure_event(self):
+        from kb_platform.database_contracts import CommitUnknown
+
+        case = self.case('uncertain-budget-commit', responses=[])
+        composition = self.compose(case)
+        scope, _ = self.publish(composition)
+        session_id = composition.application.create(self.actor, scope)['session_id']
+        reserve = BudgetLedger.reserve
+        physical_ids = []
+
+        def lose_acknowledgement(ledger, physical_id, *args, **kwargs):
+            reserve(ledger, physical_id, *args, **kwargs)
+            physical_ids.append(physical_id)
+            raise CommitUnknown('joint-budget-commit') from OSError('synthetic acknowledgement loss')
+
+        with patch.object(BudgetLedger, 'reserve', new=lose_acknowledgement):
+            with self.assertRaises(Exception) as caught:
+                composition.application.turn(self.actor, session_id, message='What is the original rule?',
+                    request_id='uncertain-budget-question', expected_revision=0)
+        self.assertEqual(caught.exception.code, 'COMMIT_UNKNOWN')
+        self.assertEqual(len(physical_ids), 1)
+        failure = self.failure_event(composition, session_id)
+        self.assertEqual(failure['operation_id'], 'joint-budget-commit')
+        self.assertEqual(failure['budget_operation_id'], 'joint-budget-commit')
+        self.assertEqual(failure['physical_request_id'], physical_ids[0])
+        self.assertIs(failure['model_sent'], False)
+        self.assertEqual(failure['attempts'], 0)
+        physical = self.snapshot(composition)
+        self.assertEqual(physical['physical_requests'], 1)
+        self.assertEqual(physical['pending_or_unknown'], 1)
+        self.assertEqual(physical['effective_usage_or_reserved'], {'requests': 1, 'units': 10})
+        events = composition.application.history(self.actor, session_id)['events']
+        self.assertFalse(any(event['kind'] == 'turn_completed' for event in events))
+        self.assertEqual(case.wire.requests, [])
+        self.assertEqual(case.wire.errors, [])
+
     def test_same_knowledge_consumer_replaces_model_wire_and_object_provider_by_configuration(self):
         variants = [('compatible-files', 'openai-compatible', 'files'), ('anthropic-s3', 'anthropic', 's3')]
         business = None
