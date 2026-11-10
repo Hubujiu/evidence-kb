@@ -99,3 +99,55 @@ produces the six independent public-contract behavioral failures. This is a
 conservative structural constraint, not a general Python refinement proof or
 protection against dynamic monkeypatching. Broader refactors require explicit
 review and a corresponding lint/model/test update.
+
+## Task-specific embedding source view
+
+The `EmbeddingSourceView` slice reviews the application at `f0ea7450`. A candidate
+upload changes the current parse while the published manifest deliberately
+continues serving the previous immutable version. `Platform.search` and the
+Agent retrieval pipeline already used that published version, but
+`KnowledgeAccess.validate_embedding` validated every task against the candidate.
+An authorized dense query therefore failed with `STALE_BUILD` after an upload.
+
+The source fix selects the published snapshot only for `task=query`; document
+embedding continues to use the candidate for its staging build. Both snapshots
+join current binding membership, source readers and processing policy. Existing
+authority, manifest, exact source hash and final snapshot checks remain required.
+The proof cache still checks current authority before accepting a cached proof.
+
+| Finite action or value | Concrete boundary |
+| --- | --- |
+| `candidate`, `published`, `UploadCandidate` | Current candidate source/parse identity versus the immutable manifest source identity; `Platform.ingest` changes the candidate without publishing |
+| `Stage`, `Publish`, `stageRevision` | A staging build is tied to current candidate/authority; canonical publication keeps its existing fence |
+| `BeginRequest`, `auditVersion`, `auditBuild`, `auditRevision` | Public embedding audit for either a query of the current manifest or documents in the current staging build |
+| `Admit`, `TaskSpecificSourceView` | `KnowledgeAccess.validate_embedding` selects the correct content view and does not reject a valid published query solely because a draft exists |
+| `Revoke`, `AdmissionUsesLivePolicy` | Live ACL, active binding and task/provider processing policy must still allow the source |
+
+The slice starts with one valid published source, has two versions, one optional
+staging build, one request, one upload, one revocation and three authority values.
+One Boolean abstracts the conjunction of the relevant current permissions.
+Build identities are abstracted by their single source version. This does not
+model multiple builds of the same version, multiple sources, parsing, partial
+vector coverage, cache capacity or storage failures. Admission is one abstract
+step whose implementation requires both snapshot and postflight fencing. It is
+not an assertion that external reads or provider sends form a database
+transaction. No fairness, prompt progress or delivery-time authorization is
+claimed.
+
+The `Candidate` control reproduces the wrong query content view and must violate
+`TaskSpecificSourceView`. `FrozenPolicy` deliberately uses historical permission
+and must violate `AdmissionUsesLivePolicy`; it is a safety control, not another
+observed production defect. The two witness controls use the correct constants
+and reach an admitted query of v1 and an admitted document build of v2 while the
+candidate differs from the published version. They fail only their named
+reachability-denial invariants, preventing rejection-only coverage.
+
+`knowledge_embedding_contracts` exercises the actual SQLite authority,
+EmbeddedSearch and public model/evidence JSON endpoints with deterministic
+synthetic vectors. It covers resumable and legacy build paths, dense/hybrid/Agent
+queries, new candidate document embeddings, publication, current readers,
+binding removal and processing revocation. It checks exact source versions,
+parse IDs, text hashes and zero provider sends after denial. These contracts do
+not exercise real HTTP transport, PostgreSQL, remote embeddings or production
+retrieval quality. The older `AuthorityPublication` slice still does not model
+published parse joins; neither slice is a machine-checked source refinement.

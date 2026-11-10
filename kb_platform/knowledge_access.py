@@ -73,7 +73,7 @@ class KnowledgeAccess:
                 if proof in self._verified:
                     return {'authorized': True}
         snapshot = self._platform._source_snapshot(actor, scope, processing=True,
-            capability='kb.manage' if task == 'document' else 'kb.read')
+            capability='kb.manage' if task == 'document' else 'kb.read', published=task == 'query')
         rows = snapshot['rows']
         allowed = self._platform._allowed(rows, actor, 'human_search' if task == 'document' else purpose)
         current = {row['source_id']: row for row in allowed}

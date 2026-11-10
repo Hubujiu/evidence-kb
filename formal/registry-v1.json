@@ -5275,29 +5275,39 @@
         "kb_platform/semantic_pages_v2.py",
         "kb_platform/knowledge_semantic_contract.py",
         "kb_platform/rag_testing/publication_embedding_contracts.py",
-        "kb_platform/retrieval_pipeline.py"
+        "kb_platform/retrieval_pipeline.py",
+        "kb_platform/knowledge_access.py",
+        "kb_platform/rag_testing/knowledge_embedding_contracts.py"
       ],
       "states": [
-        "authority revision"
+        "authority revision",
+        "candidate and published source identities",
+        "embedding task",
+        "current source processing permission",
+        "embedding audit identity"
       ],
       "transitions": [
         "Platform.stage",
         "Platform.resume_build",
         "Platform.publish",
-        "Platform.search"
+        "Platform.search",
+        "KnowledgeAccess.validate_embedding"
       ],
       "invariants": [
         "Canonical relational publication requires current authority/KB revision and expected manifest, and atomically changes build status plus relational pointer. Staging is not searchable. Semantic publication separately requires complete sealed channels; there is no cross-store distributed transaction.",
-        "Standalone semantic current_manifest and evidence reads reject an authority/current-build change observed by their final postflight. This is not authorization at later network delivery or an instantaneous revocation guarantee."
+        "Standalone semantic current_manifest and evidence reads reject an authority/current-build change observed by their final postflight. This is not authorization at later network delivery or an instantaneous revocation guarantee.",
+        "Embedding document admission selects the staging candidate; query admission selects the published source while retaining current authority, active binding, reader and provider/purpose permission checks. A candidate update alone must not reject an otherwise current published query."
       ],
       "assumptions": [
         "Two bounded identities with atomic owner-local transactions and immutable generation content; explicit model bounds and inspected primary references are in formal/authority_publication/README.md.",
-        "Manual behavioral abstraction; source fingerprints detect review drift and are not a refinement proof. No fairness or liveness assumption."
+        "Manual behavioral abstraction; source fingerprints detect review drift and are not a refinement proof. No fairness or liveness assumption.",
+        "EmbeddingSourceView bounds one source to two versions, one request, one optional staging build, one upload and one revocation. Admission is an atomic abstraction of snapshot and postflight checks, not an external-provider transaction; current permission is one Boolean conjunction."
       ],
       "exclusions": [
         "No all-input, distributed-atomicity, network-delivery authorization or zero-bug guarantee.",
         "External storage, OS/filesystem, database isolation and unbounded identities are outside the finite model.",
-        "Postflight AST lint enforces the reviewed synchronous method shape and stable captured state, not arbitrary Python control-flow equivalence or dynamic monkeypatch safety."
+        "Postflight AST lint enforces the reviewed synchronous method shape and stable captured state, not arbitrary Python control-flow equivalence or dynamic monkeypatch safety.",
+        "EmbeddingSourceView does not model multiple builds with the same source version, multi-source vector coverage, parse joins, proof-cache capacity, provider behavior or authorization at later network delivery."
       ],
       "source_bindings": [
         {
@@ -5407,6 +5417,36 @@
           "language": "python",
           "symbol": "_catalog",
           "sha256": "27571c7efdb0774b797271e84f89be3c8087bb5643ab25b47f8b2e0e805c8aaa"
+        },
+        {
+          "path": "kb_platform/knowledge_access.py",
+          "language": "python",
+          "symbol": "KnowledgeAccess._embedding_build",
+          "sha256": "60320eaf2f3c67b537febdd2e834cbae1877a067cf88199a422f96375a996936"
+        },
+        {
+          "path": "kb_platform/knowledge_access.py",
+          "language": "python",
+          "symbol": "KnowledgeAccess.validate_embedding",
+          "sha256": "93bb48a7dbb387f1d4042a719c9cc887673749df7027d3d451347ae3ca680185"
+        },
+        {
+          "path": "kb_platform/rag_testing/knowledge_embedding_contracts.py",
+          "language": "python",
+          "symbol": "KnowledgeEmbeddingContracts.public_embedding",
+          "sha256": "cd6dadf9387b0f6bba5b484961f28ebdac762a6e422efecc305a60327788c2ca"
+        },
+        {
+          "path": "kb_platform/rag_testing/knowledge_embedding_contracts.py",
+          "language": "python",
+          "symbol": "KnowledgeEmbeddingContracts.test_public_dense_queries_keep_published_version_through_candidate_update_and_publish",
+          "sha256": "dafe04eed86840ab2b49ed8100096b826aac0cf9c94ab37eaffbe31d07dddd02"
+        },
+        {
+          "path": "kb_platform/rag_testing/knowledge_embedding_contracts.py",
+          "language": "python",
+          "symbol": "KnowledgeEmbeddingContracts.test_public_query_rechecks_live_revocation_of_published_sources",
+          "sha256": "387ee2ea75fd8344c69589160c1e02bbf968852cca57dbaf728cb76d1248dd34"
         }
       ],
       "models": [
@@ -5428,6 +5468,28 @@
           },
           "timeout_seconds": 120,
           "heap_mb": 256
+        },
+        {
+          "id": "embedding-source-view",
+          "module": "formal/authority_publication/EmbeddingSourceView.tla",
+          "config": "formal/authority_publication/EmbeddingSourceView.cfg",
+          "invariants": [
+            "TypeOK",
+            "TaskSpecificSourceView",
+            "AdmissionUsesLivePolicy"
+          ],
+          "properties": [],
+          "bounds": {
+            "source_versions": 2,
+            "authority_revisions": 3,
+            "sources": 1,
+            "staging_builds": 1,
+            "requests": 1,
+            "candidate_uploads": 1,
+            "revocations": 1
+          },
+          "timeout_seconds": 120,
+          "heap_mb": 256
         }
       ],
       "negative_controls": [
@@ -5446,12 +5508,45 @@
           "expected_invariant": "PublicationFenced",
           "timeout_seconds": 120,
           "heap_mb": 256
+        },
+        {
+          "id": "embedding-source-view-candidate",
+          "module": "formal/authority_publication/EmbeddingSourceView.tla",
+          "config": "formal/authority_publication/EmbeddingSourceViewCandidate.cfg",
+          "expected_invariant": "TaskSpecificSourceView",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "embedding-source-view-frozen-policy",
+          "module": "formal/authority_publication/EmbeddingSourceView.tla",
+          "config": "formal/authority_publication/EmbeddingSourceViewFrozenPolicy.cfg",
+          "expected_invariant": "AdmissionUsesLivePolicy",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "embedding-source-view-published-witness",
+          "module": "formal/authority_publication/EmbeddingSourceView.tla",
+          "config": "formal/authority_publication/EmbeddingSourceViewPublishedWitness.cfg",
+          "expected_invariant": "PublishedQueryWitness",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "embedding-source-view-candidate-witness",
+          "module": "formal/authority_publication/EmbeddingSourceView.tla",
+          "config": "formal/authority_publication/EmbeddingSourceViewCandidateWitness.cfg",
+          "expected_invariant": "CandidateBuildWitness",
+          "timeout_seconds": 120,
+          "heap_mb": 256
         }
       ],
       "remaining_obligations": [
         "Refine real Python/SQL/adapters and concurrent persistence to the model; verify actual PostgreSQL/RLS and power-loss behavior separately.",
         "Cover all remaining methods, source/ACL/capsule identity, unbounded inputs and physical provider behavior; existing component and integration checks remain mandatory.",
-        "PR 86 follow-up: published parse catalog joins and pipeline availability are not represented by AuthorityPublication. Real BuiltinTools and HTTP candidate-update, publication and revocation contracts cover this obligation; see docs/api-review-86-20261110.md."
+        "PR 86 follow-up: published parse catalog joins and pipeline availability are not represented by AuthorityPublication. Real BuiltinTools and HTTP candidate-update, publication and revocation contracts cover this obligation; see docs/api-review-86-20261110.md.",
+        "EmbeddingSourceView separately covers task-specific content views and live permission at admission. Published parse joins, proof-cache concurrency, repeated publications and concrete provider timing remain outside the finite model; public synthetic embedding contracts cover candidate update, document staging, publication and current source revocation without claiming production RAG quality."
       ]
     },
     {
