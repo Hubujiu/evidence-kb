@@ -5,6 +5,39 @@ models, regression fixtures and mandatory semantic guards, **not production
 owners**. No current production defect is asserted. All five model negative
 controls are explicitly seeded violations, not reproductions of existing bugs.
 
+### Startup admission follow-up (2026-11-10)
+
+The earlier no-defect statement applies to the baseline batch above. A later
+audit of `f0ea7450b33b21022fbb61e91c1539d5a290c89b` reproduced a separate defect:
+`ProcessTransport.close(); start(); close()` could create a child after terminal
+close. Handshake then failed, and the second close returned before owning the
+new child. The same launch was possible while close was draining but had not
+finished cleanup. No normal mounted application occurrence is asserted.
+
+`ProcessTransport.start` now checks closed/draining admission under the same
+lock as process creation and close admission. An already-started instance still
+returns `PROCESS_ALREADY_STARTED`; a closed/draining unstarted instance returns
+the existing `PROCESS_UNAVAILABLE` before `Popen`. Request, handshake, cleanup
+retry and journal behavior retain their existing contracts.
+
+`ProcessTransportAdmission` isolates this boundary: one transport and at most
+one child creation. `Start` maps to the locked startup guard and `Popen`;
+`BeginClose` maps to `_draining = True`; `StopProcess` abstracts actual termination;
+`FinishClose` maps to publication of `_closed = True` after cleanup. The positive
+configuration checks no creation after draining, no running child after terminal
+close, owned running processes, and monotonic terminal admission. Two negative
+configurations restore the old missing guard and independently violate
+`NoSpawnAfterDrain` and `ClosedOwnsNoRunningProcess`.
+
+The two new `ProcessPackageContracts` use forbidden mocked process creation.
+Both fail on the old code; the overlap contract uses Events to pause close after
+admission, without sleeps, and verifies start is rejected before cleanup ends.
+The mandatory structural guard also rejects removal of the startup fence.
+`ProcessTransport.start` is now an explicit source binding because the generic
+state-name discovery had not identified this transition. Existing provider and
+supervisor models are unchanged. Spawn failures, thread-start interruption,
+OS cleanup semantics and source refinement remain separate obligations.
+
 ## Mature references reviewed first
 
 - [Erlang supervisor principles](https://www.erlang.org/doc/system/sup_princ.html),

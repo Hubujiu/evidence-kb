@@ -3169,24 +3169,28 @@
       "states": [
         "application new/handshaken/ready/running/closing/settled; stop busy/done",
         "native allocated/sent/dispatched/replied and pending/complete/unknown futures",
-        "process-provider prepared/intent/wire/invoked/returned; actual effects; observed receipt; joined/closed"
+        "process-provider prepared/intent/wire/invoked/returned; actual effects; observed receipt; joined/closed",
+        "transport unlaunched/running/draining/closed; close fences all later child creation"
       ],
       "transitions": [
         "HostSupervisorLifecycle: Boot/StartRun/ClaimStop/StopDone/RunReturns/BeginClose/CloseReturns/EmitRunReply/SettleRun/RunAcknowledged/ShutdownAcknowledged/CollectRoot/Reap/Cleanup/Publish/Fail",
         "HostRequestCorrelation: Allocate/Send/Dispatch/Reply/Receive/Fail",
-        "ProviderPhysicalKnowledge: ClaimIntent/WriteFrame/Invoke/Return/Observe/Lose/Cancel/Join/ClosePlugin/Exit/StopReader/StopWriter/CloseTransport"
+        "ProviderPhysicalKnowledge: ClaimIntent/WriteFrame/Invoke/Return/Observe/Lose/Cancel/Join/ClosePlugin/Exit/StopReader/StopWriter/CloseTransport",
+        "ProcessTransportAdmission: Start/BeginClose/StopProcess/FinishClose"
       ],
       "invariants": [
         "Stop and app close cannot overlap; success requires acknowledgements, root collection, leader reap and successful cleanup result.",
         "Exact response identity settles only its pending future; unique allocation permits arbitrary wire ordering.",
         "Sent intent is not proof of bytes or invocation; UNKNOWN permits zero or one actual effect; no automatic replay.",
-        "Plugin close follows handler join; transport close follows process and I/O cleanup observations."
+        "Plugin close follows handler join; transport close follows process and I/O cleanup observations.",
+        "Once close begins, an unstarted transport cannot spawn a child; closed transports own no subsequently created running process."
       ],
       "assumptions": [
         "Three distinct protocol abstractions, not a generic merged transport. Trusted native client uses unique numeric IDs; process client uses fresh physical UUIDs.",
         "One application/run/shutdown/root and finite scalar cleanup outcomes. Two native requests; one provider logical operation with second physical ID only under seeded retry.",
         "No liveness fairness for arbitrary app/provider code; blocking, lost responses and unconfirmed cleanup may remain pending.",
-        "Source reviewed from c8ef758; Rust whole-file and Python AST bindings plus mandatory semantic guards are review evidence, not refinement proof."
+        "Source reviewed from c8ef758; Rust whole-file and Python AST bindings plus mandatory semantic guards are review evidence, not refinement proof.",
+        "Startup admission and close admission serialize under the same Python transport lock. A finite single-child model abstracts Popen allocation and process cleanup; concrete contracts control close-before-start and overlapping cleanup."
       ],
       "exclusions": [
         "Native malicious duplicate frames and provider recent-ID cache eviction are outside model bounds; no durable idempotency guarantee.",
@@ -3427,6 +3431,12 @@
           "language": "python",
           "symbol": "HostConnection.__init__",
           "sha256": "9f9d7cf243666374a356516730a12fdf769ca7f4394f0ad90c47b0ba87e7f18f"
+        },
+        {
+          "path": "kb_platform/plugin_process.py",
+          "language": "python",
+          "symbol": "ProcessTransport.start",
+          "sha256": "021e608911c988da4c4d9d34a780fa5e8c2f94b44b3ac6ceeb4ef4b35024a2b8"
         }
       ],
       "models": [
@@ -3487,6 +3497,26 @@
           },
           "timeout_seconds": 60,
           "heap_mb": 256
+        },
+        {
+          "id": "process_transport_admission",
+          "module": "formal/host_process/ProcessTransportAdmission.tla",
+          "config": "formal/host_process/ProcessTransportAdmission.cfg",
+          "invariants": [
+            "TypeOK",
+            "NoSpawnAfterDrain",
+            "ClosedOwnsNoRunningProcess",
+            "RunningHasOwner",
+            "ClosedRemainsDraining"
+          ],
+          "properties": [],
+          "bounds": {
+            "transport": 1,
+            "child": 1,
+            "start_attempts": "one successful creation; rejected attempts stutter"
+          },
+          "timeout_seconds": 60,
+          "heap_mb": 256
         }
       ],
       "negative_controls": [
@@ -3529,11 +3559,27 @@
           "expected_invariant": "NoDuplicateInvocation",
           "timeout_seconds": 60,
           "heap_mb": 256
+        },
+        {
+          "id": "process_transport_late_start",
+          "module": "formal/host_process/ProcessTransportAdmission.tla",
+          "config": "formal/host_process/ProcessTransportAdmissionSeeded.cfg",
+          "expected_invariant": "NoSpawnAfterDrain",
+          "timeout_seconds": 60,
+          "heap_mb": 256
+        },
+        {
+          "id": "process_transport_closed_start",
+          "module": "formal/host_process/ProcessTransportAdmission.tla",
+          "config": "formal/host_process/ProcessTransportClosedSeeded.cfg",
+          "expected_invariant": "ClosedOwnsNoRunningProcess",
+          "timeout_seconds": 60,
+          "heap_mb": 256
         }
       ],
       "remaining_obligations": [
         "Real Linux process-tree and timeout integration remains mandatory.",
-        "Expand startup failure and multi-root protocols, callback ancestry, recent-ID cache eviction and malformed-frame model coverage.",
+        "Startup admission is modeled separately; startup failures, Popen/Thread.start interruption, multi-root protocols, callback ancestry, recent-ID cache eviction and malformed-frame model coverage remain obligations.",
         "No machine-checked source refinement or unbounded state/zero-bug claim."
       ]
     },
