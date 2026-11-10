@@ -127,6 +127,7 @@ export default function PromptBar({
   value,
   onValueChange,
   disabled = false,
+  sendDisabled = false,
 }: {
   variant?: string;
 
@@ -138,6 +139,7 @@ export default function PromptBar({
   value: string;
   onValueChange: (value: string) => void;
   disabled?: boolean;
+  sendDisabled?: boolean;
 }) {
   const pill = variant === "Pill";
   const draft = value;
@@ -298,7 +300,7 @@ export default function PromptBar({
     inputRef.current?.focus();
   };
 
-  const canSend = !disabled && draft.trim().length > 0;
+  const canSend = !disabled && !sendDisabled && draft.trim().length > 0;
   const send = () => {
     if (!canSend) return;
     onSend?.(draft.trim());

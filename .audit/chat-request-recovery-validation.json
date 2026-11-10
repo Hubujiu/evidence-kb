@@ -1,0 +1,267 @@
+{
+  "kind": "bounded-chat-request-recovery-validation",
+  "recorded_at_utc": "2026-11-10T16:00:47.642653+00:00",
+  "base_commit": "f0ea7450b33b21022fbb61e91c1539d5a290c89b",
+  "overall": "PENDING_REQUIRED_CI",
+  "source_sha256": {
+    "web/src/main.tsx": "f6917251266000f0fecbf1405b4aa77d19e67e23376d6ebb1dbd70a03fb52a46",
+    "web/src/turn-request.ts": "1136d37bbfbd9a68631734eabae5fd62aa5b7a4b4483b7da3473ecd37b834612",
+    "web/src/operation-owner.ts": "3ff875f9b4b697ddc2ef97551db831c949cff352d948a36cea63118d540e9fb5",
+    "web/src/components/primitives/PromptBar.tsx": "e409c340dd2dce6008fc4f79fb330e9aa334a6d885a0b240cc6cecd94897f2b3",
+    "web/src/style.css": "808f355cb28e5ba8dd55ba0c1eb29608848a881bbd9854b471cbba0a61ba894c",
+    "e2e/web_chat.e2e.js": "71d90f73dd5ad34d323d2ce4d7de744236e1c973a96080ca17497e4e83528b58",
+    "e2e/run_web_chat.py": "aa72a5d7d1f4739ffa5341fc9d8b2fb8b1a7ff69de2a815f837bbb66b01fccf9",
+    "scripts/web_ownership.test.mjs": "a638b1ca90a62f6996f76014c6b68969f33b7b53f08790bef73dceaba7bf5358",
+    "kb_platform/rag_testing/web_request_contracts.py": "627930d7936172731a25805e3c5735ca95b99f51e01cb9c646dad4481492b368",
+    "kb_platform/rag_testing/web_runner_contracts.py": "cee45ba45513068dc3887f3829f0bcfe68504f299c1ecfc99b348bc7625f8b08",
+    "kb_platform/rag_testing/formal_state_machines.py": "902687588d983f28e21542168d3b312f86e84eba2af36813fdeaff1e5db9b00f",
+    "kb_platform/rag_testing/formal_combination_contracts.py": "3b0fb41674b399539c83fab3d1682ce1f0a5d977e9d48a1ee3c2117192a4c7f0",
+    "scripts/check_project.py": "ebfc081718073253835e2f43245e9fdc7902b8e172d6e1c261bb2e20b50bee20",
+    "formal/registry-v1.json": "6196e8a6a6ba6085ac6a1043d2fc6a33abe758011c3783315e50720ca73dc42b",
+    "formal/combination-inputs-chat-recovery-v7.json": "c08f553e9ccc8177a06e8da0ea44111894e69ba8f05f48c9f420191701c91e98",
+    "docs/browser-state-integration-v2.json": "6bf42c681f91ad2732b1063be02bbc7a7ec560f303e5d0299ff5623bb9f27684",
+    "docs/chat-request-recovery.md": "d0030b73a7078931d64edf1a55a7bcf4f7edf9a9e5e606c6bdc4893170b170f4",
+    "formal/web_request_recovery/README.md": "c2c1313029989893578648ed87e9aa5098ebc8e2167acd7cf27f58fa1ebd4bef",
+    "formal/web_request_recovery/ParkedSessionNegative.cfg": "ff5fcbdb514d5665c2a51aaa1fa1938e140b9ec2b6973e4003ef4946139b87ee",
+    "formal/web_request_recovery/RefreshDowngradeNegative.cfg": "e40473e51c04b9864d003f6f0c2f93a9bbf9c7947b08e174ba108376f600a3f4",
+    "formal/web_request_recovery/StaleDraftNegative.cfg": "7a8f6c4c817033ff713b527d0317b6dbcfb6de8475ba05030b5dbb733e143479",
+    "formal/web_request_recovery/StaleViewNegative.cfg": "e7c768720520a902aacd60bb62459fc21d2304d02784a464ae20033545603945",
+    "formal/web_request_recovery/UnknownReleaseNegative.cfg": "1ae8cb07f72fb141346c3d7c6601a99d7dbcc159616119cd124b56b8c6368fe0",
+    "formal/web_request_recovery/WebRequestRecovery.cfg": "f45a27526342e2015755e095193e6fa9db10ff339337008f05671962b24b79ca",
+    "formal/web_request_recovery/WebRequestRecovery.tla": "6c8ab8359b087d945b524ca005a5e2c587879618e532b66d1ed5b0e0fccc6a24"
+  },
+  "direct_checks": {
+    "web_types_and_production_build": "PASS; pinned Node 22.23.1; pre-existing chunk-size warning retained",
+    "web_ownership_and_request_contracts": {
+      "status": "PASS",
+      "tests": 20
+    },
+    "targeted_python_contracts": {
+      "status": "PASS",
+      "tests": 54,
+      "modules": [
+        "web_request_contracts",
+        "web_runner_contracts",
+        "formal_combination_contracts",
+        "browser_source_contracts",
+        "formal_parse_reuse_contracts"
+      ]
+    },
+    "ruff": "PASS",
+    "source_comment_check": {
+      "status": "PASS",
+      "files": 83
+    },
+    "registry_lint": "PASS",
+    "architecture": "PASS",
+    "diff_check": "PASS"
+  },
+  "direct_tlc": {
+    "tool": "TLC 1.7.4 / Java 21",
+    "scope": "one original logical request, one retained record, at most two reads, one draft/view replacement and one later same-session or distinct-session send",
+    "positive_generated_states": 819,
+    "positive_distinct_states": 338,
+    "results": [
+      {
+        "config": "ParkedSessionNegative.cfg",
+        "exit_code": 12,
+        "result": [
+          "Error: Invariant NoParkedSameSessionSend is violated.",
+          "Error: The behavior up to this point is:",
+          "170 states generated, 111 distinct states found, 48 states left on queue."
+        ]
+      },
+      {
+        "config": "RefreshDowngradeNegative.cfg",
+        "exit_code": 12,
+        "result": [
+          "Error: Invariant KnownResultNeverUnknown is violated.",
+          "Error: The behavior up to this point is:",
+          "55 states generated, 41 distinct states found, 17 states left on queue."
+        ]
+      },
+      {
+        "config": "StaleDraftNegative.cfg",
+        "exit_code": 12,
+        "result": [
+          "Error: Invariant NoStaleDraftClear is violated.",
+          "Error: The behavior up to this point is:",
+          "29 states generated, 24 distinct states found, 10 states left on queue."
+        ]
+      },
+      {
+        "config": "StaleViewNegative.cfg",
+        "exit_code": 12,
+        "result": [
+          "Error: Invariant NoStaleRender is violated.",
+          "Error: The behavior up to this point is:",
+          "32 states generated, 26 distinct states found, 11 states left on queue."
+        ]
+      },
+      {
+        "config": "UnknownReleaseNegative.cfg",
+        "exit_code": 12,
+        "result": [
+          "Error: Invariant NoUnconfirmedNextSend is violated.",
+          "Error: The behavior up to this point is:",
+          "72 states generated, 53 distinct states found, 20 states left on queue."
+        ]
+      },
+      {
+        "config": "WebRequestRecovery.cfg",
+        "exit_code": 0,
+        "result": [
+          "Model checking completed. No error has been found.",
+          "819 states generated, 338 distinct states found, 0 states left on queue."
+        ]
+      }
+    ]
+  },
+  "historical_attempts": {
+    "initial_model_iteration": {
+      "status": "FAIL; incompletely assigned successor, not a negative-control witness",
+      "results": [
+        {
+          "config": "StaleViewNegative.cfg",
+          "exit_code": 75,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:37:54.",
+            "Error: Successor state is not completely specified by action Receive of the next-state relation. The following variable is not assigned: renderAttempted.",
+            "Error: The behavior up to this point is:",
+            "13 states generated, 12 distinct states found, 7 states left on queue."
+          ]
+        },
+        {
+          "config": "UnknownReleaseNegative.cfg",
+          "exit_code": 75,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:37:55.",
+            "Error: Successor state is not completely specified by action Receive of the next-state relation. The following variable is not assigned: renderAttempted.",
+            "Error: The behavior up to this point is:",
+            "13 states generated, 12 distinct states found, 7 states left on queue."
+          ]
+        },
+        {
+          "config": "WebRequestRecovery.cfg",
+          "exit_code": 75,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:37:56.",
+            "Error: Successor state is not completely specified by action Receive of the next-state relation. The following variable is not assigned: renderAttempted.",
+            "Error: The behavior up to this point is:",
+            "13 states generated, 12 distinct states found, 7 states left on queue."
+          ]
+        },
+        {
+          "config": "RefreshDowngradeNegative.cfg",
+          "exit_code": 75,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:37:57.",
+            "Error: Successor state is not completely specified by action Receive of the next-state relation. The following variable is not assigned: renderAttempted.",
+            "Error: The behavior up to this point is:",
+            "13 states generated, 12 distinct states found, 7 states left on queue."
+          ]
+        },
+        {
+          "config": "StaleDraftNegative.cfg",
+          "exit_code": 75,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:37:59.",
+            "Error: Successor state is not completely specified by action Receive of the next-state relation. The following variable is not assigned: renderAttempted.",
+            "Error: The behavior up to this point is:",
+            "14 states generated, 12 distinct states found, 7 states left on queue."
+          ]
+        }
+      ]
+    },
+    "before_parking_extension": {
+      "status": "PASS for superseded smaller model only",
+      "results": [
+        {
+          "config": "RefreshDowngradeNegative.cfg",
+          "exit_code": 12,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:38:39.",
+            "Error: Invariant KnownResultNeverUnknown is violated.",
+            "Error: The behavior up to this point is:",
+            "55 states generated, 41 distinct states found, 17 states left on queue."
+          ]
+        },
+        {
+          "config": "StaleDraftNegative.cfg",
+          "exit_code": 12,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:38:40.",
+            "Error: Invariant NoStaleDraftClear is violated.",
+            "Error: The behavior up to this point is:",
+            "29 states generated, 24 distinct states found, 10 states left on queue."
+          ]
+        },
+        {
+          "config": "StaleViewNegative.cfg",
+          "exit_code": 12,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:38:42.",
+            "Error: Invariant NoStaleRender is violated.",
+            "Error: The behavior up to this point is:",
+            "32 states generated, 26 distinct states found, 11 states left on queue."
+          ]
+        },
+        {
+          "config": "UnknownReleaseNegative.cfg",
+          "exit_code": 12,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:38:43.",
+            "Error: Invariant NoUnconfirmedNextSend is violated.",
+            "Error: The behavior up to this point is:",
+            "72 states generated, 53 distinct states found, 20 states left on queue."
+          ]
+        },
+        {
+          "config": "WebRequestRecovery.cfg",
+          "exit_code": 0,
+          "result": [
+            "Finished computing initial states: 2 distinct states generated at 2026-11-10 07:38:44.",
+            "Model checking completed. No error has been found.",
+            "  because two distinct states had the same fingerprint:",
+            "641 states generated, 278 distinct states found, 0 states left on queue."
+          ]
+        }
+      ]
+    }
+  },
+  "required_entrypoints": {
+    "ordinary": "FAIL locally before owned subprocess checks execute; exact final-source attempt retained",
+    "formal_only": "FAIL locally before owned TLC checks execute; exact final-source attempt retained",
+    "cause": {
+      "status": "UNAVAILABLE",
+      "error_type": "RuntimeError",
+      "reason": "OWNED_CHILD_DISCOVERY_UNAVAILABLE"
+    },
+    "bypass": false
+  },
+  "actual_browser": {
+    "status": "NOT_RUN_LOCALLY",
+    "required_cases": 12,
+    "reason": "Required process containment unavailable; root also observed Chromium startup socket EPERM. CI must execute actual React browser acceptance on the proposed commit.",
+    "historical_evidence": "docs/browser-state-integration-v2.json preserves older browser evidence as historical; it is not current-source PASS."
+  },
+  "independent_review": [
+    "Backend review identified and verified fixes for one-call model_sent:false ambiguity and permanent interrupted request trapping; Node20 rerun PASS.",
+    "Separate finite-model/source-binding/manifest review found no blocker; second full lifecycle and multi-record dispatch explicitly excluded from finite proof."
+  ],
+  "limitations": [
+    "Page-local request records; connection reset or reload discards UI records.",
+    "No automatic resend, original-session replay or server reconciliation endpoint added.",
+    "Whole-module source hashes are drift checks, not automatic TypeScript refinement.",
+    "No full CI or real-browser PASS asserted in this record."
+  ],
+  "new_model_calls": 0,
+  "new_embedding_calls": 0,
+  "new_judge_calls": 0,
+  "evidence_sha256": {
+    "chat-request-recovery-checks.log": "3905a5aa90b3ae2caa3635eca35d7f00f883e3c823c442575022694e07ae8d28",
+    "chat-request-recovery-tlc.log": "8a60e8ac5907e535ad31eb86ecc99dd9d38adae866fb2c54a9c081542e0c4304",
+    "chat-request-recovery-required.json": "55b2388a64e40e2fa18544a9287443681c038007dff8b378d66a9fac70a7076b"
+  },
+  "evidence_normalization": "Collated checks log removes trailing line whitespace; original local command logs are retained unchanged in .local/chat-final-01."
+}

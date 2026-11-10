@@ -82,3 +82,18 @@ class WebRunnerContracts(unittest.TestCase):
                     arguments('Browser acceptance')
             self.assertEqual(caught.exception.code, 2)
             self.assertIn('--output must be a new directory', stderr.getvalue())
+
+    def test_chat_recovery_suite_requires_every_declared_case(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory)
+            case = {'file': 'web_chat.e2e.js', 'status': 'passed', 'attempts': [
+                {'status': 'passed', 'steps': [{'kind': 'assertion', 'status': 'passed'}]}]}
+            run = {'status': 'passed', 'exitCode': 0, 'errors': [],
+                   'usage': {'modelTokens': 0, 'maxModelCallsInStep': 0},
+                   'results': [json.loads(json.dumps(case)) for _ in range(12)]}
+            (output / 'report.json').write_text(json.dumps({'run': run}), encoding='utf-8')
+            self.assertEqual(browser_verdict(output, 'web_chat.e2e.js', 12)['tests'], 12)
+            run['results'].pop()
+            (output / 'report.json').write_text(json.dumps({'run': run}), encoding='utf-8')
+            with self.assertRaises(ValueError):
+                browser_verdict(output, 'web_chat.e2e.js', 12)

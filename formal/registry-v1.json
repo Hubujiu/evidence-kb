@@ -13981,6 +13981,164 @@
           "purpose": "Witness admission failure on exhausted BUSY budget"
         }
       ]
+    },
+    {
+      "id": "web_request_recovery",
+      "status": "partial",
+      "owners": [
+        "web/src/turn-request.ts",
+        "web/src/main.tsx"
+      ],
+      "states": [
+        "idle",
+        "creating",
+        "submitting",
+        "rejected",
+        "unconfirmed",
+        "checking",
+        "confirmed",
+        "refreshing",
+        "refresh_required",
+        "complete",
+        "retained original request beside distinct active session"
+      ],
+      "transitions": [
+        "capture request and draft identity before POST",
+        "confirm original response independently of view refresh",
+        "query original request without resending",
+        "retain unresolved outcome and block same-session continuation",
+        "explicitly park a manual-resolution request and start a distinct blank conversation",
+        "route retained recovery by original identity without replacing active state or draft",
+        "refresh authoritative session and enable continuation",
+        "ignore stale identity, request and view writes"
+      ],
+      "invariants": [
+        "TypeOK",
+        "RequestBeforePost",
+        "OriginalRequestReads",
+        "NoUnconfirmedNextSend",
+        "KnownResultNeverUnknown",
+        "NoStaleDraftClear",
+        "NoCreationFailureClear",
+        "NoStaleRender",
+        "NoParkedSameSessionSend",
+        "RetainedRequestIdentity"
+      ],
+      "assumptions": [
+        "One original logical turn, explicit or implicit session creation, at most two recovery reads, one draft replacement, one navigation, and at most one later same-session continuation or independent session send.",
+        "Business answered/error/redacted responses all represent a known saved outcome; aggregate send_status remains unknown.",
+        "Browser callback commits are synchronous between await boundaries; unique UUID and ownership counters do not collide within the bound."
+      ],
+      "exclusions": [
+        "Manual TypeScript-to-TLA abstraction, not automatic refinement or a claim that every browser callback is modeled.",
+        "No backend execution, authorization, billing, transaction or cancellation proof; aborting UI work does not roll back server effects.",
+        "No page reload durability, identity reconnect recovery, DOM allocation failures, unbounded retries, network liveness or browser process-lifetime proof.",
+        "Exact pre-handler delivery rejection, multiple retained attempts, identity reset and mismatched response IDs are direct or browser contracts outside the finite model; no server status liveness is inferred."
+      ],
+      "source_bindings": [
+        {
+          "path": "web/src/turn-request.ts",
+          "language": "typescript-module",
+          "symbol": "<module>",
+          "sha256": "1136d37bbfbd9a68631734eabae5fd62aa5b7a4b4483b7da3473ecd37b834612"
+        },
+        {
+          "path": "web/src/main.tsx",
+          "language": "typescript-module",
+          "symbol": "<module>",
+          "sha256": "f6917251266000f0fecbf1405b4aa77d19e67e23376d6ebb1dbd70a03fb52a46"
+        },
+        {
+          "path": "web/src/operation-owner.ts",
+          "language": "typescript-module",
+          "symbol": "<module>",
+          "sha256": "3ff875f9b4b697ddc2ef97551db831c949cff352d948a36cea63118d540e9fb5"
+        },
+        {
+          "path": "web/src/components/primitives/PromptBar.tsx",
+          "language": "typescript-module",
+          "symbol": "<module>",
+          "sha256": "e409c340dd2dce6008fc4f79fb330e9aa334a6d885a0b240cc6cecd94897f2b3"
+        }
+      ],
+      "models": [
+        {
+          "id": "web_request_recovery",
+          "module": "formal/web_request_recovery/WebRequestRecovery.tla",
+          "config": "formal/web_request_recovery/WebRequestRecovery.cfg",
+          "invariants": [
+            "TypeOK",
+            "RequestBeforePost",
+            "OriginalRequestReads",
+            "NoUnconfirmedNextSend",
+            "KnownResultNeverUnknown",
+            "NoStaleDraftClear",
+            "NoCreationFailureClear",
+            "NoStaleRender",
+            "NoParkedSameSessionSend",
+            "RetainedRequestIdentity"
+          ],
+          "properties": [],
+          "bounds": {
+            "original_logical_requests": 1,
+            "subsequent_send_attempts": 1,
+            "retained_requests": 1,
+            "distinct_sessions": 2,
+            "recovery_reads": 2,
+            "draft_changes": 1,
+            "view_changes": 1
+          },
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "negative_controls": [
+        {
+          "id": "web_request_unknown_release",
+          "module": "formal/web_request_recovery/WebRequestRecovery.tla",
+          "config": "formal/web_request_recovery/UnknownReleaseNegative.cfg",
+          "expected_invariant": "NoUnconfirmedNextSend",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "web_request_refresh_downgrade",
+          "module": "formal/web_request_recovery/WebRequestRecovery.tla",
+          "config": "formal/web_request_recovery/RefreshDowngradeNegative.cfg",
+          "expected_invariant": "KnownResultNeverUnknown",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "web_request_stale_draft",
+          "module": "formal/web_request_recovery/WebRequestRecovery.tla",
+          "config": "formal/web_request_recovery/StaleDraftNegative.cfg",
+          "expected_invariant": "NoStaleDraftClear",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "web_request_stale_view",
+          "module": "formal/web_request_recovery/WebRequestRecovery.tla",
+          "config": "formal/web_request_recovery/StaleViewNegative.cfg",
+          "expected_invariant": "NoStaleRender",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        },
+        {
+          "id": "web_request_parked_session",
+          "module": "formal/web_request_recovery/WebRequestRecovery.tla",
+          "config": "formal/web_request_recovery/ParkedSessionNegative.cfg",
+          "expected_invariant": "NoParkedSameSessionSend",
+          "timeout_seconds": 30,
+          "heap_mb": 128
+        }
+      ],
+      "remaining_obligations": [
+        "Actual twelve-case React browser suite and complete required CI must execute on each proposed commit.",
+        "Identity reset, multiple retained attempts and request-specific dispatch are covered by direct reducer/owner contracts; extend model bounds before claiming their full composition.",
+        "Unresolved request identity is page-local; reconnect or reload requires retained session/request IDs and authorized server recovery."
+      ]
     }
   ],
   "composition_edges": [

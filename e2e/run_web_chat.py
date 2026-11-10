@@ -113,7 +113,7 @@ def main():
         processes.append(subprocess.Popen([node, str(vite), '--host', '127.0.0.1', '--port', str(web_port),
             '--strictPort'], cwd=ROOT / 'web', env=env))
         wait_for(web_url, processes[-1])
-        return run_browser(node, e2e, args.output, env)
+        return run_browser(node, e2e, args.output, env, expected_tests=12)
     finally:
         for process in reversed(processes):
             process.terminate()
