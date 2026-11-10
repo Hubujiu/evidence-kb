@@ -225,20 +225,18 @@ class DeliveryContracts(unittest.TestCase):
             ensure_private_identity(profile)
         self.assertEqual(path.read_text('utf-8'), '{}')
 
-    def test_unresolved_request_blocks_preflight_and_factory_without_invoking_application(self):
+    def test_unresolved_request_preflight_reports_recovery_without_mutating_ledger(self):
         ledger = BudgetLedger(self.run / 'physical-calls.sqlite3', self.config['physical_call_caps'])
+        self.addCleanup(ledger.close)
         reservation = dict.fromkeys(ledger.caps, 0)
         reservation['model'] = 1
         ledger.reserve('synthetic-pending', reservation)
         before = ledger.summary()
-        with self.assertRaises(ValueError):
-            self.check()
-
-        def unexpected_application(settings):
-            self.fail('An unresolved physical request must stop application construction')
-
-        with self.assertRaises(DeliveryConfigurationError):
-            create_delivery_app(self.config_path, self.provider_path, self.run, app_factory=unexpected_application)
+        checked = self.check()
+        self.assertTrue(checked['recovery_required'])
+        self.assertEqual(checked['mode'], 'restricted_recovery')
+        self.assertEqual(checked['recovery_reason'], 'UNRESOLVED_PHYSICAL_REQUEST')
+        self.assertEqual(checked['physical_ledger'], before)
         self.assertEqual(ledger.summary(), before)
 
     def test_production_delivery_uses_public_metadata_and_mount_time_capture_options(self):
