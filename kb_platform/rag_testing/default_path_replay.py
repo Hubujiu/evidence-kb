@@ -17,6 +17,7 @@ def replay_application(authority, model, gateway, root, context_policy):
 
     from kb_platform.knowledge_profile import create_knowledge_application, load_knowledge_profile
     from kb_platform.plugin_host import PluginSpec
+    from .knowledge_session_fixture import session_fixture
 
     profile = load_knowledge_profile(environment={})
     profile['plugins'] = [row for row in profile['plugins'] if row['id'] not in {'provider', 'budget'}]
@@ -24,11 +25,19 @@ def replay_application(authority, model, gateway, root, context_policy):
     by_id['model'].update(use='replay.model', config={})
     by_id['gateway'].update(use='replay.gateway', config={})
     by_id['reranker'].update(use='knowledge.reranker.none', config={})
-    by_id['store']['config']['root'] = str(root)
+    by_id['knowledge-store'].update(use='replay.sessions', config={})
     by_id['knowledge']['config']['retrieval_config'] = {'channels': ['bm25'], 'rerank': False}
     if context_policy is not None:
         by_id['policy']['config'] = asdict(context_policy)
+    def sessions(ctx, config):
+        store, _ = session_fixture(Path(root) / 'authority', authority.actor, authority.scope,
+            manifest='build', revision=authority.revision)
+        authority.session_database = store.database
+        ctx.defer(store.close)
+        ctx.provide('knowledge.store', store)
+
     fixtures = (
+        PluginSpec('replay.sessions', ('knowledge.store',), (), sessions),
         PluginSpec('replay.model', ('knowledge.model',), (),
                    lambda ctx, config: ctx.provide('knowledge.model', model)),
         PluginSpec('replay.gateway', ('knowledge.gateway',), (),

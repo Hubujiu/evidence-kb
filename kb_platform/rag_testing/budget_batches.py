@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sqlite3
 
-from .budget import BudgetLedger, producer_guard
+from .budget import BUDGET_READ_ERRORS, BudgetLedger, producer_guard
 from .contracts import digest
 
 PROTOCOL = 'linked-budget-predecessor/1'
@@ -146,7 +146,36 @@ class LinkedBudgetLedger:
         return self.ledger.summary()
 
     def cumulative_summary(self):
-        return cumulative_summary(self.predecessors, self.path)
+        return self._review_summary(cumulative_summary(self.predecessors, self.path))
+
+    def _review_summary(self, result):
+        return result
+
+    def status_snapshot(self):
+        local = self.ledger.status_snapshot()
+        partial = {**local, 'cumulative': None, 'admission_pending_or_unknown': None,
+                   'reviewed_unknown_requests': None, 'blocked': True}
+        try:
+            parents = self._parents()
+        except BUDGET_READ_ERRORS as error:
+            reason = str(error)
+            if reason == 'REVIEWED_PREDECESSOR_CHANGED':
+                reason = 'PREDECESSOR_LEDGER_CHANGED'
+            if reason not in {'PREDECESSOR_LEDGER_CHANGED', 'UNRESOLVED_PREDECESSOR_LEDGER',
+                              'PREDECESSOR_ALREADY_OVER_BUDGET'}:
+                reason = 'PREDECESSOR_LEDGER_UNAVAILABLE'
+            return {**partial, 'blocked_reason': local['blocked_reason'] or reason}
+        try:
+            cumulative = self._review_summary(_cumulative_summary(self.predecessors, parents, _snapshot(self.path)))
+        except BUDGET_READ_ERRORS:
+            return {**partial, 'blocked_reason': local['blocked_reason'] or 'BUDGET_READ_UNAVAILABLE'}
+        reason = ('PREDECESSOR_LEDGER_CHANGED' if cumulative['predecessor_drift'] else
+                  'DUPLICATE_PHYSICAL_REQUEST_ID' if cumulative['duplicate_physical_request_ids'] else None)
+        return {'current': cumulative['new_batch']['summary'], 'cumulative': cumulative['cumulative'],
+                'admission_pending_or_unknown': cumulative.get('admission_pending_or_unknown',
+                    cumulative['cumulative']['pending_or_unknown']),
+                'reviewed_unknown_requests': cumulative.get('reviewed_unknown_requests', 0),
+                'blocked': cumulative['status'] == 'BLOCKED', 'blocked_reason': reason}
 
 
 def cumulative_summary(predecessors, child_path):
@@ -156,6 +185,10 @@ def cumulative_summary(predecessors, child_path):
         _validate_frozen_identity(predecessor)
     parents = [_snapshot(value['path']) for value in predecessors]
     child = _snapshot(child_path)
+    return _cumulative_summary(predecessors, parents, child)
+
+
+def _cumulative_summary(predecessors, parents, child):
     all_ledgers = [*parents, child]
     if any(set(value['caps']) != set(child['caps']) for value in parents):
         raise ValueError('BATCH_RESOURCE_DIMENSIONS_DIFFER')
@@ -268,7 +301,9 @@ class ReviewedPredecessorLedger(LinkedBudgetLedger):
 
     def cumulative_summary(self):
         self._parents()
-        result = super().cumulative_summary()
+        return super().cumulative_summary()
+
+    def _review_summary(self, result):
         reviewed = sum(len(value.get('reviewed_unknown_ids', [])) for value in self.predecessors)
         pending = result['cumulative']['pending_or_unknown'] - reviewed
         result['reviewed_unknown_requests'] = reviewed

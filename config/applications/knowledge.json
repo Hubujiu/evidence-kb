@@ -26,10 +26,8 @@
     },
     "sessions": {
       "implementation": "knowledge.sessions",
-      "version": "1",
-      "config": {
-        "binding": "store.primary"
-      }
+      "version": "2",
+      "config": {}
     },
     "data": {
       "implementation": "knowledge.data",
@@ -87,7 +85,7 @@
     },
     "authority": {
       "implementation": "knowledge.authority",
-      "version": "1",
+      "version": "2",
       "config": {
         "binding": "repository.primary"
       }
@@ -110,9 +108,9 @@
       }
     },
     "sessions": {
-      "storage": {
-        "plugin": "storage",
-        "export": "storage"
+      "authority": {
+        "export": "authority",
+        "plugin": "authority"
       }
     },
     "data": {

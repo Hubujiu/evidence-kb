@@ -16,15 +16,17 @@ from kb_platform.model_errors import RemoteModelError
 from kb_platform.plugin_contracts import ContractError, ServiceEndpoint
 from kb_platform.plugin_native import PluginError
 from kb_platform.session_identity import Actor, PlatformError
-from kb_platform.session_store import SessionStore
 
 from .product_fixture import Authority, Gateway, Reranker
+from .knowledge_session_fixture import session_fixture
 
 
 class KnowledgeCapabilityContracts(unittest.TestCase):
     def test_session_json_boundary_preserves_owner_revision_and_idempotency(self):
         with TemporaryDirectory() as directory:
-            store = SessionStore(directory)
+            actor = Actor('tenant', 'reader')
+            facade, authority = session_fixture(directory, actor)
+            store = facade.store
             self.addCleanup(store.close)
             endpoint = ServiceEndpoint(SessionEndpoint(KnowledgeSessions(store)), methods(SESSION_OPERATIONS))
             client = SessionClient(endpoint)
@@ -36,7 +38,7 @@ class KnowledgeCapabilityContracts(unittest.TestCase):
             self.assertEqual(caught.exception.code, 'SESSION_NOT_FOUND')
             begin = client.begin(actor, session['session_id'], 'request', 0, 'fingerprint')
             completed = client.finish(actor, session['session_id'], begin['token'], session['state'],
-                                      {'status': 'answered'})
+                                      {'status': 'answered'}, authority=authority)
             self.assertEqual(completed['revision'], 1)
             self.assertEqual(client.begin(actor, session['session_id'], 'request', 0, 'fingerprint'),
                              {'cached': completed})

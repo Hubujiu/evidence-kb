@@ -360,6 +360,8 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
 
 
             self.check_execution()
+            if response["status"] == "error":
+                raise PlatformError(response["stop_reason"], "Knowledge workflow failed", 503)
             if self.service.gateway.authorize(self.actor, self.scope) != self.authority:
                 raise PlatformError("SCOPE_CHANGED", "Authority changed before answer commit", 409)
             self.service.gateway.revalidate(
@@ -391,10 +393,13 @@ class KnowledgeTurn(KnowledgeModelCalls, KnowledgePlanning, KnowledgeAnswer):
                 self.token,
                 committed_state,
                 response,
+                authority=self.authority,
                 assistant_event=assistant_event,
             )
         except Exception as exc:
             code = getattr(exc, "code", type(exc).__name__)
+            if code == 'COMMIT_UNKNOWN':
+                raise
             if code == "AGENT_DEADLINE_EXCEEDED":
                 code = "AGENT_BUDGET_EXHAUSTED"
             self.trace.update(stop_reason=code, elapsed_seconds=time.perf_counter() - self.started)

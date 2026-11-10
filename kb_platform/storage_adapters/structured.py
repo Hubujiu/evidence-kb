@@ -4,7 +4,6 @@ from hashlib import sha256
 from datetime import timezone
 import math
 from pathlib import Path
-import sqlite3
 
 from sqlalchemy import Column, DateTime, Double, Float, Integer, MetaData, Numeric, String, Table, Text, and_, inspect, literal, or_, select, text
 from sqlalchemy.exc import DBAPIError
@@ -20,6 +19,7 @@ from sqlalchemy.sql.schema import CheckConstraint, ForeignKeyConstraint, UniqueC
 from sqlalchemy.types import TypeDecorator
 
 from ..database_contracts import DatabaseError, Migration, QueryResult, SchemaPackage, SqlStatement
+from ..database_providers.sqlite_guard import sqlite_guard
 from ..database_migrations import migration_connection, prepare
 from ..storage_sdk.relational import After, Clock, ExactString, IDENTIFIER, StructuredSchema, UtcDateTime
 
@@ -249,17 +249,8 @@ class StructuredSqlSpace:
         if self._space.info.engine == 'sqlite':
             path = Path(self._space.physical_name)
             sidecar = path.parent / (path.name + '.guard-' + key[:32] + '.sqlite3')
-            connection = sqlite3.connect(sidecar, timeout=0 if nowait else 30, isolation_level=None)
-            try:
-                try:
-                    connection.execute('BEGIN IMMEDIATE')
-                except sqlite3.OperationalError as error:
-                    if error.sqlite_errorcode in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}:
-                        raise DatabaseError('DATABASE_GUARD_BUSY') from None
-                    raise DatabaseError('DATABASE_BACKEND_UNAVAILABLE') from None
+            with sqlite_guard(sidecar, nowait=nowait):
                 yield
-            finally:
-                connection.close()
             return
         with self._space.runtime_engine.connect() as connection:
             postgres = connection.dialect.name == 'postgresql'

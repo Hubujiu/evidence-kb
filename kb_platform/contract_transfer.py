@@ -160,6 +160,14 @@ class JsonEndpoint:
             raise
 
     def execute(self, request):
+        dispatch = [None if isinstance(request, dict) and request.get('op') in {'wire_read', 'wire_cancel'} else False]
+        try:
+            return self._execute(request, dispatch)
+        except Exception as error:
+            error.request_dispatched = dispatch[0]
+            raise
+
+    def _execute(self, request, dispatch):
         request = wire(request)
         if type(request) is not dict or type(request.get('version')) is not int or request['version'] != 1:
             raise TransferError('CONTRACT_WIRE_VERSION_INVALID')
@@ -169,6 +177,7 @@ class JsonEndpoint:
                 if self._closed:
                     raise TransferError('CONTRACT_WIRE_CLOSED')
                 self._expire()
+            dispatch[0] = True
             return self._publish(request, self._handler(request))
         with self._lock:
             if self._closed:
@@ -236,6 +245,7 @@ class JsonEndpoint:
                 if logical.get('handle') != transfer.transaction:
                     raise TransferError('CONTRACT_WIRE_TRANSFER_INVALID')
                 self._validate_transaction(transfer.transaction)
+            dispatch[0] = True
             return self._publish(logical, self._handler(logical))
         finally:
             with self._lock:
@@ -302,11 +312,19 @@ class JsonClient:
             error.request_dispatched = dispatch[0]
             raise
 
+    def _dispatch(self, request, dispatch):
+        dispatch[0] = True
+        try:
+            return self._frame(request)
+        except Exception as error:
+            if getattr(error, 'request_dispatched', None) is False:
+                dispatch[0] = False
+            raise
+
     def _call(self, request, dispatch):
         payload = encoded(request, maximum=MAX_VALUE_BYTES)
         if len(payload) <= MAX_MESSAGE_BYTES:
-            dispatch[0] = True
-            return self._receive(self._frame(request))
+            return self._receive(self._dispatch(request, dispatch))
         if request.get('op') not in self._operations:
             raise TransferError('CONTRACT_WIRE_MESSAGE_LIMIT')
         selected = _metadata(self._frame({'op': 'wire_begin', 'bytes': len(payload),
@@ -322,8 +340,7 @@ class JsonClient:
                 _fields(result, {'offset'})
                 if type(result['offset']) is not int or result['offset'] != offset + len(chunk):
                     raise TransferError('CONTRACT_WIRE_TRANSFER_OFFSET_INVALID')
-            dispatch[0] = True
-            result = self._frame({'op': 'wire_dispatch', 'handle': handle})
+            result = self._dispatch({'op': 'wire_dispatch', 'handle': handle}, dispatch)
             return self._receive(result)
         finally:
             self._cancel(handle)

@@ -1,0 +1,78 @@
+# Formal feature combination (work in progress)
+
+This integration tree combines the public feature inputs in `formal/combination-inputs-v1.json` over the immutable PR31+32 dependency tree. It is a separate verification candidate, not a replacement for the independent feature PRs, an all-owner proof, a main merge, or a deployment.
+
+## Assembly contract
+
+Each feature is applied as its published base-to-head delta in dependency order. Machine records, source bindings, model runs, negative controls, limitations, and discovery metadata are combined by identity. No private feature ancestry is merged or published. Historical execution logs and reports are excluded from the publication projection. Two previously public browser source-review JSON files remain in their exact original bytes with explicit authorization because the unchanged mandatory browser source-drift contract consumes them. New execution logs and reports remain private.
+
+The input-preservation contracts compare exact run IDs and definitions, TLA/CFG bytes (only checkout CRLF is normalized), retained contract case identities, and independently reviewed shared gate entry points using the existing cross-version Python AST digest. The static manifest's schema version 2 uses explicit `path`/`sha256` model-input records. The gate rejects duplicate, missing, extra, malformed, same-sized replacement and changed-byte records; the registry determines the required path identities. This representation separates file names from digest assignments without weakening secret scanning or resolving historical findings. These checks prevent accidental omission or overwrite; they do not turn counts or source fingerprints into semantic coverage. Legitimate later feature inputs require an explicit manifest and shared-entry-point review.
+
+## Reviewed shared boundaries
+
+- Provider runtime retains separate circuit, receipt, and tool-policy owners. Receipt database checks remain under `provider_receipts`; remote pre-send checks and persistent permission/checkpoint checks both remain under `provider_admission`.
+- PR34's final metered transport keeps pre-dispatch known-unsent handling outside dispatched observation and one-shot settlement. The older capture binding is not restored.
+- Cross-owner bindings use the exact published source symbols from PR36 (receipt begin/finish), PR42 (canonical error-field module), PR44 (model receipt and public error projection), PR45 (knowledge turn), and PR53 (403 embargo before settlement). No novel combined production symbol fingerprint was needed.
+- The shared runner retains JavaScript discovery, every owner lint, official SANY review before TLC, and the two separately reported PR35 `OBSERVED_LIMITATION` outcomes. The known authority-check-to-session-commit gap is not declared fixed.
+- Foundation integration retains delivery-status, receipt process/crash, acceptance preparation, and the exactly-once browser asset ASGI case. Host fixture allowlists and browser source gates remain mandatory.
+- Rust feature changes retain their public source/test bytes; native verification must build this combination's own library.
+
+## Combination-only fixture adjustments
+
+The limitation-report unit fixture now includes an explicitly synthetic SANY export report so the PR35 evidence contracts can exercise the PR60 mandatory evidence schema. A failing inline review remains a rejecting mutation.
+
+The pre-send lint fixture now supplies the additional permission/checkpoint and physical-settlement owner sources required by the combined mandatory registry path. Existing refreshed-hash mutants and constant-field-loss assertions are unchanged; no mandatory check is skipped.
+
+## Subsequent owner inputs
+
+PR66 adds independent acceptance binding/publication and client execution models. Its scenario-file fix routes split, scenario and descriptor publication through immutable-equality reuse before atomic creation; the pre-existing prepare/receipt guards remain. PR67 adds Platform upload/result snapshot and Auxiliary OCR upload models and mandatory source/witness lint without production owner changes. Both are applied only as their declared public dependency deltas.
+
+## Validation boundary
+
+The first focused run exposed these two fixture dependency conflicts and a native-dependent case selected before a combined library existed. Its failures are retained privately, not converted into passes. Corrected fixture contracts passed a focused rerun. Ordinary full checks, formal-only execution, and exact remote CI remain required and are not claimed here. Additional independently identified state owners are still pending; this candidate is not final acceptance.
+
+PR68 adds SDK gateway request/recovery/shutdown ownership and query/index cleanup. PR69 adds native multiblock assembler/replay projection models and contracts without production changes. PR70 adds the public `CanonicalPageIngestion.run` protocol (including two-source/batch processing, receipts/capsules/readback, optional build and retained costs); absent CLI wiring does not exclude it. PR71 adds Python executor/context leases and HTTP lifespan cleanup. Their exact public deltas are present, but combined native/runtime verification and exact CI are not thereby established. PR72 adds persistent migration and document-revision ownership with migration cleanup repair; PR73 adds global native storage-session ownership and exact native tests without changing production protocol logic. Their ordinary gates and exact-head CI remain independently pending at this input freeze. External provider internals and arbitrary historical research scripts are not added to scope.
+
+PR68 now includes the published recovery-provider scope identity fix: changed or absent declared provider scope is rejected before recovery cache/retry selection, and new capture publication rechecks the same scope. This closes the identified code gap only within the declared scope semantics; combined runtime, formal and CI verification remain required. PR71's public nested-lease witness now records the real nesting transition. Its public dispatcher-observation follow-up now waits for complete native settlement under the unchanged three-second deadline, retains the original assertions, and adds a real two-sided barrier contract. This is a fixture observation repair, not a new production-supervision fix; the combined native/process stage still requires execution.
+
+PR41's later public diagnostic delta adds bounded search-stage metadata and a one-pass, first-error-stopping diagnostic probe. It is not a production fix for the unresolved Windows native commit failure. PR73 remains applied against its original immutable PR41 base, not the moving diagnostic branch. PR75 adds fail-fast offline transport at real HTTPX client construction for four test fixtures, preserving environment policy, capture installation and original assertions. Both new mandatory source gates are retained alongside all prior hooks.
+
+The first public combination CI failed secret scanning on static model-digest assignments and timed out one Windows contract shard. The former findings require exact historical review; a new manifest representation does not erase or waive them. PR76 now reuses content-keyed Python parsing only inside one registry validation, with a bounded cache cleared in `finally`; every path check and source read still occurs. The unchanged registry worker, moved into `_registry_violations`, remains bound separately from its wrapper, and deleting an owner hook or binding validation is a rejecting mutation. This does not increase deadlines, skip contracts or establish a Windows timing guarantee.
+
+The subsequent `c48f201` combination CI still exceeded the original Windows contract budgets. PR76's next public delta therefore prunes expression descent only while collecting named declarations from genuine source text. The complete parsed AST remains intact, statement containers retain their nested declarations, and caller-supplied AST objects are rejected while string/byte source and syntax errors retain their contract. Fresh reads, path checks, model/control identities, shard allocation and deadlines are unchanged. The new combined tree still requires its own ordinary, formal and exact CI results; previous timing results are not final acceptance.
+
+Its final public follow-up applies the same source-grammar pruning to state-candidate discovery, after the existing target handling. Candidate identities, all statement containers, the existing treatment of named expressions, Rust/JavaScript discovery and every filesystem read/path check remain unchanged. The actual discovery function and its mandatory structural guard are included in the combination's reviewed entry-point bindings. This is a pure traversal optimization, not a reduction in the owner inventory or a new state-assignment interpretation.
+
+Independent model review found that PR63 replay rejection and PR71 nested-invocation witnesses needed actual execution history rather than preset observation flags. Their published follow-ups now use per-token execution counts and actual invocation history, with mandatory source/model controls. The two model files are exact public inputs, not combination-specific weakened variants. Their new formal/runtime/CI results and final combined checks remain acceptance obligations; earlier green results are not reused for the changed models.
+
+## Bounded candidate-value reuse follow-up
+
+The later public PR76 candidate caches only immutable candidate-name sets, keyed
+by freshly read source content and the explicit frozen state-name set. Every
+directory enumeration, path validation and source read remains outside the
+cache. The LRU admits at most 512 entries and rejects entries above 256 KiB of
+source/key/result payload; it retains no cross-call AST. Oversized entries still
+compute their result without being stored. The extracted candidate body,
+payload accounting, cache wrapper and exception carrier have separate shared
+bindings. Combination controls mutate each while leaving the discovery wrapper
+unchanged and require rejection. The combination's own contract IDs are also
+required by the static manifest.
+
+A three-minute, single-call registry profile runs only after failed Linux
+quality checks and before unconditional artifact upload. It sanitizes paths and
+does not retry tests, change deadlines, alter shards or make quality optional.
+Its ordering and exact failure-only scope are guarded.
+
+The earlier exact combined head `5378c9b` remains FAIL: all 1,587 offline cases
+completed locally, but host integration exceeded its original 180-second total
+budget; Windows CI exceeded the unchanged 170-second shard budget. Independent
+local and CI formal evidence passed, with both observed limitations retained.
+Those completed checks do not validate this changed follow-up tree. New
+targeted checks, exact CI and separately scheduled ordinary/formal checks are
+required before any new acceptance statement.
+
+## Narrow historical secret-scan dispositions
+
+The eleven historical findings in public commit `6efd45e2129b0c0a2afa7a6d51fa60a561f69bc4` were independently reproduced as Git findings and recomputed against the declared public TLA/CFG bytes. With explicit authorization, `.gitleaksignore` records only their exact commit/file/rule/line fingerprints: ten `generic-api-key` findings and one `sentry-access-token` finding in the former model-input mapping. No file, directory, rule or history range is exempted. The mandatory architecture guard rejects any missing, duplicated, broadened or altered entry, including another commit, path, rule or line.
+
+The normal pinned scanner and all-ref/full-history CI configuration remain unchanged. The original secret-scan failure is retained as a failure of that head. A current-tree scan, exact historical disposition check and an unrelated private synthetic detection control are distinct observations, not a claim of comprehensive security or a replacement for final exact-head CI. Synthetic scanner controls are not shipped as credential-like fixtures in this repository.

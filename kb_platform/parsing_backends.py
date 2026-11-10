@@ -7,10 +7,10 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-ROUTE_VERSION = "page-layout-local/3"
-RUNTIMES = {"docling": ".local/rag-quality-cpu/Scripts/python.exe",
-            "docling_ocr": ".local/rag-quality-cpu/Scripts/python.exe",
-            "rapidocr": ".local/rag-quality-cpu/Scripts/python.exe"}
+ROUTE_VERSION = "page-layout-local/4"
+RUNTIMES = {"docling": ".local/rag-quality-cpu/bin/python",
+            "docling_ocr": ".local/rag-quality-cpu/bin/python",
+            "rapidocr": ".local/rag-quality-cpu/bin/python"}
 
 
 def external_worker(payload, backend):

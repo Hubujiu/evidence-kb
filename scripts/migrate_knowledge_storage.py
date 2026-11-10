@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from kb_platform.database_contracts import SpaceKey, StorageIdentity
 from kb_platform.knowledge_schema import knowledge_schema
 from kb_platform.knowledge_transfer import SOURCE_FORMATS, export_legacy_knowledge, import_knowledge, validate_export
+from kb_platform.knowledge_commit_transfer import export_authority, import_authority_sessions, validate_authority
+from kb_platform.session_transfer import read_export as read_sessions
 from kb_platform.storage_catalog import default_storage_providers
 from kb_platform.storage_sdk import ExistingDataset
 
@@ -32,7 +34,8 @@ def _source_engine(value):
 
 
 def _import(args):
-    package = validate_export(json.loads(args.input.read_text('utf-8')))
+    validator = validate_authority if args.sessions_input else validate_export
+    package = validator(json.loads(args.input.read_text('utf-8')))
     configuration = json.loads(args.target_config.read_text('utf-8'))
     if configuration.get('version') != 2:
         raise ValueError('INVALID_STORAGE_CONFIGURATION')
@@ -49,6 +52,9 @@ def _import(args):
         target = exported.open_space(space, ExistingDataset(args.expected_target_dataset))
         target.prepare(knowledge_schema(space.owner_id))
         target.seal()
+        if args.sessions_input:
+            return import_authority_sessions(target, package, read_sessions(args.sessions_input),
+                expected_identity=StorageIdentity(space, args.expected_target_dataset), target_offline=args.target_offline)
         return import_knowledge(target, package,
             expected_identity=StorageIdentity(space, args.expected_target_dataset), target_offline=args.target_offline)
     finally:
@@ -60,7 +66,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest='command', required=True)
     export = commands.add_parser('export')
     export.add_argument('--source-url-env', required=True)
-    export.add_argument('--source-format', required=True, choices=SOURCE_FORMATS)
+    export.add_argument('--source-format', required=True, choices=(*SOURCE_FORMATS, 'structured-authority-v1'))
     export.add_argument('--source-namespace')
     export.add_argument('--source-application', required=True)
     export.add_argument('--source-owner', required=True)
@@ -69,6 +75,7 @@ def main(argv=None):
     export.add_argument('--source-frozen', action='store_true', required=True)
     clone = commands.add_parser('import')
     clone.add_argument('--input', type=Path, required=True)
+    clone.add_argument('--sessions-input', type=Path)
     clone.add_argument('--target-config', type=Path, required=True)
     clone.add_argument('--consumer', default='repository')
     clone.add_argument('--slot', default='primary')
@@ -83,16 +90,21 @@ def main(argv=None):
         try:
             identity = StorageIdentity(SpaceKey(args.source_application, args.source_owner, args.source_space),
                                        args.expected_source_dataset)
-            result = export_legacy_knowledge(engine, expected_identity=identity,
-                source_format=args.source_format, namespace=args.source_namespace, source_frozen=args.source_frozen)
+            if args.source_format == 'structured-authority-v1':
+                result = export_authority(engine, expected_identity=identity,
+                    namespace=args.source_namespace, source_frozen=args.source_frozen)
+            else:
+                result = export_legacy_knowledge(engine, expected_identity=identity,
+                    source_format=args.source_format, namespace=args.source_namespace, source_frozen=args.source_frozen)
         finally:
             engine.dispose()
         _write(args.output / 'knowledge-export.json', result)
-        print(json.dumps({'sha256': result['sha256'], 'counts': result['counts'], 'new_remote_calls': 0}))
+        print(json.dumps({'sha256': result['sha256'],
+            'counts': {name: len(rows) for name, rows in result['tables'].items()}, 'new_remote_calls': 0}))
     else:
         result = _import(args)
         _write(args.output / 'receipt.json', result)
-        print(json.dumps({key: result[key] for key in ('sha256', 'counts', 'idempotent', 'republication_required')}))
+        print(json.dumps({key: result[key] for key in ('sha256', 'counts', 'idempotent')}))
     return 0
 
 

@@ -4,8 +4,8 @@ import argparse
 import ast
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
-import faulthandler
 import importlib.util
+import hashlib
 import json
 import io
 import tokenize
@@ -95,11 +95,11 @@ AGENT_DEPENDENCIES = {
         'plugin_host', 'search', 'session_storage', 'storage_catalog', 'storage_object_wire',
         'storage_json_wire', 'storage_plugins', 'storage_process', 'storage_protocol', 'storage_sdk',
         'storage_service', 'storage_structured_wire'}),
-    'application_knowledge': frozenset({'agent_context', 'agent_tools', 'application_composition', 'application_storage', 'authentication', 'context_budget', 'core', 'document_parser', 'embedding_jobs', 'foundation_services', 'knowledge_access', 'knowledge_authority_contract', 'knowledge_capabilities', 'knowledge_contracts', 'knowledge_model_ports', 'knowledge_model_service', 'knowledge_platform_contract', 'knowledge_profile', 'knowledge_sessions', 'knowledge_storage', 'knowledge_storage_configuration', 'plugin_configuration', 'research', 'retrieval_pipeline', 'search_evidence', 'search_router', 'semantic_page_runtime', 'session_identity', 'session_store', 'storage'}),
+    'application_knowledge': frozenset({'knowledge_schema', 'agent_context', 'agent_tools', 'application_composition', 'application_storage', 'authentication', 'context_budget', 'core', 'document_parser', 'embedding_jobs', 'foundation_services', 'knowledge_access', 'knowledge_authority_contract', 'knowledge_capabilities', 'knowledge_contracts', 'knowledge_model_ports', 'knowledge_model_service', 'knowledge_platform_contract', 'knowledge_profile', 'knowledge_sessions', 'knowledge_storage', 'knowledge_storage_configuration', 'plugin_configuration', 'research', 'retrieval_pipeline', 'search_evidence', 'search_router', 'semantic_page_runtime', 'session_identity', 'session_store', 'storage'}),
     'knowledge_model_ports': frozenset({'embeddings', 'knowledge_contracts', 'model_errors',
                                       'ocr_contract', 'plugin_contracts', 'session_identity'}),
     'knowledge_capabilities': frozenset({'agent_context', 'agent_engine', 'foundation_services', 'knowledge_application', 'knowledge_authority_contract', 'knowledge_context', 'knowledge_contracts', 'knowledge_model_service', 'knowledge_platform_contract', 'knowledge_semantic_contract', 'knowledge_service', 'knowledge_workflow', 'plugin_contracts', 'provider_runtime'}),
-    'knowledge_contracts': frozenset({'agent_context', 'agent_model', 'model_errors', 'plugin_configuration', 'plugin_contracts',
+    'knowledge_contracts': frozenset({'database_contracts', 'agent_context', 'agent_model', 'model_errors', 'plugin_configuration', 'plugin_contracts',
                                      'retrieval_pipeline', 'session_identity'}),
     'knowledge_context': frozenset({'planning_references', 'session_identity'}),
     'knowledge_access': frozenset({'core', 'knowledge_queries', 'session_identity'}),
@@ -137,7 +137,7 @@ NATIVE_DEPENDENCIES = {'agent-kernel': {'agent-harness'},
                        'agent-services': {'serde', 'serde_json'},
                        'llm-service': {'serde', 'serde_json', 'tokio'},
                        'storage-service': {'serde', 'serde_json'},
-                       'plugin-host': {'serde', 'serde_json', 'libc', 'windows-sys'},
+                       'plugin-host': {'serde', 'serde_json', 'libc'},
                        'plugin-runtime': {'serde', 'serde_json', 'tokio'}}
 
 
@@ -278,8 +278,20 @@ def source_quality_violations(root: Path) -> list[str]:
             source = path.read_text('utf-8-sig')
             tree = ast.parse(source, filename=relative)
             module = relative.removesuffix('.py').replace('/', '.')
+            if relative == 'kb_platform/rag_testing/formal_state_machines.py':
+                errors.extend(f'{relative}: {error}' for error in formal_parse_reuse_violations(tree))
             if relative == 'scripts/check_project.py':
                 errors.extend(f'{relative}: {error}' for error in offline_bootstrap_violations(tree))
+            if relative == 'kb_platform/rag_testing/search_router_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in search_stage_diagnostic_violations(tree))
+            if relative == 'kb_platform/rag_testing/embedded_search_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in embedded_stage_diagnostic_violations(tree))
+            if relative == 'kb_platform/knowledge_contracts.py':
+                errors.extend(f'{relative}: {error}' for error in model_receipt_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_capacity_outcome_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_receipt_cleanup_violations(tree))
+                errors.extend(f'{relative}: {error}' for error in model_error_projection_violations(tree))
+            errors.extend(f'{relative}: {error}' for error in search_probe_diagnostic_violations(tree, relative))
             if module in retired:
                 errors.append(f'{relative}: retired compatibility module')
             for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -293,6 +305,327 @@ def source_quality_violations(root: Path) -> list[str]:
                 if any(target == name or target.startswith(name + '.') for name in retired):
                     errors.append(f'{relative}:{line}: retired compatibility import: {target}')
     return errors
+
+
+def formal_parse_reuse_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse(r"""def python_symbols(source: str) -> dict[str, ast.AST]:
+    if isinstance(source, ast.AST):
+        raise TypeError('Python symbol discovery requires source text, not an AST')
+    symbols = {'<module>': ast.parse(source)}
+
+    def collect(node, prefix):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                name = '.'.join(filter(None, (prefix, child.name)))
+                symbols[name] = child
+                collect(child, name)
+            elif not isinstance(child, ast.expr):
+                collect(child, prefix)
+    collect(symbols['<module>'], '')
+    return symbols
+
+class _OversizedCandidates(Exception):
+    def __init__(self, result):
+        self.result = result
+
+
+def _candidate_symbols_uncached(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    found = set()
+    for symbol, node in python_symbols(source).items():
+        if isinstance(node, ast.ClassDef) and re.search(r'(State|Status|Phase)$', node.name):
+            found.add(symbol)
+        body = [node]
+        while body:
+            item = body.pop()
+            if item is not node and isinstance(item, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            targets = item.targets if isinstance(item, ast.Assign) else (
+                [item.target] if isinstance(item, (ast.AnnAssign, ast.AugAssign)) else [])
+            for target in targets:
+                name = target.attr if isinstance(target, ast.Attribute) else (
+                    target.id if isinstance(target, ast.Name) else None)
+                if isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant):
+                    name = target.slice.value
+                if name in state_names:
+                    found.add(symbol)
+            if not isinstance(item, ast.expr):
+                body.extend(ast.iter_child_nodes(item))
+    return frozenset(found)
+
+
+def _candidate_payload_bytes(source, state_names, result):
+    pending = [(source, state_names, result)]
+    seen = set()
+    total = 0
+    while pending:
+        value = pending.pop()
+        if id(value) in seen:
+            continue
+        seen.add(id(value))
+        total += sys.getsizeof(value)
+        if isinstance(value, (tuple, frozenset)):
+            pending.extend(value)
+    return total
+
+
+@lru_cache(maxsize=512)
+def _cached_candidate_symbols(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    result = _candidate_symbols_uncached(source, state_names)
+    if _candidate_payload_bytes(source, state_names, result) > 256 * 1024:
+        raise _OversizedCandidates(result)
+    return result
+
+
+def candidate_symbols(source: str, state_names: frozenset[str]) -> frozenset[str]:
+    try:
+        return _cached_candidate_symbols(source, state_names)
+    except _OversizedCandidates as error:
+        return error.result
+
+
+def state_candidates(root: Path, roots: list[str]) -> set[tuple[str, str]]:
+    found = set()
+    for directory in roots:
+        base = (root / directory).resolve()
+        if not base.is_relative_to(root.resolve()) or not base.is_dir():
+            raise ValueError(f'Invalid discovery root: {directory}')
+        for path in sorted(base.rglob('*.py')):
+            if path.name.endswith('_contracts.py') or '__pycache__' in path.parts:
+                continue
+            relative = path.relative_to(root).as_posix()
+            source = path.read_text('utf-8')
+            found.update((relative, symbol) for symbol in candidate_symbols(source, frozenset(STATE_NAMES)))
+        for path in sorted(base.rglob('*.rs')):
+            if path.name == 'tests.rs' or 'tests' in path.relative_to(base).parts:
+                continue
+            for name in re.findall(r'\benum\s+([A-Za-z_][A-Za-z_0-9]*)', path.read_text('utf-8')):
+                if re.search(r'(State|Status|Phase)$', name):
+                    found.add((path.relative_to(root).as_posix(), name))
+        for path in sorted(base.rglob('*.mjs')):
+            found.add((path.relative_to(root).as_posix(), '<module>'))
+    return found
+
+def local_file(root: Path, relative: str) -> Path:
+    if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
+        raise ValueError('Repository-relative nonempty path required')
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root.resolve()) or not path.is_file():
+        raise ValueError(f'Missing or escaping repository file: {relative}')
+    return path
+
+def source_digest(root: Path, binding: dict) -> str:
+    return _source_digest(root, binding, python_symbols)
+
+def _source_digest(root: Path, binding: dict, parse_symbols) -> str:
+    path = local_file(root, binding['path'])
+    source = path.read_text('utf-8')
+    if binding['language'] == 'python':
+        symbols = parse_symbols(source)
+        if binding['symbol'] not in symbols:
+            raise ValueError(f"Missing Python symbol: {binding['symbol']}")
+        options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
+        return digest(ast.dump(symbols[binding['symbol']], include_attributes=False, **options).encode())
+    if binding['language'] == 'javascript-module':
+        if path.suffix != '.mjs' or binding['symbol'] != '<module>':
+            raise ValueError('JavaScript bindings require a complete .mjs module')
+        return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+    if binding['language'] != 'rust':
+        raise ValueError('Source binding language must be python, rust or javascript-module')
+    leaf = binding['symbol'].replace('::', '.').rsplit('.', 1)[-1]
+    if leaf != '<module>' and (not re.search('\\b(?:fn|enum|struct)\\s+' + re.escape(leaf) + '\\b', source)):
+        raise ValueError(f"Missing Rust declaration: {binding['symbol']}")
+    return digest(path.read_bytes().replace(b'\r\n', b'\n'))
+
+@contextmanager
+def _source_digest_session():
+    parse_symbols = lru_cache(maxsize=128)(python_symbols)
+
+    def reviewed_digest(root, binding):
+        return _source_digest(root, binding, parse_symbols)
+    try:
+        yield reviewed_digest
+    finally:
+        parse_symbols.cache_clear()
+
+def registry_violations(root: Path, registry: dict | None=None) -> list[str]:
+    with _source_digest_session() as reviewed_digest:
+        return _registry_violations(root, registry, reviewed_digest)
+""")
+    errors = []
+    protected = {node.name for node in expected.body}
+    for reference in expected.body:
+        actual = [node for node in tree.body if isinstance(node, type(reference))
+                  and node.name == reference.name]
+        if len(actual) != 1 or ast.dump(actual[0]) != ast.dump(reference):
+            errors.append(f'formal parse reuse: preserve fresh reads and invocation-local content cache in {reference.name}')
+    symbols = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'python_symbols']
+    if len(symbols) != 1 or symbols[0].decorator_list:
+        errors.append('formal parse reuse: public python_symbols must return independent uncached ASTs')
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id in protected | {'python_symbols'} for target in targets):
+                errors.append('formal parse reuse: no module-scope replacement of validation functions')
+    workers = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_registry_violations']
+    call = ast.parse('actual = reviewed_digest(root, binding)').body[0]
+    if len(workers) != 1 or sum(ast.dump(node) == ast.dump(call) for node in ast.walk(workers[0])) != 1:
+        errors.append('formal parse reuse: registry bindings require the scoped digest callback')
+    return errors
+
+
+def search_diagnostic_digest(node):
+    options = {'show_empty': True} if sys.version_info >= (3, 13) else {}
+    return hashlib.sha256(ast.dump(node, include_attributes=False, **options).encode()).hexdigest()
+
+
+def search_probe_diagnostic_violations(tree: ast.AST, relative: str) -> list[str]:
+    bindings = {'kb_platform/rag_testing/search_stage_probe.py': ('<module>', '3923c10cd2a749a43029ef30cbe72690ff8e44b4d177ea12368b24523252e5aa'), 'kb_platform/rag_testing/search_stage_diagnostics.py': ('<module>', '6f54daeb406baa015c0d0ae9d7b92cfbf39d22e671d535ec841c3762f7d2cb6f'), 'kb_platform/rag_testing/search_stage_probe_contracts.py': ('SearchStageProbeContracts.test_real_three_case_single_pass_retains_stage_observations', '09623de92d7ecb79f2be3ada1065475844a98d21668ec126c4b5716050e550f7')}
+    expected = bindings.get(relative)
+    if expected is None:
+        return []
+    nodes = [tree] if expected[0] == '<module>' else [
+        node for owner in tree.body if isinstance(owner, ast.ClassDef) and owner.name == 'SearchStageProbeContracts'
+        for node in owner.body if isinstance(node, ast.FunctionDef)
+        and node.name == 'test_real_three_case_single_pass_retains_stage_observations']
+    if len(nodes) != 1 or search_diagnostic_digest(nodes[0]) != expected[1]:
+        return ['controlled search diagnostics require reviewed bounded metadata, single-pass stage order and original errors']
+    return []
+
+
+def search_stage_diagnostic_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse('def stage(self):\n'
+        '    try:\n'
+        '        self.router.stage(self.index, self.units, vector_dimension=3)\n'
+        '    except Exception as error:\n'
+        '        note_stage_failure(error, self.root)\n'
+        '        raise\n').body[0]
+    stages = [node for owner in tree.body if isinstance(owner, ast.ClassDef)
+              and owner.name == 'SearchRouterContracts' for node in owner.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == 'stage']
+    if len(stages) != 1 or ast.dump(stages[0]) != ast.dump(expected):
+        return ['search-stage diagnostics require one original call, failure-only note, and bare raise without retry']
+    return []
+
+
+def embedded_stage_diagnostic_violations(tree: ast.AST) -> list[str]:
+    expected = ast.parse('def _stage(self, backend, index, units, vector_dimension):\n'
+        '    try:\n'
+        '        return backend.stage(index, units, vector_dimension)\n'
+        '    except Exception as error:\n'
+        '        note_stage_failure(error, Path(self.folder.name))\n'
+        '        raise\n').body[0]
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'EmbeddedSearchContracts']
+    if len(owners) != 1:
+        return ['embedded-stage diagnostics require the original fixture owner']
+    stages = [node for node in owners[0].body if isinstance(node, ast.FunctionDef) and node.name == '_stage']
+    if len(stages) != 1 or ast.dump(stages[0]) != ast.dump(expected):
+        return ['embedded-stage diagnostics require one original call, owned-root failure-only note, and bare raise without retry']
+    direct = [node for node in ast.walk(owners[0]) if isinstance(node, ast.Call)
+              and isinstance(node.func, ast.Attribute) and node.func.attr == 'stage']
+    if len(direct) != 1 or direct[0] not in tuple(ast.walk(stages[0])):
+        return ['every embedded fixture stage call must use the failure-only wrapper, including setup and generation loop']
+    expected_calls = {
+        'setUp': 'self._stage(self.backend, self.index, self.authority.units, 3)',
+        'test_exact_vectors_and_seal': 'self._stage(self.backend, self.index, self.authority.units, 3)',
+        'test_failed_staging_not_visible': "self._stage(self.backend, index, [{**self.authority.units[0], 'vector': [float('inf'), 0, 0]}], 3)",
+        'test_pages_do_not_change_block_scores': "self._stage(self.backend, index, [u for u in self.authority.units if u['kind'] != 'Page'], 3)",
+        'test_closed_immutable_readers_release_generations_for_immediate_removal': 'self._stage(backend, index, self.authority.units, 3)',
+    }
+    actual = {node.name: [ast.dump(call) for call in ast.walk(node) if isinstance(call, ast.Call)
+                         and isinstance(call.func, ast.Attribute) and call.func.attr == '_stage']
+              for node in owners[0].body if isinstance(node, ast.FunctionDef) and node.name != '_stage'}
+    actual = {name: calls for name, calls in actual.items() if calls}
+    expected_calls = {name: [ast.dump(ast.parse(call, mode='eval').body)] for name, call in expected_calls.items()}
+    if actual != expected_calls:
+        return ['all five original embedded stage call sites must retain their original receiver, arguments and call count']
+    return []
+def model_receipt_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    candidates = [node.value for method in methods for node in ast.walk(method)
+                  if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                      and target.id == 'expired' for target in node.targets)]
+    expected = {'envelope is not None', 'deadline < monotonic()'}
+
+    def conjuncts(node):
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.And):
+            return {value for child in node.values for value in conjuncts(child)}
+        return {ast.unparse(node)}
+
+    if len(candidates) == 1 and isinstance(candidates[0], ast.ListComp):
+        candidate = candidates[0]
+        if len(candidate.generators) == 1:
+            generator = candidate.generators[0]
+            conditions = {value for condition in generator.ifs for value in conjuncts(condition)}
+            if (ast.unparse(generator.iter) == 'self._pending.items()'
+                    and ast.unparse(generator.target) == '(key, (deadline, envelope))'
+                    and ast.unparse(candidate.elt) == 'key' and expected <= conditions):
+                return []
+    return ['model receipt expiry must retain in-flight placeholders and only prune expired completed envelopes']
+
+
+def model_capacity_outcome_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    guards = [node for method in methods for node in ast.walk(method)
+              if isinstance(node, ast.If) and ast.unparse(node.test) == 'len(self._pending) >= 64']
+    invocations = [node for method in methods for node in ast.walk(method)
+                   if isinstance(node, ast.Call) and ast.unparse(node.func) == 'self._model.complete']
+    if (len(guards) == len(invocations) == 1 and guards[0].lineno < invocations[0].lineno
+            and len(guards[0].body) == 1 and isinstance(guards[0].body[0], ast.Raise)):
+        call = guards[0].body[0].exc
+        if isinstance(call, ast.Call) and ast.unparse(call.func) == 'ContractError':
+            for keyword in call.keywords:
+                if keyword.arg == 'details':
+                    try:
+                        details = ast.literal_eval(keyword.value)
+                    except (ValueError, TypeError):
+                        break
+                    if (isinstance(details, dict) and details.get('model_sent') is False
+                            and isinstance(details.get('call_record'), dict)
+                            and type(details['call_record'].get('attempts')) is int
+                            and details['call_record']['attempts'] == 0
+                            and details['call_record'].get('model_sent') is False):
+                        return []
+    return ['model receipt capacity refusal must expose known-unsent zero attempts before model invocation']
+
+
+def model_receipt_cleanup_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    blocks = [node for method in methods for node in method.body if isinstance(node, ast.Try)]
+    if len(blocks) == 1 and len(blocks[0].handlers) == 1:
+        handler = blocks[0].handlers[0]
+        expected = ast.parse('with self._lock:\n    self._pending.pop(token, None)\n'
+                             'if not isinstance(error, Exception):\n    raise\n').body
+        if (handler.type is not None and ast.unparse(handler.type) == 'BaseException'
+                and handler.name == 'error' and len(handler.body) >= 2
+                and all(ast.dump(actual, include_attributes=False) == ast.dump(required, include_attributes=False)
+                        for actual, required in zip(handler.body[:2], expected, strict=True))):
+            return []
+    return ['model receipt failures must clean BaseException placeholders then bare-raise cancellation identity']
+
+
+def model_error_projection_violations(tree: ast.AST) -> list[str]:
+    owners = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'ModelEndpoint']
+    methods = [node for owner in owners for node in owner.body
+               if isinstance(node, ast.FunctionDef) and node.name == 'complete']
+    blocks = [node for method in methods for node in method.body if isinstance(node, ast.Try)]
+    expected = ast.parse('from .model_errors import error_details\n'
+        'details = error_details(error)\n'
+        "if not hasattr(error, 'code'):\n"
+        "    raise ContractError('CONTRACT_IMPLEMENTATION_FAILED', 'Service implementation failed',\n"
+        "        details={**details, 'code': 'CONTRACT_IMPLEMENTATION_FAILED'}) from error\n").body
+    if len(blocks) == 1 and len(blocks[0].handlers) == 1:
+        handler = blocks[0].handlers[0]
+        if (len(handler.body) >= 5
+                and all(ast.dump(actual, include_attributes=False) == ast.dump(required, include_attributes=False)
+                        for actual, required in zip(handler.body[2:5], expected, strict=True))):
+            return []
+    return ['generic model failures must preserve canonical facts with fixed safe public code and message']
 
 
 def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
@@ -350,11 +683,40 @@ def offline_bootstrap_violations(tree: ast.AST) -> list[str]:
     return sorted(set(errors))
 
 
+def registry_profile_workflow_violations(quality):
+    strategy = quality.get('strategy', {})
+    if (quality.get('runs-on') != '${{ matrix.os }}' or strategy.get('fail-fast') is not False
+            or strategy.get('matrix') != {'os': ['ubuntu-latest'], 'python': ['3.12', '3.13']}):
+        return ['quality must run both supported Python versions on Linux']
+    steps = quality.get('steps', [])
+    names = [step.get('name') for step in steps]
+    expected = {
+        'name': 'Profile registry after failure',
+        'if': 'failure()',
+        'timeout-minutes': 3,
+        'run': 'uv run --no-sync python -m kb_platform.rag_testing.formal_profile --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}/registry-profile.json',
+    }
+    name = expected['name']
+    if names.count(name) != 1 or steps[names.index(name)] != expected:
+        return ['registry profile must be bounded, failure-only and observational']
+    position = names.index(name)
+    check = {'name': 'Run offline quality gates',
+             'run': 'uv run --no-sync python scripts/check_project.py --output reports/ci/${{ github.run_id }}-${{ github.run_attempt }}'}
+    if position == 0 or steps[position - 1] != check or position + 1 >= len(steps):
+        return ['registry profile must follow unchanged mandatory checks']
+    upload = steps[position + 1]
+    if upload.get('name') != 'Upload gate evidence' or upload.get('if') != 'always()':
+        return ['registry profile must precede unconditional evidence upload']
+    if quality.get('continue-on-error', False) or 'if' in quality:
+        return ['quality cannot be optional for registry diagnostics']
+    return []
+
+
 def workflow_violations(workflow):
     jobs = workflow.get('jobs', {})
     integration = jobs.get('integration', {})
     required = jobs.get('required', {})
-    errors = []
+    errors = registry_profile_workflow_violations(jobs.get('quality', {}))
     dependencies = {'quality': 'QUALITY_RESULT', 'secrets': 'SECRETS_RESULT',
                     'integration': 'INTEGRATION_RESULT', 'formal': 'FORMAL_RESULT'}
     if not dependencies.keys() <= set(required.get('needs', [])):
@@ -421,6 +783,95 @@ def storage_boundary_violations(tree, module):
                     'kb_platform.database_service', 'kb_platform.postgres_search', 'kb_platform.storage_adapters'))):
             errors.append((line, 'inject a storage contract; provider compatibility belongs in its adapter'))
     return errors
+
+
+def offline_transport_violations(root: Path) -> list[str]:
+    directory = root / 'kb_platform/rag_testing'
+    helper = directory / 'offline_transport.py'
+    if not helper.is_file() and not (directory / 'embedding_jobs_contracts.py').is_file():
+        return []
+    if not helper.is_file():
+        return ['offline fixtures require the controlled real-client constructor']
+    tree = ast.parse(helper.read_text('utf-8'))
+    required = (
+        '_REAL_CLIENT = httpx.Client',
+        "raise AssertionError('Offline fixture sent before its capture transport was installed')",
+        "if any(name in kwargs for name in ('transport', 'proxy', 'mounts')):\n"
+        "    raise ValueError('Offline construction cannot replace an explicit transport or proxy')",
+        'client = _REAL_CLIENT(*args, **kwargs, transport=httpx.MockTransport(reject_uncaptured_send))',
+        'clients.append(client)',
+        'return client',
+        "with patch('kb_platform.remote.httpx.Client', new=construct):\n    yield",
+        'except BaseException:\n    for client in clients:\n        client.close()\n    raise',
+    )
+    forms = {ast.dump(node, include_attributes=False) for node in ast.walk(tree)}
+    errors = []
+    for statement in required:
+        parsed = ast.parse('try:\n    pass\n' + statement if statement.startswith('except ') else statement)
+        target = parsed.body[0].handlers[0] if statement.startswith('except ') else parsed.body[0]
+        if ast.dump(target, include_attributes=False) not in forms:
+            errors.append('offline constructor must preserve real-client injection, fail-fast and cleanup semantics')
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            module = node.module if isinstance(node, ast.ImportFrom) else ','.join(a.name for a in node.names)
+            if module not in {'httpx', 'contextlib', 'unittest.mock'}:
+                errors.append('offline constructor must not access process environment or alternate transports')
+        if isinstance(node, ast.Call) and ast.unparse(node.func) not in {
+            'AssertionError', 'ValueError', 'any', '_REAL_CLIENT', 'httpx.MockTransport',
+            'clients.append', 'patch', 'client.close',
+        }:
+            errors.append('offline constructor cannot invoke environment mutation or replacement client factories')
+        if isinstance(node, ast.keyword) and node.arg in {'trust_env', 'proxy', 'mounts'}:
+            errors.append('offline constructor must preserve original HTTPX environment policy')
+    entries = {
+        'embedding_jobs_contracts.py': ('captured_google_fixture', 'GoogleEmbeddingProvider'),
+        'model_review_contracts.py': ('observed', 'GoogleEmbeddingProvider'),
+        'model_embedding_review_contracts.py': ('observed', 'GoogleEmbeddingProvider'),
+        'plugin_configuration_contracts.py': (
+            'test_invalid_referenced_remote_provider_does_not_close_existing_clients', 'PluginHost'),
+    }
+    for filename, (function, constructor) in entries.items():
+        path = directory / filename
+        if not path.is_file():
+            errors.append(f'{filename}: missing controlled offline fixture')
+            continue
+        module = ast.parse(path.read_text('utf-8'))
+        candidates = [node for node in ast.walk(module)
+                      if isinstance(node, ast.FunctionDef) and node.name == function]
+        if len(candidates) != 1:
+            errors.append(f'{filename}: offline fixture entry must remain explicit')
+            continue
+        calls = [node for node in ast.walk(candidates[0]) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == constructor]
+        protected = set()
+        for node in ast.walk(candidates[0]):
+            if isinstance(node, ast.With) and any(
+                isinstance(item.context_expr, ast.Call)
+                and isinstance(item.context_expr.func, ast.Name)
+                and item.context_expr.func.id == 'offline_client_construction' for item in node.items
+            ):
+                for statement in node.body:
+                    protected.update(id(child) for child in ast.walk(statement))
+        if not calls or any(id(call) not in protected for call in calls):
+            errors.append(f'{filename}: install fail-fast transport before constructing {constructor}')
+    return sorted(set(errors))
+
+
+def exact_history_fingerprint_violations(root: Path) -> list[str]:
+    path = root / '.gitleaksignore'
+    if not (root / 'formal/combination-inputs-v1.json').is_file() and not path.exists():
+        return []
+    prefix = '6efd45e2129b0c0a2afa7a6d51fa60a561f69bc4:formal/combination-inputs-v1.json:'
+    coordinates = [('generic-api-key', line) for line in (3917, 3918, 3919, 3981, 4052, 4081, 4082, 4091, 4092, 4093)]
+    coordinates.append(('sentry-access-token', 3904))
+    expected = [f'{prefix}{rule}:{line}' for rule, line in coordinates]
+    try:
+        actual = path.read_text('utf-8').splitlines()
+    except OSError:
+        actual = []
+    if actual != expected:
+        return ['Only the eleven authorized immutable historical model-digest fingerprints may be ignored']
+    return []
 
 
 def architecture_violations(root: Path) -> list[str]:
@@ -504,6 +955,8 @@ def architecture_violations(root: Path) -> list[str]:
                 errors.append(f"{relative.as_posix()}:{line}: product code cannot mutate sys.path")
     if (root / "tests").exists():
         errors.append("Keep contract checks in kb_platform/rag_testing; do not restore a parallel tests directory")
+    errors.extend(offline_transport_violations(root))
+    errors.extend(exact_history_fingerprint_violations(root))
     errors.extend(source_quality_violations(root))
     errors.extend(native_architecture_violations(root))
     return sorted(set(errors))
@@ -609,12 +1062,22 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
         return run_contract_workers(output)
     sys.path.insert(0, str(ROOT))
     machine = seal_offline_worker()
+    observation = kind == 'contracts' and shard is not None and os.environ.get('KB_CONTRACT_OBSERVATION') == '1'
+
+    def phase(event):
+        if observation:
+            with (output / 'contracts-phases.jsonl').open('a', encoding='utf-8') as stream:
+                stream.write(json.dumps({'event': event, 'monotonic': time.monotonic()}) + '\n')
+
+    phase('worker_after_seal')
     write_json(output / 'worker-bootstrap.json', {'platform_machine': machine,
         'states': ['BOOTSTRAP', 'SEALED', 'DISCOVER'], 'audit_policy': 'deny_external_io',
         'scope': 'Only real stdlib platform.machine metadata is read before sealing; project/test imports follow the seal.'})
     if kind == "contracts":
-        faulthandler.dump_traceback_later(150)
+        from scripts.check_contract_watchdog import SnapshotWatchdog, valid_capture
+        watchdog = SnapshotWatchdog(150, sys.stderr.fileno())
         try:
+            phase('discovery_start')
             modules = contract_modules()
             if not modules:
                 raise RuntimeError("No contract modules discovered")
@@ -640,10 +1103,14 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
             identities = [test.id() for test in selected]
             counts = {module: sum(discovered[identity] == module for identity in identities) for module in modules}
             suite = unittest.TestSuite(selected)
+            phase('discovery_done')
             with (output / 'contracts-timing.jsonl').open('w', encoding='utf-8') as timing:
+                phase('tests_start')
                 result = unittest.TextTestRunner(verbosity=2,
                     resultclass=lambda *args, **kwargs: ContractTimingResult(*args, timing=timing, **kwargs)).run(suite)
+                phase('tests_done')
             passed = result.wasSuccessful() and not result.skipped and not result.expectedFailures
+            phase('report_write_start')
             write_json(output / "contracts.json", {
                 "decision": "PASS" if passed else "FAIL", "modules": counts, "total": result.testsRun,
                 "discovered": discovered, "selected": identities,
@@ -651,9 +1118,26 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
                 "expected_failures": len(result.expectedFailures),
                 "scope": "offline component contracts; no production RAG quality claim",
             })
+            phase('report_write_done')
+            phase('worker_returning')
             return 0 if passed else 1
         finally:
-            faulthandler.cancel_dump_traceback_later()
+            active_error = sys.exception()
+            try:
+                status = watchdog.cancel()
+            except Exception as exc:
+                status = {'thread_stopped': False, 'error': type(exc).__name__, 'written': False,
+                          'due': True, 'triggered': True}
+            if not valid_capture(status, required=False):
+                note = 'CONTRACT_STACK_CAPTURE_UNCONFIRMED: ' + json.dumps(status)
+                try:
+                    print(note, file=sys.stderr, flush=True)
+                except (OSError, ValueError):
+                    note += ' (diagnostic report unavailable)'
+                if active_error is not None:
+                    active_error.add_note(note)
+                else:
+                    raise RuntimeError(note)
     from kb_platform.rag_testing.contracts import Plan, Suite, Trace
     from kb_platform.rag_testing.runner import run
 
@@ -670,12 +1154,16 @@ def run_worker(kind: str, output: Path, shard=None) -> int:
 
 def run_check(name: str, command: list[str], output: Path, env: dict[str, str], *,
               timeout: int = 180) -> CheckResult:
+    sys.path.insert(0, str(ROOT))
+    from scripts.check_process_owner import run_owned
+
     log = output / f"{name}.log"
     try:
         with log.open("w", encoding="utf-8") as stream:
-            completed = subprocess.run(command, cwd=ROOT, env=env, stdout=stream,
-                                       stderr=subprocess.STDOUT, timeout=timeout, check=False)
-        code = completed.returncode
+            result = run_owned(command, cwd=ROOT, env=env, stream=stream, timeout=timeout)
+            if not result.passed:
+                stream.write(f"\nOwned process failure: {asdict(result)}\n")
+        code = 0 if result.passed else result.exit_code or 2
     except (OSError, subprocess.TimeoutExpired) as exc:
         with log.open("a", encoding="utf-8") as stream:
             stream.write(f"\n{type(exc).__name__}: {exc}\n")
@@ -685,9 +1173,7 @@ def run_check(name: str, command: list[str], output: Path, env: dict[str, str], 
 
 
 def kernel_library_path(target: Path) -> Path:
-    name = {"win32": "agent_kernel.dll", "darwin": "libagent_kernel.dylib"}.get(
-        sys.platform, "libagent_kernel.so")
-    return target / "release" / name
+    return target / "release" / "libagent_kernel.so"
 
 
 def snapshot_native_library(build: CheckResult, target: Path, output: Path) -> Path | None:
@@ -702,7 +1188,7 @@ def snapshot_native_library(build: CheckResult, target: Path, output: Path) -> P
 
 
 def host_binary_path(target: Path) -> Path:
-    return target / 'release' / ('evidence-host.exe' if sys.platform == 'win32' else 'evidence-host')
+    return target / 'release' / 'evidence-host'
 
 
 def snapshot_host_binary(build: CheckResult, target: Path, output: Path) -> Path | None:
@@ -716,7 +1202,7 @@ def snapshot_host_binary(build: CheckResult, target: Path, output: Path) -> Path
 
 
 def native_worker_path(target: Path) -> Path:
-    return target / 'release/examples' / ('native_worker.exe' if sys.platform == 'win32' else 'native_worker')
+    return target / 'release/examples' / 'native_worker'
 
 
 def snapshot_native_worker(build: CheckResult, target: Path, output: Path) -> Path | None:
@@ -732,7 +1218,7 @@ def snapshot_native_worker(build: CheckResult, target: Path, output: Path) -> Pa
 def snapshot_contract_provider(build: CheckResult, target: Path, output: Path) -> Path | None:
     if build.exit_code:
         return None
-    source = target / 'release/examples' / ('contract_provider.exe' if sys.platform == 'win32' else 'contract_provider')
+    source = target / 'release/examples' / 'contract_provider'
     destination = output / 'native' / source.name
     destination.parent.mkdir(exist_ok=True)
     shutil.copy2(source, destination)
@@ -803,8 +1289,12 @@ def main() -> int:
         return int(result.exit_code != 0)
     results = []
     try:
+        sys.path.insert(0, str(ROOT))
+        from scripts.check_process_owner_lint import violations as process_owner_violations
+
         violations = architecture_violations(ROOT)
-    except (SyntaxError, ValueError) as exc:
+        violations.extend(process_owner_violations(ROOT))
+    except (OSError, SyntaxError, ValueError) as exc:
         violations = [f"{type(exc).__name__}: {exc}"]
     write_json(output / "architecture.json", {"violations": violations})
     results.append(CheckResult("architecture", int(bool(violations)), "architecture.json"))
@@ -821,6 +1311,8 @@ def main() -> int:
         results.append(run_check('formal-lint', [sys.executable, '-B', '-m',
             'kb_platform.rag_testing.formal_state_machines', '--lint-only',
             '--output', str(output / 'formal-lint')], output, env))
+        results.append(run_check('browser-source-lint', [sys.executable, '-B', '-m',
+            'kb_platform.rag_testing.browser_sources'], output, env))
         target = ROOT / "target/checks" / uuid4().hex
         cargo = ["cargo", "--color", "never"]
         results.append(run_check("rust-format", cargo + ["fmt", "--all", "--", "--check"], output, env))

@@ -34,6 +34,8 @@ class RedisCacheProvider:
         except (ValueError, RedisError):
             raise StorageError('STORAGE_INVALID_REDIS_CONFIG') from None
         self._closed = False
+        self._closing = False
+        self._active = 0
         self._lock = RLock()
 
     def exports(self):
@@ -52,18 +54,28 @@ class RedisCacheProvider:
     @contextmanager
     def _connection(self):
         with self._lock:
-            if self._closed:
+            if self._closing:
                 raise StorageError('STORAGE_PROVIDER_CLOSED')
+            self._active += 1
             try:
                 yield self._client
             except RedisError:
                 raise StorageError('STORAGE_BACKEND_UNAVAILABLE') from None
+            finally:
+                self._active -= 1
 
     def close(self):
         with self._lock:
+            self._closing = True
+            if self._active:
+                raise StorageError('STORAGE_PROVIDER_BUSY')
             if not self._closed:
-                self._closed = True
-                self._client.close()
+                self._active += 1
+                try:
+                    self._client.close()
+                    self._closed = True
+                finally:
+                    self._active -= 1
 
 
 class RedisCache:

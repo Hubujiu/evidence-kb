@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 from .budget import BudgetLedger
 from .local_rerank import LocalRanker
+from .physical_settlement_contracts import settlement_failure
 
 
 def candidate(text):
@@ -63,6 +64,54 @@ class LocalRerankContracts(unittest.TestCase):
         records = [json.loads(p.read_text('utf-8')) for p in self.raw.glob('*.json')]
         self.assertEqual(len(records), 2)
         self.assertEqual(sum(len(r['scores']) for r in records), 5)
+
+    def test_successful_inference_settlement_failure_is_not_retried_or_masked(self):
+        for committed in (False, True):
+            with self.subTest(committed=committed):
+                ledger = BudgetLedger(self.root / f'settlement-{committed}.sqlite3',
+                                     {'local_batches': 2, 'pairs': 5, 'remote_calls': 0})
+                self.addCleanup(ledger.close)
+                self.ranker.ledger = self.ledger = ledger
+                self.ranker.encoder.predict.reset_mock()
+                with settlement_failure(ledger, committed=committed) as (calls, failures):
+                    with self.assertRaises(Exception) as caught:
+                        self.ranker.rank(self.request, self.items[:1])
+                self.assertEqual(calls, ['COMPLETE'])
+                self.assertIs(caught.exception, failures[0])
+                self.assertEqual(getattr(caught.exception, 'operation_id', None),
+                                 getattr(failures[0], 'operation_id', None))
+                self.assertEqual(self.ranker.encoder.predict.call_count, 1)
+                self.assertEqual(self.statuses(), [('COMPLETE' if committed else 'STARTED',)])
+                self.assertEqual(ledger.summary()['effective_usage_or_reserved'],
+                                 {'local_batches': 1, 'pairs': 1, 'remote_calls': 0})
+                records = [json.loads(path.read_text('utf-8')) for path in self.raw.glob('*.json')]
+                self.assertEqual(len(records), 1)
+                self.assertEqual(records[0]['scores'], [0.5])
+                self.assertEqual(records[0]['input_tokens'], 3)
+                with self.assertRaises(ValueError):
+                    self.ranker.rank(self.request, self.items[:1])
+                self.assertEqual(self.ranker.encoder.predict.call_count, 1)
+
+    def test_inference_error_remains_cause_of_first_settlement_failure(self):
+        for committed in (False, True):
+            with self.subTest(committed=committed):
+                ledger = BudgetLedger(self.root / f'inference-{committed}.sqlite3',
+                                     {'local_batches': 2, 'pairs': 5, 'remote_calls': 0})
+                self.addCleanup(ledger.close)
+                self.ranker.ledger = self.ledger = ledger
+                original = RuntimeError('synthetic device failure')
+                self.ranker.encoder.predict.side_effect = original
+                self.ranker.encoder.predict.reset_mock()
+                with settlement_failure(ledger, committed=committed) as (calls, failures):
+                    with self.assertRaises(Exception) as caught:
+                        self.ranker.rank(self.request, self.items[:1])
+                self.assertEqual(calls, ['ERROR'])
+                self.assertIs(caught.exception, failures[0])
+                self.assertIs(caught.exception.__context__, original)
+                self.assertEqual(self.ranker.encoder.predict.call_count, 1)
+                self.assertEqual(self.statuses(), [('ERROR' if committed else 'STARTED',)])
+                self.assertEqual(ledger.summary()['effective_usage_or_reserved']['pairs'], 1)
+                self.assertEqual(list(self.raw.glob('*.json')), [])
 
     def test_overlength_rejected_before_any_reservation_or_inference(self):
         self.ranker.tokenizer.return_value = {'input_ids': [[1] * 513]}
@@ -122,11 +171,12 @@ class LocalRerankContracts(unittest.TestCase):
         self.ranker.encoder.predict.assert_not_called()
 
     def test_invalid_scores_are_not_delivered(self):
-        for values in [[], [float('nan')], [float('inf')], [True], [-0.1], [1.1], [[0.5]], [0.1, 0.2]]:
+        for index, values in enumerate([[], [float('nan')], [float('inf')], [True], [-0.1], [1.1], [[0.5]], [0.1, 0.2]]):
             with self.subTest(values=values):
                 self.ranker.manifest['test_case'] = repr(values)
-                self.ranker.ledger = BudgetLedger(self.root / f'ledger-{len(list(self.root.glob("ledger-*")))}.sqlite3',
+                self.ranker.ledger = BudgetLedger(self.root / f'ledger-{index}.sqlite3',
                                                    {'local_batches': 1, 'pairs': 1, 'remote_calls': 0})
+                self.addCleanup(self.ranker.ledger.close)
                 self.ranker.encoder.predict.side_effect = None
                 self.ranker.encoder.predict.return_value = SimpleNamespace(tolist=lambda: values)
                 with self.assertRaisesRegex(ValueError, 'Invalid model scores'):

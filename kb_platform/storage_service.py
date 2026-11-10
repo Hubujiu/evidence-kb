@@ -90,7 +90,7 @@ class StorageService:
             if not isinstance(grant, StorageGrant) or self._grants.get(grant.token) is not grant:
                 raise StorageError('STORAGE_GRANT_REJECTED')
         try:
-            with self.lease(grant.service, grant.registration_id) as export:
+            with self.lease(grant.service, grant.registration_id, grant=grant) as export:
                 implementation = export.open_space(grant.space, grant.target)
                 for contract in export.contracts:
                     contract.validate(implementation)
@@ -111,14 +111,22 @@ class StorageService:
             raise StorageError(code, service=grant.service, consumer=grant.consumer) from None
         return BoundStorage(self, grant, implementation, owner_lease=owner_lease)
 
+    def _validate_lease_grant(self, grant, name, registration):
+        if grant is not None and (self._grants.get(grant.token) is not grant
+                or grant.service != name or grant.registration_id != registration):
+            raise StorageError('STORAGE_GRANT_REJECTED')
+
     @contextmanager
-    def lease(self, name, registration):
+    def lease(self, name, registration, *, grant=None):
         with self._lock:
             entry = self._entry(name, registration)
+            self._validate_lease_grant(grant, name, registration)
             ownership = entry.owner_lease() if entry.owner_lease is not None else nullcontext()
         with ownership:
             with self._lock:
-                entry = self._entry(name, registration)
+                if self._entry(name, registration) is not entry:
+                    raise StorageError('STORAGE_BINDING_CHANGED')
+                self._validate_lease_grant(grant, name, registration)
                 entry.active += 1
             try:
                 yield entry.export
@@ -207,7 +215,7 @@ class BoundStorage:
     def _lease(self, *, include_consumer=True):
         consumer = self._consumer_lease() if include_consumer and self._consumer_lease is not None else nullcontext()
         owner = self._owner_lease() if self._owner_lease is not None else nullcontext()
-        with consumer, owner, self._service.lease(self._grant.service, self._grant.registration_id):
+        with consumer, owner, self._service.lease(self._grant.service, self._grant.registration_id, grant=self._grant):
             yield
 
     @contextmanager

@@ -139,6 +139,11 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     def home():
         return (Path(__file__).parent / "console.html").read_text(encoding="utf-8")
 
+    @app.get('/console.mjs')
+    def console_module():
+        return Response((Path(__file__).parent / 'console.mjs').read_text(encoding='utf-8'),
+                        media_type='text/javascript')
+
     @app.get("/identity")
     def whoami(actor: principal):
         return {"tenant_id": actor.tenant_id, "principal_id": actor.principal_id}

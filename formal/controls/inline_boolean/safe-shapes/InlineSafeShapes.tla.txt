@@ -1,0 +1,14 @@
+---- MODULE InlineSafeShapes ----
+CONSTANTS A, B
+VARIABLES x, y, z
+Adjacent == x' = A /\ y' = B
+Unchanged == x' = A /\ UNCHANGED <<y, z>>
+GroupedRHS == x' = (A /\ B)
+IfCondition == x' = IF A /\ B THEN TRUE ELSE FALSE
+CaseCondition == x' = CASE A /\ B -> TRUE [] OTHER -> FALSE
+SeparateGuard == /\ x' = A
+                 /\ B
+LetCondition == LET allowed == A /\ B IN x' = allowed
+GroupedGuard == (x' = A)
+                /\ B
+====

@@ -196,7 +196,7 @@ def migrate(base, legacy, output):
               f"实际执行当前产品 ContextManager，对同一批 Hybrid 缓存的 40 道有答案题：原文窗口输入完整证据 {assembly['counts']['PASS']}/40；保留已选片段输入 {optimized['counts']['PASS']}/40。配对 {paired['wins']} 胜、{paired['ties']} 平、{paired['losses']} 负。",
               '本轮尝试未获得完整证据通过数提升。历史专用装配的 8/40 与当前产品装配的 4/40 使用不同装配协议和窗口限制，不能解释为产品线上退化；它揭示了接入协议不等价和剩余裁剪瓶颈。没有重新生成答案，因此没有新的答案质量或在线延迟收益结论。', '',
               '## 复现', '',
-              '`.venv/Scripts/python.exe scripts/replay_rag_history.py --output reports/rag-history-v1/new-unique-run`', '',
+              '`.venv/bin/python scripts/replay_rag_history.py --output reports/rag-history-v1/new-unique-run`', '',
               '脚本仅通过 SQLite mode=ro 读旧账本，通过 run SDK 接入产品 ContextManager，输出目录存在即拒绝覆盖。所有旧评分、请求和缓存保留。实际 provider 发送链的常驻采集未修改；本轮接入范围为离线请求回放和当前产品上下文组件。', '',
               '100000 codepoint 仅为迁移诊断护栏；历史 4000-token 条件在 request-bindings.json 中单独核验。规范化提高可复核性，目前没有实测答案质量提升。']
     (output / 'report.md').write_text('\n'.join(lines), encoding='utf-8')

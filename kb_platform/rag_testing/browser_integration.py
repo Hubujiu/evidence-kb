@@ -19,6 +19,9 @@ from .runtime_integration import acceptance_dsn as acceptance_dsn
 
 
 ROOT = Path(__file__).resolve().parents[2]
+BROWSER_ASSETS = (('/', 'console.html', 'text/html'), ('/console.mjs', 'console.mjs', 'text/javascript'),
+                  ('/agent', 'agent_console.html', 'text/html'),
+                  ('/agent_console.mjs', 'agent_console.mjs', 'text/javascript'))
 CASES = frozenset({
     'source upload, BM25 publication, citation and original download [chromium]',
     'switching tenants clears and isolates knowledge bases [chromium]',
@@ -38,15 +41,30 @@ def checked_native(summary_path):
     return tuple(selected)
 
 
-def browser_verdict(path):
+def browser_verdict(path, *, expected=CASES, classname='knowledge.e2e.js'):
     document = ET.parse(path).getroot()
     cases = list(document.iter('testcase'))
-    if (len(cases) != len(CASES) or {case.get('name') for case in cases} != CASES
-            or any(case.get('classname') != 'knowledge.e2e.js' for case in cases)
+    if (len(cases) != len(expected) or {case.get('name') for case in cases} != expected
+            or any(case.get('classname') != classname for case in cases)
             or any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
             or any((case.findtext('system-out') or '').startswith('flaky:') for case in cases)):
-        raise ValueError('Both browser cases must pass without skips or retries')
+        raise ValueError('Every expected browser case must pass without skips or retries')
     return {'tests': len(cases), 'failures': 0, 'errors': 0, 'skipped': 0}
+
+
+def checked_browser_assets(client, url):
+    observed = {}
+    for path, name, media_type in BROWSER_ASSETS:
+        response = client.get(url + path)
+        expected = (ROOT / 'kb_platform' / name).read_bytes()
+        if (response.status_code != 200 or response.content != expected
+                or response.headers.get('content-type', '').split(';')[0] != media_type
+                or response.headers.get('cache-control') != 'no-store'
+                or response.headers.get('x-content-type-options') != 'nosniff'):
+            raise ValueError(f'Browser asset {path} must expose the exact current source and expected response headers')
+        observed[path] = {'status': response.status_code, 'sha256': sha256(response.content).hexdigest(),
+                          'bytes': len(response.content), 'content_type': response.headers['content-type']}
+    return observed
 
 
 def run(summary, output, dsn, migration_dsn=None):
@@ -86,7 +104,7 @@ def run(summary, output, dsn, migration_dsn=None):
         'KB_AGENT_KERNEL_LIBRARY': str(library), 'PYTHONUTF8': '1',
         'E2E_TELEMETRY_DISABLED': '1', 'KB_E2E_TESTS': 'knowledge.e2e.js', 'KB_E2E_URL': url,
         'KB_E2E_TOKEN': token, 'KB_E2E_OTHER_TOKEN': other_token}
-    report = {'status': 'FAIL', 'database': database, 'new_model_calls': 0,
+    report = {'status': 'FAIL', 'database': database, 'new_model_calls': None,
         'new_embedding_calls': 0, 'new_judge_calls': 0,
         'scope': 'synthetic browser component acceptance through Rust host, HTTP, parser and PostgreSQL',
         'checker_summary_sha256': sha256(summary.read_bytes()).hexdigest(),
@@ -111,6 +129,7 @@ def run(summary, output, dsn, migration_dsn=None):
                         if time.monotonic() >= deadline:
                             raise TimeoutError('Rust host HTTP readiness deadline exceeded')
                         time.sleep(0.1)
+                    report['browser_assets'] = checked_browser_assets(client, url)
                 with (output / 'browser.log').open('w', encoding='utf-8') as log:
                     result = subprocess.run([node, str(cli), 'run', '--output', str(browser_output),
                         '--no-cache', '--retries', '0'], cwd=ROOT / 'e2e', env=env,
@@ -125,6 +144,10 @@ def run(summary, output, dsn, migration_dsn=None):
                         or browser_run['usage']['modelTokens'] != 0
                         or browser_run['usage']['maxModelCallsInStep'] != 0):
                     raise RuntimeError('Browser acceptance requires deterministic steps without model calls')
+                from .console_browser_integration import run_additional_cases, run_cases
+
+                report['console_state'] = run_cases(output / 'console-state', env)
+                report['additional_state'] = run_additional_cases(output / 'additional-state', env)
             finally:
                 stop.touch()
                 try:
@@ -141,6 +164,20 @@ def run(summary, output, dsn, migration_dsn=None):
     except Exception as error:
         report['error'] = str(error)
     finally:
+        additional = output / 'additional-state/report.json'
+        if additional.is_file():
+            try:
+                report['additional_state'] = json.loads(additional.read_text('utf-8'))
+            except (OSError, ValueError) as error:
+                report['usage_error'] = str(error)
+        knowledge_usage = report.get('browser_usage') or {}
+        report['zero_model_usage_verified'] = (
+            all(type(knowledge_usage.get(key)) is int and knowledge_usage[key] == 0
+                for key in ('modelTokens', 'maxModelCallsInStep'))
+            and report.get('console_state', {}).get('zero_model_usage_verified') is True
+            and isinstance(report.get('additional_state'), dict)
+            and report['additional_state'].get('zero_model_usage_verified') is True)
+        report['new_model_calls'] = 0 if report['zero_model_usage_verified'] else None
         if browser_output.exists():
             shutil.copytree(browser_output, output / 'browser')
         try:

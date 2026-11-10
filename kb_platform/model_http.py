@@ -10,7 +10,7 @@ import httpx
 
 from .agent_engine import current_execution
 from .model_errors import ModelPreflightError, RemoteModelError
-from .model_sdk import Capability, Media, ModelInfo, ModelResult
+from .model_sdk import Capability, Media, ModelInfo, ModelResult, preserve_result_failure
 from .provider_admission import ProviderAdmission
 from .provider_runtime import retry_after_seconds
 
@@ -156,7 +156,7 @@ class OpenAICompatibleAdapter:
             outbound = self.client.build_request('POST', self.endpoint + path, headers=self._headers(),
                                                  timeout=timeout, **wire)
             payload_hash = hashlib.sha256(outbound.read()).hexdigest()
-        except Exception as error:
+        except BaseException as error:
             error.model_sent = False
             raise
         identity = uuid4().hex
@@ -176,6 +176,7 @@ class OpenAICompatibleAdapter:
         try:
             self.ledger.reserve(identity, self.reservation, category=category, require_settled=True)
         except BaseException as exc:
+            exc.model_sent = False
             if isinstance(exc, ValueError) and str(exc) in {
                     'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
                     'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:
@@ -192,12 +193,12 @@ class OpenAICompatibleAdapter:
             response = self.client.send(outbound, follow_redirects=False)
 
             state = 'COMPLETE' if response.is_success else 'ERROR'
-            self.ledger.finish(identity, status=state,
-                               usage={'requests': 1} if 'requests' in self.reservation else None,
-                               diagnostic=f'HTTP_{response.status_code}')
             record.update(status=state, http_status=response.status_code)
             if response.status_code == 403:
                 self.admission.block(identity, payload_sha256=payload_hash, category=category)
+            self.ledger.finish(identity, status=state,
+                               usage={'requests': 1} if 'requests' in self.reservation else None,
+                               diagnostic=f'HTTP_{response.status_code}')
             save()
         except BaseException as exc:
             known_unsent = response is None and (
@@ -222,43 +223,45 @@ class OpenAICompatibleAdapter:
             error.model_sent = not known_unsent
             error.physical_request_id = identity
             raise error from exc
+        usage = None
         try:
             if not response.is_success:
                 raise RemoteModelError('PROVIDER_HTTP_ERROR', response.status_code,
                     retry_after_seconds=retry_after_seconds(response.headers.get('Retry-After')))
-            data, usage = self._decode(request, response)
+            body = None if request.capability == Capability.SPEECH else response.json()
+            usage = self._response_usage(body)
+            data = self._decode(request, response, body)
         except BaseException as exc:
             if isinstance(exc, RemoteModelError):
-                exc.model_sent = True
-                exc.physical_request_id = identity
+                preserve_result_failure(exc, usage, physical_request_id=identity)
                 raise
             error = RemoteModelError('INVALID_MODEL_RESPONSE')
-            error.model_sent = True
-            error.physical_request_id = identity
+            preserve_result_failure(error, usage, physical_request_id=identity)
             raise error from exc
         if execution is not None:
             try:
                 execution.check()
             except BaseException as exc:
-                exc.model_sent = True
+                preserve_result_failure(exc, usage, physical_request_id=identity)
                 raise
         return ModelResult(self.info.provider, self.info.model, request.capability, data, usage, identity,
                            physical_request_id=identity)
 
-    def _decode(self, request, response):
+    def _response_usage(self, body):
+        return body.get('usage') if isinstance(body, dict) else None
+
+    def _decode(self, request, response, body):
         kind = request.capability
         if kind == Capability.SPEECH:
             if not response.headers.get('content-type', '').split(';')[0].startswith('audio/'):
                 raise ValueError('INVALID_AUDIO_RESPONSE')
-            return {'media': Media(response.content, response.headers['content-type'].split(';')[0])}, None
-        body = response.json()
-        usage = body.get('usage')
+            return {'media': Media(response.content, response.headers['content-type'].split(';')[0])}
         if kind == Capability.CHAT:
             choice = body['choices'][0]
             text = choice['message']['content']
             if not isinstance(text, str):
                 raise ValueError('INVALID_CHAT_RESPONSE')
-            return {'text': text, 'finish_reason': choice.get('finish_reason')}, usage
+            return {'text': text, 'finish_reason': choice.get('finish_reason')}
         if kind == Capability.OCR:
             import json
 
@@ -267,7 +270,7 @@ class OpenAICompatibleAdapter:
                 raise ValueError('INVALID_OCR_RESPONSE')
             if request.payload.get('validator') is not None:
                 request.payload['validator'](value)
-            return value, usage
+            return value
         if kind == Capability.EMBEDDING:
             rows = sorted(body['data'], key=lambda row: row['index'])
             if [x['index'] for x in rows] != list(range(len(request.payload['texts']))):
@@ -277,11 +280,11 @@ class OpenAICompatibleAdapter:
             if not dimension or any(not isinstance(v, list) or len(v) != dimension or
                     any(type(x) not in (int, float) or not math.isfinite(x) for x in v) for v in vectors):
                 raise ValueError('INVALID_EMBEDDING_RESPONSE')
-            return {'vectors': vectors}, usage
+            return {'vectors': vectors}
         if kind == Capability.TRANSCRIPTION:
             if not isinstance(body.get('text'), str):
                 raise ValueError('INVALID_TRANSCRIPTION_RESPONSE')
-            return {'text': body['text']}, usage
+            return {'text': body['text']}
         images = []
         for item in body['data']:
             if 'b64_json' in item:
@@ -296,7 +299,7 @@ class OpenAICompatibleAdapter:
                 raise ValueError('INVALID_IMAGE_RESPONSE')
         if len(images) != request.payload.get('count', 1):
             raise ValueError('INVALID_IMAGE_RESPONSE')
-        return {'images': images}, usage
+        return {'images': images}
 
 
 class AnthropicAdapter(OpenAICompatibleAdapter):
@@ -326,17 +329,19 @@ class AnthropicAdapter(OpenAICompatibleAdapter):
             payload['system'] = '\n\n'.join(system)
         return '/messages', {'json': payload}
 
-    def _decode(self, request, response):
-        body = response.json()
+    def _response_usage(self, body):
+        raw = body.get('usage') if isinstance(body, dict) else None
+        if isinstance(raw, dict):
+            incoming, outgoing = raw.get('input_tokens'), raw.get('output_tokens')
+            if type(incoming) is int and type(outgoing) is int and incoming >= 0 and outgoing >= 0:
+                return {'prompt_tokens': incoming, 'completion_tokens': outgoing,
+                        'total_tokens': incoming + outgoing}
+        return None
+
+    def _decode(self, request, response, body):
         blocks = body['content']
         if not isinstance(blocks, list) or any(block.get('type') != 'text' for block in blocks):
             raise ValueError('UNSUPPORTED_ANTHROPIC_CONTENT')
         text = ''.join(block['text'] for block in blocks)
-        raw, usage = body.get('usage'), None
-        if isinstance(raw, dict):
-            incoming, outgoing = raw.get('input_tokens'), raw.get('output_tokens')
-            if type(incoming) is int and type(outgoing) is int and incoming >= 0 and outgoing >= 0:
-                usage = {'prompt_tokens': incoming, 'completion_tokens': outgoing,
-                         'total_tokens': incoming + outgoing}
         reason = {'end_turn': 'stop', 'stop_sequence': 'stop', 'max_tokens': 'length'}.get(body.get('stop_reason'))
-        return {'text': text, 'finish_reason': reason}, usage
+        return {'text': text, 'finish_reason': reason}

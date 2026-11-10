@@ -18,10 +18,10 @@ node node_modules/@e2e-dev/web/dist/bin.js install chromium --with-deps
 
 ## 执行检查
 
-以 PowerShell 为例，为两个命令选择尚不存在的输出目录。
+在 Linux 上运行以下命令，为两个命令选择尚不存在的输出目录。
 
-```powershell
-$env:KB_INTEGRATION_DSN='postgresql://kb_app:kb_local_app@127.0.0.1:55432/rust_plugin_acceptance_local'
+```bash
+export KB_INTEGRATION_DSN='postgresql://kb_app:kb_local_app@127.0.0.1:55432/rust_plugin_acceptance_local'
 uv run --no-sync python scripts/check_project.py --local-integration --output reports/ci/local-check
 uv run --no-sync python -m kb_platform.rag_testing.browser_integration --checker-summary reports/ci/local-check/summary.json --output reports/ci/local-browser
 ```
