@@ -225,7 +225,8 @@ class BrowserSourceContracts(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'Browser asset /console.mjs'):
                         checked_browser_assets(client, 'http://fixture')
                 self.assertEqual(['http://fixture' + path for path, _, _ in BROWSER_ASSETS]
-                                 if broken == 'none' else ['http://fixture/', 'http://fixture/console.mjs'], calls)
+                                 if broken == 'none' else ['http://fixture/', 'http://fixture/console',
+                                                          'http://fixture/console.mjs'], calls)
 
 
     def test_console_runner_uses_project_output_and_preserves_failed_run_artifacts(self):
