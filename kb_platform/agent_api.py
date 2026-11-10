@@ -131,7 +131,7 @@ def install_agent_routes(app, platform, research, identity, *, service_factory=N
     def history(session_id: str, actor: principal):
         return require().history(actor, session_id)
 
-    @app.get('/agent/sessions/{session_id}/requests/{request_id}', response_model=RequestStatusResponse)
+    @app.get('/agent/sessions/{session_id}/requests/{request_id:path}', response_model=RequestStatusResponse)
     def request_status(session_id: str, request_id: str, actor: principal):
         return require().request_status(actor, session_id, request_id)
 

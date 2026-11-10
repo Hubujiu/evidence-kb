@@ -195,7 +195,9 @@ class BuildRecoveryContracts(unittest.TestCase):
         self.platform.set_source_readers(self.actor, self.source['source_id'], ['reader'])
         self.platform.ingest(self.actor, self.kb, 'one.md', b'OMEGAMARKER replacement procedure.',
             readers=['reader'], source_id=self.source['source_id'])
-        self.assertEqual(restarted.search(reader, self.kb, 'ALPHA')['hits'], [])
+        retained = restarted.search(reader, self.kb, 'ALPHA')['hits']
+        self.assertEqual([hit['citation_id'] for hit in retained], [hit['citation_id'] for hit in first['hits']])
+        self.assertEqual(restarted.search(reader, self.kb, 'OMEGAMARKER')['hits'], [])
         stale = self.platform.stage(self.actor, self.kb, ['bm25'])
         self.platform.set_source_readers(self.actor, self.source['source_id'], [])
         with self.assertRaises(PlatformError) as changed:

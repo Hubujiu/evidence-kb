@@ -204,6 +204,17 @@ OPERATIONS = {
         select(BINDINGS, SOURCES.c.owner_id, SOURCES.c.readers, SOURCES.c.policy,
             SOURCES.c.revision.label('source_revision'), SOURCE_VERSIONS.c.filename).select_from(bindings_versions)
         .where(_where(BINDINGS, *KB), BINDINGS.c.status == 'ACTIVE').order_by(BINDINGS.c.binding_id)),
+    K.BINDINGS_DOCUMENTS: _statement(KB,
+        select(BINDINGS, SOURCES.c.owner_id, SOURCES.c.readers, SOURCES.c.policy,
+            SOURCES.c.revision.label('source_revision'), SOURCE_VERSIONS.c.filename)
+        .select_from(bindings_versions).where(_where(BINDINGS, *KB)).order_by(BINDINGS.c.binding_id)),
+    K.SOURCE_VERSIONS_LIST: _statement(SOURCE,
+        select(SOURCE_VERSIONS.c.source_version_id, SOURCE_VERSIONS.c.filename,
+            SOURCE_VERSIONS.c.original_sha256, SOURCE_VERSIONS.c.media_type)
+        .where(_where(SOURCE_VERSIONS, *SOURCE)).order_by(SOURCE_VERSIONS.c.source_version_id)),
+    K.SOURCE_VERSION_INFO: _statement(VERSION,
+        select(SOURCE_VERSIONS.c.filename, SOURCE_VERSIONS.c.media_type)
+        .where(_where(SOURCE_VERSIONS, *VERSION))),
     K.SOURCE_VERSION_ORIGINAL: _statement(VERSION,
         select(SOURCE_VERSIONS.c.original_path, SOURCE_VERSIONS.c.original_sha256)
         .where(_where(SOURCE_VERSIONS, *VERSION))),

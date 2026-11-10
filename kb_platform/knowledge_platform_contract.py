@@ -11,10 +11,11 @@ from uuid import uuid4
 
 from .database_contracts import DatabaseError
 from .embeddings import EmbeddingError
+from .document_contracts import BOOLEAN, DOCUMENTS_RESPONSE, EXPECTED_REVISION, VERSIONS_RESPONSE
 from .knowledge_contracts import (ACTOR, ARRAY, EMPTY, INTEGER, NULL_OBJECT, OBJECT, TEXT,
                                   ObjectClient, ObjectEndpoint, Operation, domain_call,
                                   methods, object_schema)
-from .model_errors import RemoteModelError
+from .model_errors import RemoteModelError, error_details
 from .plugin_contracts import ContractError, Method
 from .platform_transfers import CHUNK_BYTES, MAX_PAYLOAD_BYTES, PlatformSnapshots
 from .session_identity import Actor, PlatformError
@@ -35,10 +36,15 @@ OPERATIONS = {
     'create_kb': _operation({'name': TEXT}),
     'list_kbs': _operation({}, response=ARRAY),
     'set_member': _operation({'kb_id': TEXT, 'principal_id': TEXT, 'capabilities': STRINGS}),
-    'bind_source': _operation({'kb_id': TEXT, 'source_id': TEXT, 'source_version_id': TEXT}),
-    'remove_binding': _operation({'kb_id': TEXT, 'binding_id': TEXT}),
-    'set_source_readers': _operation({'source_id': TEXT, 'readers': STRINGS}),
-    'set_source_policy': _operation({'source_id': TEXT, 'policy': OBJECT}),
+    'bind_source': _operation({'kb_id': TEXT, 'source_id': TEXT, 'source_version_id': TEXT},
+        {'expected_revision': EXPECTED_REVISION}),
+    'remove_binding': _operation({'kb_id': TEXT, 'binding_id': TEXT}, {'expected_revision': EXPECTED_REVISION}),
+    'set_source_readers': _operation({'source_id': TEXT, 'readers': STRINGS}, {'expected_revision': EXPECTED_REVISION}),
+    'set_source_policy': _operation({'source_id': TEXT, 'policy': OBJECT}, {'expected_revision': EXPECTED_REVISION}),
+    'documents': _operation({'kb_id': TEXT}, {'provider_id': OPTIONAL_TEXT, 'include_removed': BOOLEAN},
+        response=DOCUMENTS_RESPONSE),
+    'source_versions': _operation({'kb_id': TEXT, 'source_id': TEXT}, response=VERSIONS_RESPONSE),
+    'reparse_source': _operation({'kb_id': TEXT, 'source_id': TEXT}, {'expected_revision': EXPECTED_REVISION}),
     'stage': _operation({'kb_id': TEXT}, {'channels': OPTIONAL_STRINGS}),
     'build_status': _operation({'kb_id': TEXT, 'build_id': TEXT}),
     'resume_build': _operation({'kb_id': TEXT, 'build_id': TEXT}),
@@ -65,7 +71,8 @@ METHODS = {
     'ingest_begin': Method(object_schema({
         'actor': ACTOR, 'kb_id': TEXT, 'filename': TEXT, 'readers': OPTIONAL_STRINGS,
         'policy': NULL_OBJECT, 'source_id': OPTIONAL_TEXT,
-        'size': {'type': 'integer', 'minimum': 1}, 'sha256': HASH}),
+        'size': {'type': 'integer', 'minimum': 1}, 'sha256': HASH, 'expected_revision': EXPECTED_REVISION},
+        ['actor', 'kb_id', 'filename', 'readers', 'policy', 'source_id', 'size', 'sha256']),
         object_schema({'upload_id': TEXT})),
     'ingest_append': Method(object_schema({**TRANSFER, 'offset': INTEGER,
         'data_base64': {'type': 'string', 'minLength': 1, 'maxLength': 4 * ((CHUNK_BYTES + 2) // 3)}}),
@@ -92,10 +99,7 @@ def _call(operation):
     except EmbeddingError as error:
         raise ContractError('EMBEDDING_FAILED', str(error), status_code=502) from error
     except RemoteModelError as error:
-        details = {'kind': 'model', 'status': error.status,
-                   'retry_after_seconds': error.retry_after_seconds}
-        if hasattr(error, 'call_record'):
-            details['call_record'] = error.call_record
+        details = {'kind': 'model', **error_details(error)}
         raise ContractError(error.code, str(error), status_code=502, details=details) from error
 
 
@@ -177,6 +181,8 @@ class PlatformEndpoint(ObjectEndpoint):
             identity = self._transfers.reserve(request['actor'], 'ingest')
             del self._uploads[request['upload_id']]
         arguments = {key: expected[key] for key in ('kb_id', 'filename', 'readers', 'policy', 'source_id')}
+        if 'expected_revision' in expected:
+            arguments['expected_revision'] = expected['expected_revision']
         try:
             result = _call(lambda: self._implementation.ingest(Actor(**request['actor']), data=content, **arguments))
             context = {'kb_id': expected['kb_id'], 'result': result}
@@ -261,13 +267,16 @@ class PlatformClient(ObjectClient):
         self.embedding_provider = SimpleNamespace(**metadata['embedding']) if metadata['embedding'] else None
         self.ocr_client = SimpleNamespace(**metadata['ocr']) if metadata['ocr'] else None
 
-    def ingest(self, actor, kb_id, filename, data, readers=None, policy=None, source_id=None):
+    def ingest(self, actor, kb_id, filename, data, readers=None, policy=None, source_id=None, expected_revision=None):
         if not isinstance(data, bytes) or not data:
             raise PlatformError('FILE_SIZE', 'Upload must contain bytes', 422)
         identity = asdict(actor)
-        begin = domain_call(self._dependency.ingest_begin, {'actor': identity, 'kb_id': kb_id,
+        request = {'actor': identity, 'kb_id': kb_id,
             'filename': filename, 'readers': readers, 'policy': policy, 'source_id': source_id,
-            'size': len(data), 'sha256': sha256(data).hexdigest()})
+            'size': len(data), 'sha256': sha256(data).hexdigest()}
+        if expected_revision is not None:
+            request['expected_revision'] = expected_revision
+        begin = domain_call(self._dependency.ingest_begin, request)
         transfer = {'actor': identity, 'upload_id': begin['upload_id']}
         try:
             for offset in range(0, len(data), CHUNK_BYTES):

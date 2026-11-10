@@ -13,6 +13,8 @@ from .agent_context import ContextPolicy
 from .plugin_contracts import ContractError, Method
 from .plugin_configuration import CONTEXT_PROPERTIES
 from .session_identity import Actor, PlatformError
+from .public_errors import PUBLIC_MODEL_FACTS
+from .model_errors import error_details
 
 
 REQUEST_BUDGET_SCHEMA = {'type': ['object', 'null'], 'properties': {
@@ -78,6 +80,12 @@ def request_status_schema(response):
 
 REQUEST_STATUS_RESPONSE = request_status_schema(COMPLETED_RESPONSE)
 PUBLIC_REQUEST_STATUS_RESPONSE = request_status_schema(PUBLIC_TURN_RESPONSE)
+for request_variant in PUBLIC_REQUEST_STATUS_RESPONSE['oneOf']:
+    request_variant['properties']['observations'] = {'type': 'array', 'items': PUBLIC_MODEL_FACTS}
+PUBLIC_REQUEST_STATUS_RESPONSE['oneOf'].append(object_schema({
+    'session_id': TEXT, 'request_id': TEXT, 'revision': INTEGER, 'send_status': {'const': 'unknown'},
+    'status': {'const': 'reconciliation_required'}, 'recovery_action': {'const': 'inspect_operation'},
+    'observations': {'type': 'array', 'minItems': 1, 'items': PUBLIC_MODEL_FACTS}}))
 PUBLIC_REQUEST_STATUS_RESPONSE['oneOf'].append(object_schema({
     'session_id': TEXT, 'request_id': TEXT, 'revision': INTEGER, 'send_status': {'const': 'unknown'},
     'status': {'const': 'completed'}, 'recovery_action': {'const': 'inspect_request'},
@@ -156,6 +164,7 @@ SESSION_OPERATIONS = {
     'load': operation('actor session_id', response=SESSION_RESPONSE),
     'list_sessions': operation('actor', optional='limit offset', response=ARRAY),
     'events': operation('actor session_id', response=ARRAY),
+    'request_events': operation('actor session_id request_id', response=ARRAY),
     'begin': operation('actor session_id request_id expected_revision fingerprint', optional='lease_seconds',
                        response=BEGIN_RESPONSE),
     'request_status': operation('actor session_id request_id', response=REQUEST_STATUS_RESPONSE),
@@ -234,7 +243,7 @@ class ObjectEndpoint:
                 return json.loads(json.dumps(getattr(self._implementation, name)(**values), allow_nan=False))
             except CommitUnknown as error:
                 raise ContractError(error.code, str(error), status_code=503,
-                    details={'kind': 'database', 'operation_id': error.operation_id}) from error
+                    details={'kind': 'database', **error_details(error), 'operation_id': error.operation_id}) from error
         return invoke
 
 

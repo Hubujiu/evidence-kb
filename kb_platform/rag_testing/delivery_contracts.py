@@ -225,7 +225,7 @@ class DeliveryContracts(unittest.TestCase):
             ensure_private_identity(profile)
         self.assertEqual(path.read_text('utf-8'), '{}')
 
-    def test_unresolved_request_preflight_reports_recovery_without_mutating_ledger(self):
+    def test_unresolved_request_blocks_preflight_and_factory_without_invoking_application(self):
         ledger = BudgetLedger(self.run / 'physical-calls.sqlite3', self.config['physical_call_caps'])
         self.addCleanup(ledger.close)
         reservation = dict.fromkeys(ledger.caps, 0)

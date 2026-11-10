@@ -5,6 +5,7 @@ from pydantic import RootModel, model_validator
 
 from .knowledge_contracts import SESSION_RESPONSE, TURN_RESPONSE, PUBLIC_REQUEST_STATUS_RESPONSE
 from .plugin_contracts import schema_validator
+from .document_contracts import DOCUMENTS_RESPONSE, VERSIONS_RESPONSE
 
 
 class ContractResponse(RootModel[dict]):
@@ -32,3 +33,11 @@ class TurnResponse(ContractResponse):
 
 class RequestStatusResponse(ContractResponse):
     contract_schema = PUBLIC_REQUEST_STATUS_RESPONSE
+
+
+class DocumentsResponse(ContractResponse):
+    contract_schema = DOCUMENTS_RESPONSE
+
+
+class SourceVersionsResponse(ContractResponse):
+    contract_schema = VERSIONS_RESPONSE

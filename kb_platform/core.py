@@ -130,7 +130,7 @@ class Platform:
 
     def ingest(self, actor: Actor, kb_id: str, filename: str, data: bytes,
                readers: list[str] | None = None, policy: dict | None = None,
-               source_id: str | None = None) -> dict:
+               source_id: str | None = None, expected_revision: int | None = None) -> dict:
         from .documents import max_upload_bytes
 
         limit = max_upload_bytes()
@@ -141,6 +141,7 @@ class Platform:
             raise PlatformError('INVALID_FILENAME', 'Invalid filename', 422)
         with self._tx(actor, kb_id) as conn:
             self._auth(conn, actor, kb_id, 'kb.write')
+            self._expect_revision(conn, actor, expected_revision)
             existing = self._source(conn, actor, source_id, owner=True) if source_id else None
             parse_policy = _policy(policy if policy is not None else existing['policy'] if existing else None)
             parse_authorization = {'principal': f'{actor.tenant_id}:{actor.principal_id}',
@@ -160,6 +161,7 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id, 'kb.write')
+            self._expect_revision(conn, actor, expected_revision)
             if existing:
                 current = self._source(conn, actor, source_id, owner=True)
                 if current['revision'] != existing['revision']:
@@ -183,10 +185,11 @@ class Platform:
                            (actor.tenant_id, kb_id, str(uuid4()), source_id, source_version_id, parse_id)).fetchone()
         return row
 
-    def bind_source(self, actor, kb_id, source_id, source_version_id):
+    def bind_source(self, actor, kb_id, source_id, source_version_id, expected_revision=None):
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id, 'kb.write')
+            self._expect_revision(conn, actor, expected_revision)
             self._source(conn, actor, source_id, owner=True)
             snapshot = conn.execute(KnowledgeQuery.PARSE_FIRST,
                                     (actor.tenant_id, source_id, source_version_id)).fetchone()
@@ -196,10 +199,11 @@ class Platform:
             self._bump(conn, actor, kb_id)
             return result
 
-    def remove_binding(self, actor, kb_id, binding_id):
+    def remove_binding(self, actor, kb_id, binding_id, expected_revision=None):
         with self._tx(actor, kb_id) as conn:
             self._lock_authority(conn, actor)
             self._auth(conn, actor, kb_id, 'kb.write')
+            self._expect_revision(conn, actor, expected_revision)
             row = conn.execute(KnowledgeQuery.BINDING_REMOVE,
                                (actor.tenant_id, kb_id, binding_id)).fetchone()
             if not row:
@@ -207,28 +211,37 @@ class Platform:
             self._bump(conn, actor, kb_id)
             return row
 
-    def set_source_readers(self, actor, source_id, readers):
+    def set_source_readers(self, actor, source_id, readers, expected_revision=None):
         if not isinstance(readers, list) or any(not isinstance(p, str) or not p for p in readers):
             raise PlatformError('INVALID_READERS', 'Readers must be principal identifiers')
         with self._tx(actor) as conn:
             self._lock_authority(conn, actor)
             self._source(conn, actor, source_id, owner=True)
+            self._expect_revision(conn, actor, expected_revision)
             conn.execute(KnowledgeQuery.SOURCE_READERS_UPDATE,
                          (sorted(set(readers)), actor.tenant_id, source_id))
             self._bump(conn, actor)
         return {'source_id': source_id, 'readers': sorted(set(readers))}
 
-    def set_source_policy(self, actor, source_id, policy):
+    def set_source_policy(self, actor, source_id, policy, expected_revision=None):
         policy = _policy(policy)
         with self._tx(actor) as conn:
             self._lock_authority(conn, actor)
             self._source(conn, actor, source_id, owner=True)
+            self._expect_revision(conn, actor, expected_revision)
             conn.execute(KnowledgeQuery.SOURCE_POLICY_UPDATE,
                          (policy, actor.tenant_id, source_id))
             self._bump(conn, actor)
         return {'source_id': source_id, 'policy': policy}
 
-    def _source_snapshot(self, actor, kb_id, *, processing=False, capability='kb.read'):
+    def _expect_revision(self, conn, actor, expected_revision):
+        if expected_revision is not None:
+            if type(expected_revision) is not int or expected_revision < 0:
+                raise PlatformError('INVALID_REVISION', 'Revision must be a nonnegative integer', 422)
+            if self._lock_authority(conn, actor) != expected_revision:
+                raise PlatformError('AUTHORITY_REVISION_CONFLICT', 'Reload current authority before changing documents', 409)
+
+    def _source_snapshot(self, actor, kb_id, *, processing=False, capability='kb.read', published=False):
         with self._tx(actor, kb_id) as conn:
             revision = self._lock_authority(conn, actor)
             kb = self._auth(conn, actor, kb_id, capability)
@@ -237,6 +250,22 @@ class Platform:
                 rows = conn.execute(KnowledgeQuery.BINDINGS_PROCESSING, (actor.tenant_id, kb_id)).fetchall()
             else:
                 rows = conn.execute(KnowledgeQuery.BINDINGS_ACTIVE, (actor.tenant_id, kb_id)).fetchall()
+            if published:
+                build = conn.execute(KnowledgeQuery.BUILD_PUBLISHED,
+                    (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone() if kb['manifest_id'] else None
+                selected = {} if build is None else {item['source_id']: item for item in build['inputs']['sources']}
+                current = []
+                for row in rows:
+                    original = selected.get(row['source_id'])
+                    if original is None or original['binding_id'] != row['binding_id']:
+                        continue
+                    version = conn.execute(KnowledgeQuery.SOURCE_VERSION_INFO,
+                        (actor.tenant_id, row['source_id'], original['source_version_id'])).fetchone()
+                    if version is None:
+                        raise PlatformError('SOURCE_INTEGRITY', 'Published source version is unavailable', 503)
+                    current.append({**row, **{key: original[key] for key in
+                        ('source_version_id', 'parse_snapshot_id')}, 'filename': version['filename']})
+                rows = current
         documents, missing = {}, []
         for row in rows:
             identity = (row['source_id'], row['source_version_id'], row['parse_snapshot_id'])
@@ -256,6 +285,100 @@ class Platform:
         with self._tx(actor, kb_id) as conn:
             self._check_source_snapshot(conn, actor, kb_id, snapshot)
         return snapshot
+
+    def documents(self, actor, kb_id, provider_id=None, include_removed=False):
+        if provider_id is not None and (not isinstance(provider_id, str) or not 1 <= len(provider_id) <= 200):
+            raise PlatformError('INVALID_PROVIDER', 'Provider identity is invalid', 422)
+        if type(include_removed) is not bool:
+            raise PlatformError('INVALID_DOCUMENT_QUERY', 'include_removed must be boolean', 422)
+        with self._tx(actor, kb_id) as conn:
+            revision = self._lock_authority(conn, actor)
+            kb = self._auth(conn, actor, kb_id)
+            rows = conn.execute(KnowledgeQuery.BINDINGS_DOCUMENTS, (actor.tenant_id, kb_id)).fetchall()
+            rows = [row for row in rows if (include_removed or row['status'] == 'ACTIVE') and
+                (row['owner_id'] == actor.principal_id or actor.principal_id in row['readers'])]
+            build = conn.execute(KnowledgeQuery.BUILD_PUBLISHED,
+                (actor.tenant_id, kb_id, kb['manifest_id'])).fetchone() if kb['manifest_id'] else None
+        published = {} if build is None else {item['source_id']: item for item in build['inputs']['sources']}
+        identities = list(dict.fromkeys((row['source_id'], row['source_version_id'], row['parse_snapshot_id'])
+            for row in rows))
+        for row in rows:
+            previous = published.get(row['source_id'])
+            if previous is not None:
+                identity = (row['source_id'], previous['source_version_id'], previous['parse_snapshot_id'])
+                if identity not in identities:
+                    identities.append(identity)
+        parsed = dict(self.repository.parse_documents(actor, kb_id, identities))
+        documents = []
+        for row in rows:
+            document = parsed[(row['source_id'], row['source_version_id'], row['parse_snapshot_id'])]
+            previous = published.get(row['source_id'])
+            published_document = (parsed[(row['source_id'], previous['source_version_id'], previous['parse_snapshot_id'])]
+                if previous is not None else None)
+            reasons = []
+            if row['status'] != 'ACTIVE':
+                reasons.append('BINDING_REMOVED')
+            if previous is None:
+                reasons.append('NOT_PUBLISHED')
+            if not row['policy']['llm_context']:
+                reasons.append('LLM_CONTEXT_DENIED')
+            if provider_id is None:
+                reasons.append('MODEL_NOT_CONFIGURED')
+            elif provider_id not in row['policy']['allowed_providers']:
+                reasons.append('PROVIDER_NOT_ALLOWED')
+            if (published_document is not None and row['policy']['llm_context']
+                    and not self._allowed([{**row, 'document': published_document}], actor, 'llm_context')):
+                reasons.append('PROCESSING_POLICY_DENIED')
+            build_blockers = [] if document['status'] == 'READY' else ['INCOMPLETE_PARSE']
+            if not row['policy']['native_parse']:
+                build_blockers.append('PROCESSING_DENIED')
+            documents.append({'source_id': row['source_id'], 'binding_id': row['binding_id'],
+                'filename': row['filename'], 'source_version_id': row['source_version_id'],
+                'parse_snapshot_id': row['parse_snapshot_id'], 'parse_status': document['status'],
+                'binding_status': row['status'], 'source_revision': row['source_revision'],
+                'binding_revision': row['revision'], 'policy': row['policy'],
+                'published_version_id': None if previous is None else previous['source_version_id'],
+                'published_parse_snapshot_id': None if previous is None else previous['parse_snapshot_id'],
+                'needs_publication': previous is None or any(row[key] != previous[key] for key in
+                    ('source_version_id', 'parse_snapshot_id')) or row['status'] != 'ACTIVE',
+                'human_search_ready': previous is not None and row['status'] == 'ACTIVE' and
+                    bool(self._allowed([{**row, 'document': published_document}], actor, 'human_search')),
+                'qa_ready': not reasons, 'blockers': list(dict.fromkeys(reasons)),
+                'build_blockers': build_blockers, 'quality_report': document.get('quality_report', {})})
+        with self._tx(actor, kb_id) as conn:
+            self._auth(conn, actor, kb_id)
+            if self._lock_authority(conn, actor) != revision:
+                raise PlatformError('SCOPE_CHANGED', 'Documents changed during diagnostic read', 409)
+        return {'kb_id': kb_id, 'authority_revision': revision, 'manifest_id': kb['manifest_id'],
+            'provider_id': provider_id, 'documents': documents}
+
+    def source_versions(self, actor, kb_id, source_id):
+        with self._tx(actor, kb_id) as conn:
+            self._auth(conn, actor, kb_id)
+            self._source(conn, actor, source_id)
+            binding = conn.execute(KnowledgeQuery.BINDING_ACCESS, (actor.tenant_id, kb_id, source_id)).fetchone()
+            if binding is None:
+                _deny()
+            versions = conn.execute(KnowledgeQuery.SOURCE_VERSIONS_LIST, (actor.tenant_id, source_id)).fetchall()
+        return {'source_id': source_id, 'versions': [dict(row) for row in versions]}
+
+    def reparse_source(self, actor, kb_id, source_id, expected_revision=None):
+        with self._tx(actor, kb_id) as conn:
+            self._auth(conn, actor, kb_id, 'kb.write')
+            self._source(conn, actor, source_id, owner=True)
+            self._expect_revision(conn, actor, expected_revision)
+            revision = self._lock_authority(conn, actor)
+            binding = conn.execute(KnowledgeQuery.BINDING_ACCESS, (actor.tenant_id, kb_id, source_id)).fetchone()
+            if binding is None:
+                _deny()
+            identity = (actor.tenant_id, source_id, binding['source_version_id'])
+            original = conn.execute(KnowledgeQuery.SOURCE_VERSION_ORIGINAL, identity).fetchone()
+            metadata = conn.execute(KnowledgeQuery.SOURCE_VERSION_INFO, identity).fetchone()
+        if original is None or metadata is None:
+            raise PlatformError('SOURCE_INTEGRITY', 'Original source version is unavailable', 503)
+        data = self.store.read(original['original_path'], actor.tenant_id, original['original_sha256'])
+        return self.ingest(actor, kb_id, metadata['filename'], data, source_id=source_id,
+            expected_revision=revision)
 
     def _check_source_snapshot(self, conn, actor, kb_id, snapshot):
         if snapshot['actor'] != actor or snapshot['scope'] != kb_id:
@@ -570,7 +693,7 @@ class Platform:
             raise PlatformError('CHANNEL_NOT_ADMITTED', 'Channel has no approved configured provider', 409)
         if not query.strip() or len(query) > 2000 or not 1 <= top_k <= 50 or not 1 <= context_budget <= 50000:
             raise PlatformError('INVALID_QUERY', 'Invalid query or retrieval budget')
-        snapshot = self._source_snapshot(actor, kb_id)
+        snapshot = self._source_snapshot(actor, kb_id, published=True)
         with self._tx(actor, kb_id) as conn:
             self._check_source_snapshot(conn, actor, kb_id, snapshot)
             kb = self._auth(conn, actor, kb_id)

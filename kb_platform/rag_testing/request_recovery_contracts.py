@@ -50,6 +50,37 @@ class RequestRecoveryContracts(unittest.TestCase):
     def query(self, request='request'):
         return self.client.get(f'/agent/sessions/{self.sid}/requests/{request}')
 
+    def test_unconfirmed_settlement_is_recovered_from_durable_failed_event_before_completion(self):
+        begun = self.store.begin(self.actor, self.sid, 'request', 0, 'fingerprint')
+        self.store.append(self.actor, self.sid, begun['token'], 'model_failed', {
+            'code': 'COMMIT_UNKNOWN', 'model_sent': True, 'physical_request_id': 'physical-one',
+            'operation_id': 'unconfirmed-op', 'observed_usage': {'input_tokens': 7, 'output_tokens': 3},
+            'status': 200, 'ledger_settlement': 'UNCONFIRMED', 'capture_state': 'COMMITTED',
+            'prompt': 'private prompt'}, 'request')
+        result = self.query().json()
+        self.assertEqual(result['status'], 'reconciliation_required')
+        self.assertEqual(result['recovery_action'], 'inspect_operation')
+        observed, = result['observations']
+        self.assertEqual(observed['operation_id'], 'unconfirmed-op')
+        self.assertEqual(observed['provider_http_status'], 200)
+        self.assertIs(observed['model_sent'], True)
+        self.assertNotIn('private', str(result))
+        self.assertEqual(self.store.request_status(self.actor, self.sid, 'request')['status'], 'running')
+
+    def test_cached_completed_event_preserves_usage_without_claiming_new_send(self):
+        begun = self.store.begin(self.actor, self.sid, 'request', 0, 'fingerprint')
+        self.store.append(self.actor, self.sid, begun['token'], 'model_completed', {
+            'usage': {'available': True, 'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15},
+            'attempts': 0, 'cache_kind': 'model_response', 'value': 'private result'}, 'request')
+        result = self.query().json()
+        observed, = result['observations']
+        self.assertEqual(observed['observed_usage']['total_tokens'], 15)
+        self.assertEqual(observed['cache_kind'], 'model_response')
+        self.assertEqual(observed['attempts'], 0)
+        self.assertEqual(observed['recovery_action'], 'none')
+        self.assertNotIn('model_sent', observed)
+        self.assertNotIn('private', str(result))
+
     def complete(self, *, failure=False):
         begun = self.store.begin(self.actor, self.sid, 'request', 0, 'fingerprint')
         response = {'status': 'error' if failure else 'answered',
@@ -57,7 +88,11 @@ class RequestRecoveryContracts(unittest.TestCase):
             'answer': '' if failure else 'Authorized original answer', 'claims': [],
             'evidence': [] if failure else [{'citation_id': 'citation', 'text': 'Original'}],
             'unresolved': [], 'stop_reason': 'provider_failure' if failure else 'verified',
-            'trace': {'private_path': '/private/receipts', 'prompt': 'private raw prompt'}}
+            'trace': {'private_path': '/private/receipts', 'prompt': 'private raw prompt',
+                'calls': [{'model_sent': True, 'physical_request_id': 'physical-observed',
+                    'observed_usage': {'input_tokens': 7, 'output_tokens': 3},
+                    'status': 200, 'ledger_settlement': 'UNCONFIRMED', 'capture_state': 'COMMITTED',
+                    'budget_operation_id': 'budget-op', 'prompt': 'private raw prompt'}]}}
         if failure:
             return self.store.fail(self.actor, self.sid, begun['token'], self.session['state'], response)
         return self.store.finish(self.actor, self.sid, begun['token'], self.session['state'], response,
@@ -91,6 +126,12 @@ class RequestRecoveryContracts(unittest.TestCase):
         self.assertEqual(result['response']['revision'], original['revision'])
         self.assertNotIn('trace', result['response'])
         self.assertNotIn('private', str(result))
+        observed, = result['observations']
+        self.assertIs(observed['model_sent'], True)
+        self.assertEqual(observed['physical_request_id'], 'physical-observed')
+        self.assertEqual(observed['observed_usage'], {'input_tokens': 7, 'output_tokens': 3})
+        self.assertEqual(observed['ledger_settlement'], 'UNCONFIRMED')
+        self.assertEqual(observed['recovery_action'], 'inspect_operation')
         self.service.gateway.revalidate.assert_called_once()
         self.assertEqual(reopened.begin(self.actor, self.sid, 'request', 0, 'fingerprint'),
                          {'cached': original})

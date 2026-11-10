@@ -100,7 +100,7 @@ class EvidenceGateway:
         self.pipeline_reranker = pipeline_reranker
 
     def _state(self, actor, scope_id, *, with_build=False, with_bindings=True):
-        snapshot = self.platform._source_snapshot(actor, scope_id, processing=True) if with_bindings else None
+        snapshot = self.platform._source_snapshot(actor, scope_id, processing=True, published=True) if with_bindings else None
         with self.platform._tx(actor, scope_id) as conn:
             if snapshot is not None:
                 self.platform._check_source_snapshot(conn, actor, scope_id, snapshot)

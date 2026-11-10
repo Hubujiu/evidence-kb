@@ -302,7 +302,8 @@ def live_suite():
             self.settle(ledger, 'synthetic-unknown', status='UNKNOWN')
             before = ledger.summary(), ledger.entry('synthetic-unknown')
             session = {'session_id': 'saved', 'scope_id': 'kb', 'revision': 1,
-                'created_at': 1, 'updated_at': 1, 'state': {'config_name': 'recommended'}}
+                'created_at': '2026-11-10T00:00:00Z', 'updated_at': '2026-11-10T00:00:00Z',
+                'state': {'config_name': 'recommended'}}
             history = {'events': [{'kind': 'user', 'payload': {'text': 'Saved synthetic question'}}]}
             service = SimpleNamespace(list_sessions=lambda actor, **kwargs: {'sessions': [session]},
                 get=lambda actor, session_id: session, history=lambda actor, session_id: history)

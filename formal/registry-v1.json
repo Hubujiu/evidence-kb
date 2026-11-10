@@ -8,6 +8,11 @@
     ],
     "exclusions": [
       {
+        "path": "kb_platform/rag_testing/contract_http_integration.py",
+        "symbol": "ContractHTTPIntegration.test_response_loss_after_unconfirmed_settlement_recovers_durable_observations.unconfirmed",
+        "reason": "Synthetic HTTP integration fault injector assigns observed provider HTTP status to CommitUnknown; this is an exception observation, not a production lifecycle owner. Actual physical settlement transitions remain bound separately."
+      },
+      {
         "path": "kb_platform/agent_api.py",
         "symbol": "install_agent_routes.runtime_status",
         "reason": "Read-only HTTP route projection of configured delivery status; local variable is not an independently transitioned lifecycle owner."
@@ -131,6 +136,11 @@
         "path": "scripts/web_ownership.test.mjs",
         "symbol": "<module>",
         "reason": "Deterministic source/test runner aggregates verification verdicts; not a product lifecycle owner. Product ownership is exercised by its contracts and browser acceptance."
+      },
+      {
+        "path": "kb_platform/model_http.py",
+        "symbol": "_HttpCompletion",
+        "reason": "Frozen HTTP completion observation DTO; numeric status is a response fact, not a mutable lifecycle state owner. Actual transitions are bound at _invoke_admitted and invoke."
       }
     ]
   },
@@ -227,7 +237,7 @@
           "path": "kb_platform/model_http.py",
           "language": "python",
           "symbol": "OpenAICompatibleAdapter.invoke",
-          "sha256": "e5dc2c57076583d86b51d961a38b72687ad90a8dca13d87a2b4efa7e68e0290f"
+          "sha256": "873069676f36c0dbad22fc6be099272644188357f0d91736f03feb2f4081e4c0"
         },
         {
           "path": "kb_platform/provider_runtime.py",
@@ -438,6 +448,24 @@
           "language": "python",
           "symbol": "EmbeddingCallError",
           "sha256": "bf2ccb9e2c3ed76f1e38ed5386d542b8947cdc89d0dabb39b04a2df12aa82c13"
+        },
+        {
+          "path": "kb_platform/model_http.py",
+          "language": "python",
+          "symbol": "OpenAICompatibleAdapter._invoke_admitted",
+          "sha256": "7b2a8cdaa7c85f03d1d465e3d1c0552695fe12bb1cdd141d69e317849434637d"
+        },
+        {
+          "path": "kb_platform/model_http.py",
+          "language": "python",
+          "symbol": "OpenAICompatibleAdapter._invoke_admitted.preserve",
+          "sha256": "fba44086e4b3bae5372aeba37edc08ad4acb43ebb9990f1e306c093127718252"
+        },
+        {
+          "path": "kb_platform/model_http.py",
+          "language": "python",
+          "symbol": "AnthropicAdapter._response_usage",
+          "sha256": "b8469d68250678f5a7627671d5f6a54fbf489ce17fb226acea70a93b00255b9a"
         }
       ],
       "models": [
@@ -653,7 +681,8 @@
         "Model active/late commits, partial/multidimensional usage and actual usage exceeding reservations.",
         "Raw provider-usage propagation through the public failure boundary is covered by deterministic contracts, not by the scalar finite accounting model; unknown/partial provider usage and cross-store identity reconciliation remain distinct obligations.",
         "ObservedSettlementFacts does not prove arbitrary token values, all provider usage schemas, multi-attempt aggregation, process crash before exception publication, cross-store identity alignment, or actual network/SQLite durability. Existing no-second-settlement and capture-consumer models remain separate.",
-        "PhysicalLedgerCore covers bounded vector accounting and terminal CAS, not arbitrary vector induction, live backend replacement or distributed locking. LocalRanker reuses the existing at-most-once-settlement abstraction; its SQLite fault contracts supply source evidence."
+        "PhysicalLedgerCore covers bounded vector accounting and terminal CAS, not arbitrary vector induction, live backend replacement or distributed locking. LocalRanker reuses the existing at-most-once-settlement abstraction; its SQLite fault contracts supply source evidence.",
+        "API delivery review: docs/api-delivery-formal-review-20261110.md. Capture/producer-release filesystem faults and full HTTP refinement remain concrete contract obligations."
       ]
     },
     {
@@ -661,12 +690,14 @@
       "status": "partial",
       "owners": [
         "kb_platform/rag_testing/budget_batches.py",
-        "kb_platform/persistence_migration.py"
+        "kb_platform/persistence_migration.py",
+        "kb_platform/delivery.py"
       ],
       "states": [
         "Frozen predecessor rows and compatible persistent seals; partial construction and same-child recovery.",
         "STARTED/COMPLETE/ERROR/UNKNOWN child rows; reviewed UNKNOWN remains reserved.",
-        "Pinned import intent, atomic target rows+marker, same-dataset replay or fail-closed conflict."
+        "Pinned import intent, atomic target rows+marker, same-dataset replay or fail-closed conflict.",
+        "A startup-frozen recovery reader retains one UNKNOWN child and its reservation; authorized views do not mutate or send."
       ],
       "transitions": [
         "LinkedBudgetLedger.reserve",
@@ -686,7 +717,8 @@
         "PR31 send facts and read-only status projections are reviewed source anchors, not additional formal coverage. The separately listed owner models cover only their stated finite slices.",
         "All local producers use producer_guard; SQLite guards commit independently in reverse ExitStack order.",
         "Backend transaction atomicity, dataset identities and canonical snapshot digests are trusted.",
-        "Finite two-parent/four-ID batch and one-source/two-destination import abstractions; no fairness or progress claim."
+        "Finite two-parent/four-ID batch and one-source/two-destination import abstractions; no fairness or progress claim.",
+        "BatchRecovery assumes existing authenticated route resolution and hard send guards; real composed HTTP contracts check wiring. See docs/api-delivery-formal-review-20261110.md."
       ],
       "exclusions": [
         "Physical-provider sends, monetary billing, arbitrary resource vectors and unbounded predecessor graphs are not modeled.",
@@ -697,7 +729,7 @@
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "LinkedBudgetLedger.reserve",
-          "sha256": "55c9fa0eed988ba8f18181d5f969755a55a039d34b6e2ac7ad39e6076a3f6647"
+          "sha256": "0c91b7962c000ccffbca60a2bab2e2e224e92c6ace3632caa28985f8ec9caa8b"
         },
         {
           "path": "kb_platform/rag_testing/budget_batches.py",
@@ -739,7 +771,7 @@
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "LinkedBudgetLedger.__init__",
-          "sha256": "2e9c63cefcbe9a5569ce07c7a3472927c12f05e6bfa391f829b10bada1a382a5"
+          "sha256": "bb45ddcc1a9ea04c97d579572ab95a6b25961f94ac8bae445f5f7bc582546657"
         },
         {
           "path": "kb_platform/rag_testing/budget_batches.py",
@@ -841,13 +873,13 @@
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "LinkedBudgetLedger.finish",
-          "sha256": "69a5958c37365354b0e07c8a5e00f8f1a23fb012a88ef3c84468b7c695dfc7d2"
+          "sha256": "187f4e4a528207726242dcd238634c53bc42b336f1359c51930ccb191d09f3bd"
         },
         {
           "path": "kb_platform/rag_testing/budget_batches.py",
           "language": "python",
           "symbol": "LinkedBudgetLedger.admission",
-          "sha256": "99da00b197411dec29e440147844b364d504e6c15ed482e3999fa124a51144bd"
+          "sha256": "e5159a7297fb500c23b339a5484c39085cfc6969bd43a414ee0df88a935ddd36"
         },
         {
           "path": "kb_platform/rag_testing/reviewed_predecessor_contracts.py",
@@ -860,6 +892,24 @@
           "language": "python",
           "symbol": "ReviewedPredecessorContracts.test_new_unknown_is_not_covered_by_old_review",
           "sha256": "1ca4dfeb4cf3ac0df46fdbe7625eb003667a2728028d570f946df633fc544854"
+        },
+        {
+          "path": "kb_platform/delivery.py",
+          "language": "python",
+          "symbol": "_deny_recovery_send",
+          "sha256": "24f0f4be745e974ba9de73ca1dc5873925757b26c1cb85ecbcbe9f592f3ea0a4"
+        },
+        {
+          "path": "kb_platform/delivery.py",
+          "language": "python",
+          "symbol": "_install_recovery_guard",
+          "sha256": "6eff1ba1f125ecfdbc00aa05721d0feaab90876c1d48c0a2ccd6055d4932fdf1"
+        },
+        {
+          "path": "kb_platform/delivery.py",
+          "language": "python",
+          "symbol": "_create_delivery_app",
+          "sha256": "f1dc1a4bf2914bb5f38904653a20c8146f56fd0aabcf453b45ed33665ee7fa9a"
         }
       ],
       "models": [
@@ -908,6 +958,25 @@
             "unknown_source_rows": 1,
             "destination_identities": 2,
             "destination_initial_occupancy_classes": 2
+          }
+        },
+        {
+          "id": "batch_recovery",
+          "module": "formal/budget_batches/BatchRecovery.tla",
+          "config": "formal/budget_batches/BatchRecovery.cfg",
+          "invariants": [
+            "TypeOK",
+            "RecoveryReadOnly",
+            "AuthorizedRead"
+          ],
+          "properties": [],
+          "timeout_seconds": 120,
+          "heap_mb": 256,
+          "bounds": {
+            "unknown_child_rows": 1,
+            "reserved_cost": 1,
+            "authorization_values": 2,
+            "new_send_limit": 1
           }
         }
       ],
@@ -959,13 +1028,30 @@
           "expected_invariant": "CompleteImportRetainsUnknown",
           "timeout_seconds": 120,
           "heap_mb": 256
+        },
+        {
+          "id": "batch_recovery_mutation",
+          "module": "formal/budget_batches/BatchRecovery.tla",
+          "config": "formal/budget_batches/BatchRecoveryMutationNegative.cfg",
+          "expected_invariant": "RecoveryReadOnly",
+          "timeout_seconds": 120,
+          "heap_mb": 256
+        },
+        {
+          "id": "batch_recovery_authorization",
+          "module": "formal/budget_batches/BatchRecovery.tla",
+          "config": "formal/budget_batches/BatchRecoveryAuthorizationNegative.cfg",
+          "expected_invariant": "AuthorizedRead",
+          "timeout_seconds": 120,
+          "heap_mb": 256
         }
       ],
       "remaining_obligations": [
         "Unbounded parent graphs, arbitrary dimensions, overreported actual usage and distributed backend replacement.",
         "Filesystem/WAL behavior and cryptographic integrity; physical file hash is not a WAL snapshot.",
         "Availability and operator recovery for incompatible/nonempty pinned import targets; fresh handles required after preparation sealing.",
-        "Destination or predecessor mutation outside the fencing-aware protocol; concurrent marker identity conflicts and source changes after target commit."
+        "Destination or predecessor mutation outside the fencing-aware protocol; concurrent marker identity conflicts and source changes after target commit.",
+        "Recovery reader finite safety does not prove arbitrary route extensions, FastAPI internals, operator reconciliation correctness, filesystem atomicity or end-to-end implementation refinement."
       ]
     },
     {
@@ -1294,7 +1380,7 @@
           "path": "kb_platform/agent_model.py",
           "language": "python",
           "symbol": "AgentModel.complete",
-          "sha256": "a32feb9b03e364a361ca845cc647ff9a4f6b988f50d78a179bd872121654429e"
+          "sha256": "bcbe51265d6a0d85396d7a3f199791d6a68600ed8e983a08321f9161e3e73fec"
         },
         {
           "path": "kb_platform/agent_model.py",
@@ -5235,13 +5321,13 @@
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.search",
-          "sha256": "2a553d3e1c98faf7a58e62da0a8b064224fc786cf9cf23a6b194f9f9b536fe2f"
+          "sha256": "e4a45d1f7a954f11ed5d5f8a06aa5cbeff96597f357fb447ced104761047ce20"
         },
         {
           "path": "kb_platform/agent_tools.py",
           "language": "python",
           "symbol": "EvidenceGateway._state",
-          "sha256": "2fa8371505e646a6b8d5969df848588ce7625eb4df779cd1299798ebf50f4b9a"
+          "sha256": "eee41e4c7d9bcf697e7b2244fd867f7e0a7e281ff44688088b7adadcaaab2165"
         },
         {
           "path": "kb_platform/knowledge_service.py",
@@ -5301,7 +5387,7 @@
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform._source_snapshot",
-          "sha256": "15dea4fd38a81d4711a80f9ef177802020433ba52e2b90204040c06d6da2fc38"
+          "sha256": "4bb7e2afc90daf280ea4aa7bb34af36eb2206fd99fff7b5a47f35ef041c2b194"
         },
         {
           "path": "kb_platform/core.py",
@@ -5640,7 +5726,7 @@
           "path": "kb_platform/knowledge_sql.py",
           "language": "python",
           "symbol": "<module>",
-          "sha256": "4c7deb2007a06f73b405cfeaacf96d8131bda5e3909eef0f1e1a93099e6722d5"
+          "sha256": "a2d1c8746509906fdf2d934c84a03a0feb8515a6f95db854af4bbf00bd6b90be"
         },
         {
           "path": "kb_platform/knowledge_storage.py",
@@ -5997,7 +6083,7 @@
           "path": "kb_platform/delivery.py",
           "language": "python",
           "symbol": "check_delivery_configuration",
-          "sha256": "a5bd5e736d87c5ccda8256a66644da06ae32642815f34b25d6f1b6ac7982f855"
+          "sha256": "a73fbb64cbd04288a5bad72191bdcf48ed86593a163f5d7b8770436f09e301a8"
         },
         {
           "path": "kb_platform/provider_runtime.py",
@@ -6015,7 +6101,7 @@
           "path": "kb_platform/model_errors.py",
           "language": "python",
           "symbol": "<module>",
-          "sha256": "fe09fec94770375fd177152035ad5dcb7f40ff35f193ea25ed1a29bdcb232e8a"
+          "sha256": "79d2a9215a6328027089979c9e9eaa4232ba9d65b72595e9e1dfc6924481003f"
         },
         {
           "path": "kb_platform/remote.py",
@@ -6027,7 +6113,7 @@
           "path": "kb_platform/model_http.py",
           "symbol": "OpenAICompatibleAdapter.invoke",
           "language": "python",
-          "sha256": "e5dc2c57076583d86b51d961a38b72687ad90a8dca13d87a2b4efa7e68e0290f"
+          "sha256": "873069676f36c0dbad22fc6be099272644188357f0d91736f03feb2f4081e4c0"
         },
         {
           "path": "kb_platform/rag_testing/provider_capture.py",
@@ -6058,6 +6144,24 @@
           "symbol": "_immutable",
           "language": "python",
           "sha256": "17521dd31b5dbf2ca6cef03d9b971767436dd666e063641d1d9606e6d3ce33b4"
+        },
+        {
+          "path": "kb_platform/model_http.py",
+          "language": "python",
+          "symbol": "OpenAICompatibleAdapter._invoke_admitted",
+          "sha256": "7b2a8cdaa7c85f03d1d465e3d1c0552695fe12bb1cdd141d69e317849434637d"
+        },
+        {
+          "path": "kb_platform/model_http.py",
+          "language": "python",
+          "symbol": "OpenAICompatibleAdapter._invoke_admitted.preserve",
+          "sha256": "fba44086e4b3bae5372aeba37edc08ad4acb43ebb9990f1e306c093127718252"
+        },
+        {
+          "path": "kb_platform/model_http.py",
+          "language": "python",
+          "symbol": "AnthropicAdapter._response_usage",
+          "sha256": "b8469d68250678f5a7627671d5f6a54fbf489ce17fb226acea70a93b00255b9a"
         }
       ],
       "models": [
@@ -6245,7 +6349,8 @@
         "Pre-admitted queued work and whole transport/receipt/budget composition remain explicit; reserve-only OpenAI guard is not a whole-send permission lock.",
         "Body read before httpx returns a Response, independent raw transport retry/rate/auth/format state machines, tool retry, and physical multi-resource accounting are not modeled here.",
         "Standalone admission cannot retain a failed ephemeral-only event across restart; the caller STARTED budget record or durable matching capture is the conservative recovery backstop.",
-        "Operator evidence truth, arbitrary IDs/content/providers, OS/power-loss and backend atomic append guarantees remain assumptions."
+        "Operator evidence truth, arbitrary IDs/content/providers, OS/power-loss and backend atomic append guarantees remain assumptions.",
+        "API delivery review: docs/api-delivery-formal-review-20261110.md. Capture/producer-release filesystem faults and full HTTP refinement remain concrete contract obligations."
       ]
     },
     {
@@ -6618,7 +6723,7 @@
           "path": "kb_platform/model_errors.py",
           "language": "python",
           "symbol": "<module>",
-          "sha256": "fe09fec94770375fd177152035ad5dcb7f40ff35f193ea25ed1a29bdcb232e8a"
+          "sha256": "79d2a9215a6328027089979c9e9eaa4232ba9d65b72595e9e1dfc6924481003f"
         },
         {
           "path": "kb_platform/knowledge_contracts.py",
@@ -6976,13 +7081,13 @@
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.ingest",
-          "sha256": "e2c3cb95a8e29c1db09506b9463cc1252198d5b0ca0fc7b2c48a29511fbe7d7f"
+          "sha256": "6e7c8db7edfc66c2172ec016d3db15adaddbf378bffbbbc2b7b489135d6eb2af"
         },
         {
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.bind_source",
-          "sha256": "fa128104b011c8144859f45a401248c50fcb3f912bf01c0dffe22005fe1daeb2"
+          "sha256": "56d55fb8e1c730217b6c2b7ad77eba1f196ed2d223b4a192168ce1f39667620f"
         },
         {
           "path": "kb_platform/knowledge_transfer.py",
@@ -7546,7 +7651,7 @@
           "path": "kb_platform/agent_tools.py",
           "language": "python",
           "symbol": "EvidenceGateway._state",
-          "sha256": "2fa8371505e646a6b8d5969df848588ce7625eb4df779cd1299798ebf50f4b9a"
+          "sha256": "eee41e4c7d9bcf697e7b2244fd867f7e0a7e281ff44688088b7adadcaaab2165"
         },
         {
           "path": "kb_platform/agent_tools.py",
@@ -8056,7 +8161,7 @@
           "path": "kb_platform/knowledge_platform_contract.py",
           "language": "python",
           "symbol": "_call",
-          "sha256": "ea97599e1fb399bf862c18b741ff49dbf3b3494fa6cf3c5b55a5f8fd5b3cf430"
+          "sha256": "83bf2d7d443d86bd9c0673bf54839d1b97cc75ad652c918257258c292f4040d9"
         },
         {
           "path": "kb_platform/rag_testing/tool_retry_ownership_contracts.py",
@@ -10541,7 +10646,7 @@
           "path": "kb_platform/knowledge_platform_contract.py",
           "language": "python",
           "symbol": "PlatformEndpoint",
-          "sha256": "1a49bcacf20d08308d8eb861ae762e3325e7423d8efc8185f873eac04a26c7fb"
+          "sha256": "5d6a132665d6d59943219de74f253fbe3dbcf83b7274fbe3c941f8cebe837a46"
         },
         {
           "path": "kb_platform/platform_transfers.py",
@@ -12978,7 +13083,7 @@
           "path": "kb_platform/knowledge_contracts.py",
           "language": "python",
           "symbol": "ObjectEndpoint.__getattr__",
-          "sha256": "203c0ec569399e9a3976d4fef6d74ca5f81ba326b60897b9d67bfc16d48c03b0"
+          "sha256": "451d0de1f9309aa80b0d246337d77af86ca8e9262e21d1c4135a93dd402f5cc2"
         },
         {
           "path": "kb_platform/knowledge_commit_transfer.py",
@@ -13008,13 +13113,13 @@
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.set_source_readers",
-          "sha256": "3a078809a9d42b42b5d7e1d2f3ac3394055ef50508dac746123e205bfcd6a82c"
+          "sha256": "4a5beac2ee24f98dc94e1ec1192662e14751ad15a0308cb68a36fc27aec489d7"
         },
         {
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.set_source_policy",
-          "sha256": "0267b7bc814522f53a4a2a6d023e599997252fb9f70e3f7c1058f10c60da696b"
+          "sha256": "b73fd32b444ac8c8ab06e119cf21a9bc76b3ff6b3e5088d6e7c7e351963ced2a"
         },
         {
           "path": "kb_platform/core.py",
@@ -13026,19 +13131,19 @@
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.bind_source",
-          "sha256": "fa128104b011c8144859f45a401248c50fcb3f912bf01c0dffe22005fe1daeb2"
+          "sha256": "56d55fb8e1c730217b6c2b7ad77eba1f196ed2d223b4a192168ce1f39667620f"
         },
         {
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.remove_binding",
-          "sha256": "7cb0ad4b27fe08f4873d7436bbe483e838be2f227c20784999738fa2a8b6c2eb"
+          "sha256": "6cd33aee0870e298d905a8ce18b488ba797707817c5d761bc0d119f0e4186b5e"
         },
         {
           "path": "kb_platform/core.py",
           "language": "python",
           "symbol": "Platform.ingest",
-          "sha256": "e2c3cb95a8e29c1db09506b9463cc1252198d5b0ca0fc7b2c48a29511fbe7d7f"
+          "sha256": "6e7c8db7edfc66c2172ec016d3db15adaddbf378bffbbbc2b7b489135d6eb2af"
         },
         {
           "path": "scripts/authority_commit_checks.py",

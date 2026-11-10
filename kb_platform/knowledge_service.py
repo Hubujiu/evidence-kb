@@ -134,9 +134,17 @@ class KnowledgeService:
         return {"session_id": session_id, "events": visible}
 
     def request_status(self, actor, session_id, request_id):
+        from .public_errors import public_model_facts
+
         session = self.store.load(actor, session_id)
-        self.gateway.authorize(actor, session['scope_id'])
+        authority = self.gateway.authorize(actor, session['scope_id'])
         result = self.store.request_status(actor, session_id, request_id)
+        events = self.store.request_events(actor, session_id, request_id)
+        calls = [event['payload'] for event in events if event['kind'] in {'model_completed', 'model_failed'}]
+        if calls:
+            result['observations'] = [public_model_facts(call) for call in calls]
+            if result['status'] != 'completed' and calls[-1].get('code') in {'COMMIT_UNKNOWN', 'COMMIT_UNCONFIRMED'}:
+                result = {**result, 'status': 'reconciliation_required', 'recovery_action': 'inspect_operation'}
         if result['status'] == 'completed':
             response = result['response']
             try:
@@ -145,11 +153,17 @@ class KnowledgeService:
                 result['response'] = {key: response[key] for key in (
                     'session_id', 'revision', 'status', 'answer', 'claims', 'evidence',
                     'completion', 'unresolved', 'user_statements', 'stop_reason') if key in response}
+                if not calls:
+                    result['observations'] = [public_model_facts(call) for call in response.get('trace', {}).get('calls', [])
+                        if isinstance(call, dict)]
             except PlatformError as error:
                 if error.status_code not in (403, 404, 409):
                     raise
                 result['response'] = {'status': 'redacted', 'reason': 'source_unavailable'}
                 result['recovery_action'] = 'inspect_request'
+                result.pop('observations', None)
+        if self.gateway.authorize(actor, session['scope_id']) != authority:
+            raise PlatformError('SCOPE_CHANGED', 'Authority changed during request recovery', 409)
         return result
 
     def artifact(self, actor, session_id, artifact_id):

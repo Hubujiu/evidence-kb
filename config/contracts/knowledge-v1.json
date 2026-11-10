@@ -1043,6 +1043,13 @@
                                 ],
                                 "type": "object"
                               },
+                              "expected_revision": {
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
                               "kb_id": {
                                 "minLength": 1,
                                 "type": "string"
@@ -1102,6 +1109,13 @@
                                 "minLength": 1,
                                 "type": "string"
                               },
+                              "expected_revision": {
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
                               "kb_id": {
                                 "minLength": 1,
                                 "type": "string"
@@ -1147,6 +1161,13 @@
                                   "principal_id"
                                 ],
                                 "type": "object"
+                              },
+                              "expected_revision": {
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
                               },
                               "readers": {
                                 "items": {
@@ -1200,6 +1221,13 @@
                                 ],
                                 "type": "object"
                               },
+                              "expected_revision": {
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
                               "policy": {
                                 "type": "object"
                               },
@@ -1212,6 +1240,167 @@
                               "actor",
                               "source_id",
                               "policy"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "request"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "method": {
+                            "const": "documents"
+                          },
+                          "request": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "actor": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "principal_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "tenant_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "tenant_id",
+                                  "principal_id"
+                                ],
+                                "type": "object"
+                              },
+                              "include_removed": {
+                                "type": "boolean"
+                              },
+                              "kb_id": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "provider_id": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "actor",
+                              "kb_id"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "request"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "method": {
+                            "const": "source_versions"
+                          },
+                          "request": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "actor": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "principal_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "tenant_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "tenant_id",
+                                  "principal_id"
+                                ],
+                                "type": "object"
+                              },
+                              "kb_id": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "source_id": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "actor",
+                              "kb_id",
+                              "source_id"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "request"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "method": {
+                            "const": "reparse_source"
+                          },
+                          "request": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "actor": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "principal_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "tenant_id": {
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "tenant_id",
+                                  "principal_id"
+                                ],
+                                "type": "object"
+                              },
+                              "expected_revision": {
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "kb_id": {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "source_id": {
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "actor",
+                              "kb_id",
+                              "source_id"
                             ],
                             "type": "object"
                           }
@@ -1655,6 +1844,13 @@
                                   "principal_id"
                                 ],
                                 "type": "object"
+                              },
+                              "expected_revision": {
+                                "minimum": 0,
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
                               },
                               "filename": {
                                 "minLength": 1,
@@ -5671,6 +5867,13 @@
                 ],
                 "type": "object"
               },
+              "expected_revision": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "kb_id": {
                 "minLength": 1,
                 "type": "string"
@@ -5775,6 +5978,188 @@
             "type": "object"
           }
         },
+        "documents": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "principal_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "tenant_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tenant_id",
+                  "principal_id"
+                ],
+                "type": "object"
+              },
+              "include_removed": {
+                "type": "boolean"
+              },
+              "kb_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "provider_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "actor",
+              "kb_id"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "authority_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "documents": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "binding_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "binding_revision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "binding_status": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "blockers": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "build_blockers": {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "filename": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "human_search_ready": {
+                      "type": "boolean"
+                    },
+                    "needs_publication": {
+                      "type": "boolean"
+                    },
+                    "parse_snapshot_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "parse_status": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "policy": {
+                      "type": "object"
+                    },
+                    "published_parse_snapshot_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "published_version_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "qa_ready": {
+                      "type": "boolean"
+                    },
+                    "quality_report": {
+                      "type": "object"
+                    },
+                    "source_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "source_revision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "source_version_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source_id",
+                    "binding_id",
+                    "filename",
+                    "source_version_id",
+                    "parse_snapshot_id",
+                    "parse_status",
+                    "binding_status",
+                    "source_revision",
+                    "binding_revision",
+                    "policy",
+                    "published_version_id",
+                    "published_parse_snapshot_id",
+                    "needs_publication",
+                    "human_search_ready",
+                    "qa_ready",
+                    "blockers",
+                    "build_blockers",
+                    "quality_report"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "kb_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "manifest_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "provider_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "kb_id",
+              "authority_revision",
+              "manifest_id",
+              "provider_id",
+              "documents"
+            ],
+            "type": "object"
+          }
+        },
         "ingest_append": {
           "request": {
             "additionalProperties": false,
@@ -5854,6 +6239,13 @@
                   "principal_id"
                 ],
                 "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "filename": {
                 "minLength": 1,
@@ -6410,6 +6802,13 @@
                 "minLength": 1,
                 "type": "string"
               },
+              "expected_revision": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "kb_id": {
                 "minLength": 1,
                 "type": "string"
@@ -6419,6 +6818,55 @@
               "actor",
               "kb_id",
               "binding_id"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "type": "object"
+          }
+        },
+        "reparse_source": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "principal_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "tenant_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tenant_id",
+                  "principal_id"
+                ],
+                "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "kb_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "source_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "actor",
+              "kb_id",
+              "source_id"
             ],
             "type": "object"
           },
@@ -6643,6 +7091,13 @@
                 ],
                 "type": "object"
               },
+              "expected_revision": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "policy": {
                 "type": "object"
               },
@@ -6684,6 +7139,13 @@
                 ],
                 "type": "object"
               },
+              "expected_revision": {
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "readers": {
                 "items": {
                   "type": "string"
@@ -6703,6 +7165,90 @@
             "type": "object"
           },
           "response": {
+            "type": "object"
+          }
+        },
+        "source_versions": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "principal_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "tenant_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tenant_id",
+                  "principal_id"
+                ],
+                "type": "object"
+              },
+              "kb_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "source_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "actor",
+              "kb_id",
+              "source_id"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "additionalProperties": false,
+            "properties": {
+              "source_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "versions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "filename": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "media_type": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "original_sha256": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "source_version_id": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source_version_id",
+                    "filename",
+                    "original_sha256",
+                    "media_type"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "source_id",
+              "versions"
+            ],
             "type": "object"
           }
         },
@@ -7657,6 +8203,48 @@
             "type": "object"
           }
         },
+        "request_events": {
+          "request": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "principal_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "tenant_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tenant_id",
+                  "principal_id"
+                ],
+                "type": "object"
+              },
+              "request_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "session_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "actor",
+              "session_id",
+              "request_id"
+            ],
+            "type": "object"
+          },
+          "response": {
+            "type": "array"
+          }
+        },
         "request_status": {
           "request": {
             "additionalProperties": false,
@@ -8243,6 +8831,136 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "observations": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "admission_receipt_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "attempts": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "budget_operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "cache_kind": {
+                          "maxLength": 40,
+                          "type": "string"
+                        },
+                        "capture_state": {
+                          "enum": [
+                            "COMMITTED",
+                            "FAILED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "ledger_settlement": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_ATTEMPTED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "model_sent": {
+                          "type": "boolean"
+                        },
+                        "observed_usage": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "cached_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "completion_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "input_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "output_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "prompt_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "reasoning_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "requests": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "total_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_COMMITTED",
+                            "UNKNOWN"
+                          ]
+                        },
+                        "physical_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "provider_http_status": {
+                          "maximum": 599,
+                          "minimum": 100,
+                          "type": "integer"
+                        },
+                        "provider_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "recovery_action": {
+                          "enum": [
+                            "none",
+                            "inspect_operation",
+                            "inspect_request",
+                            "wait",
+                            "fix_request"
+                          ]
+                        },
+                        "request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retry_after_seconds": {
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "recovery_action"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "recovery_action": {
                     "const": "wait"
                   },
@@ -8278,6 +8996,136 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "observations": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "admission_receipt_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "attempts": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "budget_operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "cache_kind": {
+                          "maxLength": 40,
+                          "type": "string"
+                        },
+                        "capture_state": {
+                          "enum": [
+                            "COMMITTED",
+                            "FAILED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "ledger_settlement": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_ATTEMPTED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "model_sent": {
+                          "type": "boolean"
+                        },
+                        "observed_usage": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "cached_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "completion_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "input_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "output_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "prompt_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "reasoning_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "requests": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "total_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_COMMITTED",
+                            "UNKNOWN"
+                          ]
+                        },
+                        "physical_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "provider_http_status": {
+                          "maximum": 599,
+                          "minimum": 100,
+                          "type": "integer"
+                        },
+                        "provider_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "recovery_action": {
+                          "enum": [
+                            "none",
+                            "inspect_operation",
+                            "inspect_request",
+                            "wait",
+                            "fix_request"
+                          ]
+                        },
+                        "request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retry_after_seconds": {
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "recovery_action"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "recovery_action": {
                     "const": "inspect_request"
                   },
@@ -8313,6 +9161,136 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "observations": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "admission_receipt_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "attempts": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "budget_operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "cache_kind": {
+                          "maxLength": 40,
+                          "type": "string"
+                        },
+                        "capture_state": {
+                          "enum": [
+                            "COMMITTED",
+                            "FAILED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "ledger_settlement": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_ATTEMPTED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "model_sent": {
+                          "type": "boolean"
+                        },
+                        "observed_usage": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "cached_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "completion_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "input_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "output_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "prompt_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "reasoning_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "requests": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "total_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_COMMITTED",
+                            "UNKNOWN"
+                          ]
+                        },
+                        "physical_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "provider_http_status": {
+                          "maximum": 599,
+                          "minimum": 100,
+                          "type": "integer"
+                        },
+                        "provider_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "recovery_action": {
+                          "enum": [
+                            "none",
+                            "inspect_operation",
+                            "inspect_request",
+                            "wait",
+                            "fix_request"
+                          ]
+                        },
+                        "request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retry_after_seconds": {
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "recovery_action"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "recovery_action": {
                     "const": "verify_request_id"
                   },
@@ -8348,6 +9326,136 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "observations": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "admission_receipt_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "attempts": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "budget_operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "cache_kind": {
+                          "maxLength": 40,
+                          "type": "string"
+                        },
+                        "capture_state": {
+                          "enum": [
+                            "COMMITTED",
+                            "FAILED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "ledger_settlement": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_ATTEMPTED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "model_sent": {
+                          "type": "boolean"
+                        },
+                        "observed_usage": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "cached_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "completion_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "input_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "output_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "prompt_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "reasoning_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "requests": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "total_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_COMMITTED",
+                            "UNKNOWN"
+                          ]
+                        },
+                        "physical_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "provider_http_status": {
+                          "maximum": 599,
+                          "minimum": 100,
+                          "type": "integer"
+                        },
+                        "provider_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "recovery_action": {
+                          "enum": [
+                            "none",
+                            "inspect_operation",
+                            "inspect_request",
+                            "wait",
+                            "fix_request"
+                          ]
+                        },
+                        "request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retry_after_seconds": {
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "recovery_action"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "recovery_action": {
                     "const": "retrieve_result"
                   },
@@ -8464,6 +9572,173 @@
                   "status",
                   "recovery_action",
                   "response"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "observations": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "admission_receipt_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "attempts": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "budget_operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "cache_kind": {
+                          "maxLength": 40,
+                          "type": "string"
+                        },
+                        "capture_state": {
+                          "enum": [
+                            "COMMITTED",
+                            "FAILED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "ledger_settlement": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_ATTEMPTED",
+                            "UNCONFIRMED"
+                          ]
+                        },
+                        "model_sent": {
+                          "type": "boolean"
+                        },
+                        "observed_usage": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "cached_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "completion_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "input_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "output_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "prompt_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "reasoning_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "requests": {
+                              "minimum": 0,
+                              "type": "number"
+                            },
+                            "total_tokens": {
+                              "minimum": 0,
+                              "type": "number"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "operation_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "enum": [
+                            "COMMITTED",
+                            "NOT_COMMITTED",
+                            "UNKNOWN"
+                          ]
+                        },
+                        "physical_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "provider_http_status": {
+                          "maximum": 599,
+                          "minimum": 100,
+                          "type": "integer"
+                        },
+                        "provider_request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "recovery_action": {
+                          "enum": [
+                            "none",
+                            "inspect_operation",
+                            "inspect_request",
+                            "wait",
+                            "fix_request"
+                          ]
+                        },
+                        "request_id": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retry_after_seconds": {
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "recovery_action"
+                      ],
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "recovery_action": {
+                    "const": "inspect_operation"
+                  },
+                  "request_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "revision": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "send_status": {
+                    "const": "unknown"
+                  },
+                  "session_id": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "status": {
+                    "const": "reconciliation_required"
+                  }
+                },
+                "required": [
+                  "session_id",
+                  "request_id",
+                  "revision",
+                  "send_status",
+                  "status",
+                  "recovery_action",
+                  "observations"
                 ],
                 "type": "object"
               },

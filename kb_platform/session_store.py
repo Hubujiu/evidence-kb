@@ -117,6 +117,14 @@ class SessionStore:
                     map(self._row, db.execute(select(self._tables['events']).where(self._tables['events'].c.session == session_id)
                                              .order_by(self._tables['events'].c.seq)).fetchall())]
 
+    def request_events(self, actor, session_id, request_id):
+        with self._db(write=False) as db:
+            self._owner(db, actor, session_id, lock=False)
+            statement = select(self._tables['events']).where(self._tables['events'].c.session == session_id,
+                self._tables['events'].c.group_id == request_id).order_by(self._tables['events'].c.seq)
+            return [{**dict(row), 'payload': json.loads(row['payload'])} for row in
+                map(self._row, db.execute(statement).fetchall())]
+
     def request_status(self, actor, session_id, request_id):
         with self._db(write=False) as db:
             session = self._owner(db, actor, session_id, lock=False)

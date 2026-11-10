@@ -42,7 +42,7 @@ RECOVERY_READ_ROUTES = frozenset({'/health', '/identity', '/capabilities', '/dia
     '/scopes/{scope_id}/agent-sources', '/scopes/{scope_id}/agent-authority',
     '/agent/sessions/{session_id}', '/agent/sessions/{session_id}/history',
     '/agent/sessions/{session_id}/export', '/agent/sessions/{session_id}/artifacts/{artifact_id}',
-    '/agent/sessions/{session_id}/requests/{request_id}'})
+    '/agent/sessions/{session_id}/requests/{request_id:path}'})
 
 
 def _deny_recovery_send(*args, **kwargs):

@@ -116,7 +116,7 @@ class Authority:
     def _auth(self, conn, actor, scope, capability='kb.read'):
         return {'manifest_id': 'build', 'revision': self.revision}
 
-    def _source_snapshot(self, actor, scope, *, processing=False, capability='kb.read'):
+    def _source_snapshot(self, actor, scope, *, processing=False, capability='kb.read', published=False):
         return {'actor': actor, 'scope': scope, 'kb': self._auth(None, actor, scope, capability),
                 'authority_revision': self.revision, 'capability': capability, 'rows': deepcopy(self.rows)}
 
