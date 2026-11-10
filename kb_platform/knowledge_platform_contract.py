@@ -86,6 +86,8 @@ def _call(operation):
     try:
         return operation()
     except (DatabaseError, StorageError) as error:
+        if error.code in {'DATABASE_RESULT_LIMIT', 'DATABASE_QUERY_LIMIT', 'DATABASE_QUERY_TIMEOUT'}:
+            raise ContractError(error.code, 'Storage operation exceeded its resource limit', status_code=500) from error
         raise ContractError('AUTHORITY_UNAVAILABLE', 'Authority unavailable', status_code=503) from error
     except EmbeddingError as error:
         raise ContractError('EMBEDDING_FAILED', str(error), status_code=502) from error

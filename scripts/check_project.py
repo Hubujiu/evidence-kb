@@ -734,7 +734,7 @@ def workflow_violations(workflow):
     commands = [step.get('run', '') for step in integration.get('steps', [])
                 if 'if' not in step and not step.get('continue-on-error', False)]
     for command in (
-            'uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --browser-integration --output reports/ci/integration-check',):
+            'uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --browser-integration --web-integration --output reports/ci/integration-check',):
         if command not in commands:
             errors.append('integration must run required command: ' + command)
     checks = [step for step in required.get('steps', [])
@@ -1253,13 +1253,15 @@ def main() -> int:
                         help='Run controlled actual PostgreSQL/MySQL/SQLite/S3 storage acceptance using KB_STORAGE_TEST_* variables.')
     parser.add_argument('--browser-integration', action='store_true',
                         help='Run deterministic browser acceptance after all gates pass; requires --local-integration.')
+    parser.add_argument('--web-integration', action='store_true',
+                        help='Run synthetic web chat and workbench browser checks using the current native build.')
     args = parser.parse_args()
-    if args.formal_only and (args.worker or args.local_integration or args.storage_integration or args.browser_integration):
+    if args.formal_only and (args.worker or args.local_integration or args.storage_integration or args.browser_integration or args.web_integration):
         parser.error('--formal-only cannot be combined with other gate modes')
     if args.list:
         print(json.dumps({'contract_modules': contract_modules(),
                           'default': 'all offline gates and controlled local process integrations',
-                          'optional': ['--local-integration', '--storage-integration', '--browser-integration']},
+                          'optional': ['--local-integration', '--storage-integration', '--browser-integration', '--web-integration']},
                          indent=2))
         return 0
     if args.browser_integration and not args.local_integration:
@@ -1384,6 +1386,8 @@ def main() -> int:
         results.append(run_check('source-lint', ['node', str(ROOT / 'scripts/check_source.mjs')], output, env))
         results.append(run_check('source-lint-contracts',
                                  ['node', '--test', str(ROOT / 'scripts/check_source.test.mjs')], output, env))
+        results.append(run_check('web-types', ['node', str(ROOT / 'web/node_modules/typescript/bin/tsc'),
+            '--project', str(ROOT / 'web/tsconfig.json'), '--noEmit', '--noUnusedLocals', '--noUnusedParameters'], output, env))
         for kind in ("contracts", "scorer"):
             if kind == "contracts" and native_library is None:
                 results.append(blocked_contracts(output, block_reason))
@@ -1402,7 +1406,7 @@ def main() -> int:
         "scope": ("offline gates plus foundation application and controlled local HTTP/parser/PostgreSQL integration; components and scorer controls reported separately"
                   if args.local_integration else
                   "offline contracts plus controlled localhost host and foundation application integration; component checks and scorer controls reported separately")}
-    if args.browser_integration:
+    if args.browser_integration or args.web_integration:
         write_json(output / 'prerequisites.json', summary)
     if args.browser_integration:
         if passed:
@@ -1415,9 +1419,26 @@ def main() -> int:
         else:
             (output / 'browser-integration.log').write_text('BLOCKED: prerequisite gates failed\n', encoding='utf-8')
             results.append(CheckResult('browser-integration', 2, 'browser-integration.log'))
+    if args.web_integration:
+        if passed:
+            build = run_check('web-build', ['node', str(ROOT / 'web/node_modules/vite/bin/vite.js'),
+                'build', str(ROOT / 'web'), '--config', str(ROOT / 'web/vite.config.ts')], output, env)
+            results.append(build)
+            web_ready = build.exit_code == 0
+        else:
+            web_ready = False
+        for name, module in (('web-chat', 'e2e.run_web_chat'), ('workbench', 'e2e.run_workbench')):
+            if web_ready:
+                results.append(run_check(name,
+                    [sys.executable, '-B', '-m', module, '--checker-summary', str(output / 'prerequisites.json'),
+                     '--output', str(output / name)], output, env, timeout=300))
+            else:
+                (output / f'{name}.log').write_text('BLOCKED: prerequisite gates failed\n', encoding='utf-8')
+                results.append(CheckResult(name, 2, f'{name}.log'))
     passed = all(result.exit_code == 0 for result in results)
     summary.update(decision='PASS' if passed else 'FAIL', checks=[asdict(result) for result in results],
-                   controlled_browser_integration=args.browser_integration)
+                   controlled_browser_integration=args.browser_integration,
+                   controlled_web_integration=args.web_integration)
     write_json(output / 'summary.json', summary)
     print(f"{'PASS' if passed else 'FAIL'}: {output / 'summary.json'}")
     return 0 if passed else 1

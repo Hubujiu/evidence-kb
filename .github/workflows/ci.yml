@@ -60,7 +60,7 @@ jobs:
         with:
           node-version: '22.23.1'
       - name: Install locked source lint dependencies
-        run: npm ci --ignore-scripts --prefix e2e
+        run: npm ci --ignore-scripts --prefix web
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.99.0 --profile minimal --component rustfmt --component clippy
       - name: Fetch locked Rust dependencies
@@ -108,6 +108,7 @@ jobs:
       - name: Install locked dependencies
         run: |
           uv sync --locked --group dev
+          npm ci --ignore-scripts --prefix web
           cd e2e
           npm ci --ignore-scripts
           node node_modules/@e2e-dev/web/dist/bin.js install chromium --with-deps
@@ -129,7 +130,7 @@ jobs:
           uv run --no-sync python -m kb_platform.rag_testing.storage_resources prepare --output .local/ci-storage-resources
           uv run --no-sync python -c 'import json, os; from pathlib import Path; state=json.loads(Path(".local/ci-storage-resources/resources-private.json").read_text("utf-8")); selected={k:v for k,v in state["environment"].items() if k.startswith("KB_STORAGE_TEST_")}; [print("::add-mask::"+v) for v in selected.values()]; Path(os.environ["GITHUB_ENV"]).open("a").write("".join(k+"="+v+"\n" for k,v in selected.items()))'
       - name: Run project and database integration gates
-        run: uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --browser-integration --output reports/ci/integration-check
+        run: uv run --no-sync python scripts/check_project.py --local-integration --storage-integration --browser-integration --web-integration --output reports/ci/integration-check
       - name: Capture database logs
         if: always()
         run: |

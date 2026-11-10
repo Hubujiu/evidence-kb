@@ -18,7 +18,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.sql import Select
 
 from kb_platform.core import Actor, Platform, PlatformError
-from kb_platform.database_contracts import DatabaseError, Migration, SpaceKey
+from kb_platform.database_contracts import DatabaseError, Migration, QueryLimits, SpaceKey
 from kb_platform.database_providers import PostgresProvider, SQLiteProvider
 from kb_platform.documents import parse_native_document
 from kb_platform.embedded_search import EmbeddedSearch
@@ -26,7 +26,9 @@ from kb_platform.embedding_jobs import EmbeddingJobError, EmbeddingJobs, digest
 from kb_platform.knowledge_queries import KnowledgeQuery as K
 from kb_platform.knowledge_schema import EMBEDDING_JOBS, METADATA, PARSE_SNAPSHOTS, SOURCE_VERSIONS
 from kb_platform.knowledge_sql import OPERATIONS
-from kb_platform.knowledge_storage import KnowledgeRepository
+from kb_platform.knowledge_storage import KnowledgeRepository, KnowledgeTransaction
+from kb_platform.knowledge_access import KnowledgeAccess
+from kb_platform.knowledge_embedding import embedding_audit
 from kb_platform.storage import OriginalStore
 from kb_platform.storage_adapters.sql import SqlStorageProvider
 from kb_platform.storage_sdk import ExistingDataset
@@ -267,6 +269,150 @@ class KnowledgePersistenceContracts(unittest.TestCase):
         self.assertEqual(set(K), set(OPERATIONS))
         self.assertTrue(all(query.value == query.value.lower() and ' ' not in query.value for query in K))
 
+    def test_source_snapshot_over_transaction_limit_preserves_processing_permissions(self):
+        repository = KnowledgeRepository(database=self.database)
+        platform = Platform(repository=repository, search=None, store=None, parser=None, embedding_jobs=None)
+        actor = Actor('large-snapshot', 'owner')
+        kb_id = platform.create_kb(actor, 'Large immutable snapshot')['kb_id']
+        text = 'source evidence ' * 80000
+        for i in range(8):
+            source_id = str(i)
+            document = {'status': 'READY', 'processing_policy': {'include_hidden': i == 0},
+                        'elements': [{'raw_text': text + source_id}]}
+            with repository.transaction(actor, kb_id) as conn:
+                conn.execute(K.SOURCE_INSERT, (actor.tenant_id, source_id, actor.principal_id, [], {}))
+                conn.execute(K.SOURCE_VERSION_INSERT,
+                    (actor.tenant_id, source_id, 'v1', source_id + '.txt', '/fixture', '0' * 64, 'text/plain'))
+                conn.execute(K.PARSE_INSERT, (actor.tenant_id, source_id, 'v1', 'p1', document))
+                conn.execute(K.BINDING_UPSERT, (actor.tenant_id, kb_id, source_id, source_id, 'v1', 'p1'))
+        original_transaction = repository.transaction
+        depth = 0
+        @contextmanager
+        def bounded(*args, **kwargs):
+            nonlocal depth
+            self.assertEqual(depth, 0, 'Snapshot must never hold one connection while acquiring another')
+            depth += 1
+            try:
+                with original_transaction(*args, **kwargs) as conn:
+                    yield conn
+            finally:
+                depth -= 1
+        repository.transaction = bounded
+        for processing in (False, True):
+            rows = platform._source_snapshot(actor, kb_id, processing=processing)['rows']
+            self.assertEqual(len(rows), 8)
+            self.assertGreater(sum(len(r['document']['elements'][0]['raw_text']) for r in rows), 8 * 1024 * 1024)
+            self.assertEqual({r['source_id'] for r in platform._allowed(rows, actor, 'human_search')},
+                             {str(i) for i in range(1, 8)})
+            for row in rows:
+                self.assertEqual(row['document']['elements'][0]['raw_text'], text + row['source_id'])
+        with self.assertRaises(PlatformError):
+            with platform._tx(Actor('foreign', 'owner'), kb_id) as conn:
+                platform._auth(conn, Actor('foreign', 'owner'), kb_id)
+
+    def test_source_snapshot_rejects_authority_change_between_document_reads(self):
+        repository = KnowledgeRepository(database=self.database)
+        platform = Platform(repository=repository, search=None, store=OriginalStore(self.root / 'snap-originals'),
+            parser=parse_native_document, embedding_jobs=None)
+        self.addCleanup(platform.store.close)
+        actor = Actor('snapshot-race', 'owner')
+        kb_id = platform.create_kb(actor, 'Snapshot race')['kb_id']
+        source = platform.ingest(actor, kb_id, 'race.md', b'Frozen content for snapshot verification.')
+        original = repository.transaction
+        changed = False
+        @contextmanager
+        def mutate_after_read(*args, **kwargs):
+            nonlocal changed
+            with original(*args, **kwargs) as conn:
+                yield conn
+            if kwargs.get('write') is False and not changed:
+                changed = True
+                platform.set_source_readers(actor, source['source_id'], ['new-reader'])
+        repository.transaction = mutate_after_read
+        with self.assertRaises(PlatformError) as raised:
+            platform._source_snapshot(actor, kb_id)
+        self.assertTrue(changed)
+        self.assertEqual(raised.exception.code, 'SCOPE_CHANGED')
+
+    def test_cached_parse_still_checks_current_authority_policy_and_binding_identity(self):
+        repository = KnowledgeRepository(database=self.database)
+        platform = Platform(repository=repository, search=None, store=OriginalStore(self.root / 'cached-originals'),
+            parser=parse_native_document, embedding_jobs=None)
+        self.addCleanup(platform.store.close)
+        actor, reader = Actor('cached-snapshot', 'owner'), Actor('cached-snapshot', 'reader')
+        scope = platform.create_kb(actor, 'Cached source')['kb_id']
+        source = platform.ingest(actor, scope, 'source.md', b'Immutable original.')
+        platform.set_member(actor, scope, reader.principal_id, ['kb.read'])
+        queries = []
+        execute = KnowledgeTransaction.execute
+        def observe(transaction, query, params=None):
+            queries.append(query)
+            return execute(transaction, query, params)
+        with patch.object(KnowledgeTransaction, 'execute', observe):
+            cold = platform._source_snapshot(reader, scope)
+            self.assertEqual(queries.count(K.PARSE_DOCUMENTS), 1)
+            cold['rows'][0]['document']['elements'].clear()
+            queries.clear()
+            warm = platform._source_snapshot(reader, scope)
+            self.assertTrue(warm['rows'][0]['document']['elements'])
+            self.assertNotIn(K.PARSE_DOCUMENTS, queries)
+            self.assertIn(K.KB_MEMBERSHIP, queries)
+            self.assertIn(K.AUTHORITY_LOCK, queries)
+            platform.set_source_readers(actor, source['source_id'], ['different-reader'])
+            current = platform._source_snapshot(reader, scope)
+            self.assertEqual(platform._allowed(current['rows'], reader, 'human_search'), [])
+            platform.set_member(actor, scope, reader.principal_id, [])
+            with self.assertRaises(PlatformError):
+                platform._source_snapshot(reader, scope)
+            row = warm['rows'][0]
+            changed = dict(row['document'], elements=[])
+            with repository.transaction(actor, scope) as conn:
+                conn.execute(K.PARSE_INSERT, (actor.tenant_id, row['source_id'], row['source_version_id'],
+                                              'new-immutable-parse', changed))
+                conn.execute(K.BINDING_UPSERT, (actor.tenant_id, scope, row['binding_id'], row['source_id'],
+                                               row['source_version_id'], 'new-immutable-parse'))
+            queries.clear()
+            rebound = platform._source_snapshot(actor, scope)
+            self.assertEqual(rebound['rows'][0]['document']['elements'], [])
+            self.assertEqual(queries.count(K.PARSE_DOCUMENTS), 1)
+
+    def test_embedding_proof_reuses_only_exact_validated_inputs_and_rechecks_authority(self):
+        repository = KnowledgeRepository(database=self.database)
+        search, store = EmbeddedSearch(self.root / 'proof-search'), OriginalStore(self.root / 'proof-originals')
+        self.addCleanup(search.close)
+        self.addCleanup(store.close)
+        platform = Platform(repository=repository, search=search, store=store,
+            parser=parse_native_document, embedding_jobs=EmbeddingJobs(repository))
+        actor = Actor('embedding-proof', 'owner')
+        kb_id = platform.create_kb(actor, 'Proof reuse')['kb_id']
+        source = platform.ingest(actor, kb_id, 'proof.md', b'Exact immutable embedding evidence.',
+            policy={'embedding': True, 'llm_context': True, 'allowed_providers': ['fixture']})
+        build = platform.stage(actor, kb_id)
+        platform.publish(actor, kb_id, build['build_id'])
+        snapshot = platform._source_snapshot(actor, kb_id)
+        audit = embedding_audit(actor, kb_id, build['build_id'], snapshot['authority_revision'], snapshot['rows'])
+        request = {'audit_context': audit, 'task': 'query', 'provider_id': 'fixture'}
+        access = KnowledgeAccess(repository)
+        execute, parses = KnowledgeTransaction.execute, []
+        def observed(transaction, query, values=None):
+            if query == K.PARSE_DOCUMENTS:
+                parses.append(values)
+            return execute(transaction, query, values)
+        with patch.object(KnowledgeTransaction, 'execute', observed):
+            for _ in range(10):
+                self.assertEqual(access.validate_embedding(request), {'authorized': True})
+            self.assertEqual(len(parses), 1)
+            altered = json.loads(json.dumps(request))
+            altered['audit_context']['sources'][0]['source_text_sha256'] = '0' * 64
+            with self.assertRaises(PlatformError):
+                access.validate_embedding(altered)
+            with self.assertRaises(PlatformError):
+                access.validate_embedding({**request, 'provider_id': 'not-permitted'})
+            platform.set_source_readers(actor, source['source_id'], ['changed'])
+            with self.assertRaises(PlatformError) as raised:
+                access.validate_embedding(request)
+            self.assertEqual(raised.exception.code, 'STALE_BUILD')
+
     def test_old_migration_hashes_are_archived_without_runtime_schema_selection(self):
         archive = json.loads((Path(__file__).resolve().parents[2] /
             'config/storage/legacy-knowledge-migration-v1.json').read_text('utf-8'))
@@ -357,13 +503,92 @@ class KnowledgePersistenceContracts(unittest.TestCase):
         kb_id = platform.create_kb(actor, 'Many citations')['kb_id']
         content = '\n\n'.join(f'Synthetic paragraph {number} contains immutable evidence.' for number in range(125))
         platform.ingest(actor, kb_id, 'many.md', content.encode())
-        build = platform.stage(actor, kb_id)
-        self.assertGreater(build['unit_count'], 100)
-        platform.publish(actor, kb_id, build['build_id'])
-        with repository.transaction(actor, kb_id, write=False) as transaction:
-            citations = transaction.execute(K.CITATIONS_FOR_BUILD, (actor.tenant_id, kb_id, build['build_id'])).fetchall()
+        with patch('kb_platform.knowledge_storage.KNOWLEDGE_TRANSACTION_LIMITS',
+                   QueryLimits(max_statements=100, max_rows=50)):
+            build = platform.stage(actor, kb_id)
+            self.assertGreater(build['unit_count'], 100)
+            platform.publish(actor, kb_id, build['build_id'])
+            citations = list(repository.citations(actor, kb_id, build['build_id']))
         self.assertEqual(len(citations), build['unit_count'])
         self.assertTrue(platform.search(actor, kb_id, 'paragraph')['hits'])
+
+    def test_many_sources_jobs_resume_with_shared_audit_and_bounded_reads(self):
+        repository = KnowledgeRepository(database=self.database)
+        jobs, provider = EmbeddingJobs(repository), LocalEmbeddingProvider()
+        scope = ('large-jobs', 'scope', 'build')
+        units = [{'text': f'evidence {number}'} for number in range(520)]
+        audit = {'sources': [{'source_id': str(number), 'snapshot': 'x' * 320}
+                             for number in range(120)]}
+        observed = []
+        original = provider.documents
+
+        def documents(texts, *, request_id, audit_context, authorize):
+            self.assertEqual(audit_context, audit)
+            self.assertTrue(authorize())
+            observed.append(request_id)
+            return original(texts)
+
+        provider.documents = documents
+        execute = KnowledgeTransaction.execute
+
+        def interrupted(transaction, query, values=None):
+            if query == K.JOB_INSERT and values[3] == 256:
+                raise RuntimeError('interrupted preparation')
+            return execute(transaction, query, values)
+
+        with patch.object(KnowledgeTransaction, 'execute', interrupted):
+            with self.assertRaisesRegex(RuntimeError, 'interrupted preparation'):
+                jobs.run(*scope, provider, units, lambda: True, audit)
+        self.assertEqual(len(jobs.status(*scope)), 256)
+        self.assertEqual(observed, [])
+        result = jobs.run(*scope, provider, units, lambda: True, audit)
+        self.assertEqual([row['text'] for row in result], [row['text'] for row in units])
+        self.assertEqual(len(set(observed)), len(units))
+        self.assertEqual(jobs.run(*scope, provider, units, lambda: True, audit), result)
+        self.assertEqual(len(observed), len(units))
+        self.assertEqual(len(jobs.status(*scope)), len(units))
+        with jobs._tx(*scope[:2]) as conn:
+            second = conn.execute(K.JOB_LOCK, (*scope, 1)).fetchone()
+        self.assertNotIn('audit_context', second['payload'])
+        self.assertEqual(second['payload']['audit_context_sha256'], digest(audit))
+        with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_DEPENDENCY_CHANGED'):
+            jobs.run(*scope, provider, units, lambda: True, {'sources': []})
+        self.assertEqual(len(observed), len(units))
+
+    def test_legacy_job_payload_remains_resumable(self):
+        repository = KnowledgeRepository(database=self.database)
+        jobs, provider = EmbeddingJobs(repository), LocalEmbeddingProvider()
+        scope = ('legacy-jobs', 'scope', 'build')
+        units, audit = [{'text': 'one'}, {'text': 'two'}], {'principal': 'owner'}
+        payload = {'units': units, 'manifest': provider.manifest, 'audit_context': audit, 'batch_size': 1}
+        with jobs._tx(*scope[:2]) as conn:
+            for number, unit in enumerate(units):
+                conn.execute(K.JOB_INSERT, (*scope, number, digest(payload), digest(provider.manifest),
+                    {**payload, 'units': [unit]}))
+        self.assertEqual(len(jobs.run(*scope, provider, units, lambda: True, audit)), 2)
+        with jobs._tx(*scope[:2]) as conn:
+            self.assertEqual(conn.execute(K.JOB_LOCK, (*scope, 1)).fetchone()['payload']['audit_context'], audit)
+
+    def test_shared_audit_recovery_and_corruption_rejection(self):
+        repository = KnowledgeRepository(database=self.database)
+        jobs, provider = EmbeddingJobs(repository), LocalEmbeddingProvider()
+        scope = ('audit-recovery', 'scope', 'build')
+        audit = {'principal': 'owner', 'sources': ['immutable-version']}
+        _, dependency = jobs._prepare(*scope, provider, [{'text': 'one'}, {'text': 'two'}], audit)
+        row = jobs._claim(*scope, 1, dependency)
+        self.assertEqual(row['payload']['audit_context'], audit)
+        with self.assertRaises(EmbeddingJobError):
+            jobs._finish(row, error=RuntimeError('response lost'))
+        unknown = list(jobs._pages(K.JOBS_UNKNOWN, *scope))
+        self.assertEqual(len(unknown), 1)
+        self.assertEqual(unknown[0]['payload']['audit_context'], audit)
+        with jobs._tx(*scope[:2]) as conn:
+            first = conn.execute(K.JOB_FIRST, scope).fetchone()
+            conn._transaction.execute(update(EMBEDDING_JOBS).where(EMBEDDING_JOBS.c.batch_no == 0)
+                .values(payload={**first['payload'], 'audit_context': {'principal': 'other'}}))
+        with self.assertRaisesRegex(EmbeddingJobError, 'EMBEDDING_DEPENDENCY_CHANGED'):
+            list(jobs._pages(K.JOBS_UNKNOWN, *scope))
+        self.assertEqual(provider.calls, [])
 
     def test_reopen_provider_preserves_dataset_schema_and_knowledge(self):
         repository = KnowledgeRepository(database=self.database)

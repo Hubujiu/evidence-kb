@@ -18,6 +18,7 @@ from kb_platform.rag_testing.budget_batches import ReviewedPredecessorLedger, va
 from kb_platform.rag_testing.provider_capture import CapturedLuna, observe_client, request_context
 from kb_platform.rag_testing.contracts import digest
 from kb_platform.embeddings import EmbeddingError
+from kb_platform.database_contracts import DatabaseError
 from kb_platform.remote import RemoteModelError
 from kb_platform.settings import Settings
 
@@ -29,6 +30,13 @@ WINDOW = {'total': 131072, 'input': 118784, 'output': 4096, 'safety': 8192,
           'counting': 'conservative_utf8_estimate'}
 RUNTIME_CAPS = {'model': 120, 'input_tokens': 1500000, 'output_tokens': 200000,
                 'remote_embedding_calls': 32, 'embedding_input_tokens': 60000}
+
+
+def validate_runtime_caps(caps):
+    if (not isinstance(caps, dict) or set(caps) != CAP_DIMENSIONS or
+            any(type(value) is not int or value < 1 for value in caps.values())):
+        raise ValueError('INVALID_RUNTIME_BUDGET_CAPS')
+    return caps
 
 
 class DeliveryConfigurationError(ValueError):
@@ -63,7 +71,7 @@ def load_profile(config_path=None, providers_path=None, run_root=None):
     config_path = _path(config_path or os.getenv('KB_DELIVERY_CONFIG', 'config/delivery-local-v1.json'))
     try:
         config = json.loads(config_path.read_text('utf-8'))
-        if (config.get('protocol') != 'enterprise-kb-delivery/1'
+        if (config.get('protocol') not in {'enterprise-kb-delivery/1', 'enterprise-kb-delivery/2'}
                 or not re.fullmatch(r'delivery-[a-zA-Z0-9-]{1,100}', config.get('id', ''))
                 or config.get('window') != WINDOW
                 or config.get('scope', {}).get('cross_session_memory') is not False
@@ -77,8 +85,10 @@ def load_profile(config_path=None, providers_path=None, run_root=None):
         selected = json.loads(provider_path.read_text('utf-8'))
         luna, google = selected['luna'], selected['google']
         expected_embedding = f"google_gemini:{google['model']}:{google['dimension']}"
-        if (config['models'].get('generation') != 'codex/gpt-6-luna'
-                or luna.get('model') != config['models']['generation']
+        generation = config['models'].get('generation')
+        if (not isinstance(generation, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}', generation)
+                or (config['protocol'] == 'enterprise-kb-delivery/1' and generation != 'codex/gpt-6-luna')
+                or luna.get('model') != generation
                 or config['models'].get('embedding') != expected_embedding
                 or google.get('model') != 'gemini-embedding-2' or google.get('dimension') != 768
                 or config['models'].get('model_comparison') is not False):
@@ -153,9 +163,9 @@ def load_budget_batch(profile, path):
         value = json.loads(path.read_text('utf-8'))
         if (value.get('protocol') != 'delivery-runtime-budget-batch/1'
                 or value.get('tenant_id') != profile.config['id']
-                or not re.fullmatch(r'runtime-[a-zA-Z0-9-]{1,80}', value.get('id', ''))
-                or value.get('caps') != RUNTIME_CAPS):
+                or not re.fullmatch(r'runtime-[a-zA-Z0-9-]{1,80}', value.get('id', ''))):
             raise ValueError()
+        validate_runtime_caps(value.get('caps'))
         predecessors = value['predecessors']
         paths = [str(_path(parent['path'])) for parent in predecessors]
         original = str(profile.root / 'physical-calls.sqlite3')

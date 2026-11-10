@@ -40,7 +40,9 @@ class KnowledgeModelCalls:
                     and (self.config.get("format_repair") or self.config.get("robust_tools"))
                     and failed.get("code") == "INVALID_AGENT_OUTPUT"
                     and failed.get("finish_reason") == "stop"
-                    and reason in {"DUPLICATE_JSON_KEY", "INVALID_JSON_SYNTAX", "AGENT_SCHEMA_MISMATCH"}
+                    and (reason in {"DUPLICATE_JSON_KEY", "INVALID_JSON_SYNTAX", "AGENT_SCHEMA_MISMATCH",
+                                    "AGENT_NON_TEXT_OUTPUT"}
+                         or (rerank_payload is not None and reason in {'INVALID_RERANK_QUOTE', 'INVALID_RERANK_REFERENCE'}))
                 ):
                     raise
                 repair = {
@@ -51,7 +53,7 @@ class KnowledgeModelCalls:
                 }
                 self.trace.setdefault("format_repairs", []).append(repair)
                 system += (
-                    "\nThe previous response was received but its JSON format was invalid ("
+                    "\nThe previous response was received but failed output validation ("
                     + reason
                     + "). Return exactly one valid JSON object. Every object key must appear once and every value must match its schema. Omit unused optional fields; do not use zero for an unused event_seq. Do not change source permissions, evidence or the requested task. Repair only the current role: "
                     + role
@@ -59,6 +61,10 @@ class KnowledgeModelCalls:
                     + ", ".join(schema.get("properties", {}))
                     + "."
                 )
+                if reason == 'INVALID_RERANK_REFERENCE':
+                    system += '\nSelect only current nonempty document refs, using evidence objects with exactly the ref key. Do not generate quotes or unknown references. Preserve requirements and input score order.'
+                if reason == 'INVALID_RERANK_QUOTE':
+                    system += '\nEvery evidence quote must be copied verbatim from its referenced visible document. Do not replace names with pronouns, paraphrase, or quote a different source. If the visible documents cannot support a requirement, mark it unsupported with an empty evidence list. Preserve every requested requirement and the input score order.'
                 if role in {"decision", "retrieval"}:
                     system += ' This role only routes the next action. action="answer" means the evidence is ready for a later answer role; it does not ask you to write that answer now. Return the planner intent/action and applicable citation_ids. Do not emit answer, claims, quotes, evidence_ids or final-answer prose. Preserve the current planner schema rather than switching to an answer schema.'
                 if failed.get('validator_issue'):
@@ -85,7 +91,8 @@ class KnowledgeModelCalls:
             for key in ("source_policy", "constraints", "topic", "corrections", "source_epoch")
         }
         projection_state["tool_results"] = project_tool_results(
-            self.local_tool_results, budget_bytes=self.service.context_policy.effective_input_budget // 4
+            self.local_tool_results, budget_bytes=self.service.context_policy.effective_input_budget // 4,
+            role=role,
         )
         if question.startswith(self.message):
             projection_state["current_user_event"] = {
@@ -129,6 +136,7 @@ class KnowledgeModelCalls:
             'selection_query': self.state.get('work_state', {}).get('resolved_query')
                 if self.config.get('work_state') and planning else self.message,
             'aliases': aliases, 'rerank_payload': rerank_payload,
+            **({'context_budget': self.context_budget} if getattr(self, 'context_budget', None) is not None else {}),
         })
         prepared = PreparedContext(**assembled['prepared'])
         evidence = assembled['evidence']
@@ -139,14 +147,18 @@ class KnowledgeModelCalls:
         self.model_user_statements[role] = _visible_user_statements(prepared.projection)
         output_validator = validator
         if rerank_payload is not None:
-            from .reranking import validate_coverage
+            from .reranking import RerankValidationError, validate_coverage
 
             sources = {item['ref']: item['text'] for item in prepared.projection['evidence']}
 
             def output_validator(value):
                 validator(value)
                 if 'requirements' in value:
-                    validate_coverage(value['requirements'], sources)
+                    try:
+                        validate_coverage(value['requirements'], sources,
+                            protocol=rerank_payload.get('protocol', 'coverage-array/1'))
+                    except RerankValidationError as error:
+                        raise ValueError(error.reason) from error
         history_compacted = bool(prepared.projection.get("omitted_event_refs"))
         if history_compacted and (not self.config["compact"]):
             raise PlatformError(
@@ -170,6 +182,7 @@ class KnowledgeModelCalls:
             "output_reserved": self.service.context_policy.output_reserve,
             "counting_method": "conservative_utf8_estimate",
             "strict_tokens": False,
+            "request_budget": prepared.budget.get("request_budget"),
         }
         call_id = uuid4().hex
         if repair is not None:
@@ -207,6 +220,7 @@ class KnowledgeModelCalls:
                     "turn_id": self.request_id,
                     "call_id": call_id,
                     "agent_id": role,
+                    **({"context_budget": self.context_budget} if getattr(self, "context_budget", None) is not None else {}),
                     "max_physical_calls": self.execution_limits["max_model_calls"],
                     "remaining_seconds": self.execution_limits["max_turn_seconds"]
                     - (time.perf_counter() - self.started),

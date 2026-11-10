@@ -1,5 +1,6 @@
 from dataclasses import asdict
 from copy import deepcopy
+import json
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -12,6 +13,7 @@ from kb_platform.knowledge_contracts import (
     ModelClient, ModelEndpoint, SessionClient, SessionEndpoint, methods,
 )
 from kb_platform.knowledge_sessions import KnowledgeSessions
+from kb_platform.knowledge_answer import KnowledgeAnswer
 from kb_platform.model_errors import RemoteModelError
 from kb_platform.plugin_contracts import ContractError, ServiceEndpoint
 from kb_platform.plugin_native import PluginError
@@ -71,6 +73,21 @@ class KnowledgeCapabilityContracts(unittest.TestCase):
         self.assertEqual(len(result['hits']), 2)
         self.assertEqual(result['trace']['config']['channels'], ['bm25', 'dense'])
 
+    def test_original_question_survives_serialized_search_hypothesis(self):
+        authority, _, endpoint = self.gateway()
+        client = EvidenceClient(endpoint)
+        client.pipeline_reranker = Reranker()
+        client.pipeline_reranker.rank = Mock(wraps=client.pipeline_reranker.rank)
+        question = "Where was the spouse of Person A from?"
+        result = client.search_pipeline(authority.actor, authority.scope, 'Person B country', {},
+            {'channels': ['bm25', 'dense'], 'rerank': True, 'parent': 'none', 'title_navigation': False},
+            assessment_question=question)
+        self.assertEqual(authority.embedding_provider.queries, ['Person B country'])
+        objective = client.pipeline_reranker.rank.call_args.args[0]
+        self.assertIn(question, objective)
+        self.assertIn('unverified search hypothesis', objective)
+        self.assertEqual(result['coverage']['assessment_question'], question)
+
     def test_rerank_resume_checks_actor_then_current_authority(self):
         authority, _, endpoint = self.gateway()
         prepared = self.prepare(authority, endpoint)
@@ -116,8 +133,73 @@ class KnowledgeCapabilityContracts(unittest.TestCase):
         self.assertEqual(caught.exception.call_record['attempts'], 1)
         self.assertEqual(caught.exception.call_record['usage']['total_tokens'], 15)
         self.assertEqual(caught.exception.call_record['validator_reason'], 'EVIDENCE_NOT_SUPPORTED')
+        self.assertEqual(caught.exception.output_diagnostics['validator_reason'], 'EVIDENCE_NOT_SUPPORTED')
         self.assertEqual(model.ledger.snapshot()['calls'], 1)
         provider._cache_put.assert_not_called()
+
+    def test_only_canonical_refusal_discards_unused_unvalidated_claims(self):
+        candidate = {'answer': 'Unverified refusal prose', 'abstain': True,
+            'completion': 'insufficient', 'unresolved': ['Missing relation'],
+            'claims': [{'text': 'Unused assertion', 'evidence_ids': ['citation'],
+                        'quotes': [{'evidence_id': 'citation', 'quote': 'Invented quotation.'}]}]}
+        turn = SimpleNamespace(config={'answer_contract': True, 'explicit_completion': True},
+            state={'evidence': {'citation': {}}}, evidence=[{}],
+            model_evidence={'answer': {'citation': 'Original text.'}}, model_user_statements={},
+            trace={'route': 'knowledge'})
+        KnowledgeAnswer.validate_answer(turn, candidate)
+        self.assertEqual(turn.trace['discarded_refusal_candidates'][0]['claims'], 1)
+        self.assertEqual(candidate['claims'][0]['quotes'][0]['quote'], 'Invented quotation.')
+        for canonical, abstain, completion in [(False, True, 'insufficient'),
+                (True, False, 'partial'), (True, False, 'complete')]:
+            with self.subTest(canonical=canonical, completion=completion):
+                turn.config['answer_contract'] = canonical
+                value = {**candidate, 'abstain': abstain, 'completion': completion,
+                         'unresolved': [] if completion == 'complete' else ['Missing relation']}
+                with self.assertRaisesRegex(ValueError, 'INVALID_EXACT_QUOTE'):
+                    KnowledgeAnswer.validate_answer(turn, value)
+
+    def test_citation_repair_survives_model_contract_validation_boundary(self):
+        client, model, provider = self.model()
+        candidate = {'answer': 'Verified fact.', 'claims': [{'text': 'Verified fact.',
+            'evidence_ids': ['citation'], 'quotes': [{'evidence_id': 'citation', 'quote': 'Changed fact.'}]}]}
+        corrected = deepcopy(candidate)
+        corrected['claims'][0]['quotes'][0]['quote'] = 'Verified fact.'
+        values = iter((candidate, corrected))
+
+        def post(*args, trace, **kwargs):
+            trace['attempt'] += 1
+            return {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(next(values))}}],
+                    'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}}
+
+        provider._post.side_effect = post
+        turn = SimpleNamespace(config={'repair_citations': True}, citation_repair_used=False,
+            message='What is verified?', answer_schema={'type': 'object'},
+            state={'evidence': {'citation': {}}}, evidence=[{}],
+            model_evidence={'answer': {'citation': 'Verified fact.'}}, model_user_statements={},
+            trace={'calls': [], 'route': 'knowledge'}, event=Mock())
+        turn.validate_answer = lambda value: KnowledgeAnswer.validate_answer(turn, value)
+
+        def call(role, system, schema, validator, *, question):
+            if turn.citation_repair_used:
+                self.assertIn('Local validation location:', system)
+                self.assertIn('exact_substring_of_current_visible_original', system)
+                self.assertIn('"path":["claims",0,"quotes",0]', system)
+            try:
+                return client.complete([{'role': 'system', 'content': system},
+                    {'role': 'user', 'content': question}], role=role, schema=schema,
+                    call_context={}, validator=validator).value
+            except RemoteModelError as error:
+                turn.trace['calls'].append({**error.call_record, 'call_id': error.call_record['request_id']})
+                raise
+
+        turn.call = call
+        self.assertEqual(KnowledgeAnswer.call_answer(turn, 'Use exact evidence.'), corrected)
+        self.assertEqual(turn.trace['citation_repair']['reason'], 'INVALID_EXACT_QUOTE')
+        self.assertEqual(turn.trace['citation_repair']['validator_issue']['evidence_id'], 'citation')
+        self.assertTrue(turn.citation_repair_used)
+        self.assertEqual(provider._post.call_count, 2)
+        self.assertEqual(model.ledger.snapshot()['calls'], 2)
+        provider._cache_put.assert_called_once()
 
     def test_business_validation_acknowledges_exact_completion_before_caching(self):
         client, model, provider = self.model()

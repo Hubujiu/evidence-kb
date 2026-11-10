@@ -177,6 +177,11 @@ class OpenAICompatibleAdapter:
             self.ledger.reserve(identity, self.reservation, category=category, require_settled=True)
         except BaseException as exc:
             exc.model_sent = False
+            from .database_contracts import CommitUnknown
+
+            if isinstance(exc, CommitUnknown):
+                exc.physical_request_id = identity
+                exc.budget_operation_id = exc.operation_id
             if isinstance(exc, ValueError) and str(exc) in {
                     'BUDGET_INSUFFICIENT', 'UNRESOLVED_PHYSICAL_REQUEST',
                     'BUDGET_PRODUCER_BUSY', 'BUDGET_PRODUCER_SEALED'}:

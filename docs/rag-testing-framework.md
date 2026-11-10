@@ -101,3 +101,7 @@ BGE 使用 Sentence Transformers 5.7 的 `CrossEncoder.predict`，删除原来�
 工具型 agent 的原文可能分布于多条消息。Trace 新增可选 `request_evidence_bindings`，按实际消息索引和 JSON 叶子路径绑定每个 final fragment；路径中的 `$json` 表示解析一层 JSON 字符串。在此模式下 `final_context` 是用于评分的原文投影，不冒充实际发送的连续上下文。评分器核对所有绑定、原文哈希、来源权限和完整性，并以**全部序列化 request_messages 的 Unicode codepoints**核对预算。原来的连续 context 模式保持原语义；两种协议不能混用预算成绩。树摘要仍是导航数据，不代替原文证据或校准后的语义支持结论。
 
 离线回归：`python -m kb_platform.rag_testing.request_projection_contracts`，再执行原有评分器控制回放。
+
+### 旧准备回执的重新绑定
+
+`load_prepared` 与执行入口只接受当前 v3 协议。`rebind_http` 另允许读取 v2 的完成回执：先验证旧文件哈希、原始夹具、租户身份与 scope/upload/build/publish 回执，再调用当前绑定流程重新校验原文、索引、权限并生成 v3 suite 与输入。旧 trace 不用于本轮执行，旧目录保持只读；迁移来源协议记录在 `prepare-state.json.rebind_from`。不能把协议变化后的预算条件当作旧版严格配对。

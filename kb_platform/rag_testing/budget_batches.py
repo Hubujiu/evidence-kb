@@ -224,20 +224,25 @@ def freeze_reviewed_predecessor(path, review_path):
     path, review_path = Path(path).resolve(strict=True), Path(review_path).resolve(strict=True)
     review_hash = sha256(review_path.read_bytes()).hexdigest()
     review = json.loads(review_path.read_text('utf-8'))
-    if review.get('schema') == 'physical-model-outcomes-review/1':
+    physical_review = review.get('schema') in {'physical-model-outcomes-review/1',
+                                              'physical-model-outcomes-review/2'}
+    if physical_review:
         if (not all(isinstance(review.get(key), str) and review[key].strip()
                     for key in ('authorization_reference', 'recovery_scope')) or
                 review.get('producers_quiescent') is not True or
                 review.get('recoverable_response_found') is not False):
             raise ValueError('EXPLICIT_MODEL_OUTCOME_REVIEW_REQUIRED')
-    if review.get('schema') in {'competitive-model-outcomes-review/1', 'physical-model-outcomes-review/1'}:
+    if physical_review or review.get('schema') == 'competitive-model-outcomes-review/1':
         snapshot = _snapshot(path)
+        started = {row['id'] for row in snapshot['rows'] if row['status'] == 'STARTED'}
+        reviewed_started = (set(review.get('orphaned_started_ids', []))
+                            if review.get('schema') == 'physical-model-outcomes-review/2' else set())
         if (review.get('operator') != 'codex-local-audit' or not review.get('reason') or
                 review.get('old_unknown_remains_unknown_and_reserved') is not True or
                 review.get('snapshot') != snapshot or snapshot['summary']['over_budget'] or
-                any(row['status'] == 'STARTED' for row in snapshot['rows'])):
+                started != reviewed_started):
             raise ValueError('MODEL_OUTCOMES_REVIEW_SNAPSHOT_MISMATCH')
-        unresolved = {row['id'] for row in snapshot['rows'] if row['status'] == 'UNKNOWN'}
+        unresolved = {row['id'] for row in snapshot['rows'] if row['status'] in ('UNKNOWN', 'STARTED')}
         if not unresolved or unresolved != set(review['unknown_ids']):
             raise ValueError('MODEL_OUTCOMES_REVIEW_UNKNOWN_MISMATCH')
         abnormal = {row['id'] for row in snapshot['rows'] if row['status'] != 'COMPLETE'}

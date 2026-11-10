@@ -63,6 +63,7 @@ class Reranker:
 
 class Authority:
     _allowed = Platform._allowed
+    _check_source_snapshot = Platform._check_source_snapshot
 
     @property
     def revision(self):
@@ -112,11 +113,12 @@ class Authority:
     def _lock_authority(self, conn, actor):
         return self.revision
 
-    def _auth(self, conn, actor, scope):
-        return {'manifest_id': 'build'}
+    def _auth(self, conn, actor, scope, capability='kb.read'):
+        return {'manifest_id': 'build', 'revision': self.revision}
 
-    def _bindings(self, conn, actor, scope):
-        return self.rows
+    def _source_snapshot(self, actor, scope, *, processing=False, capability='kb.read'):
+        return {'actor': actor, 'scope': scope, 'kb': self._auth(None, actor, scope, capability),
+                'authority_revision': self.revision, 'capability': capability, 'rows': deepcopy(self.rows)}
 
     def resolve_citation(self, actor, scope, citation_id, purpose):
         record = deepcopy(self.records[citation_id])

@@ -13,13 +13,19 @@ class ToolSpec:
     handler: str = "advanced"
     mutates_data: bool = False
     incurs_cost: bool = False
+    correctable_input_errors: tuple[str, ...] = ()
+    input_guidance: str = ""
 
 
 TOOLS = {
     'search': ToolSpec('query', handler='search'),
     'read': ToolSpec('read', handler='read'),
     'read_history': ToolSpec('query', handler='history'),
-    'calculator': ToolSpec('expression', handler='calculate'),
+    'calculator': ToolSpec('expression', handler='calculate',
+        correctable_input_errors=('INVALID_EXPRESSION',),
+        input_guidance='Supply one scalar arithmetic expression using numeric literals, parentheses and '
+                       '+, -, *, /, //, %, **. No dictionaries, lists, labels, variables or calls. '
+                       'Use separate tool calls for separate results; at most 512 characters.'),
     'search_pipeline': ToolSpec('query', 'advanced_tools', False, incurs_cost=True),
     'search_tables': ToolSpec('query', 'advanced_tools'),
     'table': ToolSpec('table', 'advanced_tools'),
@@ -38,6 +44,7 @@ def advanced_tools(config, gateway):
 
 def decision_schema(config, advanced, semantic_enabled):
     schema = deepcopy(DECISION_SCHEMA)
+    schema['properties']['expression']['description'] = TOOLS['calculator'].input_guidance
     actions = schema['properties']['action']['enum']
     if advanced or config.get('explicit_completion'):
         actions.extend(sorted(advanced))

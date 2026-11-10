@@ -124,10 +124,10 @@ class PlatformPluginContracts(unittest.TestCase):
                 connection.execute.side_effect = lambda sql, *args: SimpleNamespace(
                     fetchone=lambda: record if sql == KnowledgeQuery.CITATION_GET else build)
                 platform.repository = SimpleNamespace(transaction=lambda *args: nullcontext(connection))
-                platform._auth = lambda *args: {'manifest_id': 'build'}
+                platform._auth = lambda *args: {'manifest_id': 'build', 'revision': 1}
                 platform._revision = lambda *args: 1
                 platform._lock_authority = lambda *args: 1
-                platform._bindings = lambda *args: authority.rows
+                platform._source_snapshot = authority._source_snapshot
                 result = composition.platform.search(authority.actor, 'scope', 'rule')
                 projection = {key: result[key] for key in ('context', 'manifest_id', 'channel', 'trace')}
                 if expected is None:

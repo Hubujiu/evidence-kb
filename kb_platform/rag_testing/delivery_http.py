@@ -19,7 +19,7 @@ from .runner import run, write_json
 from .provider_capture import capture_unresolved
 
 
-VERSION = 'delivery-real-http-actual-payload/2'
+VERSION = 'delivery-real-http-actual-payload/3'
 POLICY = {'llm_context': True, 'embedding': True, 'rerank': True, 'ocr': False,
           'compile': False, 'allowed_providers': ['google_gemini', 'magpie_luna']}
 
@@ -141,7 +141,8 @@ def _bind_prepared_http(client, fixtures, root, *, platform, identity, data_scop
 
 
 def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, physical_directory,
-                 context_budget=118784, channels=('bm25', 'dense', 'hybrid'), policy=None):
+                 context_budget=118784, channels=('bm25', 'dense', 'hybrid'), policy=None, split=None):
+
     root = Path(output).resolve()
     root.mkdir(parents=True, exist_ok=True)
 
@@ -150,12 +151,15 @@ def prepare_http(client, fixtures, output, *, platform, expected_tenant_id, phys
     with sqlite_guard(root / '.prepare.guard.sqlite3', nowait=True):
         return _prepare_http_locked(client, fixtures, root, platform=platform,
             expected_tenant_id=expected_tenant_id, physical_directory=physical_directory,
-            context_budget=context_budget, channels=channels, policy=policy)
+            context_budget=context_budget, channels=channels, policy=policy, split=split)
 
 
 def _prepare_http_locked(client, fixtures, root, *, platform, expected_tenant_id, physical_directory,
-                         context_budget, channels, policy):
+                         context_budget, channels, policy, split):
     fixtures = load_delivery_fixtures(fixtures['root'] if isinstance(fixtures, dict) else fixtures)
+    if split not in (None, 'dev', 'holdout'):
+        raise ValueError('INVALID_DELIVERY_SPLIT')
+    splits = (split,) if split else ('dev', 'holdout')
     path = root / 'prepare-state.json'
     identity = client.get('/identity').raise_for_status().json()
     if identity.get('tenant_id') != expected_tenant_id:
@@ -164,6 +168,8 @@ def _prepare_http_locked(client, fixtures, root, *, platform, expected_tenant_id
     specification = {'protocol': VERSION, 'fixture_hash': digest({key: value for key, value in fixtures.items() if key != 'root'}),
         'fixture_root': fixtures['root'], 'identity': identity, 'channels': list(channels),
         'policy': dict(POLICY if policy is None else policy), 'context_budget': context_budget}
+    if split is not None:
+        specification['split'] = split
     if path.exists():
         state = json.loads(path.read_text('utf-8'))
         if state['specification'] != specification:
@@ -177,7 +183,7 @@ def _prepare_http_locked(client, fixtures, root, *, platform, expected_tenant_id
         if client.get('/knowledge-bases').raise_for_status().json():
             raise ValueError('DELIVERY_TENANT_NOT_FRESH')
         state = {'specification': specification, 'status': 'PREPARING', 'operations': {}, 'scopes': {},
-                 'planned_case_ids': [case['id'] for case in fixtures['cases']]}
+                 'planned_case_ids': [case['id'] for case in fixtures['cases'] if case['split'] in splits]}
         _atomic_json(path, state)
 
     def once(key, method, url, **kwargs):
@@ -207,7 +213,7 @@ def _prepare_http_locked(client, fixtures, root, *, platform, expected_tenant_id
         return value
 
     data_scopes = {}
-    for split in ('dev', 'holdout'):
+    for split in splits:
         scope_receipt = once(split + ':scope', 'POST', '/knowledge-bases', json={'name': 'delivery-' + split})
         scope = scope_receipt['kb_id']
         state['scopes'][split] = scope
@@ -231,9 +237,13 @@ def _prepare_http_locked(client, fixtures, root, *, platform, expected_tenant_id
 
 
 def load_prepared(root):
+    return _checked_prepared(root, (VERSION,))
+
+
+def _checked_prepared(root, protocols):
     root = Path(root).resolve()
     prepared = json.loads((root / 'prepared.json').read_text('utf-8'))
-    if prepared.get('protocol') != VERSION:
+    if prepared.get('protocol') not in protocols:
         raise ValueError('UNKNOWN_PREPARED_PROTOCOL')
     for name, checksum in prepared['file_sha256'].items():
         path = (root / name).resolve()
@@ -245,7 +255,7 @@ def load_prepared(root):
 def rebind_http(client, prepared_directory, output, *, platform, expected_tenant_id, physical_directory):
 
     previous = Path(prepared_directory).resolve()
-    old = load_prepared(previous)
+    old = _checked_prepared(previous, (VERSION, 'delivery-real-http-actual-payload/2'))
     old_state_path = previous / 'prepare-state.json'
     old_state = json.loads(old_state_path.read_text('utf-8'))
     if old_state.get('status') != 'COMPLETE' or any(
@@ -272,7 +282,9 @@ def rebind_http(client, prepared_directory, output, *, platform, expected_tenant
     state = {'status': 'DATA_READY', 'operations': deepcopy(old_state['operations']),
         'specification': {**old_state.get('specification', {}), 'protocol': VERSION},
         'planned_case_ids': list(old['planned_case_ids']),
-        'rebind_from': {'directory': str(previous), 'prepared_sha256': sha256((previous / 'prepared.json').read_bytes()).hexdigest(),
+        'rebind_from': {'directory': str(previous), 'protocol': old['protocol'],
+                        'execution_protocol': VERSION, 'old_traces_reused': False,
+                        'prepared_sha256': sha256((previous / 'prepared.json').read_bytes()).hexdigest(),
                         'receipts_sha256': sha256(old_state_path.read_bytes()).hexdigest()}}
     data_scopes = {split: {key: data[key] for key in ('scope_id', 'ingested', 'build', 'published')}
                    for split, data in old['splits'].items()}
@@ -464,7 +476,8 @@ class DeliveryHTTPAdapter:
                 _assert_authority(observed, expected_authority)
                 current_id = turn_id if number == len(conversation) - 1 else 'history-' + uuid4().hex
                 turn_ids.append(current_id)
-                product_input = {**product_turn, 'request_id': current_id, 'expected_revision': revision}
+                product_input = {**product_turn, 'request_id': current_id, 'expected_revision': revision,
+                    'context_budget': {'limit': request.context_budget, 'unit': request.budget_unit, 'scope': 'evidence'}}
                 write_json(case_dir / f'turn-{number:02}-request.json', {'session_id': session_id,
                     'request': product_input, 'config_name': self.config_name})
                 _atomic_json(case_dir / 'state.json', {'status': 'STARTED', 'session_id': session_id,

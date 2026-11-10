@@ -100,7 +100,10 @@ class EvidenceGateway:
         self.pipeline_reranker = pipeline_reranker
 
     def _state(self, actor, scope_id, *, with_build=False, with_bindings=True):
+        snapshot = self.platform._source_snapshot(actor, scope_id, processing=True) if with_bindings else None
         with self.platform._tx(actor, scope_id) as conn:
+            if snapshot is not None:
+                self.platform._check_source_snapshot(conn, actor, scope_id, snapshot)
             revision = self.platform._lock_authority(conn, actor)
             kb = self.platform._auth(conn, actor, scope_id)
             if with_build and not kb['manifest_id']:
@@ -108,9 +111,7 @@ class EvidenceGateway:
             state = {'scope_id': scope_id, 'manifest_id': kb['manifest_id'], 'authority_revision': revision}
             rows = []
             if with_bindings:
-                rows = conn.execute(
-                    KnowledgeQuery.BINDINGS_PROCESSING,
-                    (actor.tenant_id, scope_id)).fetchall()
+                rows = snapshot['rows']
             build = None
             if with_build:
                 build = conn.execute(KnowledgeQuery.BUILD_PUBLISHED, (actor.tenant_id, scope_id,
@@ -266,12 +267,12 @@ class EvidenceGateway:
         return self.search(actor, scope_id, query, policy, limit,
                            exclude_citation_ids=exclude_citation_ids, granularity='page')
 
-    def search_pipeline(self, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=()):
+    def search_pipeline(self, actor, scope_id, query, policy, config=None, *, exclude_citation_ids=(), assessment_question=None):
 
         from .retrieval_pipeline import execute
 
         return execute(self, actor, scope_id, query, policy, config,
-                       exclude_citation_ids=exclude_citation_ids)
+                       exclude_citation_ids=exclude_citation_ids, assessment_question=assessment_question)
 
     def pipeline_capabilities(self, actor, scope_id, policy):
 

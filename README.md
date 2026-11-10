@@ -36,6 +36,15 @@ uv run --no-sync python scripts/check_project.py
 
 ## 启动本地文档工作台
 
+首次启动或修改 Web 前端后，先使用 Node.js 22 构建界面：
+
+```bash
+cd web
+npm ci
+npm run build
+cd ..
+```
+
 ```bash
 uv run python scripts/bootstrap.py
 uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-host -- --profile config/host-profiles/api.json --stop-file .local/api.stop
@@ -43,7 +52,7 @@ uv run --no-sync cargo run --locked --offline -p agent-harness --bin evidence-ho
 
 打开 [文档工作台](http://127.0.0.1:58080/)，使用 `.local/identities.json` 中生成的本地令牌。该文件包含私有令牌，不要提交。
 
-正常停止时，在另一终端执行 `touch .local/api.stop`；下次启动前移除该标记。宿主等待在途工作与资源清理，异常退出返回非零状态。HTTP 路由和页面仍由现有 Python 应用提供。
+正常停止时，在另一终端执行 `touch .local/api.stop`；下次启动前移除该标记。宿主等待在途工作与资源清理，异常退出返回非零状态。Linux 可用 `touch .local/api.stop`。HTTP 路由和构建后的 Web 页面由现有 Python 应用提供。知识库管理支持创建知识库、上传解析、发布 BM25 索引、检索及原文定位。
 
 `bootstrap.py` 显式初始化新的本地存储空间，并生成含数据身份的 `.local/storage.json`；已有文件不覆盖。新的知识库应用不兼容历史业务数据和配置，使用下面的知识库初始化命令创建空空间。切换后端可按 [业务数据重置](docs/storage-reset.md) 创建新的业务空间，旧目录及费用账本不删除。配置其他后端时，使用 [公共存储配置](docs/storage-plugins-execution-plan.md)，BM25、dense、正文与原件可分别绑定。
 

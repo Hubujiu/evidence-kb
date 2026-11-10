@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -135,9 +135,23 @@ def create_app(settings: Settings | None = None, platform: Platform | None = Non
     def health():
         return {"status": "running", "readiness": "Use authenticated requests to verify dependencies"}
 
+    web_root = Path(__file__).resolve().parents[1] / 'web' / 'dist'
+
     @app.get("/", response_class=HTMLResponse)
     def home():
-        return (Path(__file__).parent / "console.html").read_text(encoding="utf-8")
+        index = web_root / 'index.html'
+        if not index.is_file():
+            return HTMLResponse('Web 界面尚未构建。请在 web 目录运行 npm ci 和 npm run build。', status_code=503)
+        return HTMLResponse(index.read_text(encoding='utf-8'))
+
+    @app.get('/assets/{asset_path:path}')
+    def web_asset(asset_path: str):
+        root = (web_root / 'assets').resolve()
+        path = (root / asset_path).resolve()
+        if not path.is_relative_to(root) or not path.is_file():
+            raise HTTPException(404, 'Asset not found')
+        return FileResponse(path)
+
 
     @app.get('/console.mjs')
     def console_module():

@@ -10,6 +10,9 @@ reports/
 output/
 outputs/
 node_modules/
+web/dist/
+*.tsbuildinfo
+e2e/.artifacts/
 .playwright-cli/
 .agents/
 .env.*

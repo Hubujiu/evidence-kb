@@ -698,6 +698,34 @@
                           "null"
                         ]
                       },
+                      "context_budget": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "limit": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "scope": {
+                            "enum": [
+                              "messages",
+                              "evidence"
+                            ]
+                          },
+                          "unit": {
+                            "enum": [
+                              "unicode_codepoints"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "limit",
+                          "unit"
+                        ],
+                        "type": [
+                          "object",
+                          "null"
+                        ]
+                      },
                       "expected_revision": {
                         "minimum": 0,
                         "type": "integer"
@@ -3743,6 +3771,34 @@
                   "null"
                 ]
               },
+              "context_budget": {
+                "additionalProperties": false,
+                "properties": {
+                  "limit": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "enum": [
+                      "messages",
+                      "evidence"
+                    ]
+                  },
+                  "unit": {
+                    "enum": [
+                      "unicode_codepoints"
+                    ]
+                  }
+                },
+                "required": [
+                  "limit",
+                  "unit"
+                ],
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
               "evidence": {
                 "items": {
                   "properties": {
@@ -4143,7 +4199,48 @@
                     "type": "object"
                   },
                   "ranking": {
-                    "type": "array"
+                    "oneOf": [
+                      {
+                        "type": "array"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "coverage": {
+                            "type": "array"
+                          },
+                          "ranking": {
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "ranking",
+                          "coverage"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "coverage": {
+                            "type": "array"
+                          },
+                          "coverage_protocol": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "ranking": {
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "ranking",
+                          "coverage",
+                          "coverage_protocol"
+                        ],
+                        "type": "object"
+                      }
+                    ]
                   },
                   "token": {
                     "minLength": 1,
@@ -4334,6 +4431,10 @@
                 ],
                 "type": "object"
               },
+              "assessment_question": {
+                "minLength": 1,
+                "type": "string"
+              },
               "config": {
                 "type": [
                   "object",
@@ -4383,6 +4484,10 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "assessment_input": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "candidates": {
                     "type": "array"
                   },
@@ -4393,7 +4498,8 @@
                 },
                 "required": [
                   "token",
-                  "candidates"
+                  "candidates",
+                  "assessment_input"
                 ],
                 "type": "object"
               }
@@ -4633,6 +4739,10 @@
                   "principal_id"
                 ],
                 "type": "object"
+              },
+              "assessment_question": {
+                "minLength": 1,
+                "type": "string"
               },
               "config": {
                 "type": [
@@ -7679,6 +7789,34 @@
                 },
                 "type": [
                   "array",
+                  "null"
+                ]
+              },
+              "context_budget": {
+                "additionalProperties": false,
+                "properties": {
+                  "limit": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "enum": [
+                      "messages",
+                      "evidence"
+                    ]
+                  },
+                  "unit": {
+                    "enum": [
+                      "unicode_codepoints"
+                    ]
+                  }
+                },
+                "required": [
+                  "limit",
+                  "unit"
+                ],
+                "type": [
+                  "object",
                   "null"
                 ]
               },

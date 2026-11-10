@@ -485,7 +485,7 @@ class NativeBuildGateContracts(unittest.TestCase):
                     if name == 'host-integration':
                         self.assertEqual(str(binary), env['KB_PLUGIN_HOST_BINARY'])
                 self.assertIn('rust-clippy', [name for name, _, _ in calls])
-                self.assertTrue({'lint', 'source-lint', 'source-lint-contracts'} <=
+                self.assertTrue({'lint', 'source-lint', 'source-lint-contracts', 'web-types'} <=
                                 {name for name, _, _ in calls})
             self.assertNotEqual(targets[0], targets[1])
             self.assertNotEqual(libraries[0], libraries[1])

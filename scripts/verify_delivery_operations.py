@@ -69,22 +69,14 @@ def _public_budget(snapshot):
 class UI(HTMLParser):
     def __init__(self):
         super().__init__()
-        self.ids, self.profiles, self.in_profile = set(), [], False
+        self.ids, self.scripts = set(), []
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if 'id' in attrs:
             self.ids.add(attrs['id'])
-        if tag == 'input' and attrs.get('id') == 'profile' and attrs.get('type') == 'hidden':
-            self.profiles.append(attrs)
-        if tag == 'select':
-            self.in_profile = attrs.get('id') == 'profile'
-        if tag == 'option' and self.in_profile:
-            self.profiles.append(attrs)
-
-    def handle_endtag(self, tag):
-        if tag == 'select':
-            self.in_profile = False
+        if tag == 'script' and attrs.get('type') == 'module' and attrs.get('src'):
+            self.scripts.append(attrs['src'])
 
 
 def _export_summary(value):
@@ -222,11 +214,17 @@ def verify_operations(*, config, runtime_manifest, identities, session_state, ou
             def check_ui():
                 page = UI()
                 page.feed(ui_response.text)
-                required = {'savedSessions', 'exportSession', 'runtimeStatus', 'refreshRuntime', 'profile'}
-                selected_options = [option for option in page.profiles if 'selected' in option]
-                default = selected_options[-1] if selected_options else page.profiles[0] if page.profiles else {}
-                return (required <= page.ids and len(page.profiles) == 1 and
-                    default.get('value') == 'recommended')
+                if 'root' not in page.ids or len(page.scripts) != 1:
+                    return False
+                asset = page.scripts[0]
+                if not re.fullmatch(r'/assets/[A-Za-z0-9_-]+\.js', asset):
+                    return False
+                response = client.get(asset)
+                if response.status_code != 200:
+                    return False
+                bundle = response.text
+                return all(item in bundle for item in (
+                    '最近对话', '导出会话', '服务状态', '/agent/sessions', 'runtime-status', 'recommended'))
             validate('agent_ui_controls', check_ui)
             capability = request(client, 'single_default_profile', '/agent/capabilities')
             validate('single_default_profile', lambda: capability.json()['recommended'] == configuration['recommended'] and

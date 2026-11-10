@@ -8,6 +8,7 @@ import sqlite3
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 
 from kb_platform.application_knowledge import DEFAULT_APPLICATION, create_contract_knowledge
@@ -328,3 +329,29 @@ class FoundationKnowledgeContracts(unittest.TestCase):
         self.assertEqual(self.snapshot(restored), before)
         self.assertEqual({path.name: path.read_bytes() for path in (case.directory / 'audit').glob('*.json')}, records)
         self.assertEqual(case.wire.errors, [])
+
+    def test_budget_store_failure_before_send_does_not_charge_model_usage(self):
+        from kb_platform.database_contracts import DatabaseError
+
+        case = self.case('budget-store-unavailable')
+        composition = self.compose(case)
+        scope, _ = self.publish(composition)
+        session_id = composition.application.create(self.actor, scope)['session_id']
+        with patch.object(BudgetLedger, 'reserve', side_effect=DatabaseError('DATABASE_BACKEND_UNAVAILABLE')):
+            result = composition.application.turn(self.actor, session_id,
+                message='What is the original rule?', request_id='budget-store-failure', expected_revision=0)
+        self.assertEqual(result['status'], 'error', result)
+        self.assertEqual(result['stop_reason'], 'DATABASE_BACKEND_UNAVAILABLE', result)
+        self.assertEqual(case.wire.requests, [])
+        self.assertEqual(self.snapshot(composition)['physical_requests'], 0)
+        budget = composition.application.model_status()['budget']
+        self.assertEqual(budget['calls'], 0)
+        self.assertEqual(budget['unknown_usage_calls'], 0)
+        self.assertEqual(budget['accounted_tokens'], 0)
+        history = composition.application.history(self.actor, session_id)
+        calls = result['trace']['calls']
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]['attempts'], 0)
+        completed = [event for event in history['events'] if event['kind'] == 'turn_completed']
+        self.assertEqual(len(completed), 1)
+        self.assertEqual(completed[0]['payload']['trace']['calls'][0]['attempts'], 0)

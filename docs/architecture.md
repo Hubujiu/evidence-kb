@@ -152,3 +152,33 @@ Markdown/TXT 的新快照使用 `native-text/0.3.0-markdown-it`，快照哈希�
 组件接口的类型、协议版本与依赖图检查不足以保证运行时组合正确。状态迁移须维持单一所有者；跨组件调用须保留请求身份、授权修订及未知结果；需要强一致性的交接须进入同一个物理事务。应用清理仅在提供商确认物理关闭后解除所有权，关闭失败保留重试路径。
 
 统一状态机注册表的 `composition_edges` 将关键交接关联到联合 TLA+ 模型、不变量与实际合同。源码 lint 检查准入先于执行、成功之后才确认关闭、失败完整结算以及私有存储边界；新增状态所有者缺少模型会使门禁失败。有限模型与这些约束的保证范围见[状态机门禁](formal-state-machines.md#组合约束的保证边界)。
+
+## 上下文预算组件
+
+`context_budget.py` 是无状态预算组件，供上下文装配、模型发送前核验和统一评分器使用。`ContextBudget` 保存部署的输入容量、输出预留及安全预留；`RequestBudget` 表达一次调用的显式限额和单位。当前显式限额支持 `unicode_codepoints`，`scope=messages` 按 `json.dumps(messages, ensure_ascii=False)` 的完整消息序列长度计数；`scope=evidence` 按实际请求中 evidence（重排时为 documents）数组的 canonical JSON 长度计数，缺失该观测则拒绝。产品模型容量仍使用 `conservative_utf8_estimate`，不是经模型 tokenizer 验证的精确 token 数；不接受含糊的 `tokens` 单位。
+
+`ContextCapacity` 同时执行部署容量与请求限额。内部将字符占用向上取整映射到部署容量单位，再取两种占用的最大值，供已有证据/历史分配算法使用；这一分配数不作为 token 用量报告。通过条件等价于两种限制分别通过。实际 token 费用仍来自提供商 usage，不能由字符计数替代。
+
+HTTP turn 可携带 `context_budget: {"limit": 16000, "unit": "unicode_codepoints", "scope": "evidence"}`。workflow 只传递此约束，并把它纳入请求幂等身份；context 插件负责组装、裁剪及最终校验，不修改共享实例的全局配置。model 在发送前按同一组件复核，约束不能放宽部署容量。未提供请求限制时保持部署预算行为；未知单位或非法限额拒绝执行。
+
+统一 HTTP 测试适配器将冻结用例预算传入每个实际用户 turn。评分器复用同一计数组件，但保留历史 Trace 的计量范围：有 request_evidence_bindings 时计完整消息，否则计 final_context。HTTP 适配器使用与其旧 final_context 观测一致的 evidence 范围；完整消息仍受部署容量约束。消息范围限制必须显式选择 messages，不能混淆两种范围。旧结果保持原分母和评分语义，新的组件通过不代表旧答案或新全量质量已通过。
+
+
+### 检索覆盖与预算分配边界
+
+`knowledge.data` 的重排能力可通过 `assess(query, candidates)` 返回 JSON 对象：`ranking` 和 `coverage`。coverage 逐项包含 need、supported、evidence（citation_id、原文 quote）。data 在原候选集合、当前权限和构建仍有效的条件下重新校验引用；有覆盖观测时，仅由 supported 项引用的候选进入交付，排名不是证据准入条件，标题导航不能绕过该条件。只提供 rank 的第三方实现继续返回分数列表，覆盖状态为 unknown，不推断支持。
+
+`finish_pipeline.ranking` 接受原分数数组或上述评估对象；这是可序列化的能力契约，不共享模块对象或缓存。交付结果 coverage 保留 query、requirements（need、supported、citation_ids）、实际交付及未准入引用 ID，不复制原文 quote 到工具结果，避免绕过上下文正文预算。coverage 仅描述该次查询的候选批次，不建立全库缺失事实。workflow 将 `search_pipeline.coverage` 留给 decision/retrieval 角色和完整审计记录；其角色投影在送给 answer/verifier 前移除这一局部判断，独立依据当前可见原文评估任务。其他工具的同名业务字段不受影响，计算与历史原文仍保留。该投影属于 workflow，不由通用 context 插件解释检索结果，也不导入 data 实现。
+
+workflow 保留已留存证据的相对次序，新检索结果不自动跃居其前；用户或规划器显式 read 的材料可以成为当前焦点，容量淘汰规则保持有界。context 不读取 data 的内部状态或重排实现：先在每条份额内装配，所有回退遵守该份额，历史原文窗口也先获得份额，再以剩余总量补全尚未完整的片段。计数由共享预算组件执行，语义身份不属于预算组件。
+
+上下文的 query_blocks/coverage_blocks 对长单行散文按保守句界取连续原文窗口；保留缩写和可识别的紧随例外条件，短段落及表格保持原有原子边界。所有证据和恢复历史获得初始份额后，剩余容量可扩展同段相邻原文，优先补前文，不替换已选正文，不跨段填入无关材料。截断窗口仍标明原文哈希、偏移和外置余文；这不是对语义完整性的保证，完整性继续交由统一证据评分与生成核验判断。该实现只属于 context，不读取检索 coverage、金标或 workflow 状态含义。
+
+
+### 检索目标与重排证据选择
+
+Workflow 经 Evidence 能力显式传递当前用户问题 `assessment_question`；检索 `query` 仅作为候选检索假设。数据侧生成 assessment 输入并在 prepare 响应中以 JSON 返回；客户端不导入数据侧判断实现。`coverage-references/2` 只选择当前可见候选引用，逐项验证成员身份，不重新生成原文引句。选择评估不替代最终答案的精确引用与语义核验；旧 coverage-array/1 仅通过显式协议调用保留。固定拒答丢弃的未验证断言记录审计，不作为通过引用校验的事实交付。
+
+`coverage-contributions/3` 将候选贡献与要求完整性分开：未完整要求的 evidence 引用仍可贡献中间事实，数据侧准入这些明确选择的候选；supported=false 保留为不完整，不被晋升为已证明关系。v2 与旧引句协议的 supported-only 准入语义仍通过显式版本保留。
+
+答案核验后的有界修复只根据当前仍获授权的原始证据修正候选，并再次核验。它不无条件检索未见过的资料：新结果可能挤掉已被核验器读取的关键正文。补充检索由前面的规划阶段负责；修复仍不能完成请求时，保留未完成或拒答状态。上下文准备和交付前的实时权限复核不变。

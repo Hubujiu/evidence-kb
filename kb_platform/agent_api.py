@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -13,6 +13,13 @@ class SessionCreate(BaseModel):
     config_name: str = 'recommended'
 
 
+class RequestBudgetInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    limit: int = Field(gt=0, strict=True)
+    unit: Literal['unicode_codepoints']
+    scope: Literal['messages', 'evidence'] = 'messages'
+
+
 class TurnRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     message: str = Field(min_length=1, max_length=20000)
@@ -21,6 +28,7 @@ class TurnRequest(BaseModel):
     source_policy: dict | None = None
     constraints: list[str] | None = None
     workflow_state: dict | None = None
+    context_budget: RequestBudgetInput | None = None
 
 
 def install_agent_routes(app, platform, research, identity, *, service_factory=None, application=None, host=None):
@@ -41,9 +49,12 @@ def install_agent_routes(app, platform, research, identity, *, service_factory=N
             raise HTTPException(409, 'Configure KB_REMOTE_MODELS=1 before starting an agent conversation')
         return current
 
-    @app.get('/agent', response_class=HTMLResponse)
+    @app.get('/agent', include_in_schema=False)
     def console():
-        return Path(__file__).with_name('agent_console.html').read_text(encoding='utf-8')
+        index = Path(__file__).resolve().parents[1] / 'web' / 'dist' / 'index.html'
+        if not index.is_file():
+            return HTMLResponse('Web 界面尚未构建。请在 web 目录运行 npm ci 和 npm run build。', status_code=503)
+        return HTMLResponse(index.read_text(encoding='utf-8'))
 
     @app.get('/agent_console.mjs')
     def console_module():
@@ -118,7 +129,9 @@ def install_agent_routes(app, platform, research, identity, *, service_factory=N
     def turn(session_id: str, body: TurnRequest, actor: principal):
         return require().turn(actor, session_id, message=body.message, request_id=body.request_id,
                               expected_revision=body.expected_revision, policy=body.source_policy,
-                              constraints=body.constraints, workflow_state=body.workflow_state)
+                              constraints=body.constraints, workflow_state=body.workflow_state,
+                              **({'context_budget': body.context_budget.model_dump()}
+                                 if body.context_budget is not None else {}))
 
     @app.get('/agent/sessions/{session_id}/artifacts/{artifact_id}')
     def artifact(session_id: str, artifact_id: str, actor: principal):
